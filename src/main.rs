@@ -17,6 +17,7 @@ use embassy_rp::{
     pio,
     spi::{self, Spi},
 };
+use embassy_sync::channel::Sender;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Channel,
@@ -53,19 +54,48 @@ bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => usb::InterruptHandler<USB>;
 });
 
-enum Action {
-    SetDacValue(usize, u16),
-}
-
 static MAX: StaticCell<
     Mutex<ThreadModeRawMutex, Max11300<Spi<'static, SPI0, spi::Async>, Output>>,
 > = StaticCell::new();
-static FADER_VALUES: Mutex<ThreadModeRawMutex, [u16; 16]> = Mutex::new([0u16; 16]);
-// FIXME: we might need a ThreadModeRawMutex here
+static FADER_VALUES: Mutex<CriticalSectionRawMutex, [u16; 16]> = Mutex::new([0u16; 16]);
+// FIXME: Maybe we can use another Mutex for the DAC (!) values that we want to set, this way
+// we can also send out the values at a constant rate and only take the ones into account that
+// are currently present in the mutex array
+static DAC_VALUES: Mutex<CriticalSectionRawMutex, [Option<u16>; 16]> = Mutex::new([None; 16]);
 static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<'static, I2C1, Async>>> = StaticCell::new();
 static CHANNEL: Channel<CriticalSectionRawMutex, Action, 16> = Channel::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static mut CORE1_STACK: Stack<4096> = Stack::new();
+
+enum Action {}
+
+// FIXME: Rename
+struct App<const N: usize> {
+    channels: [usize; N],
+}
+
+impl<const N: usize> App<N> {
+    fn new(channels: [usize; N]) -> Self {
+        Self { channels }
+    }
+
+    async fn get_fader_values(&self) -> [u16; N] {
+        let fader_values = FADER_VALUES.lock().await;
+        let mut buf = [0_u16; N];
+        for i in 0..N {
+            buf[i] = fader_values[self.channels[i]];
+        }
+        buf
+    }
+
+    // FIXME: Ultimately this API should also reflect the type of port (like in the MAX driver)
+    async fn set_dac_values(&self, values: [u16; N]) {
+        let mut dac_values = DAC_VALUES.lock().await;
+        for i in 0..N {
+            dac_values[self.channels[i]] = Some(values[i]);
+        }
+    }
+}
 
 // FIXME: create config builder to create full 16 channel layout with various apps
 // We need something that makes sure that nothing is used twice
@@ -73,7 +103,11 @@ static mut CORE1_STACK: Stack<4096> = Stack::new();
 // App slots
 #[embassy_executor::task(pool_size = 16)]
 async fn run_app(channel: usize) {
-    apps::default::run(channel).await;
+    // FIXME: Here we need to get the exact channnels the app is using. This is probably coming
+    // from the builder above
+    // For now it's hardcoded to one channel
+    let args = App::new([channel]);
+    apps::default::run(args).await;
 }
 
 #[embassy_executor::task]
@@ -169,7 +203,6 @@ async fn read_fader(
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let receiver = CHANNEL.receiver();
     let p = embassy_rp::init(Default::default());
 
     spawn_core1(
@@ -209,6 +242,7 @@ async fn main(spawner: Spawner) {
 
     let max = MAX.init(Mutex::new(max_driver));
 
+    // FIXME: Create an abstraction to be able to create just one port
     let ports = Ports::new(max);
 
     spawner
@@ -290,16 +324,16 @@ async fn main(spawner: Spawner) {
     }
     drop(max_driver);
 
+    // FIXME: Maybe we can run this on a higher priority (and also spawn it as a task)
     loop {
-        if let Ok(msg) = receiver.try_receive() {
-            match msg {
-                Action::SetDacValue(chan, val) => {
-                    let port = Port::try_from(chan).unwrap();
-                    let mut max_driver = max.lock().await;
-                    max_driver.dac_set_value(port, val).await.unwrap();
-                }
+        let mut max_driver = max.lock().await;
+        let dac_values = DAC_VALUES.lock().await;
+        for (i, &value) in dac_values.iter().enumerate() {
+            let port = Port::try_from(i).unwrap();
+            if let Some(val) = value {
+                max_driver.dac_set_value(port, val).await.unwrap();
             }
         }
-        Timer::after_millis(1).await;
+        Timer::after_micros(500).await;
     }
 }

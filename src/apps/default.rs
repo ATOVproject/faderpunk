@@ -1,10 +1,9 @@
-use crate::{Action, Timer, CHANNEL, FADER_VALUES};
+use crate::{App, Timer};
 
-pub async fn run(chan: usize) {
+pub async fn run(app: App<1>) {
     loop {
         Timer::after_millis(1000).await;
-        let fader_values = FADER_VALUES.lock().await;
-        let val = fader_values[chan];
-        CHANNEL.send(Action::SetDacValue(chan, val)).await;
+        let [val] = app.get_fader_values().await;
+        app.set_dac_values([val]).await;
     }
 }
