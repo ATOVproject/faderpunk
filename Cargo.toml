@@ -21,18 +21,21 @@ static_cell = "2.1"
 portable-atomic = { version = "1.7", features = ["critical-section"] }
 pio = "0.2"
 pio-proc = "0.2"
-embedded-midi = "0.1"
 drv2605 = "0.1"
 embassy-usb = "0.3"
 embassy-futures = "0.1"
 embassy-embedded-hal = "0.2"
 sequential-storage = "3.0"
 at24cx = { version = "0.1", path = "../at24cx" }
+wmidi = { version = "4.0", default-features = false }
 
 # release
 [profile.release]
+lto = true
 opt-level = "s"
-lto = "fat"
+incremental = false
+codegen-units = 1
+debug = true
 
 # cargo build/run
 [profile.dev]
