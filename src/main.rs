@@ -24,7 +24,6 @@ use embassy_rp::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::Delay;
-use is31fl3218::Is31Fl3218;
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -141,13 +140,10 @@ async fn main(spawner: Spawner) {
     let i2c_bus = I2C_BUS.init(i2c_bus);
 
     let i2c_dev0 = I2cDevice::new(i2c_bus);
-    let i2c_dev1 = I2cDevice::new(i2c_bus);
 
-    let mut led_driver = Is31Fl3218::new(i2c_dev0);
+    tasks::leds::start_leds(&spawner, i2c_dev0).await;
 
-    led_driver.enable_device().await.unwrap();
-    led_driver.enable_all().await.unwrap();
-    led_driver.set_all(&[255; 18]).await.unwrap();
+    info!("INITIALIZED");
 
     // let i2c_dev1 = I2cDevice::new(i2c_bus);
 
