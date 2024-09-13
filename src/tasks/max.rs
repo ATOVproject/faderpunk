@@ -78,7 +78,8 @@ pub async fn start_max(
 
     // FIXME: Make individual port
     spawner
-        .spawn(read_fader(pio0, mux0, mux1, mux2, mux3, ports.port16))
+        // FIXME: This should be port 16 but we don't care about this for now
+        .spawn(read_fader(pio0, mux0, mux1, mux2, mux3, ports.port15))
         .unwrap();
 
     spawner.spawn(write_dac_values(max)).unwrap();
@@ -98,40 +99,50 @@ async fn read_fader(
     let fader_port = max_port
         .into_configured_port(ConfigMode7(
             AVR::InternalRef,
-            ADCRANGE::Rg0_2v5,
+            ADCRANGE::Rg0_10v,
             NSAMPLES::Samples16,
         ))
         .await
         .unwrap();
 
-    let pio::Pio {
-        mut common,
-        mut sm0,
-        ..
-    } = pio::Pio::new(pio0, Irqs);
+    // let pio::Pio {
+    //     mut common,
+    //     mut sm0,
+    //     ..
+    // } = pio::Pio::new(pio0, Irqs);
+    //
+    // let prg = pio_asm!(
+    //     "
+    //     pull block
+    //     out pins, 4
+    //     "
+    // );
+    // let pin0 = common.make_pio_pin(pin12);
+    // let pin1 = common.make_pio_pin(pin13);
+    // let pin2 = common.make_pio_pin(pin14);
+    // let pin3 = common.make_pio_pin(pin15);
+    // sm0.set_pin_dirs(pio::Direction::Out, &[&pin0, &pin1, &pin2, &pin3]);
+    // let mut cfg = pio::Config::default();
+    // cfg.set_out_pins(&[&pin0, &pin1, &pin2, &pin3]);
+    // cfg.use_program(&common.load_program(&prg.program), &[]);
+    // sm0.set_config(&cfg);
+    // sm0.set_enable(true);
 
-    let prg = pio_asm!(
-        "
-        pull block
-        out pins, 4
-        "
-    );
-    let pin0 = common.make_pio_pin(pin12);
-    let pin1 = common.make_pio_pin(pin13);
-    let pin2 = common.make_pio_pin(pin14);
-    let pin3 = common.make_pio_pin(pin15);
-    sm0.set_pin_dirs(pio::Direction::Out, &[&pin0, &pin1, &pin2, &pin3]);
-    let mut cfg = pio::Config::default();
-    cfg.set_out_pins(&[&pin0, &pin1, &pin2, &pin3]);
-    cfg.use_program(&common.load_program(&prg.program), &[]);
-    sm0.set_config(&cfg);
-    sm0.set_enable(true);
-
+    // let mut pin0 = Output::new(pin12, Level::Low);
+    // let mut pin1 = Output::new(pin13, Level::Low);
+    // let mut pin2 = Output::new(pin14, Level::Low);
+    // let mut pin3 = Output::new(pin15, Level::Low);
+    //
     let mut chan: usize = 0;
 
     loop {
         // send the channel value to the PIO state machine to trigger the program
-        sm0.tx().wait_push(chan as u32).await;
+        // sm0.tx().wait_push(chan as u32).await;
+
+        // pin0.set_level(if chan & 0b0001 != 0 { Level::High } else { Level::Low });
+        // pin1.set_level(if chan & 0b0010 != 0 { Level::High } else { Level::Low });
+        // pin2.set_level(if chan & 0b0100 != 0 { Level::High } else { Level::Low });
+        // pin3.set_level(if chan & 0b1000 != 0 { Level::High } else { Level::Low });
 
         // this translates to ~30Hz refresh rate for the faders
         Timer::after_millis(2).await;
@@ -141,7 +152,7 @@ async fn read_fader(
         let mut fader_values = MAX_VALUES_FADERS.lock().await;
         // pins are reversed
         fader_values[15 - chan] = val;
-        chan = (chan + 1) % 16;
+        // chan = (chan + 1) % 16;
     }
 }
 
@@ -150,7 +161,7 @@ async fn write_dac_values(
     max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
 ) {
     loop {
-        // Hopefully we can write it at about 2kHz
+        // hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
         let mut max_driver = max.lock().await;
         let mut dac_values = MAX_VALUES_DAC.lock().await;
