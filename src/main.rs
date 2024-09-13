@@ -109,13 +109,14 @@ async fn main(spawner: Spawner) {
             executor1.run(|spawner| {
                 // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
                 // We only replace ALL 16 channels at once
-                for i in 0..1 {
+                for i in 15..16 {
                     spawner.spawn(run_app(1, i)).unwrap();
                 }
             });
         },
     );
 
+    // spawner.spawn(read_clock(ports.port17)).unwrap();
     tasks::max::start_max(
         &spawner, p.SPI0, p.PIO0, p.PIN_12, p.PIN_13, p.PIN_14, p.PIN_15, p.PIN_17, p.PIN_18,
         p.PIN_19, p.PIN_16, p.DMA_CH0, p.DMA_CH1,
@@ -128,8 +129,6 @@ async fn main(spawner: Spawner) {
         &spawner, p.UART0, p.UART1, p.PIN_0, p.PIN_8, p.PIN_9, p.DMA_CH2, p.DMA_CH3, p.DMA_CH4,
     )
     .await;
-
-    // spawner.spawn(read_clock(ports.port17)).unwrap();
 
     let sda = p.PIN_26;
     let scl = p.PIN_27;

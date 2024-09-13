@@ -2,6 +2,7 @@ use core::array;
 
 use defmt::info;
 use embassy_futures::join::join;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, pubsub::Subscriber};
 use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use portable_atomic::Ordering;
@@ -9,11 +10,11 @@ use wmidi::{Channel, ControlFunction, MidiMessage, U7};
 
 use crate::tasks::{
     max::{
-        MaxReconfigureAction, MAX_CHANNEL_RECONFIGURE, MAX_MASK_RECONFIGURE, MAX_VALUES_ADC,
-        MAX_VALUES_DAC, MAX_VALUES_FADERS,
+        MaxReconfigureAction, MAX_CHANNEL_RECONFIGURE, MAX_MASK_RECONFIGURE,
+        MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADERS,
     },
     serial::{UartAction, CHANNEL_UART_TX},
-    usb::{UsbAction, CHANNEL_USB_TX},
+    usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
 };
 
 // FIXME: put this into some util create
@@ -103,12 +104,11 @@ impl<const N: usize> App<N> {
             panic!("Not a valid channel in this app");
         }
 
-        // FIXME: it's also terrible that we have to pass the channel twice here
-        let channel = self.channels[0] + chan;
         self.reconfigure_jack(
-            channel,
+            // FIXME: it's also terrible that we have to pass the channel twice here
+            self.channels[chan],
             MaxReconfigureAction::Mode7(
-                channel,
+                self.channels[chan],
                 ConfigMode7(AVR::InternalRef, ADCRANGE::Rg0_10v, NSAMPLES::Samples16),
             ),
         )
@@ -122,11 +122,10 @@ impl<const N: usize> App<N> {
             panic!("Not a valid channel in this app");
         }
 
-        // FIXME: it's also terrible that we have to pass the channel twice here
-        let channel = self.channels[0] + chan;
         self.reconfigure_jack(
-            channel,
-            MaxReconfigureAction::Mode5(channel, ConfigMode5(DACRANGE::Rg0_10v)),
+            // FIXME: it's also terrible that we have to pass the channel twice here
+            self.channels[chan],
+            MaxReconfigureAction::Mode5(self.channels[chan], ConfigMode5(DACRANGE::Rg0_10v)),
         )
         .await;
 
@@ -136,11 +135,11 @@ impl<const N: usize> App<N> {
     pub async fn make_all_in_jacks(&self) -> InJacks<N> {
         // FIXME: add a configure_jacks function that can configure multiple jacks at once (using
         // the multiport feature of the MAX)
-        for chan in self.channels {
+        for channel in self.channels {
             self.reconfigure_jack(
-                chan,
+                channel,
                 MaxReconfigureAction::Mode7(
-                    chan,
+                    channel,
                     ConfigMode7(AVR::InternalRef, ADCRANGE::Rg0_10v, NSAMPLES::Samples16),
                 ),
             )
@@ -156,10 +155,10 @@ impl<const N: usize> App<N> {
     pub async fn make_all_out_jacks(&self) -> OutJacks<N> {
         // FIXME: add a configure_jacks function that can configure multiple jacks at once (using
         // the multiport feature of the MAX)
-        for chan in self.channels {
+        for channel in self.channels {
             self.reconfigure_jack(
-                chan,
-                MaxReconfigureAction::Mode5(chan, ConfigMode5(DACRANGE::Rg0_10v)),
+                channel,
+                MaxReconfigureAction::Mode5(channel, ConfigMode5(DACRANGE::Rg0_10v)),
             )
             .await;
         }
@@ -184,21 +183,43 @@ impl<const N: usize> App<N> {
     // FIXME: This is a short-hand function that should also send the msg via TRS
     // Create and use a function called midi_send_both and use it here
     pub async fn midi_send_cc(&self, chan: Channel, cc: ControlFunction, val: u16) {
-        // FIXME: There's definitely room for abstraction here
         let msg = MidiMessage::ControlChange(chan, cc, u16_to_u7(val));
-        join(
-            CHANNEL_USB_TX.send(UsbAction::SendMidiMsg(msg.to_owned())),
-            CHANNEL_UART_TX.send(UartAction::SendMidiMsg(msg.to_owned())),
-        )
-        .await;
+        self.send_midi_msg(msg).await;
     }
 
-    async fn reconfigure_jack(&self, chan: usize, action: MaxReconfigureAction) {
+    pub async fn send_midi_msg(&self, msg: MidiMessage<'_>) {
+        let uart_fut = CHANNEL_UART_TX.send(UartAction::SendMidiMsg(msg.to_owned()));
+        if USB_CONNECTED.load(Ordering::Relaxed) {
+            info!("SENDING USB MIDI");
+            join(
+                CHANNEL_USB_TX.send(UsbAction::SendMidiMsg(msg.to_owned())),
+                uart_fut,
+            )
+            .await;
+        } else {
+            uart_fut.await;
+        }
+    }
+
+    pub async fn wait_for_fader_change(&self, chan: usize) {
+        if chan > N - 1 {
+            panic!("Not a valid channel in this app");
+        }
+        let mut subscriber = MAX_PUBSUB_FADER_CHANGED.subscriber().unwrap();
+        loop {
+            let notified_channel = subscriber.next_message_pure().await;
+            if self.channels[chan] == notified_channel {
+                return;
+            }
+        }
+    }
+
+    async fn reconfigure_jack(&self, channel: usize, action: MaxReconfigureAction) {
         MAX_CHANNEL_RECONFIGURE.send(action).await;
         loop {
             // See if the reconfiguration is done
             self.delay_millis(10).await;
-            let mask = 1 << (chan) as u16;
+            let mask = 1 << (channel) as u16;
             if (MAX_MASK_RECONFIGURE.load(Ordering::Relaxed) & mask) != 0 {
                 MAX_MASK_RECONFIGURE.fetch_and(!mask, Ordering::SeqCst);
                 break;

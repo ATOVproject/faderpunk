@@ -2,7 +2,7 @@ use defmt::info;
 use embassy_futures::join::join;
 use wmidi::{Channel as MidiChannel, ControlFunction};
 
-use crate::app::App;
+use crate::{app::App, tasks::max::MAX_PUBSUB_FADER_CHANGED};
 
 // API ideas:
 // - app.wait_for_button_press
@@ -12,6 +12,8 @@ pub const CHANNELS: usize = 1;
 
 pub async fn run(app: App<CHANNELS>) {
     let jacks = app.make_all_out_jacks().await;
+    // FIXME: Maybe have a waiters thing, where people can get exactly N waiters for their app
+    // app.get_waiters or something like that
 
     let fut1 = async {
         loop {
@@ -21,11 +23,16 @@ pub async fn run(app: App<CHANNELS>) {
         }
     };
 
+    let mut count = 0;
+
     let fut2 = async {
+        let mut waiter = MAX_PUBSUB_FADER_CHANGED.subscriber().unwrap();
         loop {
-            // app.wait_for_fader_changes().await;
+            // app.wait_for_fader_change(0).await;
+            waiter.next_message().await;
+            count += 1;
+
             let [fader] = app.get_fader_values().await;
-            // info!("SENDING MIDI MSG");
             app.midi_send_cc(
                 // FIXME: MidiChannel should be configurable (duh)
                 MidiChannel::Ch1,
@@ -33,9 +40,6 @@ pub async fn run(app: App<CHANNELS>) {
                 fader,
             )
             .await;
-            // FIXME: We need window fader movement detection just like on the 16n, so we don't need
-            // this timer anymore and only send stuff when we need it
-            app.delay_millis(2000).await;
         }
     };
 
