@@ -9,7 +9,10 @@ use embassy_rp::{
     pio,
     spi::{self, Async, Spi},
 };
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex,
+    pubsub::PubSubChannel,
+};
 use embassy_time::Timer;
 use max11300::{
     config::{
@@ -34,6 +37,8 @@ pub static MAX_VALUES_FADERS: Mutex<CriticalSectionRawMutex, [u16; 16]> = Mutex:
 pub static MAX_MASK_RECONFIGURE: AtomicU16 = AtomicU16::new(0);
 pub static MAX_CHANNEL_RECONFIGURE: Channel<CriticalSectionRawMutex, MaxReconfigureAction, 16> =
     Channel::new();
+pub static MAX_PUBSUB_FADER_CHANGED: PubSubChannel<CriticalSectionRawMutex, usize, 4, 16, 1> =
+    PubSubChannel::new();
 
 // FIXME: Can we make all chans u8 for some memory savings???
 pub enum MaxReconfigureAction {
@@ -134,6 +139,8 @@ async fn read_fader(
     // let mut pin3 = Output::new(pin15, Level::Low);
     //
     let mut chan: usize = 0;
+    let mut prev_values: [u16; 16] = [0; 16];
+    let change_publisher = MAX_PUBSUB_FADER_CHANGED.publisher().unwrap();
 
     loop {
         // send the channel value to the PIO state machine to trigger the program
@@ -145,9 +152,17 @@ async fn read_fader(
         // pin3.set_level(if chan & 0b1000 != 0 { Level::High } else { Level::Low });
 
         // this translates to ~30Hz refresh rate for the faders
-        Timer::after_millis(2).await;
+        Timer::after_millis(33).await;
 
         let val = fader_port.get_value().await.unwrap();
+        let diff = (val as i16 - prev_values[15 - chan] as i16).unsigned_abs();
+        // resolution of 256 should cover the full MIDI 1.0 range
+        prev_values[15 - chan] = val;
+
+        if diff >= 16 {
+            // we publish immediate and don't really care so much about lost messages
+            change_publisher.publish_immediate(15 - chan);
+        }
 
         let mut fader_values = MAX_VALUES_FADERS.lock().await;
         // pins are reversed
