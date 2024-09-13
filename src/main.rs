@@ -149,44 +149,46 @@ async fn main(spawner: Spawner) {
     led_driver.enable_all().await.unwrap();
     led_driver.set_all(&[255; 18]).await.unwrap();
 
-    let mut eeprom = At24Cx::new(i2c_dev1, Address(0, 0), 17, Delay);
+    // let i2c_dev1 = I2cDevice::new(i2c_bus);
 
-    // These are the flash addresses in which the crate will operate.
-    // The crate will not read, write or erase outside of this range.
-    let flash_range = 0x1000..0x3000;
-    // We need to give the crate a buffer to work with.
-    // It must be big enough to serialize the biggest value of your storage type in,
-    // rounded up to to word alignment of the flash. Some kinds of internal flash may require
-    // this buffer to be aligned in RAM as well.
-    let mut data_buffer = [0; 128];
+    // let mut eeprom = At24Cx::new(i2c_dev1, Address(0, 0), 17, Delay);
+    //
+    // // These are the flash addresses in which the crate will operate.
+    // // The crate will not read, write or erase outside of this range.
+    // let flash_range = 0x1000..0x3000;
+    // // We need to give the crate a buffer to work with.
+    // // It must be big enough to serialize the biggest value of your storage type in,
+    // // rounded up to to word alignment of the flash. Some kinds of internal flash may require
+    // // this buffer to be aligned in RAM as well.
+    // let mut data_buffer = [0; 128];
 
     // Now we store an item the flash with key 42.
     // Again we make sure we pass the correct key and value types, u8 and u32.
     // It is important to do this consistently.
 
-    store_item(
-        &mut eeprom,
-        flash_range.clone(),
-        &mut NoCache::new(),
-        &mut data_buffer,
-        &42u8,
-        &104729u32,
-    )
-    .await
-    .unwrap();
-
-    // When we ask for key 42, we not get back a Some with the correct value
-
-    assert_eq!(
-        fetch_item::<u8, u32, _>(
-            &mut eeprom,
-            flash_range.clone(),
-            &mut NoCache::new(),
-            &mut data_buffer,
-            &42,
-        )
-        .await
-        .unwrap(),
-        Some(104729)
-    );
+    // store_item(
+    //     &mut eeprom,
+    //     flash_range.clone(),
+    //     &mut NoCache::new(),
+    //     &mut data_buffer,
+    //     &42u8,
+    //     &104729u32,
+    // )
+    // .await
+    // .unwrap();
+    //
+    // // When we ask for key 42, we not get back a Some with the correct value
+    //
+    // assert_eq!(
+    //     fetch_item::<u8, u32, _>(
+    //         &mut eeprom,
+    //         flash_range.clone(),
+    //         &mut NoCache::new(),
+    //         &mut data_buffer,
+    //         &42,
+    //     )
+    //     .await
+    //     .unwrap(),
+    //     Some(104729)
+    // );
 }
