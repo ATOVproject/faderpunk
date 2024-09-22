@@ -139,8 +139,10 @@ async fn main(spawner: Spawner) {
     let i2c_bus = I2C_BUS.init(i2c_bus);
 
     let i2c_dev0 = I2cDevice::new(i2c_bus);
+    let i2c_dev1 = I2cDevice::new(i2c_bus);
 
     tasks::leds::start_leds(&spawner, i2c_dev0).await;
+    tasks::buttons::start_buttons(&spawner, i2c_dev1).await;
 
     info!("INITIALIZED");
 

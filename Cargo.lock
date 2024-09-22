@@ -338,7 +338,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5794414bc20e0d750f145bc0e82366b19dd078e9e075e8331fb8dd069a1cb6a2"
 dependencies = [
  "embassy-futures",
- "embassy-sync",
+ "embassy-sync 0.6.0",
  "embassy-time",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0",
@@ -407,7 +407,7 @@ checksum = "4818c32afec43e3cae234f324bad9a976c9aa7501022d26ff60a4017a1a006b7"
 dependencies = [
  "embassy-futures",
  "embassy-net-driver",
- "embassy-sync",
+ "embassy-sync 0.6.0",
 ]
 
 [[package]]
@@ -426,7 +426,7 @@ dependencies = [
  "embassy-embedded-hal",
  "embassy-futures",
  "embassy-hal-internal",
- "embassy-sync",
+ "embassy-sync 0.6.0",
  "embassy-time",
  "embassy-time-driver",
  "embassy-usb-driver",
@@ -445,6 +445,19 @@ dependencies = [
  "rand_core",
  "rp-pac",
  "rp2040-boot2",
+]
+
+[[package]]
+name = "embassy-sync"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd938f25c0798db4280fcd8026bf4c2f48789aebf8f77b6e5cf8a7693ba114ec"
+dependencies = [
+ "cfg-if",
+ "critical-section",
+ "embedded-io-async",
+ "futures-util",
+ "heapless",
 ]
 
 [[package]]
@@ -502,7 +515,7 @@ checksum = "8d0b882133fa684b9d4652351cd7aac5afe8a2c2bf4a7da59f442ff61087cda2"
 dependencies = [
  "embassy-futures",
  "embassy-net-driver-channel",
- "embassy-sync",
+ "embassy-sync 0.6.0",
  "embassy-usb-driver",
  "heapless",
  "ssmarshal",
@@ -831,7 +844,7 @@ name = "max11300"
 version = "0.3.0"
 dependencies = [
  "critical-section",
- "embassy-sync",
+ "embassy-sync 0.6.0",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "heapless",
@@ -940,6 +953,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 
 [[package]]
+name = "pca9555"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0069ce14e80b7dfc649064f9f5d630694297c8acbbcd2d5b29da7a3cd8914fa"
+dependencies = [
+ "embassy-sync 0.5.0",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "seq-macro",
+]
+
+[[package]]
 name = "petgraph"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -972,13 +997,14 @@ dependencies = [
  "embassy-executor",
  "embassy-futures",
  "embassy-rp",
- "embassy-sync",
+ "embassy-sync 0.6.0",
  "embassy-time",
  "embassy-usb",
  "embedded-hal 1.0.0",
  "is31fl3218",
  "max11300",
  "panic-probe",
+ "pca9555",
  "pio",
  "pio-proc",
  "portable-atomic",

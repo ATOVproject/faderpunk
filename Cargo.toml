@@ -28,6 +28,7 @@ embassy-embedded-hal = "0.2"
 sequential-storage = "3.0"
 at24cx = { version = "0.1", path = "../at24cx" }
 wmidi = { version = "4.0", default-features = false }
+pca9555 = "0.1"
 
 # release
 [profile.release]
