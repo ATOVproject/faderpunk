@@ -12,9 +12,6 @@ pub const CHANNELS: usize = 1;
 
 pub async fn run(app: App<CHANNELS>) {
     let jacks = app.make_all_out_jacks().await;
-    // FIXME: Maybe have a waiters thing, where people can get exactly N waiters for their app
-    // app.get_waiters or something like that
-
     let fut1 = async {
         loop {
             let [fader] = app.get_fader_values().await;
@@ -23,14 +20,11 @@ pub async fn run(app: App<CHANNELS>) {
         }
     };
 
-    let mut count = 0;
-
     let fut2 = async {
-        let mut waiter = MAX_PUBSUB_FADER_CHANGED.subscriber().unwrap();
+        let mut waiter = app.make_waiter(0);
         loop {
-            // app.wait_for_fader_change(0).await;
-            waiter.next_message().await;
-            count += 1;
+            waiter.wait_for_fader_change().await;
+            app.led_blink(0, 100).await;
 
             let [fader] = app.get_fader_values().await;
             app.midi_send_cc(

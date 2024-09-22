@@ -83,8 +83,7 @@ pub async fn start_max(
 
     // FIXME: Make individual port
     spawner
-        // FIXME: This should be port 16 but we don't care about this for now
-        .spawn(read_fader(pio0, mux0, mux1, mux2, mux3, ports.port15))
+        .spawn(read_fader(pio0, mux0, mux1, mux2, mux3, ports.port16))
         .unwrap();
 
     spawner.spawn(write_dac_values(max)).unwrap();
@@ -110,49 +109,39 @@ async fn read_fader(
         .await
         .unwrap();
 
-    // let pio::Pio {
-    //     mut common,
-    //     mut sm0,
-    //     ..
-    // } = pio::Pio::new(pio0, Irqs);
-    //
-    // let prg = pio_asm!(
-    //     "
-    //     pull block
-    //     out pins, 4
-    //     "
-    // );
-    // let pin0 = common.make_pio_pin(pin12);
-    // let pin1 = common.make_pio_pin(pin13);
-    // let pin2 = common.make_pio_pin(pin14);
-    // let pin3 = common.make_pio_pin(pin15);
-    // sm0.set_pin_dirs(pio::Direction::Out, &[&pin0, &pin1, &pin2, &pin3]);
-    // let mut cfg = pio::Config::default();
-    // cfg.set_out_pins(&[&pin0, &pin1, &pin2, &pin3]);
-    // cfg.use_program(&common.load_program(&prg.program), &[]);
-    // sm0.set_config(&cfg);
-    // sm0.set_enable(true);
+    let pio::Pio {
+        mut common,
+        mut sm0,
+        ..
+    } = pio::Pio::new(pio0, Irqs);
 
-    // let mut pin0 = Output::new(pin12, Level::Low);
-    // let mut pin1 = Output::new(pin13, Level::Low);
-    // let mut pin2 = Output::new(pin14, Level::Low);
-    // let mut pin3 = Output::new(pin15, Level::Low);
-    //
+    let prg = pio_asm!(
+        "
+        pull block
+        out pins, 4
+        "
+    );
+    let pin0 = common.make_pio_pin(pin12);
+    let pin1 = common.make_pio_pin(pin13);
+    let pin2 = common.make_pio_pin(pin14);
+    let pin3 = common.make_pio_pin(pin15);
+    sm0.set_pin_dirs(pio::Direction::Out, &[&pin0, &pin1, &pin2, &pin3]);
+    let mut cfg = pio::Config::default();
+    cfg.set_out_pins(&[&pin0, &pin1, &pin2, &pin3]);
+    cfg.use_program(&common.load_program(&prg.program), &[]);
+    sm0.set_config(&cfg);
+    sm0.set_enable(true);
+
     let mut chan: usize = 0;
     let mut prev_values: [u16; 16] = [0; 16];
     let change_publisher = MAX_PUBSUB_FADER_CHANGED.publisher().unwrap();
 
     loop {
         // send the channel value to the PIO state machine to trigger the program
-        // sm0.tx().wait_push(chan as u32).await;
+        sm0.tx().wait_push(chan as u32).await;
 
-        // pin0.set_level(if chan & 0b0001 != 0 { Level::High } else { Level::Low });
-        // pin1.set_level(if chan & 0b0010 != 0 { Level::High } else { Level::Low });
-        // pin2.set_level(if chan & 0b0100 != 0 { Level::High } else { Level::Low });
-        // pin3.set_level(if chan & 0b1000 != 0 { Level::High } else { Level::Low });
-
-        // this translates to ~30Hz refresh rate for the faders
-        Timer::after_millis(33).await;
+        // this translates to ~30Hz refresh rate for the faders (1000 / (2 * 16) = 31.25)
+        Timer::after_millis(2).await;
 
         let val = fader_port.get_value().await.unwrap();
         let diff = (val as i16 - prev_values[15 - chan] as i16).unsigned_abs();
@@ -167,7 +156,7 @@ async fn read_fader(
         let mut fader_values = MAX_VALUES_FADERS.lock().await;
         // pins are reversed
         fader_values[15 - chan] = val;
-        // chan = (chan + 1) % 16;
+        chan = (chan + 1) % 16;
     }
 }
 

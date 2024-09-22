@@ -9,6 +9,7 @@ use portable_atomic::Ordering;
 use wmidi::{Channel, ControlFunction, MidiMessage, U7};
 
 use crate::tasks::{
+    leds::{LedsAction, CHANNEL_LEDS},
     max::{
         MaxReconfigureAction, MAX_CHANNEL_RECONFIGURE, MAX_MASK_RECONFIGURE,
         MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADERS,
@@ -68,6 +69,29 @@ impl<const N: usize> OutJacks<N> {
         let mut dac_values = MAX_VALUES_DAC.lock().await;
         for i in 0..N {
             dac_values[self.channels[i]] = Some(values[i]);
+        }
+    }
+}
+
+pub struct Waiter<'a> {
+    channel: usize,
+    subscriber: Subscriber<'a, CriticalSectionRawMutex, usize, 4, 16, 1>,
+}
+
+impl<'a> Waiter<'a> {
+    pub fn new(channel: usize) -> Self {
+        let subscriber = MAX_PUBSUB_FADER_CHANGED.subscriber().unwrap();
+        Self {
+            channel,
+            subscriber,
+        }
+    }
+    pub async fn wait_for_fader_change(&mut self) {
+        loop {
+            let notified_channel = self.subscriber.next_message_pure().await;
+            if self.channel == notified_channel {
+                return;
+            }
         }
     }
 }
@@ -180,6 +204,17 @@ impl<const N: usize> App<N> {
         Timer::after_secs(secs).await
     }
 
+    pub async fn led_blink(&self, chan: usize, duration: u64) {
+        // FIXME: We're doing this a lot, let's abstract this
+        if chan > N - 1 {
+            panic!("Not a valid channel in this app");
+        }
+        let channel = self.channels[chan];
+        CHANNEL_LEDS
+            .send((channel, LedsAction::Blink(duration)))
+            .await;
+    }
+
     // FIXME: This is a short-hand function that should also send the msg via TRS
     // Create and use a function called midi_send_both and use it here
     pub async fn midi_send_cc(&self, chan: Channel, cc: ControlFunction, val: u16) {
@@ -190,7 +225,6 @@ impl<const N: usize> App<N> {
     pub async fn send_midi_msg(&self, msg: MidiMessage<'_>) {
         let uart_fut = CHANNEL_UART_TX.send(UartAction::SendMidiMsg(msg.to_owned()));
         if USB_CONNECTED.load(Ordering::Relaxed) {
-            info!("SENDING USB MIDI");
             join(
                 CHANNEL_USB_TX.send(UsbAction::SendMidiMsg(msg.to_owned())),
                 uart_fut,
@@ -201,17 +235,11 @@ impl<const N: usize> App<N> {
         }
     }
 
-    pub async fn wait_for_fader_change(&self, chan: usize) {
+    pub fn make_waiter(&self, chan: usize) -> Waiter {
         if chan > N - 1 {
             panic!("Not a valid channel in this app");
         }
-        let mut subscriber = MAX_PUBSUB_FADER_CHANGED.subscriber().unwrap();
-        loop {
-            let notified_channel = subscriber.next_message_pure().await;
-            if self.channels[chan] == notified_channel {
-                return;
-            }
-        }
+        Waiter::new(self.channels[chan])
     }
 
     async fn reconfigure_jack(&self, channel: usize, action: MaxReconfigureAction) {
