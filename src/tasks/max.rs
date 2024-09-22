@@ -148,7 +148,7 @@ async fn read_fader(
         // resolution of 256 should cover the full MIDI 1.0 range
         prev_values[15 - chan] = val;
 
-        if diff >= 16 {
+        if diff >= 4 {
             // we publish immediate and don't really care so much about lost messages
             change_publisher.publish_immediate(15 - chan);
         }

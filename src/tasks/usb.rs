@@ -2,13 +2,14 @@ use core::sync::atomic::AtomicBool;
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::join3;
+use embassy_futures::join::join4;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_usb::class::midi::{MidiClass, Receiver, Sender};
-use embassy_usb::driver::EndpointError;
+use embassy_usb::class::web_usb::{Config as WebUsbConfig, State, Url, WebUsb};
+use embassy_usb::driver::{Driver, Endpoint, EndpointError, EndpointIn, EndpointOut};
 use embassy_usb::{Builder, Config};
 
 use portable_atomic::Ordering;
@@ -22,6 +23,9 @@ pub enum UsbAction<'a> {
 
 pub static CHANNEL_USB_TX: Channel<CriticalSectionRawMutex, UsbAction, 16> = Channel::new();
 pub static USB_CONNECTED: AtomicBool = AtomicBool::new(false);
+
+// This is a randomly generated GUID to allow clients on Windows to find our device
+const DEVICE_INTERFACE_GUIDS: &[&str] = &["{AFB9A6FB-30BA-44BC-9232-806CFC875321}"];
 
 pub async fn start_usb(spawner: &Spawner, usb0: USB) {
     spawner.spawn(run_usb(usb0)).unwrap();
@@ -66,7 +70,7 @@ pub enum CodeIndexNumber {
 #[embassy_executor::task]
 async fn run_usb(usb0: USB) {
     let usb_driver = usb::Driver::new(usb0, Irqs);
-    let mut usb_config = Config::new(0xc0de, 0xcafe);
+    let mut usb_config = Config::new(0xf569, 0x1);
     usb_config.manufacturer = Some("ATOV");
     usb_config.product = Some("Phoenix16");
     usb_config.serial_number = Some("12345678");
@@ -83,6 +87,15 @@ async fn run_usb(usb0: USB) {
     let mut bos_descriptor = [0; 256];
     let mut control_buf = [0; 64];
 
+    let webusb_config = WebUsbConfig {
+        max_packet_size: 64,
+        vendor_code: 1,
+        // If defined, shows a landing page which the device manufacturer would like the user to visit in order to control their device. Suggest the user to navigate to this URL when the device is connected.
+        landing_url: Some(Url::new("http://localhost:3000")),
+    };
+
+    let mut state = State::new();
+
     let mut usb_builder = Builder::new(
         usb_driver,
         usb_config,
@@ -91,6 +104,11 @@ async fn run_usb(usb0: USB) {
         &mut [], // no msos descriptors
         &mut control_buf,
     );
+
+    // Create classes on the builder (WebUSB just needs some setup, but doesn't return anything)
+    WebUsb::configure(&mut usb_builder, &mut state, &webusb_config);
+    // Create some USB bulk endpoints for testing.
+    let mut endpoints = WebEndpoints::new(&mut usb_builder, &webusb_config);
 
     // Create classes on the builder.
     let usb_midi = MidiClass::new(&mut usb_builder, 1, 1, 64);
@@ -104,8 +122,10 @@ async fn run_usb(usb0: USB) {
         loop {
             // This loop automatically reconnects to the device when it is disconnected.
             tx.wait_connection().await;
+            USB_CONNECTED.store(true, Ordering::Relaxed);
             info!("USB Connection established.");
             start_usb_midi_tx_loop(&mut tx).await.ok();
+            USB_CONNECTED.store(false, Ordering::Relaxed);
             info!("USB Connection lost?? Starting over.");
         }
     };
@@ -113,13 +133,20 @@ async fn run_usb(usb0: USB) {
     let midi_rx = async {
         loop {
             rx.wait_connection().await;
-            USB_CONNECTED.store(true, Ordering::Relaxed);
             start_usb_midi_rx_loop(&mut rx).await.ok();
-            USB_CONNECTED.store(false, Ordering::Relaxed);
         }
     };
 
-    join3(usb.run(), midi_tx, midi_rx).await;
+    // Do some WebUSB transfers.
+    let webusb_fut = async {
+        loop {
+            endpoints.wait_connected().await;
+            info!("WebUSB Connected");
+            endpoints.echo().await;
+        }
+    };
+
+    join4(usb.run(), midi_tx, midi_rx, webusb_fut).await;
 }
 
 async fn start_usb_midi_tx_loop<'d, T: usb::Instance + 'd>(
@@ -190,5 +217,39 @@ fn code_index_number_from_message(message: &MidiMessage) -> CodeIndexNumber {
         | MidiMessage::ActiveSensing
         | MidiMessage::Reset => CodeIndexNumber::SingleByte,
         _ => CodeIndexNumber::MiscFunction, // Default or unhandled messages
+    }
+}
+
+struct WebEndpoints<'d, D: Driver<'d>> {
+    write_ep: D::EndpointIn,
+    read_ep: D::EndpointOut,
+}
+
+impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
+    fn new(builder: &mut Builder<'d, D>, config: &'d WebUsbConfig<'d>) -> Self {
+        let mut func = builder.function(0xff, 0x00, 0x00);
+        let mut iface = func.interface();
+        let mut alt = iface.alt_setting(0xff, 0x00, 0x00, None);
+
+        let write_ep = alt.endpoint_bulk_in(config.max_packet_size);
+        let read_ep = alt.endpoint_bulk_out(config.max_packet_size);
+
+        WebEndpoints { write_ep, read_ep }
+    }
+
+    // Wait until the device's endpoints are enabled.
+    async fn wait_connected(&mut self) {
+        self.read_ep.wait_enabled().await
+    }
+
+    // Echo data back to the host.
+    async fn echo(&mut self) {
+        let mut buf = [0; 64];
+        loop {
+            let n = self.read_ep.read(&mut buf).await.unwrap();
+            let data = &buf[..n];
+            info!("Data read: {:x}", data);
+            self.write_ep.write(data).await.unwrap();
+        }
     }
 }
