@@ -14,9 +14,7 @@ embassy-sync = "0.6"
 embassy-time = { version = "0.3", features = ["defmt", "defmt-timestamp-uptime"] }
 embassy-rp = { version = "0.2", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl"] }
 embedded-hal = "1.0"
-# is31fl3218 = { version = "0.2" }
-is31fl3218 = { version = "0.3", path = "../is31fl3218" }
-max11300 = { version = "0.3", path = "../max11300" }
+max11300 = "0.4"
 static_cell = "2.1"
 portable-atomic = { version = "1.7", features = ["critical-section"] }
 pio = "0.2"
@@ -26,9 +24,9 @@ embassy-usb = "0.3"
 embassy-futures = "0.1"
 embassy-embedded-hal = "0.2"
 sequential-storage = "3.0"
-at24cx = { version = "0.1", path = "../at24cx" }
+at24cx = "0.1"
 wmidi = { version = "4.0", default-features = false }
-pca9555 = "0.1"
+heapless = "0.8"
 
 # release
 [profile.release]

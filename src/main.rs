@@ -12,6 +12,7 @@ use apps::run_app_by_id;
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
+use embassy_futures::select::select;
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::uart;
@@ -22,9 +23,14 @@ use embassy_rp::{
     peripherals::{I2C1, PIO0},
     pio,
 };
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
+// use embassy_sync::watch::Watch;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use embassy_time::Delay;
+use embassy_time::{Delay, Timer};
 
+use heapless::Vec;
+use tasks::max::MAX_VALUES_FADERS;
 use {defmt_rtt as _, panic_probe as _};
 
 // FIXME: Can we use embassy LazyLock here (embassy-sync 0.7 prob)
@@ -47,6 +53,32 @@ bind_interrupts!(struct Irqs {
 static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<'static, I2C1, Async>>> = StaticCell::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static mut CORE1_STACK: Stack<4096> = Stack::new();
+// pub static CANCEL_TASKS: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
+
+enum SceneErr {
+    AppSize,
+    LayoutSize,
+}
+
+struct Scene {
+    apps: Vec<usize, 16>,
+}
+
+impl Scene {
+    fn try_from(apps: &[usize]) -> Result<Self, SceneErr> {
+        if apps.len() > 16 {
+            return Err(SceneErr::AppSize);
+        }
+        // Check if apps fit into the layout
+        let count = apps.iter().copied().reduce(|acc, e| acc + e).unwrap();
+        if count > 16 {
+            return Err(SceneErr::LayoutSize);
+        }
+        let mut scene = Self { apps: Vec::new() };
+        scene.apps.copy_from_slice(apps);
+        Ok(scene)
+    }
+}
 
 // FIXME: create config builder to create full 16 channel layout with various apps
 // The app at some point needs access to the MAX to configure it. Maybe this can happen via
@@ -56,7 +88,11 @@ static mut CORE1_STACK: Stack<4096> = Stack::new();
 // App slots
 #[embassy_executor::task(pool_size = 16)]
 async fn run_app(number: usize, start_channel: usize) {
-    run_app_by_id(number, start_channel).await;
+    let runner = run_app_by_id(number, start_channel);
+    // FIXME: Like this the caneller receiver should be dropped and its slot will be freed
+    // let mut canceller = CANCEL_TASKS.receiver().unwrap();
+    // select(runner, canceller.changed()).await;
+    runner.await;
 }
 
 // #[embassy_executor::task]
@@ -101,16 +137,28 @@ async fn main(spawner: Spawner) {
     // FIXME: Create an abstraction that maps the apps to the 16 channels of the device, for the
     // spawner to spawn
     // We need something that makes sure that nothing is used twice
+
+    // 1) Make sure we can "unspawn" stuff
+    // 2) Save all available scenes somewhere (16)
+    // 3) Save the current scene index somewhere
+    // 4) Store all available scenes and current scene index in eeprom, then read that on reboot
+    //    into ram
+    // 5) On scene change, unspawn everything, change current scene, spawn everything again
+
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| {
+            executor1.run(|sp| {
                 // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
                 // We only replace ALL 16 channels at once
                 for i in 15..16 {
-                    spawner.spawn(run_app(1, i)).unwrap();
+                    // FIXME: TO CANCEL, we can try to wrap the whole thing in select(), and the second
+                    // one cancels when an atomic is set
+                    // Apparently we need to use signals to cancel the tasks
+                    // https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/orchestrate_tasks.rs
+                    sp.spawn(run_app(1, i)).unwrap();
                 }
             });
         },
@@ -144,20 +192,18 @@ async fn main(spawner: Spawner) {
     tasks::leds::start_leds(&spawner, i2c_dev0).await;
     tasks::buttons::start_buttons(&spawner, i2c_dev1).await;
 
-    info!("INITIALIZED");
+    let i2c_dev1 = I2cDevice::new(i2c_bus);
 
-    // let i2c_dev1 = I2cDevice::new(i2c_bus);
+    let mut eeprom = At24Cx::new(i2c_dev1, Address(0, 0), 17, Delay);
 
-    // let mut eeprom = At24Cx::new(i2c_dev1, Address(0, 0), 17, Delay);
-    //
-    // // These are the flash addresses in which the crate will operate.
-    // // The crate will not read, write or erase outside of this range.
-    // let flash_range = 0x1000..0x3000;
-    // // We need to give the crate a buffer to work with.
-    // // It must be big enough to serialize the biggest value of your storage type in,
-    // // rounded up to to word alignment of the flash. Some kinds of internal flash may require
-    // // this buffer to be aligned in RAM as well.
-    // let mut data_buffer = [0; 128];
+    // These are the flash addresses in which the crate will operate.
+    // The crate will not read, write or erase outside of this range.
+    let flash_range = 0x1000..0x3000;
+    // We need to give the crate a buffer to work with.
+    // It must be big enough to serialize the biggest value of your storage type in,
+    // rounded up to to word alignment of the flash. Some kinds of internal flash may require
+    // this buffer to be aligned in RAM as well.
+    let mut data_buffer = [0; 128];
 
     // Now we store an item the flash with key 42.
     // Again we make sure we pass the correct key and value types, u8 and u32.
@@ -173,19 +219,23 @@ async fn main(spawner: Spawner) {
     // )
     // .await
     // .unwrap();
+
+    // When we ask for key 42, we not get back a Some with the correct value
     //
-    // // When we ask for key 42, we not get back a Some with the correct value
-    //
-    // assert_eq!(
-    //     fetch_item::<u8, u32, _>(
-    //         &mut eeprom,
-    //         flash_range.clone(),
-    //         &mut NoCache::new(),
-    //         &mut data_buffer,
-    //         &42,
-    //     )
-    //     .await
-    //     .unwrap(),
-    //     Some(104729)
-    // );
+    let val = fetch_item::<u8, u32, _>(
+        &mut eeprom,
+        flash_range.clone(),
+        &mut NoCache::new(),
+        &mut data_buffer,
+        &42,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    info!("VAL IS {}", val);
+
+    assert_eq!(val, 104729);
+
+    info!("INITIALIZED");
 }

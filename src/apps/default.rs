@@ -16,8 +16,8 @@ pub async fn run(app: App<CHANNELS>) {
     let jacks = app.make_all_out_jacks().await;
     let fut1 = async {
         loop {
-            let [fader] = app.get_fader_values().await;
-            jacks.set_values([fader]).await;
+            // let [fader] = app.get_fader_values().await;
+            // jacks.set_values([fader]).await;
             app.delay_millis(100).await;
         }
     };

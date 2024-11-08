@@ -103,7 +103,7 @@ async fn read_fader(
     let fader_port = max_port
         .into_configured_port(ConfigMode7(
             AVR::InternalRef,
-            ADCRANGE::Rg0_10v,
+            ADCRANGE::Rg0_2v5,
             NSAMPLES::Samples16,
         ))
         .await
@@ -136,7 +136,17 @@ async fn read_fader(
     let mut prev_values: [u16; 16] = [0; 16];
     let change_publisher = MAX_PUBSUB_FADER_CHANGED.publisher().unwrap();
 
+    // let pin0 = Output::new(pin12, Level::High);
+    // let pin1 = Output::new(pin13, Level::Low);
+    // let pin2 = Output::new(pin14, Level::Low);
+    // let pin3 = Output::new(pin15, Level::High);
+
     loop {
+        // let val = fader_port.get_value().await.unwrap();
+        //
+        // info!("FADER VAL: {}", val);
+        // Timer::after_secs(2).await;
+
         // send the channel value to the PIO state machine to trigger the program
         sm0.tx().wait_push(chan as u32).await;
 
@@ -156,6 +166,7 @@ async fn read_fader(
         let mut fader_values = MAX_VALUES_FADERS.lock().await;
         // pins are reversed
         fader_values[15 - chan] = val;
+
         chan = (chan + 1) % 16;
     }
 }
@@ -185,6 +196,7 @@ async fn write_dac_values(
 async fn reconfigure_ports(
     max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
 ) {
+    // FIXME: Put MAX port in hi-impedance mode when using the internal GPIO interrupts
     loop {
         // FIXME: This match has a lot of duplication, let's see if we can improve this somehow
         // (Can the Config be an enum after all? Maybe we just need the structs for type signalling)
