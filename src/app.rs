@@ -165,7 +165,7 @@ impl<const N: usize> App<N> {
         InJack { channel: chan }
     }
 
-    pub async fn make_out_jack(&self, chan: usize) -> InJack {
+    pub async fn make_out_jack(&self, chan: usize) -> OutJack {
         if chan > N - 1 {
             panic!("Not a valid channel in this app");
         }
@@ -177,7 +177,7 @@ impl<const N: usize> App<N> {
         )
         .await;
 
-        InJack { channel: chan }
+        OutJack { channel: chan }
     }
 
     pub async fn make_all_in_jacks(&self) -> InJacks<N> {
