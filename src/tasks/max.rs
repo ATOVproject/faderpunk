@@ -16,8 +16,8 @@ use embassy_sync::{
 use embassy_time::Timer;
 use max11300::{
     config::{
-        ConfigMode5, ConfigMode7, DeviceConfig, Port, ADCCTL, ADCRANGE, AVR, DACREF, NSAMPLES,
-        THSHDN,
+        ConfigMode0, ConfigMode5, ConfigMode7, DeviceConfig, Port, ADCCTL, ADCRANGE, AVR, DACREF,
+        NSAMPLES, THSHDN,
     },
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
@@ -80,6 +80,23 @@ pub async fn start_max(
 
     // FIXME: Create an abstraction to be able to create just one port
     let ports = Ports::new(max);
+
+    // Put ports 17-19 into hi-impedance mode for interrupt testing
+    ports
+        .port17
+        .into_configured_port(ConfigMode0)
+        .await
+        .unwrap();
+    ports
+        .port18
+        .into_configured_port(ConfigMode0)
+        .await
+        .unwrap();
+    ports
+        .port19
+        .into_configured_port(ConfigMode0)
+        .await
+        .unwrap();
 
     // FIXME: Make individual port
     spawner
@@ -191,6 +208,28 @@ async fn write_dac_values(
         }
     }
 }
+
+// FIXME: Implement this (it's not easy as we don't know which ports to read)
+// #[embassy_executor::task]
+// async fn read_adc_values(
+//     max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
+// ) {
+//     loop {
+//         // hopefully we can write it at about 2kHz
+//         Timer::after_micros(500).await;
+//         let mut max_driver = max.lock().await;
+//         let mut dac_values = MAX_VALUES_ADC.lock().await;
+//         for (i, value) in dac_values.iter_mut().enumerate() {
+//             // FIXME: Unsure about the port thing
+//             let port = Port::try_from(i).unwrap();
+//             if let Some(val) = value {
+//                 max_driver.dac_set_value(port, *val).await.unwrap();
+//                 // Reset all DAC values after they were set
+//                 *value = None;
+//             }
+//         }
+//     }
+// }
 
 #[embassy_executor::task]
 async fn reconfigure_ports(
