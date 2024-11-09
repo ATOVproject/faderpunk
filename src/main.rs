@@ -153,7 +153,7 @@ async fn main(spawner: Spawner) {
             executor1.run(|sp| {
                 // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
                 // We only replace ALL 16 channels at once
-                for i in 15..16 {
+                for i in 0..16 {
                     // FIXME: TO CANCEL, we can try to wrap the whole thing in select(), and the second
                     // one cancels when an atomic is set
                     // Apparently we need to use signals to cancel the tasks
