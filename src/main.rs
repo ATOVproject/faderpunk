@@ -13,6 +13,8 @@ use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
 use embassy_futures::select::select;
+use embassy_rp::block::ImageDef;
+use embassy_rp::gpio::{Level, Output};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::uart;
@@ -41,6 +43,23 @@ use sequential_storage::{
     cache::NoCache,
     map::{fetch_item, store_item},
 };
+
+#[link_section = ".start_block"]
+#[used]
+pub static IMAGE_DEF: ImageDef = ImageDef::secure_exe();
+
+// Program metadata for `picotool info`.
+// This isn't needed, but it's recomended to have these minimal entries.
+#[link_section = ".bi_entries"]
+#[used]
+pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
+    embassy_rp::binary_info::rp_program_name!(c"Phoenix 16"),
+    embassy_rp::binary_info::rp_program_description!(
+        c"From ember's grip, a fader's rise, In ancient garb, under modern skies. A phoenix's touch, in keys it lays, A melody bold, through time's maze."
+    ),
+    embassy_rp::binary_info::rp_cargo_version!(),
+    embassy_rp::binary_info::rp_program_build_attribute!(),
+];
 
 bind_interrupts!(struct Irqs {
     I2C1_IRQ => i2c::InterruptHandler<I2C1>;
@@ -189,8 +208,8 @@ async fn main(spawner: Spawner) {
     let i2c_dev0 = I2cDevice::new(i2c_bus);
     let i2c_dev1 = I2cDevice::new(i2c_bus);
 
-    tasks::leds::start_leds(&spawner, i2c_dev0).await;
-    tasks::buttons::start_buttons(&spawner, i2c_dev1).await;
+    // tasks::leds::start_leds(&spawner, i2c_dev0).await;
+    // tasks::buttons::start_buttons(&spawner, i2c_dev1).await;
 
     let i2c_dev1 = I2cDevice::new(i2c_bus);
 
@@ -205,14 +224,18 @@ async fn main(spawner: Spawner) {
     // this buffer to be aligned in RAM as well.
     let mut data_buffer = [0; 128];
     let mut i = 0_u8;
+
+    let mut led = Output::new(p.PIN_25, Level::Low);
+
     loop {
-        // info!("led on!");
+        info!("led on!");
+        led.set_high();
         Timer::after_millis(250).await;
 
-        // info!("led off!");
+        info!("led off!");
+        led.set_low();
         Timer::after_millis(250).await;
-
-        log::info!("Logging... {}", i);
+        log::info!("Logging from USB... {}", i);
         i = i.wrapping_add(1);
     }
 

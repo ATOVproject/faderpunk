@@ -6,6 +6,7 @@ use embassy_rp::peripherals::I2C1;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::{Duration, Timer};
+// use pca9555::Pca9555;
 use {defmt_rtt as _, panic_probe as _};
 
 pub static BUTTON_PUBSUB: PubSubChannel<CriticalSectionRawMutex, usize, 4, 16, 1> =
@@ -20,6 +21,11 @@ pub async fn start_buttons(
 
 #[embassy_executor::task]
 async fn run_buttons(i2c_device: I2cDevice<'static, NoopRawMutex, I2c<'static, I2C1, Async>>) {
+    // let mut port_driver = Pca9555::new(i2c_device, 0b0100000);
+    // let ports = port_driver.split();
+    //
+    // const NUM_BUTTONS: usize = 16;
+    //
     // let mut pins = [
     //     ports.pin0,
     //     ports.pin1,
@@ -74,6 +80,4 @@ async fn run_buttons(i2c_device: I2cDevice<'static, NoopRawMutex, I2c<'static, I
     //     // Wait for the check interval before next loop iteration
     //     Timer::after(check_interval).await;
     // }
-
-    // let led_state: Mutex<NoopRawMutex, [LedsAction; 18]> = Mutex::new([LedsAction::Idle; 18]);
 }
