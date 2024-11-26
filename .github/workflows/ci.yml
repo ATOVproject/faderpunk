@@ -1,0 +1,51 @@
+name: Check and build firmware
+
+on: [push, pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  building:
+    name: Building
+    needs: [linting]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get clean && sudo apt-get update
+          sudo apt-get install -y libudev-dev
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: thumbv8m.main-none-eabihf
+      - run: cargo install flip-link
+      - run: cargo install elf2uf2-rs
+      - run: cargo build --all --release
+      - run: cp target/thumbv8m.main-none-eabihf/release/phoenix-16 target/thumbv8m.main-none-eabihf/release/phoenix-16.elf
+      - run: elf2uf2-rs target/thumbv8m.main-none-eabihf/release/phoenix-16
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            target/thumbv8m.main-none-eabihf/release/phoenix-16.elf
+            target/thumbv8m.main-none-eabihf/release/phoenix-16.uf2
+          prerelease: true
+  linting:
+    name: Formatting and linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt
+          targets: thumbv8m.main-none-eabihf
+      - run: cargo fmt -- --check
+      # - run: cargo clippy -- -D warnings
+      - run: cargo clippy

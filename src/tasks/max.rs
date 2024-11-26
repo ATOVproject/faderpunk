@@ -162,7 +162,10 @@ async fn read_fader(
 
 #[embassy_executor::task]
 async fn write_dac_values(
-    max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
+    max: &'static Mutex<
+        CriticalSectionRawMutex,
+        Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
+    >,
 ) {
     loop {
         // hopefully we can write it at about 2kHz
@@ -183,7 +186,10 @@ async fn write_dac_values(
 
 #[embassy_executor::task]
 async fn reconfigure_ports(
-    max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
+    max: &'static Mutex<
+        CriticalSectionRawMutex,
+        Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
+    >,
 ) {
     loop {
         // FIXME: This match has a lot of duplication, let's see if we can improve this somehow
