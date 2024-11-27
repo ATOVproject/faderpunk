@@ -11,7 +11,7 @@ jobs:
     needs: [linting]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install Dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
@@ -38,7 +38,7 @@ jobs:
     name: Formatting and linting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - uses: dtolnay/rust-toolchain@master
