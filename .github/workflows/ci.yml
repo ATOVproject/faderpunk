@@ -27,7 +27,7 @@ jobs:
       - run: cp target/thumbv8m.main-none-eabihf/release/phoenix-16 target/thumbv8m.main-none-eabihf/release/phoenix-16.elf
       - run: elf2uf2-rs target/thumbv8m.main-none-eabihf/release/phoenix-16
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
