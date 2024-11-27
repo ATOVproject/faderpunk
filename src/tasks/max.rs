@@ -115,7 +115,7 @@ async fn read_fader(
     pin13: PIN_13,
     pin14: PIN_14,
     pin15: PIN_15,
-    max_port: Mode0Port<Spi<'_, SPI0, spi::Async>, Output<'_>, CriticalSectionRawMutex>,
+    max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, CriticalSectionRawMutex>,
 ) {
     let fader_port = max_port
         .into_configured_port(ConfigMode7(
@@ -190,7 +190,10 @@ async fn read_fader(
 
 #[embassy_executor::task]
 async fn write_dac_values(
-    max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
+    max: &'static Mutex<
+        CriticalSectionRawMutex,
+        Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
+    >,
 ) {
     loop {
         // hopefully we can write it at about 2kHz
@@ -233,7 +236,7 @@ async fn write_dac_values(
 
 #[embassy_executor::task]
 async fn reconfigure_ports(
-    max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
+    max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>,
 ) {
     // FIXME: Put MAX port in hi-impedance mode when using the internal GPIO interrupts
     loop {

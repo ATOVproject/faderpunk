@@ -2,13 +2,14 @@ use core::sync::atomic::AtomicBool;
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::join4;
+use embassy_futures::join::{join4, join5};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_usb::class::cdc_acm::{CdcAcmClass, State as CdcAcmState};
 use embassy_usb::class::midi::{MidiClass, Receiver, Sender};
-use embassy_usb::class::web_usb::{Config as WebUsbConfig, State, Url, WebUsb};
+use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
 use embassy_usb::driver::{Driver, Endpoint, EndpointError, EndpointIn, EndpointOut};
 use embassy_usb::{Builder, Config};
 
@@ -94,7 +95,8 @@ async fn run_usb(usb0: USB) {
         landing_url: Some(Url::new("http://localhost:3000")),
     };
 
-    let mut state = State::new();
+    let mut webusb_state = WebUsbState::new();
+    let mut logger_state = CdcAcmState::new();
 
     let mut usb_builder = Builder::new(
         usb_driver,
@@ -106,12 +108,16 @@ async fn run_usb(usb0: USB) {
     );
 
     // Create classes on the builder (WebUSB just needs some setup, but doesn't return anything)
-    WebUsb::configure(&mut usb_builder, &mut state, &webusb_config);
+    WebUsb::configure(&mut usb_builder, &mut webusb_state, &webusb_config);
     // Create some USB bulk endpoints for testing.
     let mut endpoints = WebEndpoints::new(&mut usb_builder, &webusb_config);
 
     // Create classes on the builder.
     let usb_midi = MidiClass::new(&mut usb_builder, 1, 1, 64);
+
+    let usb_logger = CdcAcmClass::new(&mut usb_builder, &mut logger_state, 64);
+
+    let log_fut = embassy_usb_logger::with_class!(1024, log::LevelFilter::Info, usb_logger);
 
     let mut usb = usb_builder.build();
 
@@ -146,7 +152,8 @@ async fn run_usb(usb0: USB) {
         }
     };
 
-    join4(usb.run(), midi_tx, midi_rx, webusb_fut).await;
+    // join4(usb.run(), midi_tx, midi_rx, webusb_fut).await;
+    join5(usb.run(), midi_tx, midi_rx, webusb_fut, log_fut).await;
 }
 
 async fn start_usb_midi_tx_loop<'d, T: usb::Instance + 'd>(
