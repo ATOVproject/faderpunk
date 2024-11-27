@@ -115,7 +115,7 @@ async fn read_fader(
     pin13: PIN_13,
     pin14: PIN_14,
     pin15: PIN_15,
-    max_port: Mode0Port<Spi<'_, SPI0, spi::Async>, Output<'_>, CriticalSectionRawMutex>,
+    max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, CriticalSectionRawMutex>,
 ) {
     let fader_port = max_port
         .into_configured_port(ConfigMode7(
