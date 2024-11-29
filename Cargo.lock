@@ -999,6 +999,7 @@ dependencies = [
  "pio-proc",
  "portable-atomic",
  "sequential-storage",
+ "smart-leds",
  "static_cell",
  "wmidi",
 ]

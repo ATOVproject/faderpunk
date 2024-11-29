@@ -1,13 +1,14 @@
+use crate::drivers::ws2812::{Grb, Ws2812};
 use defmt::*;
-use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
-use embassy_rp::i2c::{Async, I2c};
-use embassy_rp::peripherals::I2C1;
+use embassy_rp::peripherals::SPI1;
+use embassy_rp::spi::{self, Spi};
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
+use smart_leds::{brightness, RGB8};
 use {defmt_rtt as _, panic_probe as _};
 
 // FIXME: DOUBLE CHECK ALL CHANNELS and maybe use ATOMICS if possible as we have 16 apps
@@ -33,15 +34,46 @@ impl LedsAction {
 
 pub static CHANNEL_LEDS: Channel<CriticalSectionRawMutex, (usize, LedsAction), 16> = Channel::new();
 
-pub async fn start_leds(
-    spawner: &Spawner,
-    i2c_device: I2cDevice<'static, NoopRawMutex, I2c<'static, I2C1, Async>>,
-) {
-    spawner.spawn(run_leds(i2c_device)).unwrap();
+pub async fn start_leds(spawner: &Spawner, spi1: Spi<'static, SPI1, spi::Async>) {
+    spawner.spawn(run_leds(spi1)).unwrap();
+}
+
+fn wheel(mut wheel_pos: u8) -> RGB8 {
+    wheel_pos = 255 - wheel_pos;
+    if wheel_pos < 85 {
+        return (255 - wheel_pos * 3, 0, wheel_pos * 3).into();
+    }
+    if wheel_pos < 170 {
+        wheel_pos -= 85;
+        return (0, wheel_pos * 3, 255 - wheel_pos * 3).into();
+    }
+    wheel_pos -= 170;
+    (wheel_pos * 3, 255 - wheel_pos * 3, 0).into()
 }
 
 #[embassy_executor::task]
-async fn run_leds(i2c_device: I2cDevice<'static, NoopRawMutex, I2c<'static, I2C1, Async>>) {
+async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>) {
+    let mut ws: Ws2812<_, _, { 12 * 18 }> = Ws2812::new(spi1, Grb);
+    // let data = [RGB8 {
+    //     r: 255,
+    //     g: 10,
+    //     b: 10,
+    // }; 18];
+    // ws.write(brightness(data.iter().cloned(), 32))
+    //     .await
+    //     .unwrap();
+
+    let mut data = [RGB8::default(); 18];
+
+    loop {
+        for j in 0..(256 * 5) {
+            for i in 0..18 {
+                data[i] = wheel((((i * 256) as u16 / 18_u16 + j as u16) & 255) as u8);
+            }
+            ws.write(brightness(data.iter().cloned(), 32)).await.ok();
+            Timer::after_millis(5).await;
+        }
+    }
     // let mut led_driver = Is31Fl3218::new(i2c_device);
     //
     // let refresh_millis = 1000 / REFRESH_RATE;
