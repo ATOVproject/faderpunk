@@ -3,7 +3,7 @@ use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
     peripherals::{
-        DMA_CH0, DMA_CH1, PIN_12, PIN_13, PIN_14, PIN_15, PIN_16, PIN_17, PIN_18, PIN_19, PIO0,
+        PIN_12, PIN_13, PIN_14, PIN_15, PIN_16, PIN_17, PIN_18, PIN_19, PIO0,
         SPI0,
     },
     pio,
@@ -48,23 +48,14 @@ pub enum MaxReconfigureAction {
 
 pub async fn start_max(
     spawner: &Spawner,
-    spi0: SPI0,
+    spi0: Spi<'static, SPI0, spi::Async>,
     pio0: PIO0,
     mux0: PIN_12,
     mux1: PIN_13,
     mux2: PIN_14,
     mux3: PIN_15,
     cs: PIN_17,
-    clk: PIN_18,
-    mosi: PIN_19,
-    miso: PIN_16,
-    dma0: DMA_CH0,
-    dma1: DMA_CH1,
 ) {
-    let mut spi_config = spi::Config::default();
-    spi_config.frequency = 20_000_000;
-    let spi = Spi::new(spi0, clk, mosi, miso, dma0, dma1, spi_config);
-
     let device_config = DeviceConfig {
         thshdn: THSHDN::Enabled,
         dacref: DACREF::InternalRef,
@@ -72,7 +63,7 @@ pub async fn start_max(
         ..Default::default()
     };
 
-    let max_driver = Max11300::try_new(spi, Output::new(cs, Level::High), device_config)
+    let max_driver = Max11300::try_new(spi0, Output::new(cs, Level::High), device_config)
         .await
         .unwrap();
 
