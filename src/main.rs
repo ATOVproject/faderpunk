@@ -201,6 +201,8 @@ async fn main(spawner: Spawner) {
     spi1_config.frequency = 3_800_000;
     let spi1 = Spi::new_txonly(p.SPI1, p.PIN_10, p.PIN_11, p.DMA_CH5, spi1_config);
 
+    tasks::leds::start_leds(&spawner, spi1).await;
+
     let i2c1 = i2c::I2c::new_async(p.I2C1, scl, sda, Irqs, i2c::Config::default());
     let i2c1_bus = I2C_BUS.init(Mutex::new(i2c1));
 
