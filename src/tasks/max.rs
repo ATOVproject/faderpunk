@@ -2,15 +2,14 @@ use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
-    peripherals::{
-        PIN_12, PIN_13, PIN_14, PIN_15, PIN_16, PIN_17, PIN_18, PIN_19, PIO0,
-        SPI0,
-    },
+    peripherals::{PIN_12, PIN_13, PIN_14, PIN_15, PIN_16, PIN_17, PIN_18, PIN_19, PIO0, SPI0},
     pio,
     spi::{self, Async, Spi},
 };
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex,
+    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
+    channel::Channel,
+    mutex::Mutex,
     pubsub::PubSubChannel,
 };
 use embassy_time::Timer;
@@ -39,11 +38,15 @@ pub static MAX_CHANNEL_RECONFIGURE: Channel<CriticalSectionRawMutex, MaxReconfig
     Channel::new();
 pub static MAX_PUBSUB_FADER_CHANGED: PubSubChannel<CriticalSectionRawMutex, usize, 4, 16, 1> =
     PubSubChannel::new();
+static MAX_CHANNEL_CONFIG: Mutex<ThreadModeRawMutex, [u8; 16]> = Mutex::new([0; 16]);
 
-// FIXME: Can we make all chans u8 for some memory savings???
-pub enum MaxReconfigureAction {
-    Mode5(usize, ConfigMode5),
-    Mode7(usize, ConfigMode7),
+pub type MaxReconfigureAction = (usize, MaxConfig);
+
+#[derive(Clone, Copy)]
+pub enum MaxConfig {
+    Mode0,
+    Mode5(ConfigMode5),
+    Mode7(ConfigMode7),
 }
 
 pub async fn start_max(
@@ -94,7 +97,7 @@ pub async fn start_max(
         .spawn(read_fader(pio0, mux0, mux1, mux2, mux3, ports.port16))
         .unwrap();
 
-    spawner.spawn(write_dac_values(max)).unwrap();
+    spawner.spawn(process_channel_values(max)).unwrap();
 
     spawner.spawn(reconfigure_ports(max)).unwrap();
 }
@@ -180,8 +183,8 @@ async fn read_fader(
 }
 
 #[embassy_executor::task]
-async fn write_dac_values(
-    max: &'static Mutex<
+async fn process_channel_values(
+    max_driver: &'static Mutex<
         CriticalSectionRawMutex,
         Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
     >,
@@ -189,72 +192,63 @@ async fn write_dac_values(
     loop {
         // hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
-        let mut max_driver = max.lock().await;
+        let mut max = max_driver.lock().await;
         let mut dac_values = MAX_VALUES_DAC.lock().await;
-        for (i, value) in dac_values.iter_mut().enumerate() {
+        let mut adc_values = MAX_VALUES_ADC.lock().await;
+        let configs = MAX_CHANNEL_CONFIG.lock().await;
+        for (i, config) in configs.iter().enumerate() {
             // FIXME: Unsure about the port thing
             let port = Port::try_from(i).unwrap();
-            if let Some(val) = value {
-                max_driver.dac_set_value(port, *val).await.unwrap();
-                // Reset all DAC values after they were set
-                *value = None;
+            match config {
+                5 => {
+                    if let Some(val) = dac_values[i] {
+                        max.dac_set_value(port, val).await.unwrap();
+                        dac_values[i] = None;
+                    }
+                }
+                7 => {
+                    adc_values[i] = max.adc_get_value(port).await.unwrap();
+                }
+                _ => {}
             }
         }
     }
 }
 
-// FIXME: Implement this (it's not easy as we don't know which ports to read)
-// #[embassy_executor::task]
-// async fn read_adc_values(
-//     max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
-// ) {
-//     loop {
-//         // hopefully we can write it at about 2kHz
-//         Timer::after_micros(500).await;
-//         let mut max_driver = max.lock().await;
-//         let mut dac_values = MAX_VALUES_ADC.lock().await;
-//         for (i, value) in dac_values.iter_mut().enumerate() {
-//             // FIXME: Unsure about the port thing
-//             let port = Port::try_from(i).unwrap();
-//             if let Some(val) = value {
-//                 max_driver.dac_set_value(port, *val).await.unwrap();
-//                 // Reset all DAC values after they were set
-//                 *value = None;
-//             }
-//         }
-//     }
-// }
-
 #[embassy_executor::task]
 async fn reconfigure_ports(
-    max: &'static Mutex<
+    max_driver: &'static Mutex<
         CriticalSectionRawMutex,
         Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
     >,
 ) {
     // FIXME: Put MAX port in hi-impedance mode when using the internal GPIO interrupts
     loop {
+        let (chan, config_mode) = MAX_CHANNEL_RECONFIGURE.receive().await;
+        let mut configs = MAX_CHANNEL_CONFIG.lock().await;
+        let mut max = max_driver.lock().await;
+
+        let port = Port::try_from(chan).unwrap();
+
         // FIXME: This match has a lot of duplication, let's see if we can improve this somehow
-        // (Can the Config be an enum after all? Maybe we just need the structs for type signalling)
-        match MAX_CHANNEL_RECONFIGURE.receive().await {
-            MaxReconfigureAction::Mode5(chan, config) => {
-                let mut max_driver = max.lock().await;
-                // FIXME: Unsure about the port thing
-                let port = Port::try_from(chan).unwrap();
-                max_driver.configure_port(port, config).await.unwrap();
-                // Set the corresponding bit in the reconfigure mask, to signal completion
-                let mask = 1 << chan;
-                MAX_MASK_RECONFIGURE.fetch_or(mask, Ordering::SeqCst);
+        match config_mode {
+            MaxConfig::Mode0 => {
+                max.configure_port(port, ConfigMode0).await.unwrap();
+                configs[chan] = 0;
             }
-            MaxReconfigureAction::Mode7(chan, config) => {
-                let mut max_driver = max.lock().await;
-                // FIXME: Unsure about the port thing
+            MaxConfig::Mode5(config) => {
                 let port = Port::try_from(chan).unwrap();
-                max_driver.configure_port(port, config).await.unwrap();
-                // Set the corresponding bit in the reconfigure mask, to signal completion
-                let mask = 1 << chan;
-                MAX_MASK_RECONFIGURE.fetch_or(mask, Ordering::SeqCst);
+                max.configure_port(port, config).await.unwrap();
+                configs[chan] = 5;
+            }
+            MaxConfig::Mode7(config) => {
+                let port = Port::try_from(chan).unwrap();
+                max.configure_port(port, config).await.unwrap();
+                configs[chan] = 7;
             }
         }
+        // Set the corresponding bit in the reconfigure mask, to signal completion
+        let mask = 1 << chan;
+        MAX_MASK_RECONFIGURE.fetch_or(mask, Ordering::SeqCst);
     }
 }
