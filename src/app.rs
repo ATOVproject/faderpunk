@@ -12,7 +12,7 @@ use crate::tasks::{
     buttons::BUTTON_PUBSUB,
     leds::{LedsAction, CHANNEL_LEDS},
     max::{
-        MaxReconfigureAction, MAX_CHANNEL_RECONFIGURE, MAX_MASK_RECONFIGURE,
+        MaxConfig, MaxReconfigureAction, MAX_CHANNEL_RECONFIGURE, MAX_MASK_RECONFIGURE,
         MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADERS,
     },
     serial::{UartAction, CHANNEL_UART_TX},
@@ -155,9 +155,13 @@ impl<const N: usize> App<N> {
         self.reconfigure_jack(
             // FIXME: it's also terrible that we have to pass the channel twice here
             self.channels[chan],
-            MaxReconfigureAction::Mode7(
+            (
                 self.channels[chan],
-                ConfigMode7(AVR::InternalRef, ADCRANGE::Rg0_10v, NSAMPLES::Samples16),
+                MaxConfig::Mode7(ConfigMode7(
+                    AVR::InternalRef,
+                    ADCRANGE::Rg0_10v,
+                    NSAMPLES::Samples16,
+                )),
             ),
         )
         .await;
@@ -173,7 +177,10 @@ impl<const N: usize> App<N> {
         self.reconfigure_jack(
             // FIXME: it's also terrible that we have to pass the channel twice here
             self.channels[chan],
-            MaxReconfigureAction::Mode5(self.channels[chan], ConfigMode5(DACRANGE::Rg0_10v)),
+            (
+                self.channels[chan],
+                MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
+            ),
         )
         .await;
 
@@ -186,9 +193,13 @@ impl<const N: usize> App<N> {
         for channel in self.channels {
             self.reconfigure_jack(
                 channel,
-                MaxReconfigureAction::Mode7(
+                (
                     channel,
-                    ConfigMode7(AVR::InternalRef, ADCRANGE::Rg0_10v, NSAMPLES::Samples16),
+                    MaxConfig::Mode7(ConfigMode7(
+                        AVR::InternalRef,
+                        ADCRANGE::Rg0_10v,
+                        NSAMPLES::Samples16,
+                    )),
                 ),
             )
             .await;
@@ -206,7 +217,7 @@ impl<const N: usize> App<N> {
         for channel in self.channels {
             self.reconfigure_jack(
                 channel,
-                MaxReconfigureAction::Mode5(channel, ConfigMode5(DACRANGE::Rg0_10v)),
+                (channel, MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v))),
             )
             .await;
         }
