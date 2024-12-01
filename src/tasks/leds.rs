@@ -53,7 +53,7 @@ fn wheel(mut wheel_pos: u8) -> RGB8 {
 
 #[embassy_executor::task]
 async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>) {
-    let mut ws: Ws2812<_, _, { 12 * 18 }> = Ws2812::new(spi1, Grb);
+    let mut ws: Ws2812<_, Grb, { 12 * 18 }> = Ws2812::new(spi1);
     // let data = [RGB8 {
     //     r: 255,
     //     g: 10,
