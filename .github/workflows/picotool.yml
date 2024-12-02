@@ -1,0 +1,56 @@
+name: Build picotool
+
+on:
+  workflow_dispatch:  # Allows for manual triggering
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout your repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Install dependencies for building picotool and pico-sdk
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential pkg-config libusb-1.0-0-dev cmake git
+
+      # Clone pico-sdk repository
+      - name: Clone pico-sdk repository
+        run: |
+          git clone --branch master https://github.com/raspberrypi/pico-sdk.git
+
+      # Clone picotool repository
+      - name: Clone picotool repository
+        run: |
+          git clone --branch master https://github.com/raspberrypi/picotool.git
+
+      # Initialize pico-sdk submodules (for the mbedtls library)
+      - name: Initialize pico-sdk submodules
+        run: |
+          cd pico-sdk
+          git submodule update --init lib/mbedtls
+
+      # Set environment variable for pico-sdk path
+      - name: Set PICO_SDK_PATH
+        run: echo "PICO_SDK_PATH=${{ github.workspace }}/pico-sdk" >> $GITHUB_ENV
+
+      # Build picotool
+      - name: Build picotool
+        run: |
+          cd picotool
+          mkdir -p build
+          cd build
+          cmake ..
+          make
+
+      # Upload the picotool binary as an artifact
+      - name: Upload picotool artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: picotool
+          path: picotool/build/picotool
+

@@ -3,7 +3,7 @@ use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
     peripherals::{
-        DMA_CH0, DMA_CH1, PIN_12, PIN_13, PIN_14, PIN_15, PIN_16, PIN_17, PIN_18, PIN_19, PIO0,
+        PIN_12, PIN_13, PIN_14, PIN_15, PIN_16, PIN_17, PIN_18, PIN_19, PIO0,
         SPI0,
     },
     pio,
@@ -16,8 +16,8 @@ use embassy_sync::{
 use embassy_time::Timer;
 use max11300::{
     config::{
-        ConfigMode5, ConfigMode7, DeviceConfig, Port, ADCCTL, ADCRANGE, AVR, DACREF, NSAMPLES,
-        THSHDN,
+        ConfigMode0, ConfigMode5, ConfigMode7, DeviceConfig, Port, ADCCTL, ADCRANGE, AVR, DACREF,
+        NSAMPLES, THSHDN,
     },
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
@@ -48,23 +48,14 @@ pub enum MaxReconfigureAction {
 
 pub async fn start_max(
     spawner: &Spawner,
-    spi0: SPI0,
+    spi0: Spi<'static, SPI0, spi::Async>,
     pio0: PIO0,
     mux0: PIN_12,
     mux1: PIN_13,
     mux2: PIN_14,
     mux3: PIN_15,
     cs: PIN_17,
-    clk: PIN_18,
-    mosi: PIN_19,
-    miso: PIN_16,
-    dma0: DMA_CH0,
-    dma1: DMA_CH1,
 ) {
-    let mut spi_config = spi::Config::default();
-    spi_config.frequency = 20_000_000;
-    let spi = Spi::new(spi0, clk, mosi, miso, dma0, dma1, spi_config);
-
     let device_config = DeviceConfig {
         thshdn: THSHDN::Enabled,
         dacref: DACREF::InternalRef,
@@ -72,7 +63,7 @@ pub async fn start_max(
         ..Default::default()
     };
 
-    let max_driver = Max11300::try_new(spi, Output::new(cs, Level::High), device_config)
+    let max_driver = Max11300::try_new(spi0, Output::new(cs, Level::High), device_config)
         .await
         .unwrap();
 
@@ -80,6 +71,23 @@ pub async fn start_max(
 
     // FIXME: Create an abstraction to be able to create just one port
     let ports = Ports::new(max);
+
+    // Put ports 17-19 into hi-impedance mode for interrupt testing
+    ports
+        .port17
+        .into_configured_port(ConfigMode0)
+        .await
+        .unwrap();
+    ports
+        .port18
+        .into_configured_port(ConfigMode0)
+        .await
+        .unwrap();
+    ports
+        .port19
+        .into_configured_port(ConfigMode0)
+        .await
+        .unwrap();
 
     // FIXME: Make individual port
     spawner
@@ -98,12 +106,12 @@ async fn read_fader(
     pin13: PIN_13,
     pin14: PIN_14,
     pin15: PIN_15,
-    max_port: Mode0Port<Spi<'_, SPI0, spi::Async>, Output<'_>, CriticalSectionRawMutex>,
+    max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, CriticalSectionRawMutex>,
 ) {
     let fader_port = max_port
         .into_configured_port(ConfigMode7(
             AVR::InternalRef,
-            ADCRANGE::Rg0_10v,
+            ADCRANGE::Rg0_2v5,
             NSAMPLES::Samples16,
         ))
         .await
@@ -136,7 +144,17 @@ async fn read_fader(
     let mut prev_values: [u16; 16] = [0; 16];
     let change_publisher = MAX_PUBSUB_FADER_CHANGED.publisher().unwrap();
 
+    // let pin0 = Output::new(pin12, Level::High);
+    // let pin1 = Output::new(pin13, Level::Low);
+    // let pin2 = Output::new(pin14, Level::Low);
+    // let pin3 = Output::new(pin15, Level::High);
+
     loop {
+        // let val = fader_port.get_value().await.unwrap();
+        //
+        // info!("FADER VAL: {}", val);
+        // Timer::after_secs(2).await;
+
         // send the channel value to the PIO state machine to trigger the program
         sm0.tx().wait_push(chan as u32).await;
 
@@ -156,13 +174,17 @@ async fn read_fader(
         let mut fader_values = MAX_VALUES_FADERS.lock().await;
         // pins are reversed
         fader_values[15 - chan] = val;
+
         chan = (chan + 1) % 16;
     }
 }
 
 #[embassy_executor::task]
 async fn write_dac_values(
-    max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
+    max: &'static Mutex<
+        CriticalSectionRawMutex,
+        Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
+    >,
 ) {
     loop {
         // hopefully we can write it at about 2kHz
@@ -181,10 +203,36 @@ async fn write_dac_values(
     }
 }
 
+// FIXME: Implement this (it's not easy as we don't know which ports to read)
+// #[embassy_executor::task]
+// async fn read_adc_values(
+//     max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
+// ) {
+//     loop {
+//         // hopefully we can write it at about 2kHz
+//         Timer::after_micros(500).await;
+//         let mut max_driver = max.lock().await;
+//         let mut dac_values = MAX_VALUES_ADC.lock().await;
+//         for (i, value) in dac_values.iter_mut().enumerate() {
+//             // FIXME: Unsure about the port thing
+//             let port = Port::try_from(i).unwrap();
+//             if let Some(val) = value {
+//                 max_driver.dac_set_value(port, *val).await.unwrap();
+//                 // Reset all DAC values after they were set
+//                 *value = None;
+//             }
+//         }
+//     }
+// }
+
 #[embassy_executor::task]
 async fn reconfigure_ports(
-    max: &'static Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'_>>>,
+    max: &'static Mutex<
+        CriticalSectionRawMutex,
+        Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
+    >,
 ) {
+    // FIXME: Put MAX port in hi-impedance mode when using the internal GPIO interrupts
     loop {
         // FIXME: This match has a lot of duplication, let's see if we can improve this somehow
         // (Can the Config be an enum after all? Maybe we just need the structs for type signalling)
