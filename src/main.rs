@@ -15,6 +15,7 @@ use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
 use embassy_futures::select::select;
+use embassy_rp::block::ImageDef;
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::spi::{self, Phase, Polarity, Spi};
@@ -42,6 +43,23 @@ use sequential_storage::{
     cache::NoCache,
     map::{fetch_item, store_item},
 };
+
+#[link_section = ".start_block"]
+#[used]
+pub static IMAGE_DEF: ImageDef = ImageDef::secure_exe();
+
+// Program metadata for `picotool info`.
+// This isn't needed, but it's recomended to have these minimal entries.
+#[link_section = ".bi_entries"]
+#[used]
+pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
+    embassy_rp::binary_info::rp_program_name!(c"Phoenix 16"),
+    embassy_rp::binary_info::rp_program_description!(
+        c"From ember's grip, a fader's rise, In ancient garb, under modern skies. A phoenix's touch, in keys it lays, A melody bold, through time's maze."
+    ),
+    embassy_rp::binary_info::rp_cargo_version!(),
+    embassy_rp::binary_info::rp_program_build_attribute!(),
+];
 
 bind_interrupts!(struct Irqs {
     I2C1_IRQ => i2c::InterruptHandler<I2C1>;
