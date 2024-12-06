@@ -1,4 +1,4 @@
-use core::{array, future::Future};
+use core::array;
 
 use defmt::info;
 use embassy_futures::join::join;
@@ -13,7 +13,7 @@ use crate::tasks::{
     leds::{LedsAction, CHANNEL_LEDS},
     max::{
         MaxConfig, MaxReconfigureAction, MAX_CHANNEL_RECONFIGURE, MAX_MASK_RECONFIGURE,
-        MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADERS,
+        MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
     },
     serial::{UartAction, CHANNEL_UART_TX},
     usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
@@ -29,9 +29,8 @@ pub struct InJack {
 }
 
 impl InJack {
-    pub async fn get_value(&self) -> u16 {
-        let adc_values = MAX_VALUES_ADC.lock().await;
-        adc_values[self.channel]
+    pub fn get_value(&self) -> u16 {
+        MAX_VALUES_ADC[self.channel].load(Ordering::Relaxed)
     }
 }
 
@@ -40,9 +39,8 @@ pub struct OutJack {
 }
 
 impl OutJack {
-    pub async fn set_value(&self, value: u16) {
-        let mut dac_values = MAX_VALUES_DAC.lock().await;
-        dac_values[self.channel] = value;
+    pub fn set_value(&self, value: u16) {
+        MAX_VALUES_DAC[self.channel].store(value, Ordering::Relaxed);
     }
 }
 
@@ -51,11 +49,10 @@ pub struct InJacks<const N: usize> {
 }
 
 impl<const N: usize> InJacks<N> {
-    pub async fn get_values(&self) -> [u16; N] {
-        let adc_values = MAX_VALUES_ADC.lock().await;
+    pub fn get_values(&self) -> [u16; N] {
         let mut buf = [0_u16; N];
         for i in 0..N {
-            buf[i] = adc_values[self.channels[i]];
+            buf[i] = MAX_VALUES_ADC[i].load(Ordering::Relaxed);
         }
         buf
     }
@@ -66,10 +63,9 @@ pub struct OutJacks<const N: usize> {
 }
 
 impl<const N: usize> OutJacks<N> {
-    pub async fn set_values(&self, values: [u16; N]) {
-        let mut dac_values = MAX_VALUES_DAC.lock().await;
-        for i in 0..N {
-            dac_values[self.channels[i]] = values[i];
+    pub fn set_values(&self, values: [u16; N]) {
+        for (i, &chan) in self.channels.iter().enumerate() {
+            MAX_VALUES_DAC[chan].store(values[i], Ordering::Relaxed);
         }
     }
 }
@@ -136,11 +132,10 @@ impl<const N: usize> App<N> {
         N
     }
 
-    pub async fn get_fader_values(&self) -> [u16; N] {
-        let fader_values = MAX_VALUES_FADERS.lock().await;
+    pub fn get_fader_values(&self) -> [u16; N] {
         let mut buf = [0_u16; N];
         for i in 0..N {
-            buf[i] = fader_values[self.channels[i]];
+            buf[i] = MAX_VALUES_FADER[self.channels[i]].load(Ordering::Relaxed);
         }
         buf
     }

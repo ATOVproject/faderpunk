@@ -26,14 +26,12 @@ use embassy_rp::{
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 // use embassy_sync::watch::Watch;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Timer};
 
 use heapless::Vec;
-use tasks::max::MAX_VALUES_FADERS;
 use {defmt_rtt as _, panic_probe as _};
 
 // FIXME: Can we use embassy LazyLock here (embassy-sync 0.7 prob)
@@ -220,13 +218,8 @@ async fn main(spawner: Spawner) {
     let mut data_buffer = [0; 128];
     let mut i = 0_u8;
     loop {
-        // info!("led on!");
-        Timer::after_millis(250).await;
-
-        // info!("led off!");
-        Timer::after_millis(250).await;
-
-        log::info!("Logging... {}", i);
+        Timer::after_secs(5).await;
+        log::info!("Heartbeat {}", i);
         i = i.wrapping_add(1);
     }
 

@@ -1,5 +1,5 @@
-use defmt::info;
 use embassy_futures::join::{join, join3};
+use embassy_time::{with_timeout, Duration, Instant, Timer, WithTimeout};
 use wmidi::{Channel as MidiChannel, ControlFunction};
 
 use crate::app::App;
@@ -12,13 +12,17 @@ use crate::app::App;
 
 pub const CHANNELS: usize = 1;
 
+// FIXME: IDEA: Use CriticalSectionRawMutext to sync from one core to the other, then use another Mutex
+// (NoopRawMutex) to distribute the values to/from all apps on the second core
+
 pub async fn run(app: App<CHANNELS>) {
     let jacks = app.make_all_out_jacks().await;
     let fut1 = async {
+        log::info!("APP CHANNEL: {}", app.channels[0]);
         loop {
-            let [fader] = app.get_fader_values().await;
-            jacks.set_values([fader]).await;
             app.delay_millis(10).await;
+            let vals = app.get_fader_values();
+            jacks.set_values(vals);
         }
     };
 
