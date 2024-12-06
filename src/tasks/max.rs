@@ -30,8 +30,7 @@ static MAX: StaticCell<
     Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, spi::Async>, Output>>,
 > = StaticCell::new();
 pub static MAX_VALUES_ADC: Mutex<CriticalSectionRawMutex, [u16; 16]> = Mutex::new([0; 16]);
-pub static MAX_VALUES_DAC: Mutex<CriticalSectionRawMutex, [Option<u16>; 16]> =
-    Mutex::new([None; 16]);
+pub static MAX_VALUES_DAC: Mutex<CriticalSectionRawMutex, [u16; 16]> = Mutex::new([0; 16]);
 pub static MAX_VALUES_FADERS: Mutex<CriticalSectionRawMutex, [u16; 16]> = Mutex::new([0u16; 16]);
 pub static MAX_MASK_RECONFIGURE: AtomicU16 = AtomicU16::new(0);
 pub static MAX_CHANNEL_RECONFIGURE: Channel<CriticalSectionRawMutex, MaxReconfigureAction, 16> =
@@ -201,10 +200,7 @@ async fn process_channel_values(
             let port = Port::try_from(i).unwrap();
             match config {
                 5 => {
-                    if let Some(val) = dac_values[i] {
-                        max.dac_set_value(port, val).await.unwrap();
-                        dac_values[i] = None;
-                    }
+                    max.dac_set_value(port, dac_values[i]).await.unwrap();
                 }
                 7 => {
                     adc_values[i] = max.adc_get_value(port).await.unwrap();

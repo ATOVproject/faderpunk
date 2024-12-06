@@ -42,7 +42,7 @@ pub struct OutJack {
 impl OutJack {
     pub async fn set_value(&self, value: u16) {
         let mut dac_values = MAX_VALUES_DAC.lock().await;
-        dac_values[self.channel] = Some(value);
+        dac_values[self.channel] = value;
     }
 }
 
@@ -69,7 +69,7 @@ impl<const N: usize> OutJacks<N> {
     pub async fn set_values(&self, values: [u16; N]) {
         let mut dac_values = MAX_VALUES_DAC.lock().await;
         for i in 0..N {
-            dac_values[self.channels[i]] = Some(values[i]);
+            dac_values[self.channels[i]] = values[i];
         }
     }
 }
@@ -122,7 +122,7 @@ impl<'a> ButtonWaiter<'a> {
 
 pub struct App<const N: usize> {
     app_id: usize,
-    channels: [usize; N],
+    pub channels: [usize; N],
 }
 
 impl<const N: usize> App<N> {
