@@ -28,7 +28,7 @@ embassy-rp = { version = "0.2.0", features = [
   "unstable-pac",
   "time-driver",
   "critical-section-impl",
-  "rp2040",
+  "rp235xb",
   "binary-info",
 ] }
 embassy-futures = { version = "0.1.0" }
