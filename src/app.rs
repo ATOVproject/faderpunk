@@ -1,4 +1,4 @@
-use core::{array, future::Future};
+use core::array;
 
 use defmt::info;
 use embassy_futures::join::join;
@@ -12,8 +12,8 @@ use crate::tasks::{
     buttons::BUTTON_PUBSUB,
     leds::{LedsAction, CHANNEL_LEDS},
     max::{
-        MaxReconfigureAction, MAX_CHANNEL_RECONFIGURE, MAX_MASK_RECONFIGURE,
-        MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADERS,
+        MaxConfig, MAX_CHANNEL_RECONFIGURE, MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC,
+        MAX_VALUES_DAC, MAX_VALUES_FADER,
     },
     serial::{UartAction, CHANNEL_UART_TX},
     usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
@@ -29,9 +29,8 @@ pub struct InJack {
 }
 
 impl InJack {
-    pub async fn get_value(&self) -> u16 {
-        let adc_values = MAX_VALUES_ADC.lock().await;
-        adc_values[self.channel]
+    pub fn get_value(&self) -> u16 {
+        MAX_VALUES_ADC[self.channel].load(Ordering::Relaxed)
     }
 }
 
@@ -40,9 +39,8 @@ pub struct OutJack {
 }
 
 impl OutJack {
-    pub async fn set_value(&self, value: u16) {
-        let mut dac_values = MAX_VALUES_DAC.lock().await;
-        dac_values[self.channel] = Some(value);
+    pub fn set_value(&self, value: u16) {
+        MAX_VALUES_DAC[self.channel].store(value, Ordering::Relaxed);
     }
 }
 
@@ -51,11 +49,10 @@ pub struct InJacks<const N: usize> {
 }
 
 impl<const N: usize> InJacks<N> {
-    pub async fn get_values(&self) -> [u16; N] {
-        let adc_values = MAX_VALUES_ADC.lock().await;
+    pub fn get_values(&self) -> [u16; N] {
         let mut buf = [0_u16; N];
         for i in 0..N {
-            buf[i] = adc_values[self.channels[i]];
+            buf[i] = MAX_VALUES_ADC[i].load(Ordering::Relaxed);
         }
         buf
     }
@@ -66,10 +63,9 @@ pub struct OutJacks<const N: usize> {
 }
 
 impl<const N: usize> OutJacks<N> {
-    pub async fn set_values(&self, values: [u16; N]) {
-        let mut dac_values = MAX_VALUES_DAC.lock().await;
-        for i in 0..N {
-            dac_values[self.channels[i]] = Some(values[i]);
+    pub fn set_values(&self, values: [u16; N]) {
+        for (i, &chan) in self.channels.iter().enumerate() {
+            MAX_VALUES_DAC[chan].store(values[i], Ordering::Relaxed);
         }
     }
 }
@@ -122,7 +118,7 @@ impl<'a> ButtonWaiter<'a> {
 
 pub struct App<const N: usize> {
     app_id: usize,
-    channels: [usize; N],
+    pub channels: [usize; N],
 }
 
 impl<const N: usize> App<N> {
@@ -136,11 +132,10 @@ impl<const N: usize> App<N> {
         N
     }
 
-    pub async fn get_fader_values(&self) -> [u16; N] {
-        let fader_values = MAX_VALUES_FADERS.lock().await;
+    pub fn get_fader_values(&self) -> [u16; N] {
         let mut buf = [0_u16; N];
         for i in 0..N {
-            buf[i] = fader_values[self.channels[i]];
+            buf[i] = MAX_VALUES_FADER[self.channels[i]].load(Ordering::Relaxed);
         }
         buf
     }
@@ -153,31 +148,30 @@ impl<const N: usize> App<N> {
         }
 
         self.reconfigure_jack(
-            // FIXME: it's also terrible that we have to pass the channel twice here
             self.channels[chan],
-            MaxReconfigureAction::Mode7(
-                self.channels[chan],
-                ConfigMode7(AVR::InternalRef, ADCRANGE::Rg0_10v, NSAMPLES::Samples16),
-            ),
+            MaxConfig::Mode7(ConfigMode7(
+                AVR::InternalRef,
+                ADCRANGE::Rg0_10v,
+                NSAMPLES::Samples16,
+            )),
         )
         .await;
 
         InJack { channel: chan }
     }
 
-    pub async fn make_out_jack(&self, chan: usize) -> InJack {
+    pub async fn make_out_jack(&self, chan: usize) -> OutJack {
         if chan > N - 1 {
             panic!("Not a valid channel in this app");
         }
 
         self.reconfigure_jack(
-            // FIXME: it's also terrible that we have to pass the channel twice here
             self.channels[chan],
-            MaxReconfigureAction::Mode5(self.channels[chan], ConfigMode5(DACRANGE::Rg0_10v)),
+            MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
         )
         .await;
 
-        InJack { channel: chan }
+        OutJack { channel: chan }
     }
 
     pub async fn make_all_in_jacks(&self) -> InJacks<N> {
@@ -186,10 +180,11 @@ impl<const N: usize> App<N> {
         for channel in self.channels {
             self.reconfigure_jack(
                 channel,
-                MaxReconfigureAction::Mode7(
-                    channel,
-                    ConfigMode7(AVR::InternalRef, ADCRANGE::Rg0_10v, NSAMPLES::Samples16),
-                ),
+                MaxConfig::Mode7(ConfigMode7(
+                    AVR::InternalRef,
+                    ADCRANGE::Rg0_10v,
+                    NSAMPLES::Samples16,
+                )),
             )
             .await;
         }
@@ -204,11 +199,8 @@ impl<const N: usize> App<N> {
         // FIXME: add a configure_jacks function that can configure multiple jacks at once (using
         // the multiport feature of the MAX)
         for channel in self.channels {
-            self.reconfigure_jack(
-                channel,
-                MaxReconfigureAction::Mode5(channel, ConfigMode5(DACRANGE::Rg0_10v)),
-            )
-            .await;
+            self.reconfigure_jack(channel, MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)))
+                .await;
         }
 
         OutJacks {
@@ -273,16 +265,8 @@ impl<const N: usize> App<N> {
         ButtonWaiter::new(self.channels[chan])
     }
 
-    async fn reconfigure_jack(&self, channel: usize, action: MaxReconfigureAction) {
-        MAX_CHANNEL_RECONFIGURE.send(action).await;
-        loop {
-            // See if the reconfiguration is done
-            self.delay_millis(10).await;
-            let mask = 1 << (channel) as u16;
-            if (MAX_MASK_RECONFIGURE.load(Ordering::Relaxed) & mask) != 0 {
-                MAX_MASK_RECONFIGURE.fetch_and(!mask, Ordering::SeqCst);
-                break;
-            }
-        }
+    async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
+        let action = (channel, config);
+        MAX_CHANNEL_RECONFIGURE.send(action).await
     }
 }
