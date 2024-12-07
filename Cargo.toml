@@ -57,7 +57,6 @@ at24cx = "0.1"
 wmidi = { version = "4.0", default-features = false }
 heapless = "0.8"
 
-
 [patch.crates-io]
 embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "4b1be4787acfb23b3c95c895485843542b44cb97" }
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "4b1be4787acfb23b3c95c895485843542b44cb97" }

@@ -12,8 +12,8 @@ use crate::tasks::{
     buttons::BUTTON_PUBSUB,
     leds::{LedsAction, CHANNEL_LEDS},
     max::{
-        MaxConfig, MaxReconfigureAction, MAX_CHANNEL_RECONFIGURE, MAX_MASK_RECONFIGURE,
-        MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
+        MaxConfig, MAX_CHANNEL_RECONFIGURE, MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC,
+        MAX_VALUES_DAC, MAX_VALUES_FADER,
     },
     serial::{UartAction, CHANNEL_UART_TX},
     usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
@@ -148,16 +148,12 @@ impl<const N: usize> App<N> {
         }
 
         self.reconfigure_jack(
-            // FIXME: it's also terrible that we have to pass the channel twice here
             self.channels[chan],
-            (
-                self.channels[chan],
-                MaxConfig::Mode7(ConfigMode7(
-                    AVR::InternalRef,
-                    ADCRANGE::Rg0_10v,
-                    NSAMPLES::Samples16,
-                )),
-            ),
+            MaxConfig::Mode7(ConfigMode7(
+                AVR::InternalRef,
+                ADCRANGE::Rg0_10v,
+                NSAMPLES::Samples16,
+            )),
         )
         .await;
 
@@ -170,12 +166,8 @@ impl<const N: usize> App<N> {
         }
 
         self.reconfigure_jack(
-            // FIXME: it's also terrible that we have to pass the channel twice here
             self.channels[chan],
-            (
-                self.channels[chan],
-                MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
-            ),
+            MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
         )
         .await;
 
@@ -188,14 +180,11 @@ impl<const N: usize> App<N> {
         for channel in self.channels {
             self.reconfigure_jack(
                 channel,
-                (
-                    channel,
-                    MaxConfig::Mode7(ConfigMode7(
-                        AVR::InternalRef,
-                        ADCRANGE::Rg0_10v,
-                        NSAMPLES::Samples16,
-                    )),
-                ),
+                MaxConfig::Mode7(ConfigMode7(
+                    AVR::InternalRef,
+                    ADCRANGE::Rg0_10v,
+                    NSAMPLES::Samples16,
+                )),
             )
             .await;
         }
@@ -210,11 +199,8 @@ impl<const N: usize> App<N> {
         // FIXME: add a configure_jacks function that can configure multiple jacks at once (using
         // the multiport feature of the MAX)
         for channel in self.channels {
-            self.reconfigure_jack(
-                channel,
-                (channel, MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v))),
-            )
-            .await;
+            self.reconfigure_jack(channel, MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)))
+                .await;
         }
 
         OutJacks {
@@ -279,16 +265,8 @@ impl<const N: usize> App<N> {
         ButtonWaiter::new(self.channels[chan])
     }
 
-    async fn reconfigure_jack(&self, channel: usize, action: MaxReconfigureAction) {
-        MAX_CHANNEL_RECONFIGURE.send(action).await;
-        loop {
-            // See if the reconfiguration is done
-            self.delay_millis(10).await;
-            let mask = 1 << (channel) as u16;
-            if (MAX_MASK_RECONFIGURE.load(Ordering::Relaxed) & mask) != 0 {
-                MAX_MASK_RECONFIGURE.fetch_and(!mask, Ordering::SeqCst);
-                break;
-            }
-        }
+    async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
+        let action = (channel, config);
+        MAX_CHANNEL_RECONFIGURE.send(action).await
     }
 }

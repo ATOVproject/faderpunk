@@ -7,9 +7,7 @@ use embassy_rp::{
     spi::{self, Async, Spi},
 };
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
-    channel::Channel,
-    mutex::Mutex,
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex,
     pubsub::PubSubChannel,
 };
 use embassy_time::Timer;
@@ -32,10 +30,6 @@ static MAX: StaticCell<
 pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-static MAX_CHANNEL_CONFIG: [AtomicU8; 16] = [const { AtomicU8::new(0) }; 16];
-// FIXME: I think we can cobine this one with the one above. For no reconfiguration we can just use
-// the value 255 or so
-pub static MAX_MASK_RECONFIGURE: AtomicU16 = AtomicU16::new(0);
 pub static MAX_CHANNEL_RECONFIGURE: Channel<CriticalSectionRawMutex, MaxReconfigureAction, 16> =
     Channel::new();
 pub static MAX_PUBSUB_FADER_CHANGED: PubSubChannel<CriticalSectionRawMutex, usize, 4, 16, 1> =
@@ -192,11 +186,10 @@ async fn process_channel_values(
         // hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
         let mut max = max_driver.lock().await;
-        for (i, atomic_config) in MAX_CHANNEL_CONFIG.iter().enumerate() {
-            // FIXME: Unsure about the port thing
+
+        for i in 0..16 {
             let port = Port::try_from(i).unwrap();
-            // Ordering::Acquire provides strong consistency guarantees on a single thread
-            match atomic_config.load(Ordering::Acquire) {
+            match max.get_mode(port) {
                 5 => {
                     let value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
                     max.dac_set_value(port, value).await.unwrap();
@@ -225,28 +218,16 @@ async fn reconfigure_ports(
 
         let port = Port::try_from(chan).unwrap();
 
-        // FIXME: This match has a lot of duplication, let's see if we can improve this somehow
         match config_mode {
             MaxConfig::Mode0 => {
                 max.configure_port(port, ConfigMode0).await.unwrap();
-                // Ordering::Release provides strong consistency guarantees on a single thread
-                MAX_CHANNEL_CONFIG[chan].store(0, Ordering::Release);
             }
             MaxConfig::Mode5(config) => {
-                let port = Port::try_from(chan).unwrap();
                 max.configure_port(port, config).await.unwrap();
-                // Ordering::Release provides strong consistency guarantees on a single thread
-                MAX_CHANNEL_CONFIG[chan].store(5, Ordering::Release);
             }
             MaxConfig::Mode7(config) => {
-                let port = Port::try_from(chan).unwrap();
                 max.configure_port(port, config).await.unwrap();
-                // Ordering::Release provides strong consistency guarantees on a single thread
-                MAX_CHANNEL_CONFIG[chan].store(7, Ordering::Release);
             }
         }
-        // Set the corresponding bit in the reconfigure mask, to signal completion
-        let mask = 1 << chan;
-        MAX_MASK_RECONFIGURE.fetch_or(mask, Ordering::SeqCst);
     }
 }
