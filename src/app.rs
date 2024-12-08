@@ -21,7 +21,7 @@ use crate::tasks::{
 
 // FIXME: put this into some util create
 fn u16_to_u7(value: u16) -> U7 {
-    U7::from_u8_lossy(((value as u32 * 127) / 65535) as u8)
+    U7::from_u8_lossy(((value as u32 * 127) / 4095) as u8)
 }
 
 pub struct InJack {

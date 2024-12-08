@@ -7,6 +7,7 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_time::{with_timeout, Duration};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State as CdcAcmState};
 use embassy_usb::class::midi::{MidiClass, Receiver, Sender};
 use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
@@ -129,10 +130,10 @@ async fn run_usb(usb0: USB) {
             // This loop automatically reconnects to the device when it is disconnected.
             tx.wait_connection().await;
             USB_CONNECTED.store(true, Ordering::Relaxed);
-            info!("USB Connection established.");
+            log::info!("USB Connection established.");
             start_usb_midi_tx_loop(&mut tx).await.ok();
             USB_CONNECTED.store(false, Ordering::Relaxed);
-            info!("USB Connection lost?? Starting over.");
+            log::info!("USB Connection lost?? Starting over.");
         }
     };
 
@@ -165,7 +166,14 @@ async fn start_usb_midi_tx_loop<'d, T: usb::Instance + 'd>(
         if let UsbAction::SendMidiMsg(msg) = CHANNEL_USB_TX.receive().await {
             buf[0] = code_index_number_from_message(&msg) as u8;
             if msg.copy_to_slice(&mut buf[1..msg.bytes_size() + 1]).is_ok() {
-                tx.write_packet(&buf[..msg.bytes_size() + 1]).await?;
+                with_timeout(
+                    // 1ms of timeout should be enough for USB host to have acknowledged
+                    Duration::from_millis(1),
+                    tx.write_packet(&buf[..msg.bytes_size() + 1]),
+                )
+                .await
+                // We're not handling any lost midi messages (for now)
+                .ok();
             }
         }
     }
