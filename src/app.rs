@@ -12,8 +12,8 @@ use crate::tasks::{
     buttons::BUTTON_PUBSUB,
     leds::{LedsAction, CHANNEL_LEDS},
     max::{
-        MaxConfig, MAX_CHANNEL_RECONFIGURE, MAX_PUBSUB_FADER_CHANGED, MAX_VALUES_ADC,
-        MAX_VALUES_DAC, MAX_VALUES_FADER,
+        MaxConfig, MAX_CHANGED_FADER, MAX_CHANNEL_RECONFIGURE, MAX_VALUES_ADC, MAX_VALUES_DAC,
+        MAX_VALUES_FADER,
     },
     serial::{UartAction, CHANNEL_UART_TX},
     usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
@@ -66,29 +66,6 @@ impl<const N: usize> OutJacks<N> {
     pub fn set_values(&self, values: [u16; N]) {
         for (i, &chan) in self.channels.iter().enumerate() {
             MAX_VALUES_DAC[chan].store(values[i], Ordering::Relaxed);
-        }
-    }
-}
-
-pub struct FaderWaiter<'a> {
-    channel: usize,
-    subscriber: Subscriber<'a, CriticalSectionRawMutex, usize, 4, 16, 1>,
-}
-
-impl<'a> FaderWaiter<'a> {
-    pub fn new(channel: usize) -> Self {
-        let subscriber = MAX_PUBSUB_FADER_CHANGED.subscriber().unwrap();
-        Self {
-            channel,
-            subscriber,
-        }
-    }
-    pub async fn wait_for_fader_change(&mut self) {
-        loop {
-            let notified_channel = self.subscriber.next_message_pure().await;
-            if self.channel == notified_channel {
-                return;
-            }
         }
     }
 }
@@ -251,11 +228,14 @@ impl<const N: usize> App<N> {
         }
     }
 
-    pub fn make_fader_waiter(&self, chan: usize) -> FaderWaiter {
-        if chan > N - 1 {
-            panic!("Not a valid channel in this app");
+    pub async fn wait_for_fader_change(&self, chan: usize) {
+        loop {
+            if MAX_CHANGED_FADER[self.channels[chan]].load(Ordering::Relaxed) {
+                MAX_CHANGED_FADER[self.channels[chan]].store(false, Ordering::Relaxed);
+                return;
+            }
+            Timer::after_millis(1).await;
         }
-        FaderWaiter::new(self.channels[chan])
     }
 
     pub fn make_button_waiter(&self, chan: usize) -> ButtonWaiter {

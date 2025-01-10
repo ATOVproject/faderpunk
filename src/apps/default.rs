@@ -1,5 +1,4 @@
 use embassy_futures::join::{join, join3};
-use embassy_time::{with_timeout, Duration, Instant, Timer, WithTimeout};
 use wmidi::{Channel as MidiChannel, ControlFunction, U7};
 
 use crate::app::App;
@@ -24,10 +23,8 @@ pub async fn run(app: App<CHANNELS>) {
     };
 
     let fut2 = async {
-        let mut waiter = app.make_fader_waiter(0);
         loop {
-            waiter.wait_for_fader_change().await;
-            log::info!("Moved fader {}", app.channels[0]);
+            app.wait_for_fader_change(0).await;
             let [fader] = app.get_fader_values();
             log::info!("Moved fader {} to {}", app.channels[0], fader);
             let cc_chan = U7::from_u8_lossy(102 + app.channels[0] as u8);

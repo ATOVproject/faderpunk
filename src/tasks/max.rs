@@ -1,3 +1,5 @@
+use core::sync::atomic::AtomicBool;
+
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::{
@@ -30,10 +32,9 @@ static MAX: StaticCell<
 pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
+pub static MAX_CHANGED_FADER: [AtomicBool; 16] = [const { AtomicBool::new(false) }; 16];
 pub static MAX_CHANNEL_RECONFIGURE: Channel<CriticalSectionRawMutex, MaxReconfigureAction, 16> =
     Channel::new();
-pub static MAX_PUBSUB_FADER_CHANGED: PubSubChannel<CriticalSectionRawMutex, usize, 4, 16, 1> =
-    PubSubChannel::new();
 
 pub type MaxReconfigureAction = (usize, MaxConfig);
 
@@ -140,7 +141,6 @@ async fn read_fader(
 
     let mut chan: usize = 0;
     let mut prev_values: [u16; 16] = [0; 16];
-    let change_publisher = MAX_PUBSUB_FADER_CHANGED.publisher().unwrap();
 
     // let pin0 = Output::new(pin12, Level::High);
     // let pin1 = Output::new(pin13, Level::Low);
@@ -165,8 +165,7 @@ async fn read_fader(
         prev_values[15 - chan] = val;
 
         if diff >= 4 {
-            // we publish immediate and don't really care so much about lost messages
-            change_publisher.publish_immediate(15 - chan);
+            MAX_CHANGED_FADER[15 - chan].store(true, Ordering::Relaxed);
         }
 
         MAX_VALUES_FADER[15 - chan].store(val, Ordering::Relaxed);
