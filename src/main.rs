@@ -19,7 +19,7 @@ use embassy_rp::block::ImageDef;
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::spi::{self, Phase, Polarity, Spi};
-use embassy_rp::uart;
+use embassy_rp::uart::{self, Async as UartAsync, Config as UartConfig, Uart, UartTx};
 use embassy_rp::usb;
 use embassy_rp::{
     bind_interrupts,
@@ -150,6 +150,45 @@ async fn run_app(number: usize, start_channel: usize) {
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
+    // SPI0 (MAX11300)
+    let mut spi0_config = spi::Config::default();
+    spi0_config.frequency = 20_000_000;
+    let spi0 = Spi::new(
+        p.SPI0,
+        p.PIN_18,
+        p.PIN_19,
+        p.PIN_16,
+        p.DMA_CH0,
+        p.DMA_CH1,
+        spi0_config,
+    );
+    let mux_pins = (p.PIN_12, p.PIN_13, p.PIN_14, p.PIN_15);
+
+    // SPI1 (WS2812)
+    let mut spi1_config = spi::Config::default();
+    spi1_config.frequency = 3_800_000;
+    let spi1 = Spi::new_txonly(p.SPI1, p.PIN_10, p.PIN_11, p.DMA_CH5, spi1_config);
+
+    // I2C1 (EEPROM)
+    let i2c1 = i2c::I2c::new_async(p.I2C1, p.PIN_27, p.PIN_26, Irqs, i2c::Config::default());
+
+    // MIDI
+    let mut uart_config = UartConfig::default();
+    // Classic MIDI baud rate
+    uart_config.baudrate = 31250;
+    // MIDI Thru
+    let uart0: UartTx<'_, _, UartAsync> = UartTx::new(p.UART0, p.PIN_0, p.DMA_CH2, uart_config);
+    // MIDI In/Out
+    let uart1 = Uart::new(
+        p.UART1,
+        p.PIN_8,
+        p.PIN_9,
+        Irqs,
+        p.DMA_CH3,
+        p.DMA_CH4,
+        uart_config,
+    );
+
     // FIXME: how do we re-spawn things??
     // FIXME: for now let's start with an array of app ids and map it to the spawner, also don't
     // forget to check if the channels fit
@@ -184,47 +223,16 @@ async fn main(spawner: Spawner) {
     );
 
     // spawner.spawn(read_clock(ports.port17)).unwrap();
-    // FIXME: Create SPI0 here for consistency
 
-    let mut spi0_config = spi::Config::default();
-    spi0_config.frequency = 20_000_000;
-    let spi = Spi::new(
-        p.SPI0,
-        p.PIN_18,
-        p.PIN_19,
-        p.PIN_16,
-        p.DMA_CH0,
-        p.DMA_CH1,
-        spi0_config,
-    );
-    tasks::max::start_max(
-        &spawner, spi, p.PIO0, p.PIN_12, p.PIN_13, p.PIN_14, p.PIN_15, p.PIN_17,
-    )
-    .await;
+    tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17).await;
 
     tasks::usb::start_usb(&spawner, p.USB).await;
 
-    // FXIME: Create UART here for consistency
-    tasks::serial::start_uart(
-        &spawner, p.UART0, p.UART1, p.PIN_0, p.PIN_8, p.PIN_9, p.DMA_CH2, p.DMA_CH3, p.DMA_CH4,
-    )
-    .await;
-
-    let sda = p.PIN_26;
-    let scl = p.PIN_27;
-
-    let mut spi1_config = spi::Config::default();
-    spi1_config.frequency = 3_800_000;
-    let spi1 = Spi::new_txonly(p.SPI1, p.PIN_10, p.PIN_11, p.DMA_CH5, spi1_config);
+    tasks::serial::start_uart(&spawner, uart0, uart1).await;
 
     tasks::leds::start_leds(&spawner, spi1).await;
 
-    let i2c1 = i2c::I2c::new_async(p.I2C1, scl, sda, Irqs, i2c::Config::default());
-    let i2c1_bus = I2C_BUS.init(Mutex::new(i2c1));
-
-    let i2c_dev0 = I2cDevice::new(i2c1_bus);
-
-    let mut eeprom = At24Cx::new(i2c_dev0, Address(0, 0), 17, Delay);
+    let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
     // These are the flash addresses in which the crate will operate.
     // The crate will not read, write or erase outside of this range.

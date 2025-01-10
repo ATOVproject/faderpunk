@@ -2,7 +2,7 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::{join, join3};
 use embassy_rp::peripherals::{DMA_CH2, DMA_CH3, DMA_CH4, PIN_0, PIN_8, PIN_9, UART0, UART1};
-use embassy_rp::uart::{Config, Uart, UartTx};
+use embassy_rp::uart::{Async, Config, Uart, UartTx};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::Timer;
@@ -20,48 +20,15 @@ pub static CHANNEL_UART_TX_THRU: Channel<CriticalSectionRawMutex, UartAction, 16
 
 pub async fn start_uart(
     spawner: &Spawner,
-    uart0: UART0,
-    uart1: UART1,
-    pin_tx_thru: PIN_0,
-    pin_tx: PIN_8,
-    pin_rx: PIN_9,
-    dma2: DMA_CH2,
-    dma3: DMA_CH3,
-    dma4: DMA_CH4,
+    uart0: UartTx<'static, UART0, Async>,
+    uart1: Uart<'static, UART1, Async>,
 ) {
-    spawner
-        .spawn(run_uart(
-            uart0,
-            uart1,
-            pin_tx_thru,
-            pin_tx,
-            pin_rx,
-            dma2,
-            dma3,
-            dma4,
-        ))
-        .unwrap();
+    spawner.spawn(run_uart(uart0, uart1)).unwrap();
 }
 
 #[embassy_executor::task]
-async fn run_uart(
-    uart0: UART0,
-    uart1: UART1,
-    pin_tx_thru: PIN_0,
-    pin_tx: PIN_8,
-    pin_rx: PIN_9,
-    dma2: DMA_CH2,
-    dma3: DMA_CH3,
-    dma4: DMA_CH4,
-) {
-    let mut midi_config = Config::default();
-    midi_config.baudrate = 31250;
-
-    let mut tx_thru = UartTx::new(uart0, pin_tx_thru, dma2, midi_config);
-
-    let uart = Uart::new(uart1, pin_tx, pin_rx, Irqs, dma3, dma4, midi_config);
-
-    let (mut tx, mut rx) = uart.split();
+async fn run_uart(mut uart0: UartTx<'static, UART0, Async>, uart1: Uart<'static, UART1, Async>) {
+    let (mut tx, mut rx) = uart1.split();
 
     // unwrap!(spawner.spawn(reader(uart_rx)));
 
@@ -81,7 +48,7 @@ async fn run_uart(
         loop {
             if let UartAction::SendMidiMsg(msg) = CHANNEL_UART_TX_THRU.receive().await {
                 if msg.copy_to_slice(&mut buf[..msg.bytes_size()]).is_ok() {
-                    tx_thru.write(&buf[..msg.bytes_size()]).await.unwrap();
+                    uart0.write(&buf[..msg.bytes_size()]).await.unwrap();
                 }
             }
         }

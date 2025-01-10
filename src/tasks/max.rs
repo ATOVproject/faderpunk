@@ -4,14 +4,11 @@ use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
-    peripherals::{PIN_12, PIN_13, PIN_14, PIN_15, PIN_16, PIN_17, PIN_18, PIN_19, PIO0, SPI0},
+    peripherals::{PIN_12, PIN_13, PIN_14, PIN_15, PIN_17, PIO0, SPI0},
     pio,
     spi::{self, Async, Spi},
 };
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex,
-    pubsub::PubSubChannel,
-};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
 use embassy_time::Timer;
 use max11300::{
     config::{
@@ -21,7 +18,7 @@ use max11300::{
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
 use pio_proc::pio_asm;
-use portable_atomic::{AtomicU16, AtomicU8, Ordering};
+use portable_atomic::{AtomicU16, Ordering};
 use static_cell::StaticCell;
 
 use crate::Irqs;
@@ -38,6 +35,8 @@ pub static MAX_CHANNEL_RECONFIGURE: Channel<CriticalSectionRawMutex, MaxReconfig
 
 pub type MaxReconfigureAction = (usize, MaxConfig);
 
+type MuxPins = (PIN_12, PIN_13, PIN_14, PIN_15);
+
 #[derive(Clone, Copy)]
 pub enum MaxConfig {
     Mode0,
@@ -49,10 +48,7 @@ pub async fn start_max(
     spawner: &Spawner,
     spi0: Spi<'static, SPI0, spi::Async>,
     pio0: PIO0,
-    mux0: PIN_12,
-    mux1: PIN_13,
-    mux2: PIN_14,
-    mux3: PIN_15,
+    mux_pins: MuxPins,
     cs: PIN_17,
 ) {
     let device_config = DeviceConfig {
@@ -90,7 +86,7 @@ pub async fn start_max(
 
     // FIXME: Make individual port
     spawner
-        .spawn(read_fader(pio0, mux0, mux1, mux2, mux3, ports.port16))
+        .spawn(read_fader(pio0, mux_pins, ports.port16))
         .unwrap();
 
     spawner.spawn(process_channel_values(max)).unwrap();
@@ -101,10 +97,7 @@ pub async fn start_max(
 #[embassy_executor::task]
 async fn read_fader(
     pio0: PIO0,
-    pin12: PIN_12,
-    pin13: PIN_13,
-    pin14: PIN_14,
-    pin15: PIN_15,
+    mux_pins: MuxPins,
     max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, CriticalSectionRawMutex>,
 ) {
     let fader_port = max_port
@@ -128,10 +121,10 @@ async fn read_fader(
         out pins, 4
         "
     );
-    let pin0 = common.make_pio_pin(pin12);
-    let pin1 = common.make_pio_pin(pin13);
-    let pin2 = common.make_pio_pin(pin14);
-    let pin3 = common.make_pio_pin(pin15);
+    let pin0 = common.make_pio_pin(mux_pins.0);
+    let pin1 = common.make_pio_pin(mux_pins.1);
+    let pin2 = common.make_pio_pin(mux_pins.2);
+    let pin3 = common.make_pio_pin(mux_pins.3);
     sm0.set_pin_dirs(pio::Direction::Out, &[&pin0, &pin1, &pin2, &pin3]);
     let mut cfg = pio::Config::default();
     cfg.set_out_pins(&[&pin0, &pin1, &pin2, &pin3]);
@@ -142,17 +135,7 @@ async fn read_fader(
     let mut chan: usize = 0;
     let mut prev_values: [u16; 16] = [0; 16];
 
-    // let pin0 = Output::new(pin12, Level::High);
-    // let pin1 = Output::new(pin13, Level::Low);
-    // let pin2 = Output::new(pin14, Level::Low);
-    // let pin3 = Output::new(pin15, Level::High);
-
     loop {
-        // let val = fader_port.get_value().await.unwrap();
-        //
-        // info!("FADER VAL: {}", val);
-        // Timer::after_secs(2).await;
-
         // send the channel value to the PIO state machine to trigger the program
         sm0.tx().wait_push(chan as u32).await;
 
