@@ -11,11 +11,13 @@ mod drivers;
 mod tasks;
 
 use apps::run_app_by_id;
+use async_button::{Button, ButtonConfig, ButtonEvent};
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
 use embassy_futures::select::select;
 use embassy_rp::block::ImageDef;
+use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::spi::{self, Phase, Polarity, Spi};
@@ -30,7 +32,7 @@ use embassy_rp::{
 use embassy_sync::signal::Signal;
 // use embassy_sync::watch::Watch;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use embassy_time::{Delay, Timer};
+use embassy_time::{Delay, Duration, Timer};
 
 use heapless::Vec;
 use {defmt_rtt as _, panic_probe as _};
@@ -189,6 +191,12 @@ async fn main(spawner: Spawner) {
         uart_config,
     );
 
+    // Buttons
+    let buttons = (
+        p.PIN_6, p.PIN_7, p.PIN_38, p.PIN_32, p.PIN_33, p.PIN_34, p.PIN_35, p.PIN_36, p.PIN_23,
+        p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
+    );
+
     // FIXME: how do we re-spawn things??
     // FIXME: for now let's start with an array of app ids and map it to the spawner, also don't
     // forget to check if the channels fit
@@ -232,6 +240,8 @@ async fn main(spawner: Spawner) {
 
     tasks::leds::start_leds(&spawner, spi1).await;
 
+    tasks::buttons::start_buttons(&spawner, buttons).await;
+
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
     // These are the flash addresses in which the crate will operate.
@@ -243,10 +253,9 @@ async fn main(spawner: Spawner) {
     // this buffer to be aligned in RAM as well.
     let mut data_buffer = [0; 128];
     let mut i = 0_u8;
+
     loop {
-        Timer::after_secs(5).await;
-        log::info!("Heartbeat {}", i);
-        i = i.wrapping_add(1);
+        Timer::after_secs(1).await;
     }
 
     // // These are the flash addresses in which the crate will operate.

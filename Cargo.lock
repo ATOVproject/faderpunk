@@ -39,6 +39,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-button"
+version = "0.1.0"
+source = "git+https://github.com/avsaase/async-button#2d80c944da81bf36874751e86fbb5c6cc3e082dc"
+dependencies = [
+ "cfg-if",
+ "embassy-time",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+]
+
+[[package]]
 name = "at24cx"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -964,6 +975,7 @@ dependencies = [
 name = "phoenix-16"
 version = "0.1.0"
 dependencies = [
+ "async-button",
  "at24cx",
  "cortex-m",
  "cortex-m-rt",

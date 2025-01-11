@@ -9,7 +9,6 @@ use portable_atomic::Ordering;
 use wmidi::{Channel, ControlFunction, MidiMessage, U7};
 
 use crate::tasks::{
-    buttons::BUTTON_PUBSUB,
     leds::{LedsAction, CHANNEL_LEDS},
     max::{
         MaxConfig, MAX_CHANGED_FADER, MAX_CHANNEL_RECONFIGURE, MAX_VALUES_ADC, MAX_VALUES_DAC,
@@ -66,29 +65,6 @@ impl<const N: usize> OutJacks<N> {
     pub fn set_values(&self, values: [u16; N]) {
         for (i, &chan) in self.channels.iter().enumerate() {
             MAX_VALUES_DAC[chan].store(values[i], Ordering::Relaxed);
-        }
-    }
-}
-
-pub struct ButtonWaiter<'a> {
-    channel: usize,
-    subscriber: Subscriber<'a, CriticalSectionRawMutex, usize, 4, 16, 1>,
-}
-
-impl<'a> ButtonWaiter<'a> {
-    pub fn new(channel: usize) -> Self {
-        let subscriber = BUTTON_PUBSUB.subscriber().unwrap();
-        Self {
-            channel,
-            subscriber,
-        }
-    }
-    pub async fn wait_for_button_press(&mut self) {
-        loop {
-            let notified_channel = self.subscriber.next_message_pure().await;
-            if self.channel == notified_channel {
-                return;
-            }
         }
     }
 }
@@ -236,13 +212,6 @@ impl<const N: usize> App<N> {
             }
             Timer::after_millis(1).await;
         }
-    }
-
-    pub fn make_button_waiter(&self, chan: usize) -> ButtonWaiter {
-        if chan > N - 1 {
-            panic!("Not a valid channel in this app");
-        }
-        ButtonWaiter::new(self.channels[chan])
     }
 
     async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
