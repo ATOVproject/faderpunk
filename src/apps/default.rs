@@ -22,16 +22,16 @@ pub async fn run(app: App<CHANNELS>) {
         }
     };
 
-    let fut2 = async {
-        loop {
-            app.wait_for_fader_change(0).await;
-            let [fader] = app.get_fader_values();
-            log::info!("Moved fader {} to {}", app.channels[0], fader);
-            let cc_chan = U7::from_u8_lossy(102 + app.channels[0] as u8);
-            app.midi_send_cc(MidiChannel::Ch1, ControlFunction(cc_chan), fader)
-                .await;
-        }
-    };
+    // let fut2 = async {
+    //     loop {
+    //         app.wait_for_fader_change(0).await;
+    //         let [fader] = app.get_fader_values();
+    //         log::info!("Moved fader {} to {}", app.channels[0], fader);
+    //         let cc_chan = U7::from_u8_lossy(102 + app.channels[0] as u8);
+    //         app.midi_send_cc(MidiChannel::Ch1, ControlFunction(cc_chan), fader)
+    //             .await;
+    //     }
+    // };
     //
     // let fut3 = async {
     //     let mut waiter = app.make_button_waiter(0);
@@ -48,7 +48,7 @@ pub async fn run(app: App<CHANNELS>) {
         }
     };
 
-    // join(fut2, fut3).await;
-
-    join3(fut1, fut2, fut3).await;
+    join(fut1, fut3).await;
+    //
+    // join3(fut1, fut2, fut3).await;
 }

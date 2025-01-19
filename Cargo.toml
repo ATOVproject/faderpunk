@@ -53,6 +53,7 @@ smart-leds = "0.4"
 static_cell = "2.1"
 wmidi = { version = "4.0", default-features = false }
 async-button = { git = "https://github.com/avsaase/async-button", version = "0.1.0" }
+array-init = "2.1.0"
 
 [patch.crates-io]
 embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "86578acaa4d4dbed06ed4fcecec25884f6883e82" }

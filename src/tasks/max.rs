@@ -21,7 +21,7 @@ use pio_proc::pio_asm;
 use portable_atomic::{AtomicU16, Ordering};
 use static_cell::StaticCell;
 
-use crate::Irqs;
+use crate::{Irqs, XSender, XTxMsg};
 
 static MAX: StaticCell<
     Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, spi::Async>, Output>>,
@@ -29,7 +29,6 @@ static MAX: StaticCell<
 pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-pub static MAX_CHANGED_FADER: [AtomicBool; 16] = [const { AtomicBool::new(false) }; 16];
 pub static MAX_CHANNEL_RECONFIGURE: Channel<CriticalSectionRawMutex, MaxReconfigureAction, 16> =
     Channel::new();
 
@@ -50,6 +49,7 @@ pub async fn start_max(
     pio0: PIO0,
     mux_pins: MuxPins,
     cs: PIN_17,
+    x_tx: XSender,
 ) {
     let device_config = DeviceConfig {
         thshdn: THSHDN::Enabled,
@@ -86,7 +86,7 @@ pub async fn start_max(
 
     // FIXME: Make individual port
     spawner
-        .spawn(read_fader(pio0, mux_pins, ports.port16))
+        .spawn(read_fader(pio0, mux_pins, ports.port16, x_tx))
         .unwrap();
 
     spawner.spawn(process_channel_values(max)).unwrap();
@@ -99,6 +99,7 @@ async fn read_fader(
     pio0: PIO0,
     mux_pins: MuxPins,
     max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, CriticalSectionRawMutex>,
+    x_tx: XSender,
 ) {
     let fader_port = max_port
         .into_configured_port(ConfigMode7(
@@ -136,6 +137,8 @@ async fn read_fader(
     let mut prev_values: [u16; 16] = [0; 16];
 
     loop {
+        // Channels are in reverse
+        let channel = 15 - chan;
         // send the channel value to the PIO state machine to trigger the program
         sm0.tx().wait_push(chan as u32).await;
 
@@ -143,15 +146,16 @@ async fn read_fader(
         Timer::after_millis(2).await;
 
         let val = fader_port.get_value().await.unwrap();
-        let diff = (val as i16 - prev_values[15 - chan] as i16).unsigned_abs();
+        let diff = (val as i16 - prev_values[channel] as i16).unsigned_abs();
         // resolution of 256 should cover the full MIDI 1.0 range
-        prev_values[15 - chan] = val;
+        prev_values[channel] = val;
 
         if diff >= 4 {
-            MAX_CHANGED_FADER[15 - chan].store(true, Ordering::Relaxed);
+            x_tx.send((channel, XTxMsg::FaderChange)).await;
+            // MAX_CHANGED_FADER[15 - chan].store(true, Ordering::Relaxed);
         }
 
-        MAX_VALUES_FADER[15 - chan].store(val, Ordering::Relaxed);
+        MAX_VALUES_FADER[channel].store(val, Ordering::Relaxed);
 
         chan = (chan + 1) % 16;
     }
