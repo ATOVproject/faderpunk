@@ -52,7 +52,7 @@ portable-atomic = { version = "1.7", features = ["critical-section"] }
 pio = "0.2"
 pio-proc = "0.2"
 drv2605 = "0.1"
-sequential-storage = "3.0"
+sequential-storage = "4.0"
 at24cx = "0.1"
 wmidi = { version = "4.0", default-features = false }
 heapless = "0.8"
