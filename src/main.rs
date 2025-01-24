@@ -10,7 +10,7 @@ mod apps;
 mod drivers;
 mod tasks;
 
-use apps::run_app_by_id;
+use apps::{get_channels, run_app_by_id};
 use async_button::{Button, ButtonConfig, ButtonEvent};
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
@@ -37,8 +37,6 @@ use embassy_sync::signal::Signal;
 use embassy_time::{Delay, Duration, Timer};
 use portable_atomic::Ordering;
 
-use heapless::binary_heap::Max;
-use heapless::spsc::Queue;
 use heapless::Vec;
 use tasks::max::MAX_VALUES_FADER;
 use {defmt_rtt as _, panic_probe as _};
@@ -96,28 +94,39 @@ static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 20> = Channe
 // pub static SIG_X_TX: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 // pub static CANCEL_TASKS: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
+#[derive(Debug)]
 enum SceneErr {
     AppSize,
     LayoutSize,
 }
 
+/// Scene creates a proper scene vec from just a slice of app ids
+/// The vec contains a tupel of app ids and their corresponding size of chans
 struct Scene {
-    apps: Vec<usize, 16>,
+    apps: Vec<(usize, usize), 16>,
 }
 
 impl Scene {
-    fn try_from(apps: &[usize]) -> Result<Self, SceneErr> {
-        if apps.len() > 16 {
+    fn try_from(app_ids: &[usize]) -> Result<Self, SceneErr> {
+        if app_ids.len() > 16 {
             return Err(SceneErr::AppSize);
         }
+        // Create vec of (app_id, size). Will remove invalid app ids
+        let apps: Vec<(usize, usize), 16> = app_ids
+            .iter()
+            .filter_map(|&id| {
+                if let Some(size) = get_channels(id) {
+                    return Some((id, size));
+                }
+                None
+            })
+            .collect::<Vec<(usize, usize), 16>>();
         // Check if apps fit into the layout
-        let count = apps.iter().copied().reduce(|acc, e| acc + e).unwrap();
+        let count = apps.iter().copied().fold(0, |acc, (_, size)| acc + size);
         if count > 16 {
             return Err(SceneErr::LayoutSize);
         }
-        let mut scene = Self { apps: Vec::new() };
-        scene.apps.copy_from_slice(apps);
-        Ok(scene)
+        Ok(Self { apps })
     }
 }
 
@@ -183,6 +192,36 @@ async fn x_recv(senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16]) {
 //     }
 // }
 
+// FIXME: We can not exchange channels for others. We have to re-run this whole
+// function (which is fine?)
+//
+fn setup_channels(spawner: Spawner, scene: Scene) {
+    // FIXME: START HERE: with the scene, we know the amount of channels and we know how many
+    // senders/receivers we need to set up
+    let channels_distribute = CHANS_X.init([const { Channel::new() }; 16]);
+    let senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16] =
+        array_init(|i| channels_distribute[i].sender());
+    let receivers: [Receiver<'static, NoopRawMutex, XTxMsg, 128>; 16] =
+        array_init(|i| channels_distribute[i].receiver());
+
+    spawner.spawn(x_recv(senders)).unwrap();
+
+    // FIXME: We need to keep track of the number of channels that all apps are using
+    // and assign only one receiver to each of them
+    // run_app could return the number of channels it occupies
+
+    // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
+    // We only replace ALL 16 channels at once
+    for i in 0..16 {
+        // FIXME: TO CANCEL, we can try to wrap the whole thing in select(), and the second
+        // one cancels when an atomic is set
+        // Apparently we need to use signals to cancel the tasks (can use the xCore
+        // channel from above)
+        // https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/orchestrate_tasks.rs
+        spawner.spawn(run_app(1, i, receivers[i])).unwrap();
+    }
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
@@ -246,38 +285,16 @@ async fn main(spawner: Spawner) {
     //    into ram
     // 5) On scene change, unspawn everything, change current scene, spawn everything again
 
+    // FIXME: This config comes from the eeprom. We need a Vec of app numbers
+    // Also do a sanity check here before we pass it to the other core
+    let scene = Scene::try_from(&[1; 16]).unwrap();
+
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|sp| {
-                // FIXME: We can not exchange channels for others. We have to re-run this whole
-                // function (which is fine?)
-                //
-                let channels_distribute = CHANS_X.init([const { Channel::new() }; 16]);
-                let senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16] =
-                    array_init(|i| channels_distribute[i].sender());
-                let receivers: [Receiver<'static, NoopRawMutex, XTxMsg, 128>; 16] =
-                    array_init(|i| channels_distribute[i].receiver());
-
-                sp.spawn(x_recv(senders)).unwrap();
-
-                // FIXME: We need to keep track of the number of channels that all apps are using
-                // and assign only one receiver to each of them
-                // run_app could return the number of channels it occupies
-
-                // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
-                // We only replace ALL 16 channels at once
-                for i in 0..16 {
-                    // FIXME: TO CANCEL, we can try to wrap the whole thing in select(), and the second
-                    // one cancels when an atomic is set
-                    // Apparently we need to use signals to cancel the tasks (can use the xCore
-                    // channel from above)
-                    // https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/orchestrate_tasks.rs
-                    sp.spawn(run_app(1, i, receivers[i])).unwrap();
-                }
-            });
+            executor1.run(|spawner| setup_channels(spawner, config));
         },
     );
 
