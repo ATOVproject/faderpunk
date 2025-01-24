@@ -15,6 +15,7 @@ use async_button::{Button, ButtonConfig, ButtonEvent};
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
+use embassy_futures::join::join;
 use embassy_futures::select::select;
 use embassy_rp::block::ImageDef;
 use embassy_rp::gpio::{Input, Pull};
@@ -29,17 +30,23 @@ use embassy_rp::{
     peripherals::{I2C1, PIO0},
     pio,
 };
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
+use embassy_sync::channel::{Channel, Receiver, Sender};
+use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
-// use embassy_sync::watch::Watch;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration, Timer};
+use portable_atomic::Ordering;
 
+use heapless::binary_heap::Max;
+use heapless::spsc::Queue;
 use heapless::Vec;
+use tasks::max::MAX_VALUES_FADER;
 use {defmt_rtt as _, panic_probe as _};
 
 // FIXME: Can we use embassy LazyLock here (embassy-sync 0.7 prob)
 use static_cell::StaticCell;
 
+use array_init::array_init;
 use at24cx::{Address, At24Cx};
 use sequential_storage::{
     cache::NoCache,
@@ -71,9 +78,22 @@ bind_interrupts!(struct Irqs {
     UART1_IRQ => uart::InterruptHandler<UART1>;
 });
 
-static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<'static, I2C1, i2c::Async>>> = StaticCell::new();
+pub type XSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
+
+#[derive(Clone, Copy, Debug, defmt::Format)]
+pub enum XTxMsg {
+    FaderChange,
+}
+
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static mut CORE1_STACK: Stack<4096> = Stack::new();
+static CHANS_X: StaticCell<[Channel<NoopRawMutex, XTxMsg, 128>; 16]> = StaticCell::new();
+// Collector channel on core 0
+static CHAN_X_0: StaticCell<Channel<NoopRawMutex, (usize, XTxMsg), 128>> = StaticCell::new();
+static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 20> = Channel::new();
+// pub static CHAN_X_TX: Mutex<CriticalSectionRawMutex, Queue<(usize, XTxMsg), 128>> =
+//     Mutex::new(Queue::new());
+// pub static SIG_X_TX: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 // pub static CANCEL_TASKS: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
 enum SceneErr {
@@ -108,12 +128,27 @@ impl Scene {
 
 // App slots
 #[embassy_executor::task(pool_size = 16)]
-async fn run_app(number: usize, start_channel: usize) {
-    let runner = run_app_by_id(number, start_channel);
+async fn run_app(
+    number: usize,
+    start_channel: usize,
+    chan_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
+) {
+    let runner = run_app_by_id(number, start_channel, chan_x);
     // FIXME: Like this the caneller receiver should be dropped and its slot will be freed
     // let mut canceller = CANCEL_TASKS.receiver().unwrap();
     // select(runner, canceller.changed()).await;
     runner.await;
+}
+
+// Cross core comms
+#[embassy_executor::task]
+async fn x_recv(senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16]) {
+    loop {
+        let (chan, msg) = CHAN_X_TX.receive().await;
+        // FIXME: Use try_send here as well
+        // Maybe we need an atomic "listening" thing for each channel
+        senders[chan].send(msg).await;
+    }
 }
 
 // #[embassy_executor::task]
@@ -217,22 +252,48 @@ async fn main(spawner: Spawner) {
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|sp| {
+                // FIXME: We can not exchange channels for others. We have to re-run this whole
+                // function (which is fine?)
+                //
+                let channels_distribute = CHANS_X.init([const { Channel::new() }; 16]);
+                let senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16] =
+                    array_init(|i| channels_distribute[i].sender());
+                let receivers: [Receiver<'static, NoopRawMutex, XTxMsg, 128>; 16] =
+                    array_init(|i| channels_distribute[i].receiver());
+
+                sp.spawn(x_recv(senders)).unwrap();
+
+                // FIXME: We need to keep track of the number of channels that all apps are using
+                // and assign only one receiver to each of them
+                // run_app could return the number of channels it occupies
+
                 // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
                 // We only replace ALL 16 channels at once
                 for i in 0..16 {
                     // FIXME: TO CANCEL, we can try to wrap the whole thing in select(), and the second
                     // one cancels when an atomic is set
-                    // Apparently we need to use signals to cancel the tasks
+                    // Apparently we need to use signals to cancel the tasks (can use the xCore
+                    // channel from above)
                     // https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/orchestrate_tasks.rs
-                    sp.spawn(run_app(1, i)).unwrap();
+                    sp.spawn(run_app(1, i, receivers[i])).unwrap();
                 }
             });
         },
     );
 
+    let chan_x_0 = CHAN_X_0.init(Channel::new());
+
     // spawner.spawn(read_clock(ports.port17)).unwrap();
 
-    tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17).await;
+    tasks::max::start_max(
+        &spawner,
+        spi0,
+        p.PIO0,
+        mux_pins,
+        p.PIN_17,
+        chan_x_0.sender(),
+    )
+    .await;
 
     tasks::usb::start_usb(&spawner, p.USB).await;
 
@@ -254,9 +315,37 @@ async fn main(spawner: Spawner) {
     let mut data_buffer = [0; 128];
     let mut i = 0_u8;
 
-    loop {
-        Timer::after_secs(1).await;
-    }
+    let fut = async {
+        loop {
+            let msg = chan_x_0.receive().await;
+            CHAN_X_TX.send(msg).await;
+            // let mut chan_x_tx = CHAN_X_TX.lock().await;
+            // loop {
+            //     let mut i: usize = 0;
+            //     if let Ok(msg) = chan_x_0.try_receive() {
+            //         chan_x_tx.enqueue(msg).unwrap();
+            //     }
+            //     if chan_x_0.is_empty() {
+            //         SIG_X_TX.signal(());
+            //         info!("Sent {} commands", i);
+            //         break;
+            //     }
+            //     i += 1;
+            // }
+        }
+    };
+
+    let fut2 = async {
+        loop {
+            Timer::after_secs(1).await;
+            let fader0 = MAX_VALUES_FADER[0].load(Ordering::Relaxed);
+            let fader1 = MAX_VALUES_FADER[1].load(Ordering::Relaxed);
+            let fader2 = MAX_VALUES_FADER[2].load(Ordering::Relaxed);
+            info!("FADER VALUES: {} {} {}", fader0, fader1, fader2);
+        }
+    };
+
+    join(fut, fut2).await;
 
     // // These are the flash addresses in which the crate will operate.
     // // The crate will not read, write or erase outside of this range.

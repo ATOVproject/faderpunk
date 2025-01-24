@@ -2,20 +2,21 @@ use core::array;
 
 use defmt::info;
 use embassy_futures::join::join;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, pubsub::Subscriber};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
 use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use portable_atomic::Ordering;
 use wmidi::{Channel, ControlFunction, MidiMessage, U7};
 
-use crate::tasks::{
-    leds::{LedsAction, CHANNEL_LEDS},
-    max::{
-        MaxConfig, MAX_CHANGED_FADER, MAX_CHANNEL_RECONFIGURE, MAX_VALUES_ADC, MAX_VALUES_DAC,
-        MAX_VALUES_FADER,
+use crate::{
+    tasks::{
+        max::{
+            MaxConfig, MAX_CHANNEL_RECONFIGURE, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
+        },
+        serial::{UartAction, CHANNEL_UART_TX},
+        usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
     },
-    serial::{UartAction, CHANNEL_UART_TX},
-    usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
+    XTxMsg,
 };
 
 // FIXME: put this into some util create
@@ -72,13 +73,22 @@ impl<const N: usize> OutJacks<N> {
 pub struct App<const N: usize> {
     app_id: usize,
     pub channels: [usize; N],
+    rcv_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
 }
 
 impl<const N: usize> App<N> {
-    pub fn new(app_id: usize, start_channel: usize) -> Self {
+    pub fn new(
+        app_id: usize,
+        start_channel: usize,
+        rcv_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
+    ) -> Self {
         // Create an array of all channels numbers that this app is using
         let channels: [usize; N] = array::from_fn(|i| start_channel + i);
-        Self { app_id, channels }
+        Self {
+            app_id,
+            channels,
+            rcv_x,
+        }
     }
 
     pub fn size() -> usize {
@@ -128,7 +138,7 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn make_all_in_jacks(&self) -> InJacks<N> {
-        // FIXME: add a configure_jacks function that can configure multiple jacks at once (using
+        // TODO: add a configure_jacks function that can configure multiple jacks at once (using
         // the multiport feature of the MAX)
         for channel in self.channels {
             self.reconfigure_jack(
@@ -147,9 +157,9 @@ impl<const N: usize> App<N> {
         }
     }
 
-    // FIXME: Here we actually need to reconfigure the jacks
+    // TODO: Here we actually need to reconfigure the jacks
     pub async fn make_all_out_jacks(&self) -> OutJacks<N> {
-        // FIXME: add a configure_jacks function that can configure multiple jacks at once (using
+        // TODO: add a configure_jacks function that can configure multiple jacks at once (using
         // the multiport feature of the MAX)
         for channel in self.channels {
             self.reconfigure_jack(channel, MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)))
@@ -173,18 +183,18 @@ impl<const N: usize> App<N> {
         Timer::after_secs(secs).await
     }
 
-    pub async fn led_blink(&self, chan: usize, duration: u64) {
-        // FIXME: We're doing this a lot, let's abstract this
-        if chan > N - 1 {
-            panic!("Not a valid channel in this app");
-        }
-        let channel = self.channels[chan];
-        CHANNEL_LEDS
-            .send((channel, LedsAction::Blink(duration)))
-            .await;
-    }
+    // pub async fn led_blink(&self, chan: usize, duration: u64) {
+    //     // TODO: We're doing this a lot, let's abstract this
+    //     if chan > N - 1 {
+    //         panic!("Not a valid channel in this app");
+    //     }
+    //     let channel = self.channels[chan];
+    //     CHANNEL_LEDS
+    //         .send((channel, LedsAction::Blink(duration)))
+    //         .await;
+    // }
 
-    // FIXME: This is a short-hand function that should also send the msg via TRS
+    // TODO: This is a short-hand function that should also send the msg via TRS
     // Create and use a function called midi_send_both and use it here
     pub async fn midi_send_cc(&self, chan: Channel, cc: ControlFunction, val: u16) {
         let msg = MidiMessage::ControlChange(chan, cc, u16_to_u7(val));
@@ -205,12 +215,10 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn wait_for_fader_change(&self, chan: usize) {
-        loop {
-            if MAX_CHANGED_FADER[self.channels[chan]].load(Ordering::Relaxed) {
-                MAX_CHANGED_FADER[self.channels[chan]].store(false, Ordering::Relaxed);
-                return;
-            }
-            Timer::after_millis(1).await;
+        // FIXME: Obviously this is wrong as there could be all kinds of messages not just fader
+        // change. Also we need to make use of chan
+        if let XTxMsg::FaderChange = self.rcv_x.receive().await {
+            return;
         }
     }
 
