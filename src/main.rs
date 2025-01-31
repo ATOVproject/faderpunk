@@ -333,7 +333,7 @@ async fn main(spawner: Spawner) {
     // Disabled for now
     // tasks::leds::start_leds(&spawner, spi1).await;
 
-    tasks::buttons::start_buttons(&spawner, buttons).await;
+    tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
