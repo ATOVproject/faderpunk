@@ -19,7 +19,7 @@ use crate::{
     XTxMsg, CHANS_X,
 };
 
-// FIXME: put this into some util create
+// TODO: put this into some util create
 fn u16_to_u7(value: u16) -> U7 {
     U7::from_u8_lossy(((value as u32 * 127) / 4095) as u8)
 }
@@ -125,7 +125,7 @@ impl<const N: usize> App<N> {
         buf
     }
 
-    // FIXME: We should also probably make sure that people do not reconfigure the jacks within the
+    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
     // app (throw error or something)
     pub async fn make_in_jack(&self, chan: usize) -> InJack {
         if chan > N - 1 {

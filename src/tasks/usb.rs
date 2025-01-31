@@ -124,7 +124,7 @@ async fn run_usb(usb0: USB) {
 
     let (mut tx, mut rx) = usb_midi.split();
 
-    // FIXME: Maybe we can move the midi stuff into an own file?
+    // TODO: Maybe we can move the midi stuff into an own file?
     let midi_tx = async {
         loop {
             // This loop automatically reconnects to the device when it is disconnected.
@@ -160,7 +160,7 @@ async fn run_usb(usb0: USB) {
 async fn start_usb_midi_tx_loop<'d, T: usb::Instance + 'd>(
     tx: &mut Sender<'d, usb::Driver<'d, T>>,
 ) -> Result<(), EndpointError> {
-    // FIXME: THIS DOES NOT WORK WITH SYSEX DATA (can be _VERY_ long)
+    // TODO: THIS DOES NOT WORK WITH SYSEX DATA (can be _VERY_ long)
     let mut buf = [0; 4];
     loop {
         if let UsbAction::SendMidiMsg(msg) = CHANNEL_USB_TX.receive().await {

@@ -7,9 +7,7 @@ use embassy_time::Timer;
 use smart_leds::{brightness, RGB8};
 use {defmt_rtt as _, panic_probe as _};
 
-// FIXME: DOUBLE CHECK ALL CHANNELS and maybe use ATOMICS if possible as we have 16 apps
-// that can potentially lock up a channel
-// FIXME: Add snappy fade out for all LEDs when turning off
+// TODO: Add snappy fade out for all LEDs when turning off
 
 const REFRESH_RATE: u64 = 60;
 const NUM_LEDS: usize = 50;

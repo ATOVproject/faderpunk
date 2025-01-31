@@ -6,7 +6,7 @@ mod macros;
 
 mod app;
 mod apps;
-// FIXME: Remove drivers, put in driver implementation crate
+// TODO: Remove drivers, put in driver implementation crate
 mod drivers;
 mod tasks;
 
@@ -44,7 +44,6 @@ use heapless::Vec;
 use tasks::max::MAX_VALUES_FADER;
 use {defmt_rtt as _, panic_probe as _};
 
-// FIXME: Can we use embassy LazyLock here (embassy-sync 0.7 prob)
 use static_cell::StaticCell;
 
 use array_init::array_init;
@@ -153,7 +152,7 @@ impl Scene {
     }
 }
 
-// FIXME: create config builder to create full 16 channel layout with various apps
+// TODO: create config builder to create full 16 channel layout with various apps
 // The app at some point needs access to the MAX to configure it. Maybe this can happen via
 // CHANNEL?
 // Builder config needs to be serializable to store in eeprom
@@ -162,7 +161,7 @@ impl Scene {
 #[embassy_executor::task(pool_size = 16)]
 async fn run_app(number: usize, start_channel: usize) {
     let runner = run_app_by_id(number, start_channel);
-    // FIXME: Like this the caneller receiver should be dropped and its slot will be freed
+    // TODO: Like this the canceller receiver should be dropped and its slot will be freed
     // let mut canceller = CANCEL_TASKS.receiver().unwrap();
     // select(runner, canceller.changed()).await;
     runner.await;
@@ -214,16 +213,16 @@ async fn x_recv(
 //     }
 // }
 
-// FIXME: We can not exchange channels for others. We have to re-run this whole
+// TODO: We can not exchange channels for others. We have to re-run this whole
 // function (which is fine?)
 fn setup_channels(spawner: Spawner, scene: Scene) {
     let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
         array_init(|i| CHANS_X[i].publisher().unwrap());
 
     for (app_id, start_chan) in scene.apps_iter() {
-        // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
+        // TODO: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
         // We only replace ALL 16 channels at once
-        // FIXME: TO CANCEL, we can try to wrap the whole thing in select(), and the second
+        // TODO: TO CANCEL, we can try to wrap the whole thing in select(), and the second
         // one cancels when an atomic is set
         // Apparently we need to use signals to cancel the tasks (can use the xCore
         // channel from above)
@@ -285,13 +284,7 @@ async fn main(spawner: Spawner) {
         p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
     );
 
-    // FIXME: how do we re-spawn things??
-    // FIXME: for now let's start with an array of app ids and map it to the spawner, also don't
-    // forget to check if the channels fit
-    // FIXME: Create an abstraction that maps the apps to the 16 channels of the device, for the
-    // spawner to spawn
-    // We need something that makes sure that nothing is used twice
-
+    // TODO: how do we re-spawn things??
     // 1) Make sure we can "unspawn" stuff
     // 2) Save all available scenes somewhere (16)
     // 3) Save the current scene index somewhere
@@ -299,7 +292,7 @@ async fn main(spawner: Spawner) {
     //    into ram
     // 5) On scene change, unspawn everything, change current scene, spawn everything again
 
-    // FIXME: This config comes from the eeprom. We need a Vec of app numbers
+    // TODO: This config comes from the eeprom. We need a Vec of app numbers
     // Also do a sanity check here before we pass it to the other core
     let scene = Scene::try_from(&[1; 16]).unwrap();
 

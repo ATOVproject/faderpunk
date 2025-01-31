@@ -64,7 +64,7 @@ pub async fn start_max(
 
     let max = MAX.init(Mutex::new(max_driver));
 
-    // FIXME: Create an abstraction to be able to create just one port
+    // TODO: Create an abstraction to be able to create just one port
     let ports = Ports::new(max);
 
     // Put ports 17-19 into hi-impedance mode for interrupt testing
@@ -84,7 +84,7 @@ pub async fn start_max(
         .await
         .unwrap();
 
-    // FIXME: Make individual port
+    // TODO: Make individual port
     spawner
         .spawn(read_fader(pio0, mux_pins, ports.port16, x_tx))
         .unwrap();
@@ -197,7 +197,7 @@ async fn reconfigure_ports(
         Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
     >,
 ) {
-    // FIXME: Put MAX port in hi-impedance mode when using the internal GPIO interrupts
+    // TODO: Put MAX port in hi-impedance mode when using the internal GPIO interrupts
     loop {
         let (chan, config_mode) = MAX_CHANNEL_RECONFIGURE.receive().await;
         let mut max = max_driver.lock().await;

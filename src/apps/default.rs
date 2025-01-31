@@ -5,10 +5,7 @@ use wmidi::{Channel as MidiChannel, ControlFunction, U7};
 use crate::app::App;
 
 // API ideas:
-// - app.wait_for_button_press
 // - app.wait_for_midi_on_channel
-
-// FIXME: How to implement waiters?
 
 pub const CHANNELS: usize = 1;
 
