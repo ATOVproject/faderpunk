@@ -30,9 +30,12 @@ use embassy_rp::{
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
+use embassy_sync::blocking_mutex::raw::{
+    CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex,
+};
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_sync::mutex::Mutex;
+use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::signal::Signal;
 use embassy_time::{Delay, Duration, Timer};
 use portable_atomic::Ordering;
@@ -80,18 +83,17 @@ pub type XSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 
 #[derive(Clone, Copy, Debug, defmt::Format)]
 pub enum XTxMsg {
+    ButtonDown,
     FaderChange,
 }
 
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-static mut CORE1_STACK: Stack<4096> = Stack::new();
-static CHANS_X: StaticCell<[Channel<NoopRawMutex, XTxMsg, 128>; 16]> = StaticCell::new();
+static mut CORE1_STACK: Stack<131_072> = Stack::new();
+pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
+    [const { PubSubChannel::new() }; 16];
 // Collector channel on core 0
 static CHAN_X_0: StaticCell<Channel<NoopRawMutex, (usize, XTxMsg), 128>> = StaticCell::new();
 static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 20> = Channel::new();
-// pub static CHAN_X_TX: Mutex<CriticalSectionRawMutex, Queue<(usize, XTxMsg), 128>> =
-//     Mutex::new(Queue::new());
-// pub static SIG_X_TX: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 // pub static CANCEL_TASKS: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
 #[derive(Debug)]
@@ -128,6 +130,27 @@ impl Scene {
         }
         Ok(Self { apps })
     }
+
+    fn apps_iter(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.apps.iter().scan(0, |start_channel, &(app_id, size)| {
+            let result = Some((app_id, *start_channel));
+            *start_channel += size;
+            result
+        })
+    }
+
+    // Creates an array which returns the app's start channel for every channel
+    fn channel_map(&self) -> [usize; 16] {
+        let mut result = [0; 16];
+
+        for (_, start_chan) in self.apps_iter() {
+            let size = 16 - start_chan;
+            let end = (start_chan + size).min(16);
+            result[start_chan..end].fill(start_chan);
+        }
+
+        result
+    }
 }
 
 // FIXME: create config builder to create full 16 channel layout with various apps
@@ -137,12 +160,8 @@ impl Scene {
 
 // App slots
 #[embassy_executor::task(pool_size = 16)]
-async fn run_app(
-    number: usize,
-    start_channel: usize,
-    chan_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
-) {
-    let runner = run_app_by_id(number, start_channel, chan_x);
+async fn run_app(number: usize, start_channel: usize) {
+    let runner = run_app_by_id(number, start_channel);
     // FIXME: Like this the caneller receiver should be dropped and its slot will be freed
     // let mut canceller = CANCEL_TASKS.receiver().unwrap();
     // select(runner, canceller.changed()).await;
@@ -151,12 +170,15 @@ async fn run_app(
 
 // Cross core comms
 #[embassy_executor::task]
-async fn x_recv(senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16]) {
+async fn x_recv(
+    publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16],
+    channel_map: [usize; 16],
+) {
     loop {
         let (chan, msg) = CHAN_X_TX.receive().await;
-        // FIXME: Use try_send here as well
-        // Maybe we need an atomic "listening" thing for each channel
-        senders[chan].send(msg).await;
+        let start_chan = channel_map[chan];
+        let relative_index = chan.wrapping_sub(start_chan);
+        publishers[start_chan].publish((relative_index, msg)).await;
     }
 }
 
@@ -194,32 +216,24 @@ async fn x_recv(senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16]) {
 
 // FIXME: We can not exchange channels for others. We have to re-run this whole
 // function (which is fine?)
-//
 fn setup_channels(spawner: Spawner, scene: Scene) {
-    // FIXME: START HERE: with the scene, we know the amount of channels and we know how many
-    // senders/receivers we need to set up
-    let channels_distribute = CHANS_X.init([const { Channel::new() }; 16]);
-    let senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16] =
-        array_init(|i| channels_distribute[i].sender());
-    let receivers: [Receiver<'static, NoopRawMutex, XTxMsg, 128>; 16] =
-        array_init(|i| channels_distribute[i].receiver());
+    let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
+        array_init(|i| CHANS_X[i].publisher().unwrap());
 
-    spawner.spawn(x_recv(senders)).unwrap();
-
-    // FIXME: We need to keep track of the number of channels that all apps are using
-    // and assign only one receiver to each of them
-    // run_app could return the number of channels it occupies
-
-    // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
-    // We only replace ALL 16 channels at once
-    for i in 0..16 {
+    for (app_id, start_chan) in scene.apps_iter() {
+        // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
+        // We only replace ALL 16 channels at once
         // FIXME: TO CANCEL, we can try to wrap the whole thing in select(), and the second
         // one cancels when an atomic is set
         // Apparently we need to use signals to cancel the tasks (can use the xCore
         // channel from above)
         // https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/orchestrate_tasks.rs
-        spawner.spawn(run_app(1, i, receivers[i])).unwrap();
+        spawner.spawn(run_app(app_id, start_chan)).unwrap();
     }
+
+    let channel_map = scene.channel_map();
+
+    spawner.spawn(x_recv(publishers, channel_map)).unwrap();
 }
 
 #[embassy_executor::main]
@@ -294,7 +308,7 @@ async fn main(spawner: Spawner) {
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| setup_channels(spawner, config));
+            executor1.run(|spawner| setup_channels(spawner, scene));
         },
     );
 
@@ -316,7 +330,8 @@ async fn main(spawner: Spawner) {
 
     tasks::serial::start_uart(&spawner, uart0, uart1).await;
 
-    tasks::leds::start_leds(&spawner, spi1).await;
+    // Disabled for now
+    // tasks::leds::start_leds(&spawner, spi1).await;
 
     tasks::buttons::start_buttons(&spawner, buttons).await;
 

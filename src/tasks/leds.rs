@@ -3,6 +3,7 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals::SPI1;
 use embassy_rp::spi::{self, Spi};
+use embassy_time::Timer;
 use smart_leds::{brightness, RGB8};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -51,13 +52,13 @@ async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>) {
 
     let mut data = [RGB8::default(); NUM_LEDS];
 
-    // loop {
-    //     for j in 0..(256 * 5) {
-    //         for i in 0..NUM_LEDS {
-    //             data[i] = wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
-    //         }
-    //         ws.write(brightness(data.iter().cloned(), 32)).await.ok();
-    //         Timer::after_millis(5).await;
-    //     }
-    // }
+    loop {
+        for j in 0..(256 * 5) {
+            for i in 0..NUM_LEDS {
+                data[i] = wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
+            }
+            ws.write(brightness(data.iter().cloned(), 32)).await.ok();
+            Timer::after_millis(5).await;
+        }
+    }
 }

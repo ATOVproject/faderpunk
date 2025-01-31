@@ -30,7 +30,7 @@ type Buttons = (
     PIN_5,
 );
 
-pub static BUTTON_PRESSED: [AtomicBool; 16] = [const { AtomicBool::new(false) }; 16];
+pub static BUTTON_PRESSED: [AtomicBool; 18] = [const { AtomicBool::new(false) }; 18];
 
 pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
     spawner.spawn(run_buttons(buttons)).unwrap();

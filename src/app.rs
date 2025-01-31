@@ -2,7 +2,7 @@ use core::array;
 
 use defmt::info;
 use embassy_futures::join::join;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, pubsub::Subscriber};
 use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use portable_atomic::Ordering;
@@ -16,7 +16,7 @@ use crate::{
         serial::{UartAction, CHANNEL_UART_TX},
         usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
     },
-    XTxMsg,
+    XTxMsg, CHANS_X,
 };
 
 // FIXME: put this into some util create
@@ -70,25 +70,47 @@ impl<const N: usize> OutJacks<N> {
     }
 }
 
+pub struct Waiter {
+    subscriber: Subscriber<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>,
+}
+
+impl Waiter {
+    pub fn new(
+        subscriber: Subscriber<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>,
+    ) -> Self {
+        Self { subscriber }
+    }
+
+    pub async fn wait_for_fader_change(&mut self, chan: usize) {
+        loop {
+            if let (channel, XTxMsg::FaderChange) = self.subscriber.next_message_pure().await {
+                if chan == channel {
+                    return;
+                }
+            }
+        }
+    }
+    pub async fn wait_for_button_down(&mut self, chan: usize) {
+        loop {
+            if let (channel, XTxMsg::ButtonDown) = self.subscriber.next_message_pure().await {
+                if chan == channel {
+                    return;
+                }
+            }
+        }
+    }
+}
+
 pub struct App<const N: usize> {
     app_id: usize,
     pub channels: [usize; N],
-    rcv_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
 }
 
 impl<const N: usize> App<N> {
-    pub fn new(
-        app_id: usize,
-        start_channel: usize,
-        rcv_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
-    ) -> Self {
+    pub fn new(app_id: usize, start_channel: usize) -> Self {
         // Create an array of all channels numbers that this app is using
         let channels: [usize; N] = array::from_fn(|i| start_channel + i);
-        Self {
-            app_id,
-            channels,
-            rcv_x,
-        }
+        Self { app_id, channels }
     }
 
     pub fn size() -> usize {
@@ -214,12 +236,10 @@ impl<const N: usize> App<N> {
         }
     }
 
-    pub async fn wait_for_fader_change(&self, chan: usize) {
-        // FIXME: Obviously this is wrong as there could be all kinds of messages not just fader
-        // change. Also we need to make use of chan
-        if let XTxMsg::FaderChange = self.rcv_x.receive().await {
-            return;
-        }
+    pub fn make_waiter(&self) -> Waiter {
+        // Subscribers only listen on the start channel of an app
+        let subscriber = CHANS_X[self.channels[0]].subscriber().unwrap();
+        Waiter::new(subscriber)
     }
 
     async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {

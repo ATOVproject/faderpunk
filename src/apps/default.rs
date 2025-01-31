@@ -1,6 +1,6 @@
+use defmt::info;
 use embassy_futures::join::{join, join3};
 use wmidi::{Channel as MidiChannel, ControlFunction, U7};
-use defmt::info;
 
 use crate::app::App;
 
@@ -24,8 +24,9 @@ pub async fn run(app: App<CHANNELS>) {
     };
 
     let fut2 = async {
+        let mut waiter = app.make_waiter();
         loop {
-            app.wait_for_fader_change(0).await;
+            waiter.wait_for_fader_change(0).await;
             let [fader] = app.get_fader_values();
             info!("Moved fader {} to {}", app.channels[0], fader);
             // let cc_chan = U7::from_u8_lossy(102 + app.channels[0] as u8);
