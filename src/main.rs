@@ -363,10 +363,10 @@ async fn main(spawner: Spawner) {
     let fut2 = async {
         loop {
             Timer::after_secs(1).await;
-            let fader0 = MAX_VALUES_FADER[0].load(Ordering::Relaxed);
-            let fader1 = MAX_VALUES_FADER[1].load(Ordering::Relaxed);
-            let fader2 = MAX_VALUES_FADER[2].load(Ordering::Relaxed);
-            info!("FADER VALUES: {} {} {}", fader0, fader1, fader2);
+            // let fader0 = MAX_VALUES_FADER[0].load(Ordering::Relaxed);
+            // let fader1 = MAX_VALUES_FADER[1].load(Ordering::Relaxed);
+            // let fader2 = MAX_VALUES_FADER[2].load(Ordering::Relaxed);
+            // info!("FADER VALUES: {} {} {}", fader0, fader1, fader2);
         }
     };
 
