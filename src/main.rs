@@ -324,7 +324,7 @@ async fn main(spawner: Spawner) {
     tasks::serial::start_uart(&spawner, uart0, uart1).await;
 
     // Disabled for now
-    // tasks::leds::start_leds(&spawner, spi1).await;
+    //tasks::leds::start_leds(&spawner, spi1).await;
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 

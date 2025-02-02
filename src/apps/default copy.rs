@@ -16,21 +16,14 @@ pub async fn run(app: App<CHANNELS>) {
     let glob_muted: Mutex<NoopRawMutex, bool> = Mutex::new(false);
 
     let jacks = app.make_all_out_jacks().await;
-    
-
-    let mut vals: f32 = 0.0;
     let fut1 = async {
         loop {
-
-            app.delay_millis(1).await;
-                let fader = app.get_fader_values();
-                let lfo_speed = fader[0] as f32 * 0.004 + 0.0682;
-                vals = vals + lfo_speed;
-                if vals > 4095.0 {
-                    vals = 0.0;
-                }
-                lfo_pos:[u16; 1] = [vals as u16];
-                jacks.set_values(lfo_pos);            
+            app.delay_millis(10).await;
+            let muted = glob_muted.lock().await;
+            if !*muted {
+                let vals = app.get_fader_values();
+                jacks.set_values(vals);
+            }
         }
     };
 
@@ -43,7 +36,6 @@ pub async fn run(app: App<CHANNELS>) {
             // let cc_chan = U7::from_u8_lossy(102 + app.channels[0] as u8);
             // app.midi_send_cc(MidiChannel::Ch1, ControlFunction(cc_chan), fader)
             //     .await;
-
         }
     };
 
@@ -51,7 +43,12 @@ pub async fn run(app: App<CHANNELS>) {
         let mut waiter = app.make_waiter();
         loop {
             waiter.wait_for_button_down(0).await;
-    
+            info!("Pressed button {}", app.channels[0]);
+            let mut muted = glob_muted.lock().await;
+            *muted = !*muted;
+            if *muted {
+                jacks.set_values([0]);
+            }
         }
     };
 
