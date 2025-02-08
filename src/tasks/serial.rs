@@ -6,6 +6,7 @@ use embassy_rp::uart::{Async, Config, Uart, UartTx};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::Timer;
+// TODO: Use https://docs.rs/midi2/0.7.0/midi2
 use wmidi::MidiMessage;
 use {defmt_rtt as _, panic_probe as _};
 

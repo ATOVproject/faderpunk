@@ -1,4 +1,4 @@
-use crate::{XSender, XTxMsg};
+use crate::{XTxSender, XTxMsg};
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join_array;
@@ -34,11 +34,11 @@ type Buttons = (
 
 pub static BUTTON_PRESSED: [AtomicBool; 18] = [const { AtomicBool::new(false) }; 18];
 
-pub async fn start_buttons(spawner: &Spawner, buttons: Buttons, sender: XSender) {
+pub async fn start_buttons(spawner: &Spawner, buttons: Buttons, sender: XTxSender) {
     spawner.spawn(run_buttons(buttons, sender)).unwrap();
 }
 
-async fn process_button(i: usize, mut button: Input<'_>, sender: &XSender) {
+async fn process_button(i: usize, mut button: Input<'_>, sender: &XTxSender) {
     loop {
         button.wait_for_falling_edge().await;
         if i <= 15 {
@@ -54,7 +54,7 @@ async fn process_button(i: usize, mut button: Input<'_>, sender: &XSender) {
 }
 
 #[embassy_executor::task]
-async fn run_buttons(buttons: Buttons, sender: XSender) {
+async fn run_buttons(buttons: Buttons, sender: XTxSender) {
     let button_futures = [
         process_button(0, Input::new(buttons.0, Pull::Up), &sender),
         process_button(1, Input::new(buttons.1, Pull::Up), &sender),

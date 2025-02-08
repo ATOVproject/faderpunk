@@ -41,7 +41,9 @@ use embassy_time::{Delay, Duration, Timer};
 use portable_atomic::Ordering;
 
 use heapless::Vec;
-use tasks::max::MAX_VALUES_FADER;
+use tasks::leds::LedsAction;
+use tasks::max::{MaxConfig, MAX_VALUES_FADER};
+use wmidi::MidiMessage;
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
@@ -78,21 +80,42 @@ bind_interrupts!(struct Irqs {
     UART1_IRQ => uart::InterruptHandler<UART1>;
 });
 
-pub type XSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
+pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 
+/// Messages from core 0 to core 1
 #[derive(Clone, Copy, Debug, defmt::Format)]
 pub enum XTxMsg {
     ButtonDown,
     FaderChange,
 }
 
+/// Messages from core 1 to core 0
+#[derive(Clone)]
+pub enum XRxMsg {
+    SetLed(LedsAction),
+    MaxPortReconfigure(MaxConfig),
+    // TODO: Can we remove the 'static here?
+    MidiMessage(MidiMessage<'static>),
+}
+
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
-// Collector channel on core 0
+/// Collector channel on core 0
 static CHAN_X_0: StaticCell<Channel<NoopRawMutex, (usize, XTxMsg), 128>> = StaticCell::new();
-static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 20> = Channel::new();
+/// Collector channel on core 1
+static CHAN_X_1: StaticCell<Channel<NoopRawMutex, (usize, XRxMsg), 128>> = StaticCell::new();
+/// Channel from core 0 to core 1
+static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 64> = Channel::new();
+/// Channel from core 1 to core 0
+static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channel::new();
+/// Channel for sending messages to the MAX
+static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxConfig), 64>> = StaticCell::new();
+/// Channel for sending messages to the MIDI bus
+static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, MidiMessage), 64>> = StaticCell::new();
+/// Channel for sending messages to the LEDs
+static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
 // pub static CANCEL_TASKS: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
 #[derive(Debug)]
@@ -159,8 +182,12 @@ impl Scene {
 
 // App slots
 #[embassy_executor::task(pool_size = 16)]
-async fn run_app(number: usize, start_channel: usize) {
-    let runner = run_app_by_id(number, start_channel);
+async fn run_app(
+    number: usize,
+    start_channel: usize,
+    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+) {
+    let runner = run_app_by_id(number, start_channel, sender);
     // TODO: Like this the canceller receiver should be dropped and its slot will be freed
     // let mut canceller = CANCEL_TASKS.receiver().unwrap();
     // select(runner, canceller.changed()).await;
@@ -169,7 +196,7 @@ async fn run_app(number: usize, start_channel: usize) {
 
 // Cross core comms
 #[embassy_executor::task]
-async fn x_recv(
+async fn x_tx(
     publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16],
     channel_map: [usize; 16],
 ) {
@@ -178,6 +205,14 @@ async fn x_recv(
         let start_chan = channel_map[chan];
         let relative_index = chan.wrapping_sub(start_chan);
         publishers[start_chan].publish((relative_index, msg)).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn x_rx(receiver: Receiver<'static, NoopRawMutex, (usize, XRxMsg), 128>) {
+    loop {
+        let msg = receiver.receive().await;
+        CHAN_X_RX.send(msg).await;
     }
 }
 
@@ -218,6 +253,7 @@ async fn x_recv(
 fn setup_channels(spawner: Spawner, scene: Scene) {
     let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
         array_init(|i| CHANS_X[i].publisher().unwrap());
+    let chan_x_1 = CHAN_X_1.init(Channel::new());
 
     for (app_id, start_chan) in scene.apps_iter() {
         // TODO: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
@@ -227,12 +263,15 @@ fn setup_channels(spawner: Spawner, scene: Scene) {
         // Apparently we need to use signals to cancel the tasks (can use the xCore
         // channel from above)
         // https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/orchestrate_tasks.rs
-        spawner.spawn(run_app(app_id, start_chan)).unwrap();
+        spawner
+            .spawn(run_app(app_id, start_chan, chan_x_1.sender()))
+            .unwrap();
     }
 
     let channel_map = scene.channel_map();
 
-    spawner.spawn(x_recv(publishers, channel_map)).unwrap();
+    spawner.spawn(x_tx(publishers, channel_map)).unwrap();
+    spawner.spawn(x_rx(chan_x_1.receiver())).unwrap();
 }
 
 #[embassy_executor::main]
@@ -306,6 +345,9 @@ async fn main(spawner: Spawner) {
     );
 
     let chan_x_0 = CHAN_X_0.init(Channel::new());
+    let chan_max = CHAN_MAX.init(Channel::new());
+    let chan_midi = CHAN_MIDI.init(Channel::new());
+    let chan_leds = CHAN_LEDS.init(Channel::new());
 
     // spawner.spawn(read_clock(ports.port17)).unwrap();
 
@@ -316,15 +358,15 @@ async fn main(spawner: Spawner) {
         mux_pins,
         p.PIN_17,
         chan_x_0.sender(),
+        chan_max.receiver(),
     )
     .await;
 
-    tasks::usb::start_usb(&spawner, p.USB).await;
+    tasks::usb::start_usb(&spawner, p.USB, chan_midi.receiver()).await;
 
     tasks::serial::start_uart(&spawner, uart0, uart1).await;
 
-    // Disabled for now
-    // tasks::leds::start_leds(&spawner, spi1).await;
+    tasks::leds::start_leds(&spawner, spi1, chan_leds.receiver()).await;
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
@@ -362,11 +404,15 @@ async fn main(spawner: Spawner) {
 
     let fut2 = async {
         loop {
-            Timer::after_secs(1).await;
-            // let fader0 = MAX_VALUES_FADER[0].load(Ordering::Relaxed);
-            // let fader1 = MAX_VALUES_FADER[1].load(Ordering::Relaxed);
-            // let fader2 = MAX_VALUES_FADER[2].load(Ordering::Relaxed);
-            // info!("FADER VALUES: {} {} {}", fader0, fader1, fader2);
+            let (chan, msg) = CHAN_X_RX.receive().await;
+            match msg {
+                XRxMsg::MaxPortReconfigure(max_config) => chan_max.send((chan, max_config)).await,
+                XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
+                XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
+            }
+
+            // FIXME: Next steps: create a channel for each component (LEDs, MAX, MIDI) and then
+            // listen on CHAN_X_RX on core 0, then send a message to the appropriate channels
         }
     };
 

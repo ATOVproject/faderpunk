@@ -2,7 +2,11 @@ use core::array;
 
 use defmt::info;
 use embassy_futures::join::join;
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, pubsub::Subscriber};
+use embassy_sync::{
+    blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
+    channel::Sender,
+    pubsub::Subscriber,
+};
 use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use portable_atomic::Ordering;
@@ -10,13 +14,12 @@ use wmidi::{Channel, ControlFunction, MidiMessage, U7};
 
 use crate::{
     tasks::{
-        max::{
-            MaxConfig, MAX_CHANNEL_RECONFIGURE, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
-        },
+        leds::{LedsAction, LED_VALUES},
+        max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         serial::{UartAction, CHANNEL_UART_TX},
-        usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
+        usb::USB_CONNECTED,
     },
-    XTxMsg, CHANS_X,
+    XRxMsg, XTxMsg, CHANS_X,
 };
 
 // TODO: put this into some util create
@@ -104,13 +107,22 @@ impl Waiter {
 pub struct App<const N: usize> {
     app_id: usize,
     pub channels: [usize; N],
+    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 }
 
 impl<const N: usize> App<N> {
-    pub fn new(app_id: usize, start_channel: usize) -> Self {
+    pub fn new(
+        app_id: usize,
+        start_channel: usize,
+        sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    ) -> Self {
         // Create an array of all channels numbers that this app is using
         let channels: [usize; N] = array::from_fn(|i| start_channel + i);
-        Self { app_id, channels }
+        Self {
+            app_id,
+            channels,
+            sender,
+        }
     }
 
     pub fn size() -> usize {
@@ -205,6 +217,15 @@ impl<const N: usize> App<N> {
         Timer::after_secs(secs).await
     }
 
+    // TODO: Currently only the setting of raw values is possible
+    // TODO: Also add a custom flush() method and so on
+    pub async fn set_led(&self, channel: usize, val: u32) {
+        LED_VALUES[self.channels[channel]].store(val, Ordering::Relaxed);
+        self.sender
+            .send((self.channels[channel], XRxMsg::SetLed(LedsAction::Flush)))
+            .await;
+    }
+
     // pub async fn led_blink(&self, chan: usize, duration: u64) {
     //     // TODO: We're doing this a lot, let's abstract this
     //     if chan > N - 1 {
@@ -227,7 +248,8 @@ impl<const N: usize> App<N> {
         let uart_fut = CHANNEL_UART_TX.send(UartAction::SendMidiMsg(msg.to_owned()));
         if USB_CONNECTED.load(Ordering::Relaxed) {
             join(
-                CHANNEL_USB_TX.send(UsbAction::SendMidiMsg(msg.to_owned())),
+                self.sender
+                    .send((self.channels[0], XRxMsg::MidiMessage(msg.to_owned()))),
                 uart_fut,
             )
             .await;
@@ -243,7 +265,8 @@ impl<const N: usize> App<N> {
     }
 
     async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
-        let action = (channel, config);
-        MAX_CHANNEL_RECONFIGURE.send(action).await
+        self.sender
+            .send((channel, XRxMsg::MaxPortReconfigure(config)))
+            .await
     }
 }

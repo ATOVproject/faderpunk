@@ -2,14 +2,14 @@ use core::sync::atomic::AtomicBool;
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::{join4, join5};
+use embassy_futures::join::join5;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::Receiver;
 use embassy_time::{with_timeout, Duration};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State as CdcAcmState};
-use embassy_usb::class::midi::{MidiClass, Receiver, Sender};
+use embassy_usb::class::midi::{MidiClass, Receiver as MidiReceiver, Sender};
 use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
 use embassy_usb::driver::{Driver, Endpoint, EndpointError, EndpointIn, EndpointOut};
 use embassy_usb::{Builder, Config};
@@ -19,18 +19,17 @@ use wmidi::MidiMessage;
 
 use crate::Irqs;
 
-pub enum UsbAction<'a> {
-    SendMidiMsg(MidiMessage<'a>),
-}
-
-pub static CHANNEL_USB_TX: Channel<CriticalSectionRawMutex, UsbAction, 16> = Channel::new();
+// // TODO: Use the XRx channel for this
+// pub static CHANNEL_USB_TX: Channel<CriticalSectionRawMutex, UsbAction, 16> = Channel::new();
+// type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, MaxConfig), 64>;
+type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, MidiMessage<'static>), 64>;
 pub static USB_CONNECTED: AtomicBool = AtomicBool::new(false);
 
 // This is a randomly generated GUID to allow clients on Windows to find our device
 const DEVICE_INTERFACE_GUIDS: &[&str] = &["{AFB9A6FB-30BA-44BC-9232-806CFC875321}"];
 
-pub async fn start_usb(spawner: &Spawner, usb0: USB) {
-    spawner.spawn(run_usb(usb0)).unwrap();
+pub async fn start_usb(spawner: &Spawner, usb0: USB, x_rx: XRxReceiver) {
+    spawner.spawn(run_usb(usb0, x_rx)).unwrap();
 }
 
 #[derive(Copy, Clone)]
@@ -70,7 +69,7 @@ pub enum CodeIndexNumber {
 }
 
 #[embassy_executor::task]
-async fn run_usb(usb0: USB) {
+async fn run_usb(usb0: USB, x_rx: XRxReceiver) {
     let usb_driver = usb::Driver::new(usb0, Irqs);
     let mut usb_config = Config::new(0xf569, 0x1);
     usb_config.manufacturer = Some("ATOV");
@@ -131,7 +130,7 @@ async fn run_usb(usb0: USB) {
             tx.wait_connection().await;
             USB_CONNECTED.store(true, Ordering::Relaxed);
             log::info!("USB Connection established.");
-            start_usb_midi_tx_loop(&mut tx).await.ok();
+            start_usb_midi_tx_loop(x_rx, &mut tx).await.ok();
             USB_CONNECTED.store(false, Ordering::Relaxed);
             log::info!("USB Connection lost?? Starting over.");
         }
@@ -158,29 +157,34 @@ async fn run_usb(usb0: USB) {
 }
 
 async fn start_usb_midi_tx_loop<'d, T: usb::Instance + 'd>(
+    x_rx: XRxReceiver,
     tx: &mut Sender<'d, usb::Driver<'d, T>>,
 ) -> Result<(), EndpointError> {
     // TODO: THIS DOES NOT WORK WITH SYSEX DATA (can be _VERY_ long)
     let mut buf = [0; 4];
     loop {
-        if let UsbAction::SendMidiMsg(msg) = CHANNEL_USB_TX.receive().await {
-            buf[0] = code_index_number_from_message(&msg) as u8;
-            if msg.copy_to_slice(&mut buf[1..msg.bytes_size() + 1]).is_ok() {
-                with_timeout(
-                    // 1ms of timeout should be enough for USB host to have acknowledged
-                    Duration::from_millis(1),
-                    tx.write_packet(&buf[..msg.bytes_size() + 1]),
-                )
-                .await
-                // We're not handling any lost midi messages (for now)
-                .ok();
-            }
+        let (_chan, midi_msg) = x_rx.receive().await;
+        buf[0] = code_index_number_from_message(&midi_msg) as u8;
+        if midi_msg
+            .copy_to_slice(&mut buf[1..midi_msg.bytes_size() + 1])
+            .is_ok()
+        {
+            with_timeout(
+                // 1ms of timeout should be enough for USB host to have acknowledged
+                Duration::from_millis(1),
+                tx.write_packet(&buf[..midi_msg.bytes_size() + 1]),
+            )
+            .await
+            // We're not handling any lost midi messages (for now)
+            .ok();
         }
     }
 }
 
+// TODO: Try to merge USB and serial midi into just one midi module somehow
+// Then we can share the communication channels
 async fn start_usb_midi_rx_loop<'d, T: usb::Instance + 'd>(
-    rx: &mut Receiver<'d, usb::Driver<'d, T>>,
+    rx: &mut MidiReceiver<'d, usb::Driver<'d, T>>,
 ) -> Result<(), EndpointError> {
     let mut buf = [0; 64];
     loop {
