@@ -1,19 +1,28 @@
-<html>
-    <head>
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>Phoenix 16 configuration</title>
-    </head>
-    <body>
-        <h1>Hello World</h1>
-        <script type="text/javascript">
-            window.connect_phoenix = async () => {
-                const device = await navigator.usb.requestDevice({ filters: [{ vendorId: 0xf569 }] });
-                await device.open();
-                await device.claimInterface(1);
-                device.transferIn(1, 64).then(data => console.log(data));
-                await device.transferOut(1, new Uint8Array([1,2,3]));
-            };
-        </script>
-        <button onclick="window.connect_phoenix()">Connect Phoenix 16</button>
-    </body>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + HeroUI</title>
+    <meta key="title" content="Vite + HeroUI" property="og:title" />
+    <meta
+      content="Make beautiful websites regardless of your design experience."
+      property="og:description"
+    />
+    <meta
+      content="Make beautiful websites regardless of your design experience."
+      name="description"
+    />
+    <meta
+      key="viewport"
+      content="viewport-fit=cover, width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"
+      name="viewport"
+    />
+    <link href="/favicon.ico" rel="icon" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
