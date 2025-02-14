@@ -75,8 +75,10 @@ async fn run_transports(
     let usb_driver = usb::Driver::new(usb0, Irqs);
     let mut usb_config = UsbConfig::new(0xf569, 0x1);
     usb_config.manufacturer = Some("ATOV");
-    usb_config.product = Some("Phoenix16");
+    usb_config.product = Some("Fader Punk");
     usb_config.serial_number = Some("12345678");
+    // 0x0 (Major) | 0x1 (Minor) | 0x0 (Patch)
+    usb_config.device_release = 0x010;
     usb_config.max_power = 500;
     // usb_config.max_packet_size_0 = 64;
     usb_config.device_class = 0xEF;
