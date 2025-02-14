@@ -46,7 +46,7 @@ pio-proc = "0.2"
 portable-atomic = { version = "1.7", features = ["critical-section"] }
 sequential-storage = "4.0"
 smart-leds = "0.4"
-static_cell = "2.1"
+static_cell = "2.1.0"
 wmidi = { version = "4.0", default-features = false }
 async-button = { git = "https://github.com/ATOVproject/async-button", branch = "master" }
 array-init = "2.1.0"

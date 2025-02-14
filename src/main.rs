@@ -362,9 +362,7 @@ async fn main(spawner: Spawner) {
     )
     .await;
 
-    tasks::usb::start_usb(&spawner, p.USB, chan_midi.receiver()).await;
-
-    tasks::serial::start_uart(&spawner, uart0, uart1).await;
+    tasks::transport::start_transports(&spawner, p.USB, uart0, uart1, chan_midi.receiver()).await;
 
     tasks::leds::start_leds(&spawner, spi1, chan_leds.receiver()).await;
 

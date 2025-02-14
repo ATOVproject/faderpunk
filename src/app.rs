@@ -16,8 +16,6 @@ use crate::{
     tasks::{
         leds::{LedsAction, LED_VALUES},
         max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
-        serial::{UartAction, CHANNEL_UART_TX},
-        usb::USB_CONNECTED,
     },
     XRxMsg, XTxMsg, CHANS_X,
 };
@@ -245,17 +243,9 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn send_midi_msg(&self, msg: MidiMessage<'_>) {
-        let uart_fut = CHANNEL_UART_TX.send(UartAction::SendMidiMsg(msg.to_owned()));
-        if USB_CONNECTED.load(Ordering::Relaxed) {
-            join(
-                self.sender
-                    .send((self.channels[0], XRxMsg::MidiMessage(msg.to_owned()))),
-                uart_fut,
-            )
+        self.sender
+            .send((self.channels[0], XRxMsg::MidiMessage(msg.to_owned())))
             .await;
-        } else {
-            uart_fut.await;
-        }
     }
 
     pub fn make_waiter(&self) -> Waiter {
