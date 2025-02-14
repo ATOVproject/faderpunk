@@ -6,11 +6,11 @@ mod macros;
 
 mod app;
 mod apps;
-// FIXME: Remove drivers, put in driver implementation crate
+// TODO: Remove drivers, put in driver implementation crate
 mod drivers;
 mod tasks;
 
-use apps::run_app_by_id;
+use apps::{get_channels, run_app_by_id};
 use async_button::{Button, ButtonConfig, ButtonEvent};
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
@@ -30,20 +30,22 @@ use embassy_rp::{
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
+use embassy_sync::blocking_mutex::raw::{
+    CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex,
+};
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_sync::mutex::Mutex;
+use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::signal::Signal;
 use embassy_time::{Delay, Duration, Timer};
 use portable_atomic::Ordering;
 
-use heapless::binary_heap::Max;
-use heapless::spsc::Queue;
 use heapless::Vec;
-use tasks::max::MAX_VALUES_FADER;
+use tasks::leds::LedsAction;
+use tasks::max::{MaxConfig, MAX_VALUES_FADER};
+use wmidi::MidiMessage;
 use {defmt_rtt as _, panic_probe as _};
 
-// FIXME: Can we use embassy LazyLock here (embassy-sync 0.7 prob)
 use static_cell::StaticCell;
 
 use array_init::array_init;
@@ -78,50 +80,102 @@ bind_interrupts!(struct Irqs {
     UART1_IRQ => uart::InterruptHandler<UART1>;
 });
 
-pub type XSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
+pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 
+/// Messages from core 0 to core 1
 #[derive(Clone, Copy, Debug, defmt::Format)]
 pub enum XTxMsg {
+    ButtonDown,
     FaderChange,
 }
 
+/// Messages from core 1 to core 0
+#[derive(Clone)]
+pub enum XRxMsg {
+    SetLed(LedsAction),
+    MaxPortReconfigure(MaxConfig),
+    // TODO: Can we remove the 'static here?
+    MidiMessage(MidiMessage<'static>),
+}
+
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-static mut CORE1_STACK: Stack<4096> = Stack::new();
-static CHANS_X: StaticCell<[Channel<NoopRawMutex, XTxMsg, 128>; 16]> = StaticCell::new();
-// Collector channel on core 0
+static mut CORE1_STACK: Stack<131_072> = Stack::new();
+pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
+    [const { PubSubChannel::new() }; 16];
+/// Collector channel on core 0
 static CHAN_X_0: StaticCell<Channel<NoopRawMutex, (usize, XTxMsg), 128>> = StaticCell::new();
-static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 20> = Channel::new();
-// pub static CHAN_X_TX: Mutex<CriticalSectionRawMutex, Queue<(usize, XTxMsg), 128>> =
-//     Mutex::new(Queue::new());
-// pub static SIG_X_TX: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+/// Collector channel on core 1
+static CHAN_X_1: StaticCell<Channel<NoopRawMutex, (usize, XRxMsg), 128>> = StaticCell::new();
+/// Channel from core 0 to core 1
+static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 64> = Channel::new();
+/// Channel from core 1 to core 0
+static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channel::new();
+/// Channel for sending messages to the MAX
+static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxConfig), 64>> = StaticCell::new();
+/// Channel for sending messages to the MIDI bus
+static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, MidiMessage), 64>> = StaticCell::new();
+/// Channel for sending messages to the LEDs
+static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
 // pub static CANCEL_TASKS: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
+#[derive(Debug)]
 enum SceneErr {
     AppSize,
     LayoutSize,
 }
 
+/// Scene creates a proper scene vec from just a slice of app ids
+/// The vec contains a tupel of app ids and their corresponding size of chans
 struct Scene {
-    apps: Vec<usize, 16>,
+    apps: Vec<(usize, usize), 16>,
 }
 
 impl Scene {
-    fn try_from(apps: &[usize]) -> Result<Self, SceneErr> {
-        if apps.len() > 16 {
+    fn try_from(app_ids: &[usize]) -> Result<Self, SceneErr> {
+        if app_ids.len() > 16 {
             return Err(SceneErr::AppSize);
         }
+        // Create vec of (app_id, size). Will remove invalid app ids
+        let apps: Vec<(usize, usize), 16> = app_ids
+            .iter()
+            .filter_map(|&id| {
+                if let Some(size) = get_channels(id) {
+                    return Some((id, size));
+                }
+                None
+            })
+            .collect::<Vec<(usize, usize), 16>>();
         // Check if apps fit into the layout
-        let count = apps.iter().copied().reduce(|acc, e| acc + e).unwrap();
+        let count = apps.iter().copied().fold(0, |acc, (_, size)| acc + size);
         if count > 16 {
             return Err(SceneErr::LayoutSize);
         }
-        let mut scene = Self { apps: Vec::new() };
-        scene.apps.copy_from_slice(apps);
-        Ok(scene)
+        Ok(Self { apps })
+    }
+
+    fn apps_iter(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.apps.iter().scan(0, |start_channel, &(app_id, size)| {
+            let result = Some((app_id, *start_channel));
+            *start_channel += size;
+            result
+        })
+    }
+
+    // Creates an array which returns the app's start channel for every channel
+    fn channel_map(&self) -> [usize; 16] {
+        let mut result = [0; 16];
+
+        for (_, start_chan) in self.apps_iter() {
+            let size = 16 - start_chan;
+            let end = (start_chan + size).min(16);
+            result[start_chan..end].fill(start_chan);
+        }
+
+        result
     }
 }
 
-// FIXME: create config builder to create full 16 channel layout with various apps
+// TODO: create config builder to create full 16 channel layout with various apps
 // The app at some point needs access to the MAX to configure it. Maybe this can happen via
 // CHANNEL?
 // Builder config needs to be serializable to store in eeprom
@@ -131,10 +185,10 @@ impl Scene {
 async fn run_app(
     number: usize,
     start_channel: usize,
-    chan_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
+    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 ) {
-    let runner = run_app_by_id(number, start_channel, chan_x);
-    // FIXME: Like this the caneller receiver should be dropped and its slot will be freed
+    let runner = run_app_by_id(number, start_channel, sender);
+    // TODO: Like this the canceller receiver should be dropped and its slot will be freed
     // let mut canceller = CANCEL_TASKS.receiver().unwrap();
     // select(runner, canceller.changed()).await;
     runner.await;
@@ -142,12 +196,23 @@ async fn run_app(
 
 // Cross core comms
 #[embassy_executor::task]
-async fn x_recv(senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16]) {
+async fn x_tx(
+    publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16],
+    channel_map: [usize; 16],
+) {
     loop {
         let (chan, msg) = CHAN_X_TX.receive().await;
-        info!("Sending MSG {} on chan {}", msg, chan);
-        // FIXME: Use try_send here as well
-        // senders[chan].send(msg).await;
+        let start_chan = channel_map[chan];
+        let relative_index = chan.wrapping_sub(start_chan);
+        publishers[start_chan].publish((relative_index, msg)).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn x_rx(receiver: Receiver<'static, NoopRawMutex, (usize, XRxMsg), 128>) {
+    loop {
+        let msg = receiver.receive().await;
+        CHAN_X_RX.send(msg).await;
     }
 }
 
@@ -182,6 +247,32 @@ async fn x_recv(senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16]) {
 //         }
 //     }
 // }
+
+// TODO: We can not exchange channels for others. We have to re-run this whole
+// function (which is fine?)
+fn setup_channels(spawner: Spawner, scene: Scene) {
+    let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
+        array_init(|i| CHANS_X[i].publisher().unwrap());
+    let chan_x_1 = CHAN_X_1.init(Channel::new());
+
+    for (app_id, start_chan) in scene.apps_iter() {
+        // TODO: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
+        // We only replace ALL 16 channels at once
+        // TODO: TO CANCEL, we can try to wrap the whole thing in select(), and the second
+        // one cancels when an atomic is set
+        // Apparently we need to use signals to cancel the tasks (can use the xCore
+        // channel from above)
+        // https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/orchestrate_tasks.rs
+        spawner
+            .spawn(run_app(app_id, start_chan, chan_x_1.sender()))
+            .unwrap();
+    }
+
+    let channel_map = scene.channel_map();
+
+    spawner.spawn(x_tx(publishers, channel_map)).unwrap();
+    spawner.spawn(x_rx(chan_x_1.receiver())).unwrap();
+}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -232,13 +323,7 @@ async fn main(spawner: Spawner) {
         p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
     );
 
-    // FIXME: how do we re-spawn things??
-    // FIXME: for now let's start with an array of app ids and map it to the spawner, also don't
-    // forget to check if the channels fit
-    // FIXME: Create an abstraction that maps the apps to the 16 channels of the device, for the
-    // spawner to spawn
-    // We need something that makes sure that nothing is used twice
-
+    // TODO: how do we re-spawn things??
     // 1) Make sure we can "unspawn" stuff
     // 2) Save all available scenes somewhere (16)
     // 3) Save the current scene index somewhere
@@ -246,42 +331,23 @@ async fn main(spawner: Spawner) {
     //    into ram
     // 5) On scene change, unspawn everything, change current scene, spawn everything again
 
+    // TODO: This config comes from the eeprom. We need a Vec of app numbers
+    // Also do a sanity check here before we pass it to the other core
+    let scene = Scene::try_from(&[1; 16]).unwrap();
+
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|sp| {
-                // FIXME: We can not exchange channels for others. We have to re-run this whole
-                // function (which is fine?)
-                //
-                let channels_distribute = CHANS_X.init([const { Channel::new() }; 16]);
-                let senders: [Sender<'static, NoopRawMutex, XTxMsg, 128>; 16] =
-                    array_init(|i| channels_distribute[i].sender());
-                let receivers: [Receiver<'static, NoopRawMutex, XTxMsg, 128>; 16] =
-                    array_init(|i| channels_distribute[i].receiver());
-
-                sp.spawn(x_recv(senders)).unwrap();
-
-                // FIXME: We need to keep track of the number of channels that all apps are using
-                // and assign only one receiver to each of them
-                // run_app could return the number of channels it occupies
-
-                // FIXME: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
-                // We only replace ALL 16 channels at once
-                for i in 0..16 {
-                    // FIXME: TO CANCEL, we can try to wrap the whole thing in select(), and the second
-                    // one cancels when an atomic is set
-                    // Apparently we need to use signals to cancel the tasks (can use the xCore
-                    // channel from above)
-                    // https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/orchestrate_tasks.rs
-                    sp.spawn(run_app(1, i, receivers[i])).unwrap();
-                }
-            });
+            executor1.run(|spawner| setup_channels(spawner, scene));
         },
     );
 
     let chan_x_0 = CHAN_X_0.init(Channel::new());
+    let chan_max = CHAN_MAX.init(Channel::new());
+    let chan_midi = CHAN_MIDI.init(Channel::new());
+    let chan_leds = CHAN_LEDS.init(Channel::new());
 
     // spawner.spawn(read_clock(ports.port17)).unwrap();
 
@@ -292,16 +358,15 @@ async fn main(spawner: Spawner) {
         mux_pins,
         p.PIN_17,
         chan_x_0.sender(),
+        chan_max.receiver(),
     )
     .await;
 
-    tasks::usb::start_usb(&spawner, p.USB).await;
+    tasks::transport::start_transports(&spawner, p.USB, uart0, uart1, chan_midi.receiver()).await;
 
-    tasks::serial::start_uart(&spawner, uart0, uart1).await;
+    tasks::leds::start_leds(&spawner, spi1, chan_leds.receiver()).await;
 
-    tasks::leds::start_leds(&spawner, spi1).await;
-
-    tasks::buttons::start_buttons(&spawner, buttons).await;
+    tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
@@ -337,11 +402,15 @@ async fn main(spawner: Spawner) {
 
     let fut2 = async {
         loop {
-            Timer::after_secs(1).await;
-            let fader0 = MAX_VALUES_FADER[0].load(Ordering::Relaxed);
-            let fader1 = MAX_VALUES_FADER[1].load(Ordering::Relaxed);
-            let fader2 = MAX_VALUES_FADER[2].load(Ordering::Relaxed);
-            info!("FADER VALUES: {} {} {}", fader0, fader1, fader2);
+            let (chan, msg) = CHAN_X_RX.receive().await;
+            match msg {
+                XRxMsg::MaxPortReconfigure(max_config) => chan_max.send((chan, max_config)).await,
+                XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
+                XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
+            }
+
+            // FIXME: Next steps: create a channel for each component (LEDs, MAX, MIDI) and then
+            // listen on CHAN_X_RX on core 0, then send a message to the appropriate channels
         }
     };
 

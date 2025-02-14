@@ -4,26 +4,22 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-embassy-embedded-hal = { version = "0.2", features = ["defmt"] }
+embassy-embedded-hal = { version = "0.3", features = ["defmt"] }
 embassy-sync = { version = "0.6", features = ["defmt"] }
-embassy-executor = { version = "0.6", features = [
+embassy-executor = { version = "0.7", features = [
   "task-arena-size-98304",
   "arch-cortex-m",
   "executor-thread",
   "executor-interrupt",
   "defmt",
-  "integrated-timers",
 ] }
-embassy-time = { version = "0.3", features = [
+embassy-time = { version = "0.4", features = [
   "defmt",
   "defmt-timestamp-uptime",
 ] }
-embassy-usb = { version = "0.3", features = [
-  "defmt",
-  "max-interface-count-6",
-] }
-embassy-usb-logger = { version = "0.2" }
-embassy-rp = { version = "0.2", features = [
+embassy-usb = { version = "0.4", features = ["defmt", "max-interface-count-6"] }
+embassy-usb-logger = { version = "0.4" }
+embassy-rp = { version = "0.3", features = [
   "defmt",
   "unstable-pac",
   "time-driver",
@@ -48,22 +44,12 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 pio = "0.2"
 pio-proc = "0.2"
 portable-atomic = { version = "1.7", features = ["critical-section"] }
-sequential-storage = "3.0"
+sequential-storage = "4.0"
 smart-leds = "0.4"
-static_cell = "2.1"
+static_cell = "2.1.0"
 wmidi = { version = "4.0", default-features = false }
-async-button = { git = "https://github.com/avsaase/async-button", version = "0.1.0" }
+async-button = { git = "https://github.com/ATOVproject/async-button", branch = "master" }
 array-init = "2.1.0"
-
-[patch.crates-io]
-embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "86578acaa4d4dbed06ed4fcecec25884f6883e82" }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "86578acaa4d4dbed06ed4fcecec25884f6883e82" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "86578acaa4d4dbed06ed4fcecec25884f6883e82" }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "86578acaa4d4dbed06ed4fcecec25884f6883e82" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "86578acaa4d4dbed06ed4fcecec25884f6883e82" }
-embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "86578acaa4d4dbed06ed4fcecec25884f6883e82" }
-embassy-usb-driver = { git = "https://github.com/embassy-rs/embassy", rev = "86578acaa4d4dbed06ed4fcecec25884f6883e82" }
-embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", rev = "86578acaa4d4dbed06ed4fcecec25884f6883e82" }
 
 # release
 [profile.release]

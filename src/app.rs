@@ -2,7 +2,11 @@ use core::array;
 
 use defmt::info;
 use embassy_futures::join::join;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
+use embassy_sync::{
+    blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
+    channel::Sender,
+    pubsub::Subscriber,
+};
 use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use portable_atomic::Ordering;
@@ -10,18 +14,13 @@ use wmidi::{Channel, ControlFunction, MidiMessage, U7};
 
 use crate::{
     tasks::{
-        leds::{LedsAction, CHANNEL_LEDS},
-        max::{
-            MaxConfig, MAX_CHANNEL_RECONFIGURE, MAX_VALUES_ADC, MAX_VALUES_DAC,
-            MAX_VALUES_FADER,
-        },
-        serial::{UartAction, CHANNEL_UART_TX},
-        usb::{UsbAction, CHANNEL_USB_TX, USB_CONNECTED},
+        leds::{LedsAction, LED_VALUES},
+        max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
-    XTxMsg,
+    XRxMsg, XTxMsg, CHANS_X,
 };
 
-// FIXME: put this into some util create
+// TODO: put this into some util create
 fn u16_to_u7(value: u16) -> U7 {
     U7::from_u8_lossy(((value as u32 * 127) / 4095) as u8)
 }
@@ -72,24 +71,55 @@ impl<const N: usize> OutJacks<N> {
     }
 }
 
+pub struct Waiter {
+    subscriber: Subscriber<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>,
+}
+
+impl Waiter {
+    pub fn new(
+        subscriber: Subscriber<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>,
+    ) -> Self {
+        Self { subscriber }
+    }
+
+    pub async fn wait_for_fader_change(&mut self, chan: usize) {
+        loop {
+            if let (channel, XTxMsg::FaderChange) = self.subscriber.next_message_pure().await {
+                if chan == channel {
+                    return;
+                }
+            }
+        }
+    }
+    pub async fn wait_for_button_down(&mut self, chan: usize) {
+        loop {
+            if let (channel, XTxMsg::ButtonDown) = self.subscriber.next_message_pure().await {
+                if chan == channel {
+                    return;
+                }
+            }
+        }
+    }
+}
+
 pub struct App<const N: usize> {
     app_id: usize,
     pub channels: [usize; N],
-    rcv_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
+    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 }
 
 impl<const N: usize> App<N> {
     pub fn new(
         app_id: usize,
         start_channel: usize,
-        rcv_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
+        sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
     ) -> Self {
         // Create an array of all channels numbers that this app is using
         let channels: [usize; N] = array::from_fn(|i| start_channel + i);
         Self {
             app_id,
             channels,
-            rcv_x,
+            sender,
         }
     }
 
@@ -105,7 +135,7 @@ impl<const N: usize> App<N> {
         buf
     }
 
-    // FIXME: We should also probably make sure that people do not reconfigure the jacks within the
+    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
     // app (throw error or something)
     pub async fn make_in_jack(&self, chan: usize) -> InJack {
         if chan > N - 1 {
@@ -185,16 +215,25 @@ impl<const N: usize> App<N> {
         Timer::after_secs(secs).await
     }
 
-    pub async fn led_blink(&self, chan: usize, duration: u64) {
-        // TODO: We're doing this a lot, let's abstract this
-        if chan > N - 1 {
-            panic!("Not a valid channel in this app");
-        }
-        let channel = self.channels[chan];
-        CHANNEL_LEDS
-            .send((channel, LedsAction::Blink(duration)))
+    // TODO: Currently only the setting of raw values is possible
+    // TODO: Also add a custom flush() method and so on
+    pub async fn set_led(&self, channel: usize, val: u32) {
+        LED_VALUES[self.channels[channel]].store(val, Ordering::Relaxed);
+        self.sender
+            .send((self.channels[channel], XRxMsg::SetLed(LedsAction::Flush)))
             .await;
     }
+
+    // pub async fn led_blink(&self, chan: usize, duration: u64) {
+    //     // TODO: We're doing this a lot, let's abstract this
+    //     if chan > N - 1 {
+    //         panic!("Not a valid channel in this app");
+    //     }
+    //     let channel = self.channels[chan];
+    //     CHANNEL_LEDS
+    //         .send((channel, LedsAction::Blink(duration)))
+    //         .await;
+    // }
 
     // TODO: This is a short-hand function that should also send the msg via TRS
     // Create and use a function called midi_send_both and use it here
@@ -204,28 +243,20 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn send_midi_msg(&self, msg: MidiMessage<'_>) {
-        let uart_fut = CHANNEL_UART_TX.send(UartAction::SendMidiMsg(msg.to_owned()));
-        if USB_CONNECTED.load(Ordering::Relaxed) {
-            join(
-                CHANNEL_USB_TX.send(UsbAction::SendMidiMsg(msg.to_owned())),
-                uart_fut,
-            )
+        self.sender
+            .send((self.channels[0], XRxMsg::MidiMessage(msg.to_owned())))
             .await;
-        } else {
-            uart_fut.await;
-        }
     }
 
-    pub async fn wait_for_fader_change(&self, chan: usize) {
-        // FIXME: Obviously this is wrong as there could be all kinds of messages not just fader
-        // change. Also we need to make use of chan
-        if let XTxMsg::FaderChange = self.rcv_x.receive().await {
-            return;
-        }
+    pub fn make_waiter(&self) -> Waiter {
+        // Subscribers only listen on the start channel of an app
+        let subscriber = CHANS_X[self.channels[0]].subscriber().unwrap();
+        Waiter::new(subscriber)
     }
 
     async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
-        let action = (channel, config);
-        MAX_CHANNEL_RECONFIGURE.send(action).await
+        self.sender
+            .send((channel, XRxMsg::MaxPortReconfigure(config)))
+            .await
     }
 }

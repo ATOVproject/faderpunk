@@ -5,20 +5,19 @@ macro_rules! register_apps {
         )*
 
         use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-        use embassy_sync::channel::Receiver;
-        use crate::XTxMsg;
-
+        use embassy_sync::channel::Sender;
+        use crate::XRxMsg;
 
         pub async fn run_app_by_id(
             app_id: usize,
             start_channel: usize,
-            chan_x: Receiver<'static, NoopRawMutex, XTxMsg, 128>,
+            sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
         ) {
             info!("Running app {}", app_id);
             match app_id {
                 $(
                     $id => {
-                        let app = App::<{ $app_mod::CHANNELS }>::new(app_id, start_channel, chan_x);
+                        let app = App::<{ $app_mod::CHANNELS }>::new(app_id, start_channel, sender);
                         $app_mod::run(app).await;
                     },
                 )*
