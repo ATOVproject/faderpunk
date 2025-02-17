@@ -7,7 +7,6 @@ mod macros;
 mod app;
 mod apps;
 // TODO: Remove drivers, put in driver implementation crate
-mod drivers;
 mod tasks;
 
 use apps::{get_channels, run_app_by_id};

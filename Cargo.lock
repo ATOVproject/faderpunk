@@ -1017,9 +1017,10 @@ dependencies = [
  "pio-proc",
  "portable-atomic",
  "sequential-storage",
- "smart-leds",
+ "smart-leds-trait",
  "static_cell",
  "wmidi",
+ "ws2812-async",
 ]
 
 [[package]]
@@ -1326,9 +1327,9 @@ dependencies = [
 
 [[package]]
 name = "smart-leds-trait"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bc64ee02bbbf469603016df746c0ed224f263280b6ebb49b7ebadbff375c572"
+checksum = "edeb89c73244414bb0568611690dd095b2358b3fda5bae65ad784806cca00157"
 dependencies = [
  "rgb",
 ]
@@ -1670,6 +1671,16 @@ name = "wmidi"
 version = "4.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e55f35b40ad0178422d06e9ba845041baf2faf04627b91fde928d0f6a21c712"
+
+[[package]]
+name = "ws2812-async"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c5ad5e4bdc121601e401fdf7271b312dc0fa066ba7d1d6a899e65b3a3b723d"
+dependencies = [
+ "embedded-hal-async",
+ "smart-leds-trait",
+]
 
 [[package]]
 name = "zerocopy"
