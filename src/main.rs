@@ -37,12 +37,12 @@ use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::signal::Signal;
 use embassy_sync::watch::{Receiver as WatchReceiver, Watch};
 use embassy_time::{Delay, Duration, Timer};
+use midi2::channel_voice1::ChannelVoice1;
 use portable_atomic::{AtomicBool, Ordering};
 
 use heapless::Vec;
 use tasks::leds::LedsAction;
 use tasks::max::{MaxConfig, MAX_VALUES_FADER};
-use wmidi::MidiMessage;
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
@@ -93,8 +93,7 @@ pub enum XTxMsg {
 pub enum XRxMsg {
     SetLed(LedsAction),
     MaxPortReconfigure(MaxConfig),
-    // TODO: Can we remove the 'static here?
-    MidiMessage(MidiMessage<'static>),
+    MidiMessage(ChannelVoice1<[u8; 3]>),
 }
 
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
@@ -113,7 +112,8 @@ static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channe
 /// Channel for sending messages to the MAX
 static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxConfig), 64>> = StaticCell::new();
 /// Channel for sending messages to the MIDI bus
-static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, MidiMessage), 64>> = StaticCell::new();
+static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, ChannelVoice1<[u8; 3]>), 64>> =
+    StaticCell::new();
 /// Channel for sending messages to the LEDs
 static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
 /// Tasks (apps) that are currently running (number 17 is the publisher task)

@@ -50,6 +50,7 @@ static_cell = "2.1.0"
 wmidi = { version = "4.0", default-features = false }
 array-init = "2.1.0"
 ws2812-async = "0.3.0"
+midi2 = { version = "0.7.0", default-features = false, features = ["channel-voice2", "channel-voice1"] }
 
 # release
 [profile.release]

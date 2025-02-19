@@ -1,7 +1,6 @@
 use defmt::info;
 use embassy_futures::join::join3;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use wmidi::{Channel as MidiChannel, ControlFunction, U7};
 
 use crate::app::App;
 
@@ -33,9 +32,7 @@ pub async fn run(app: App<CHANNELS>) {
             waiter.wait_for_fader_change(0).await;
             let [fader] = app.get_fader_values();
             info!("Moved fader {} to {}", app.channels[0], fader);
-            // let cc_chan = U7::from_u8_lossy(102 + app.channels[0] as u8);
-            // app.midi_send_cc(MidiChannel::Ch1, ControlFunction(cc_chan), fader)
-            //     .await;
+            // app.midi_send_cc(0, fader).await;
         }
     };
 

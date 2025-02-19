@@ -288,6 +288,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive_more"
+version = "0.99.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3da29a38df43d6f156149c9b43ded5e018ddff2a855cf2cfd62e8cd7d079c69f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.89",
+]
+
+[[package]]
 name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -863,6 +874,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
+name = "midi2"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e85b5f4b0ca082a51be5c50c046e50049894c67a09a2b4b7b7eaa03280086f1"
+dependencies = [
+ "derive_more",
+ "fixed",
+ "midi2_proc",
+ "ux",
+]
+
+[[package]]
+name = "midi2_proc"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9045b9fd56bbd7a6ed0977f5ca5911ea21d175035c7ca0ea097abd8c1abea2fe"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.89",
+]
+
+[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1000,6 +1034,7 @@ dependencies = [
  "heapless",
  "log",
  "max11300",
+ "midi2",
  "panic-probe",
  "pio",
  "pio-proc",
@@ -1507,6 +1542,12 @@ dependencies = [
  "syn 1.0.109",
  "usbd-hid-descriptors",
 ]
+
+[[package]]
+name = "ux"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b59fc5417e036e53226bbebd90196825d358624fd5577432c4e486c95b1b096"
 
 [[package]]
 name = "vcell"
