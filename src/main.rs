@@ -36,8 +36,9 @@ use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_sync::mutex::Mutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::signal::Signal;
+use embassy_sync::watch::{Receiver as WatchReceiver, Watch};
 use embassy_time::{Delay, Duration, Timer};
-use portable_atomic::Ordering;
+use portable_atomic::{AtomicBool, Ordering};
 
 use heapless::Vec;
 use tasks::leds::LedsAction;
@@ -99,6 +100,7 @@ pub enum XRxMsg {
 
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
+pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, [usize; 16], 18> = Watch::new();
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
 /// Collector channel on core 0
@@ -115,7 +117,8 @@ static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxConfig), 64>> = Sta
 static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, MidiMessage), 64>> = StaticCell::new();
 /// Channel for sending messages to the LEDs
 static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
-// pub static CANCEL_TASKS: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
+/// Tasks (apps) that are currently running (number 17 is the publisher task)
+static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 
 #[derive(Debug)]
 enum SceneErr {
@@ -186,25 +189,43 @@ async fn run_app(
     start_channel: usize,
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 ) {
-    let runner = run_app_by_id(number, start_channel, sender);
-    // TODO: Like this the canceller receiver should be dropped and its slot will be freed
-    // let mut canceller = CANCEL_TASKS.receiver().unwrap();
-    // select(runner, canceller.changed()).await;
-    runner.await;
+    // INFO: This _should_ be properly dropped when task ends
+    let mut cancel_receiver = WATCH_SCENE_SET.receiver().unwrap();
+    // FIXME: Is the first value always new?
+    let _ = cancel_receiver.changed().await;
+
+    let run_app_fut = async {
+        CORE1_TASKS[start_channel].store(true, Ordering::Relaxed);
+        run_app_by_id(number, start_channel, sender).await;
+    };
+
+    select(run_app_fut, cancel_receiver.changed()).await;
+    CORE1_TASKS[start_channel].store(false, Ordering::Relaxed);
+    info!("App {} on channel {} stopped", number, start_channel)
 }
 
 // Cross core comms
 #[embassy_executor::task]
-async fn x_tx(
-    publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16],
-    channel_map: [usize; 16],
-) {
-    loop {
-        let (chan, msg) = CHAN_X_TX.receive().await;
-        let start_chan = channel_map[chan];
-        let relative_index = chan.wrapping_sub(start_chan);
-        publishers[start_chan].publish((relative_index, msg)).await;
-    }
+async fn x_tx(channel_map: [usize; 16]) {
+    // INFO: This _should_ be properly dropped when task ends
+    let mut cancel_receiver = WATCH_SCENE_SET.receiver().unwrap();
+    // FIXME: Is the first value always new?
+    let _ = cancel_receiver.changed().await;
+    let x_tx_fut = async {
+        // INFO: These _should_ all be properly dropped when task ends
+        let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
+            array_init(|i| CHANS_X[i].publisher().unwrap());
+        CORE1_TASKS[16].store(true, Ordering::Relaxed);
+        loop {
+            let (chan, msg) = CHAN_X_TX.receive().await;
+            let start_chan = channel_map[chan];
+            let relative_index = chan.wrapping_sub(start_chan);
+            publishers[start_chan].publish((relative_index, msg)).await;
+        }
+    };
+
+    select(x_tx_fut, cancel_receiver.changed()).await;
+    CORE1_TASKS[16].store(false, Ordering::Relaxed);
 }
 
 #[embassy_executor::task]
@@ -247,30 +268,44 @@ async fn x_rx(receiver: Receiver<'static, NoopRawMutex, (usize, XRxMsg), 128>) {
 //     }
 // }
 
-// TODO: We can not exchange channels for others. We have to re-run this whole
-// function (which is fine?)
-fn setup_channels(spawner: Spawner, scene: Scene) {
-    let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
-        array_init(|i| CHANS_X[i].publisher().unwrap());
+// fn cancel_tasks()
+
+#[embassy_executor::task]
+async fn main_core1(spawner: Spawner) {
     let chan_x_1 = CHAN_X_1.init(Channel::new());
-
-    for (app_id, start_chan) in scene.apps_iter() {
-        // TODO: Use AtomicU16 to cancel tasks (break out when bit for channel is high)
-        // We only replace ALL 16 channels at once
-        // TODO: TO CANCEL, we can try to wrap the whole thing in select(), and the second
-        // one cancels when an atomic is set
-        // Apparently we need to use signals to cancel the tasks (can use the xCore
-        // channel from above)
-        // https://github.com/embassy-rs/embassy/blob/main/examples/rp/src/bin/orchestrate_tasks.rs
-        spawner
-            .spawn(run_app(app_id, start_chan, chan_x_1.sender()))
-            .unwrap();
-    }
-
-    let channel_map = scene.channel_map();
-
-    spawner.spawn(x_tx(publishers, channel_map)).unwrap();
     spawner.spawn(x_rx(chan_x_1.receiver())).unwrap();
+
+    let mut receiver_scene = WATCH_SCENE_SET.receiver().unwrap();
+
+    loop {
+        let scene_arr = receiver_scene.changed().await;
+
+        // Check if all tasks are properly exited
+        loop {
+            if CORE1_TASKS.iter().all(|val| !val.load(Ordering::Relaxed)) {
+                break;
+            }
+            // yield to give apps time to close
+            Timer::after_millis(5).await;
+        }
+
+        let scene = Scene::try_from(&scene_arr).unwrap();
+        let channel_map = scene.channel_map();
+        spawner
+            // INFO: The next two _should_ be dropped properly when the task exits
+            .spawn(x_tx(channel_map))
+            .unwrap();
+        for (app_id, start_chan) in scene.apps_iter() {
+            spawner
+                .spawn(run_app(
+                    app_id,
+                    start_chan,
+                    // INFO: This _should_ be dropped properly when the task exits
+                    chan_x_1.sender(),
+                ))
+                .unwrap();
+        }
+    }
 }
 
 #[embassy_executor::main]
@@ -330,16 +365,14 @@ async fn main(spawner: Spawner) {
     //    into ram
     // 5) On scene change, unspawn everything, change current scene, spawn everything again
 
-    // TODO: This config comes from the eeprom. We need a Vec of app numbers
-    // Also do a sanity check here before we pass it to the other core
-    let scene = Scene::try_from(&[1; 16]).unwrap();
-
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| setup_channels(spawner, scene));
+            executor1.run(|spawner| {
+                spawner.spawn(main_core1(spawner)).unwrap();
+            });
         },
     );
 
@@ -379,6 +412,8 @@ async fn main(spawner: Spawner) {
     let mut data_buffer = [0; 128];
     let mut i = 0_u8;
 
+    let scene_sender = WATCH_SCENE_SET.sender();
+
     let fut = async {
         loop {
             let msg = chan_x_0.receive().await;
@@ -412,6 +447,10 @@ async fn main(spawner: Spawner) {
             // listen on CHAN_X_RX on core 0, then send a message to the appropriate channels
         }
     };
+
+    Timer::after_millis(100).await;
+
+    scene_sender.send([1; 16]);
 
     join(fut, fut2).await;
 

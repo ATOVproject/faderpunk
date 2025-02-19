@@ -9,6 +9,7 @@ import { button as buttonStyles } from "@heroui/theme";
 import { title } from "@/components/primitives";
 import DefaultLayout from "@/layouts/default";
 
+// TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
   const [usbDevice, setUsbDevice] = useState<USBDevice | null>(null);
   const [size, setSize] = useState("5");

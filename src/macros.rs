@@ -13,7 +13,6 @@ macro_rules! register_apps {
             start_channel: usize,
             sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
         ) {
-            info!("Running app {}", app_id);
             match app_id {
                 $(
                     $id => {

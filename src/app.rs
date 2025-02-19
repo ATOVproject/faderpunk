@@ -189,7 +189,7 @@ impl<const N: usize> App<N> {
         }
     }
 
-    // TODO: Here we actually need to reconfigure the jacks
+    // TODO: Store internally which jacks have been configured
     pub async fn make_all_out_jacks(&self) -> OutJacks<N> {
         // TODO: add a configure_jacks function that can configure multiple jacks at once (using
         // the multiport feature of the MAX)
