@@ -10,7 +10,6 @@ mod apps;
 mod tasks;
 
 use apps::{get_channels, run_app_by_id};
-use async_button::{Button, ButtonConfig, ButtonEvent};
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
