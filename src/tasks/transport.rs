@@ -1,6 +1,6 @@
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::join4;
+use embassy_futures::join::{join3, join4};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State as CdcAcmState};
@@ -126,7 +126,7 @@ async fn run_transports(
 
     // TODO: Can/should this be a task?
     // Maybe make all the other futs a task, then return midi_fut from here
-    let midi_fut = start_midi_loops(usb_midi, uart0, uart1, x_rx);
+    // let midi_fut = start_midi_loops(usb_midi, uart0, uart1, x_rx);
 
     // Do some WebUSB transfers.
     let webusb_fut = async {
@@ -137,5 +137,6 @@ async fn run_transports(
         }
     };
 
-    join4(usb.run(), midi_fut, webusb_fut, log_fut).await;
+    join3(usb.run(), webusb_fut, log_fut).await;
+    // join4(usb.run(), midi_fut, webusb_fut, log_fut).await;
 }

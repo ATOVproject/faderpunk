@@ -90,6 +90,10 @@ pub async fn start_midi_loops<'a>(
         let mut buf = [0; 64];
         loop {
             if let Ok(len) = usb_rx.read_packet(&mut buf).await {
+                info!("LEN: {}", len);
+                if len == 0 {
+                    continue;
+                }
                 // Remove USB-Midi CIN
                 let data = &buf[1..len];
                 // Write to MIDI-THRU
