@@ -6,10 +6,8 @@ mod macros;
 
 mod app;
 mod apps;
-// TODO: Remove drivers, put in driver implementation crate
 mod tasks;
 
-use apps::{get_channels, run_app_by_id};
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
@@ -53,6 +51,8 @@ use sequential_storage::{
     cache::NoCache,
     map::{fetch_item, store_item},
 };
+
+use apps::{get_channels, run_app_by_id};
 
 #[link_section = ".start_block"]
 #[used]
@@ -350,6 +350,9 @@ async fn main(spawner: Spawner) {
         uart_config,
     );
 
+    // USB
+    let usb_driver = usb::Driver::new(p.USB, Irqs);
+
     // Buttons
     let buttons = (
         p.PIN_6, p.PIN_7, p.PIN_38, p.PIN_32, p.PIN_33, p.PIN_34, p.PIN_35, p.PIN_36, p.PIN_23,
@@ -393,7 +396,8 @@ async fn main(spawner: Spawner) {
     )
     .await;
 
-    tasks::transport::start_transports(&spawner, p.USB, uart0, uart1, chan_midi.receiver()).await;
+    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1, chan_midi.receiver())
+        .await;
 
     tasks::leds::start_leds(&spawner, spi1, chan_leds.receiver()).await;
 

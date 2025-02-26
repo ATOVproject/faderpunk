@@ -1,6 +1,7 @@
 use defmt::info;
 use embassy_futures::join::join3;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
+// use minicbor::encode;
 
 use crate::app::App;
 
@@ -8,6 +9,15 @@ use crate::app::App;
 // - app.wait_for_midi_on_channel
 
 pub const CHANNELS: usize = 1;
+
+// pub static APP_CONFIG: Config<1> = Config::new().add_param(Param::Curve {
+//     name: "Curve",
+//     default: Curve::Linear,
+//     variants: &[Curve::Linear, Curve::Exponential],
+// });
+
+// let mut buffer = [0u8; 128];
+// let x = encode(APP_CONFIG.params(), buffer.as_mut()).unwrap();
 
 pub async fn run(app: App<CHANNELS>) {
     info!("App default started on channel: {}", app.channels[0]);
