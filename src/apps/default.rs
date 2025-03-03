@@ -1,7 +1,7 @@
 use defmt::info;
 use embassy_futures::join::join3;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use wmidi::{Channel as MidiChannel, ControlFunction, U7};
+// use minicbor::encode;
 
 use crate::app::App;
 
@@ -9,6 +9,15 @@ use crate::app::App;
 // - app.wait_for_midi_on_channel
 
 pub const CHANNELS: usize = 1;
+
+// pub static APP_CONFIG: Config<1> = Config::new().add_param(Param::Curve {
+//     name: "Curve",
+//     default: Curve::Linear,
+//     variants: &[Curve::Linear, Curve::Exponential],
+// });
+
+// let mut buffer = [0u8; 128];
+// let x = encode(APP_CONFIG.params(), buffer.as_mut()).unwrap();
 
 pub async fn run(app: App<CHANNELS>) {
     info!("App default started on channel: {}", app.channels[0]);
@@ -33,9 +42,7 @@ pub async fn run(app: App<CHANNELS>) {
             waiter.wait_for_fader_change(0).await;
             let [fader] = app.get_fader_values();
             info!("Moved fader {} to {}", app.channels[0], fader);
-            // let cc_chan = U7::from_u8_lossy(102 + app.channels[0] as u8);
-            // app.midi_send_cc(MidiChannel::Ch1, ControlFunction(cc_chan), fader)
-            //     .await;
+            // app.midi_send_cc(0, fader).await;
         }
     };
 

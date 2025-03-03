@@ -1,4 +1,4 @@
-use crate::{XTxSender, XTxMsg};
+use crate::{XTxMsg, XTxSender};
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join_array;

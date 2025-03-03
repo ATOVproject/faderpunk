@@ -1,25 +1,24 @@
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::join4;
+use embassy_futures::join::{join3, join4};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State as CdcAcmState};
 use embassy_usb::class::midi::MidiClass;
 use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
-use embassy_usb::driver::{Driver, Endpoint, EndpointIn, EndpointOut};
+use embassy_usb::driver::Driver;
 use embassy_usb::{Builder, Config as UsbConfig};
 
 use embassy_rp::peripherals::{UART0, UART1};
 use embassy_rp::uart::{Async, Uart, UartTx};
 
-use crate::Irqs;
-
+use super::configure::start_webusb_loop;
 use super::midi::{start_midi_loops, XRxReceiver};
 
 // This is a randomly generated GUID to allow clients on Windows to find our device
 const DEVICE_INTERFACE_GUIDS: &[&str] = &["{AFB9A6FB-30BA-44BC-9232-806CFC875321}"];
 
-struct WebEndpoints<'d, D: Driver<'d>> {
+pub struct WebEndpoints<'d, D: Driver<'d>> {
     write_ep: D::EndpointIn,
     read_ep: D::EndpointOut,
 }
@@ -36,49 +35,38 @@ impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
         WebEndpoints { write_ep, read_ep }
     }
 
-    // Wait until the device's endpoints are enabled.
-    async fn wait_connected(&mut self) {
-        self.read_ep.wait_enabled().await
-    }
-
-    // Echo data back to the host.
-    async fn echo(&mut self) {
-        let mut buf = [0; 64];
-        loop {
-            let n = self.read_ep.read(&mut buf).await.unwrap();
-            let data = &buf[..n];
-            info!("Data read: {:x}", data);
-            self.write_ep.write(data).await.unwrap();
-        }
+    pub fn split(self) -> (D::EndpointIn, D::EndpointOut) {
+        (self.write_ep, self.read_ep)
     }
 }
 
 pub async fn start_transports(
     spawner: &Spawner,
-    usb0: USB,
+    usb_driver: usb::Driver<'static, USB>,
     uart0: UartTx<'static, UART0, Async>,
     uart1: Uart<'static, UART1, Async>,
     x_rx: XRxReceiver,
 ) {
     spawner
-        .spawn(run_transports(usb0, uart0, uart1, x_rx))
+        .spawn(run_transports(usb_driver, uart0, uart1, x_rx))
         .unwrap();
 }
 
 #[embassy_executor::task]
 async fn run_transports(
-    usb0: USB,
+    usb_driver: usb::Driver<'static, USB>,
     uart0: UartTx<'static, UART0, Async>,
     uart1: Uart<'static, UART1, Async>,
     x_rx: XRxReceiver,
 ) {
-    let usb_driver = usb::Driver::new(usb0, Irqs);
     let mut usb_config = UsbConfig::new(0xf569, 0x1);
     usb_config.manufacturer = Some("ATOV");
-    usb_config.product = Some("Phoenix16");
+    usb_config.product = Some("Fader Punk");
     usb_config.serial_number = Some("12345678");
+    // 0x0 (Major) | 0x1 (Minor) | 0x0 (Patch)
+    usb_config.device_release = 0x010;
     usb_config.max_power = 500;
-    // usb_config.max_packet_size_0 = 64;
+    usb_config.max_packet_size_0 = 64;
     usb_config.device_class = 0xEF;
     usb_config.device_sub_class = 0x02;
     usb_config.device_protocol = 0x01;
@@ -110,8 +98,7 @@ async fn run_transports(
 
     // Create classes on the builder (WebUSB just needs some setup, but doesn't return anything)
     WebUsb::configure(&mut usb_builder, &mut webusb_state, &webusb_config);
-    // Create some USB bulk endpoints for testing.
-    let mut endpoints = WebEndpoints::new(&mut usb_builder, &webusb_config);
+    let webusb = WebEndpoints::new(&mut usb_builder, &webusb_config);
 
     // Create classes on the builder.
     let usb_midi = MidiClass::new(&mut usb_builder, 1, 1, 64);
@@ -124,16 +111,10 @@ async fn run_transports(
 
     // TODO: Can/should this be a task?
     // Maybe make all the other futs a task, then return midi_fut from here
-    let midi_fut = start_midi_loops(usb_midi, uart0, uart1, x_rx);
+    // let midi_fut = start_midi_loops(usb_midi, uart0, uart1, x_rx);
 
-    // Do some WebUSB transfers.
-    let webusb_fut = async {
-        loop {
-            endpoints.wait_connected().await;
-            info!("WebUSB Connected");
-            endpoints.echo().await;
-        }
-    };
+    let webusb_fut = start_webusb_loop(webusb);
 
-    join4(usb.run(), midi_fut, webusb_fut, log_fut).await;
+    join3(usb.run(), webusb_fut, log_fut).await;
+    // join4(usb.run(), midi_fut, webusb_fut, log_fut).await;
 }

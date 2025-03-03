@@ -9,8 +9,12 @@ use embassy_sync::{
 };
 use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
+use midi2::{
+    channel_voice1::{ChannelVoice1, ControlChange},
+    ux::{u4, u7},
+    Channeled,
+};
 use portable_atomic::Ordering;
-use wmidi::{Channel, ControlFunction, MidiMessage, U7};
 
 use crate::{
     tasks::{
@@ -20,9 +24,10 @@ use crate::{
     XRxMsg, XTxMsg, CHANS_X,
 };
 
-// TODO: put this into some util create
-fn u16_to_u7(value: u16) -> U7 {
-    U7::from_u8_lossy(((value as u32 * 127) / 4095) as u8)
+// TODO: put this into utils
+/// Scale from 4096 to 127
+fn u16_to_u7(value: u16) -> u7 {
+    u7::new(((value as u32 * 127) / 4095) as u8)
 }
 
 pub struct InJack {
@@ -189,7 +194,7 @@ impl<const N: usize> App<N> {
         }
     }
 
-    // TODO: Here we actually need to reconfigure the jacks
+    // TODO: Store internally which jacks have been configured
     pub async fn make_all_out_jacks(&self) -> OutJacks<N> {
         // TODO: add a configure_jacks function that can configure multiple jacks at once (using
         // the multiport feature of the MAX)
@@ -237,14 +242,20 @@ impl<const N: usize> App<N> {
 
     // TODO: This is a short-hand function that should also send the msg via TRS
     // Create and use a function called midi_send_both and use it here
-    pub async fn midi_send_cc(&self, chan: Channel, cc: ControlFunction, val: u16) {
-        let msg = MidiMessage::ControlChange(chan, cc, u16_to_u7(val));
+    pub async fn midi_send_cc(&self, chan: usize, val: u16) {
+        // TODO: Make configurable
+        let midi_channel = u4::new(1);
+        let mut cc = ControlChange::<[u8; 3]>::new();
+        cc.set_control(u16_to_u7(102 + chan as u16));
+        cc.set_control_data(u16_to_u7(val));
+        cc.set_channel(midi_channel);
+        let msg = ChannelVoice1::ControlChange(cc);
         self.send_midi_msg(msg).await;
     }
 
-    pub async fn send_midi_msg(&self, msg: MidiMessage<'_>) {
+    pub async fn send_midi_msg(&self, msg: ChannelVoice1<[u8; 3]>) {
         self.sender
-            .send((self.channels[0], XRxMsg::MidiMessage(msg.to_owned())))
+            .send((self.channels[0], XRxMsg::MidiMessage(msg)))
             .await;
     }
 

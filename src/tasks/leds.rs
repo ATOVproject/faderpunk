@@ -1,4 +1,3 @@
-use crate::drivers::ws2812::{Grb, Ws2812};
 use embassy_executor::Spawner;
 use embassy_rp::peripherals::SPI1;
 use embassy_rp::spi::{self, Spi};
@@ -6,7 +5,8 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_time::Timer;
 use portable_atomic::{AtomicU32, Ordering};
-use smart_leds::RGB8;
+use smart_leds_trait::{SmartLedsWriteAsync, RGB8};
+use ws2812_async::{Grb, Ws2812};
 use {defmt_rtt as _, panic_probe as _};
 
 // TODO: Add snappy fade out for all LEDs when turning off
@@ -56,13 +56,15 @@ pub async fn start_leds(
 async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>, x_rx: XRxReceiver) {
     let mut ws: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi1);
 
-    // TODO: match for effects and flush
-    let _ = x_rx.receive().await;
+    loop {
+        // TODO: match for effects and flush
+        let _ = x_rx.receive().await;
 
-    let data = LED_VALUES
-        .iter()
-        .map(|val| decode_val(val.load(Ordering::Relaxed)));
+        let data = LED_VALUES
+            .iter()
+            .map(|val| decode_val(val.load(Ordering::Relaxed)));
 
-    ws.write(data).await.ok();
-    Timer::after_millis(5).await;
+        ws.write(data).await.ok();
+        Timer::after_millis(5).await;
+    }
 }
