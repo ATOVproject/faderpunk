@@ -1,6 +1,6 @@
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::{join3, join4};
+use embassy_futures::join::{join, join3, join4};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State as CdcAcmState};
@@ -12,7 +12,7 @@ use embassy_usb::{Builder, Config as UsbConfig};
 use embassy_rp::peripherals::{UART0, UART1};
 use embassy_rp::uart::{Async, Uart, UartTx};
 
-use super::configure::start_webusb_loop;
+// use super::configure::start_webusb_loop;
 use super::midi::{start_midi_loops, XRxReceiver};
 
 // This is a randomly generated GUID to allow clients on Windows to find our device
@@ -112,9 +112,10 @@ async fn run_transports(
     // TODO: Can/should this be a task?
     // Maybe make all the other futs a task, then return midi_fut from here
     // let midi_fut = start_midi_loops(usb_midi, uart0, uart1, x_rx);
+    // let webusb_fut = start_webusb_loop(webusb);
 
-    let webusb_fut = start_webusb_loop(webusb);
+    join(usb.run(), log_fut).await;
 
-    join3(usb.run(), webusb_fut, log_fut).await;
+    // join3(usb.run(), webusb_fut, log_fut).await;
     // join4(usb.run(), midi_fut, webusb_fut, log_fut).await;
 }
