@@ -1,6 +1,5 @@
 use defmt::info;
 use embassy_futures::join::join3;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 // use minicbor::encode;
 
 use crate::app::App;
@@ -22,14 +21,14 @@ pub const CHANNELS: usize = 1;
 pub async fn run(app: App<CHANNELS>) {
     info!("App default started on channel: {}", app.channels[0]);
 
-    let glob_muted: Mutex<NoopRawMutex, bool> = Mutex::new(false);
+    let glob_muted = app.make_global(false);
 
     let jacks = app.make_all_out_jacks().await;
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
-            let muted = glob_muted.lock().await;
-            if !*muted {
+            let muted = glob_muted.get().await;
+            if !muted {
                 let vals = app.get_fader_values();
                 jacks.set_values(vals);
             }
@@ -51,9 +50,8 @@ pub async fn run(app: App<CHANNELS>) {
         loop {
             waiter.wait_for_button_down(0).await;
             info!("Pressed button {}", app.channels[0]);
-            let mut muted = glob_muted.lock().await;
-            *muted = !*muted;
-            if *muted {
+            let muted = glob_muted.toggle().await;
+            if muted {
                 jacks.set_values([0]);
             }
         }

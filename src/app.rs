@@ -5,6 +5,7 @@ use embassy_futures::join::join;
 use embassy_sync::{
     blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
+    mutex::Mutex,
     pubsub::Subscriber,
 };
 use embassy_time::Timer;
@@ -107,6 +108,36 @@ impl Waiter {
     }
 }
 
+pub struct Global<T: Sized + Copy> {
+    mutex: Mutex<NoopRawMutex, T>,
+}
+
+impl<T: Sized + Copy> Global<T> {
+    pub fn new(initial: T) -> Self {
+        Self {
+            mutex: Mutex::new(initial),
+        }
+    }
+
+    pub async fn get(&self) -> T {
+        let value = self.mutex.lock().await;
+        *value
+    }
+
+    pub async fn set(&self, val: T) {
+        let mut value = self.mutex.lock().await;
+        *value = val
+    }
+}
+
+impl Global<bool> {
+    pub async fn toggle(&self) -> bool {
+        let mut value = self.mutex.lock().await;
+        *value = !*value;
+        *value
+    }
+}
+
 pub struct App<const N: usize> {
     app_id: usize,
     pub channels: [usize; N],
@@ -128,8 +159,8 @@ impl<const N: usize> App<N> {
         }
     }
 
-    pub fn size() -> usize {
-        N
+    pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
+        Global::new(initial)
     }
 
     pub fn get_fader_values(&self) -> [u16; N] {
