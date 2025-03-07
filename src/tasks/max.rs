@@ -1,9 +1,8 @@
-use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
     peripherals::{PIN_12, PIN_13, PIN_14, PIN_15, PIN_17, PIO0, SPI0},
-    pio,
+    pio::{Config as PioConfig, Direction as PioDirection, Pio},
     spi::{self, Async, Spi},
 };
 use embassy_sync::{
@@ -19,7 +18,6 @@ use max11300::{
     },
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
-use pio_proc::pio_asm;
 use portable_atomic::{AtomicU16, Ordering};
 use static_cell::StaticCell;
 
@@ -111,13 +109,13 @@ async fn read_fader(
         .await
         .unwrap();
 
-    let pio::Pio {
+    let Pio {
         mut common,
         mut sm0,
         ..
-    } = pio::Pio::new(pio0, Irqs);
+    } = Pio::new(pio0, Irqs);
 
-    let prg = pio_asm!(
+    let prg = pio_proc::pio_asm!(
         "
         pull block
         out pins, 4
@@ -127,8 +125,8 @@ async fn read_fader(
     let pin1 = common.make_pio_pin(mux_pins.1);
     let pin2 = common.make_pio_pin(mux_pins.2);
     let pin3 = common.make_pio_pin(mux_pins.3);
-    sm0.set_pin_dirs(pio::Direction::Out, &[&pin0, &pin1, &pin2, &pin3]);
-    let mut cfg = pio::Config::default();
+    sm0.set_pin_dirs(PioDirection::Out, &[&pin0, &pin1, &pin2, &pin3]);
+    let mut cfg = PioConfig::default();
     cfg.set_out_pins(&[&pin0, &pin1, &pin2, &pin3]);
     cfg.use_program(&common.load_program(&prg.program), &[]);
     sm0.set_config(&cfg);

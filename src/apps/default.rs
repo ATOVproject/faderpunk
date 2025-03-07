@@ -1,3 +1,4 @@
+use crate::config::{Config, Curve, Param};
 use defmt::info;
 use embassy_futures::join::join3;
 // use minicbor::encode;
@@ -9,17 +10,20 @@ use crate::app::App;
 
 pub const CHANNELS: usize = 1;
 
-// pub static APP_CONFIG: Config<1> = Config::new().add_param(Param::Curve {
-//     name: "Curve",
-//     default: Curve::Linear,
-//     variants: &[Curve::Linear, Curve::Exponential],
-// });
+pub static APP_CONFIG: Config<1> = Config::default().add_param(Param::Curve {
+    name: "Curve",
+    default: Curve::Linear,
+    variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+});
 
 // let mut buffer = [0u8; 128];
 // let x = encode(APP_CONFIG.params(), buffer.as_mut()).unwrap();
 
 pub async fn run(app: App<CHANNELS>) {
     info!("App default started on channel: {}", app.channels[0]);
+
+    let config = APP_CONFIG.to_runtime_config().await;
+    let _curve = config.get_curve_at(0);
 
     let glob_muted = app.make_global(false);
 

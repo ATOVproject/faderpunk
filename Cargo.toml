@@ -48,9 +48,16 @@ sequential-storage = "4.0"
 smart-leds-trait = "0.3.1"
 static_cell = "2.1.0"
 wmidi = { version = "4.0", default-features = false }
-array-init = "2.1.0"
-ws2812-async = "0.3.0"
-midi2 = { version = "0.7.0", default-features = false, features = ["channel-voice2", "channel-voice1"] }
+array-init = "2.1"
+ws2812-async = "0.3"
+midi2 = { version = "0.8", default-features = false, features = [
+  "channel-voice2",
+  "channel-voice1",
+] }
+serde = { version = "1", features = ["derive"], default-features = false }
+postcard = "1.1"
+minicbor = { version = "0.26", features = ["derive"] }
+
 
 # release
 [profile.release]

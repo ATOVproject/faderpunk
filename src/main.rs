@@ -6,6 +6,8 @@ mod macros;
 
 mod app;
 mod apps;
+mod config;
+mod constants;
 mod tasks;
 
 use defmt::info;
