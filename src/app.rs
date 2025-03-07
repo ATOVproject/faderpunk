@@ -58,7 +58,7 @@ impl<const N: usize> InJacks<N> {
     pub fn get_values(&self) -> [u16; N] {
         let mut buf = [0_u16; N];
         for i in 0..N {
-            buf[i] = MAX_VALUES_ADC[i].load(Ordering::Relaxed);
+            buf[i] = MAX_VALUES_ADC[self.channels[i]].load(Ordering::Relaxed);
         }
         buf
     }
