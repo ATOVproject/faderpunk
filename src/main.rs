@@ -88,14 +88,17 @@ pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 pub enum XTxMsg {
     ButtonDown,
     FaderChange,
+    ClockInt,
+    ClockExt,
 }
 
 /// Messages from core 1 to core 0
 #[derive(Clone)]
 pub enum XRxMsg {
-    SetLed(LedsAction),
     MaxPortReconfigure(MaxConfig),
     MidiMessage(ChannelVoice1<[u8; 3]>),
+    SetBpm(u16),
+    SetLed(LedsAction),
 }
 
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
@@ -118,6 +121,8 @@ static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, ChannelVoice1<[u8; 3]
     StaticCell::new();
 /// Channel for sending messages to the LEDs
 static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
+/// Channel for sending messages to the clock
+static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, u16, 64>> = StaticCell::new();
 /// Tasks (apps) that are currently running (number 17 is the publisher task)
 static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 
@@ -237,40 +242,6 @@ async fn x_rx(receiver: Receiver<'static, NoopRawMutex, (usize, XRxMsg), 128>) {
     }
 }
 
-// #[embassy_executor::task]
-// async fn read_clock(
-//     max_port: Mode0Port<Spi<'_, SPI0, spi::Async>, Output<'_>, ThreadModeRawMutex>,
-// ) {
-//     let clock_port = max_port
-//         .into_configured_port(ConfigMode7(
-//             AVR::InternalRef,
-//             ADCRANGE::Rg0_2v5,
-//             NSAMPLES::Samples16,
-//         ))
-//         .await
-//         .unwrap();
-//     let mut counter = 0u16;
-//     let mut now = Instant::now();
-//     info!("STARTED READING VALUES");
-//     loop {
-//         let _val = clock_port.get_value().await.unwrap();
-//         counter += 1;
-//         // Timer::after_micros(500).await;
-//         if counter == 1000 {
-//             let later = Instant::now();
-//             let duration = later.checked_duration_since(now).unwrap();
-//             now = later;
-//             counter = 0;
-//             info!(
-//                 "Read clock 1000 times within {} millis",
-//                 duration.as_millis()
-//             );
-//         }
-//     }
-// }
-
-// fn cancel_tasks()
-
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
     let chan_x_1 = CHAN_X_1.init(Channel::new());
@@ -384,6 +355,7 @@ async fn main(spawner: Spawner) {
     let chan_max = CHAN_MAX.init(Channel::new());
     let chan_midi = CHAN_MIDI.init(Channel::new());
     let chan_leds = CHAN_LEDS.init(Channel::new());
+    let chan_clock = CHAN_CLOCK.init(Channel::new());
 
     // spawner.spawn(read_clock(ports.port17)).unwrap();
 
@@ -404,6 +376,8 @@ async fn main(spawner: Spawner) {
     tasks::leds::start_leds(&spawner, spi1, chan_leds.receiver()).await;
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
+
+    tasks::clock::start_clock(&spawner, chan_x_0.sender(), chan_clock.receiver()).await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
@@ -444,8 +418,9 @@ async fn main(spawner: Spawner) {
             let (chan, msg) = CHAN_X_RX.receive().await;
             match msg {
                 XRxMsg::MaxPortReconfigure(max_config) => chan_max.send((chan, max_config)).await,
-                XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
                 XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
+                XRxMsg::SetBpm(bpm) => chan_clock.send(bpm).await,
+                XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
             }
 
             // FIXME: Next steps: create a channel for each component (LEDs, MAX, MIDI) and then

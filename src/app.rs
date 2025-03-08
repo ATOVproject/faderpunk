@@ -117,6 +117,15 @@ impl Waiter {
             }
         }
     }
+    pub async fn wait_for_int_clock(&mut self, chan: usize) {
+        loop {
+            if let (channel, XTxMsg::ClockInt) = self.subscriber.next_message_pure().await {
+                if chan == channel {
+                    return;
+                }
+            }
+        }
+    }
 }
 
 pub struct Global<T: Sized + Copy> {
@@ -268,6 +277,12 @@ impl<const N: usize> App<N> {
         LED_VALUES[self.channels[channel]].store(val, Ordering::Relaxed);
         self.sender
             .send((self.channels[channel], XRxMsg::SetLed(LedsAction::Flush)))
+            .await;
+    }
+
+    pub async fn set_bpm(&self, bpm: u16) {
+        self.sender
+            .send((self.channels[0], XRxMsg::SetBpm(bpm)))
             .await;
     }
 
