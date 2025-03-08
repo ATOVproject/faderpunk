@@ -29,7 +29,7 @@ pub async fn run(app: App<CHANNELS>) {
                 if vals > 4095.0 {
                     vals = 0.0;
                 }
-                lfo_pos:[u16; 1] = [vals as u16];
+                let lfo_pos: [u16; 1] = [vals as u16];
                 jacks.set_values(lfo_pos);            
         }
     };
