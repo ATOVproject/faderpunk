@@ -18,6 +18,8 @@ use midi2::{
 use portable_atomic::Ordering;
 
 use crate::{
+    config::Curve,
+    constants::{CURVE_EXP, CURVE_LOG},
     tasks::{
         leds::{LedsAction, LED_VALUES},
         max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
@@ -74,6 +76,15 @@ impl<const N: usize> OutJacks<N> {
         for (i, &chan) in self.channels.iter().enumerate() {
             MAX_VALUES_DAC[chan].store(values[i], Ordering::Relaxed);
         }
+    }
+
+    pub fn set_values_with_curve(&self, curve: Curve, values: [u16; N]) {
+        let transfomed = values.map(|val| match curve {
+            Curve::Linear => val,
+            Curve::Logarithmic => CURVE_LOG[val as usize],
+            Curve::Exponential => CURVE_EXP[val as usize],
+        });
+        self.set_values(transfomed);
     }
 }
 

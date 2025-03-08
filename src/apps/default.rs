@@ -23,7 +23,7 @@ pub async fn run(app: App<CHANNELS>) {
     info!("App default started on channel: {}", app.channels[0]);
 
     let config = APP_CONFIG.to_runtime_config().await;
-    let _curve = config.get_curve_at(0);
+    let curve = config.get_curve_at(0);
 
     let glob_muted = app.make_global(false);
 
@@ -34,7 +34,7 @@ pub async fn run(app: App<CHANNELS>) {
             let muted = glob_muted.get().await;
             if !muted {
                 let vals = app.get_fader_values();
-                jacks.set_values(vals);
+                jacks.set_values_with_curve(curve, vals);
             }
         }
     };
