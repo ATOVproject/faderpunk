@@ -1,6 +1,18 @@
 use minicbor::Encode;
 use serde::{Deserialize, Serialize};
 
+pub enum ClockSrc {
+    Atom,
+    Meteor,
+    // TODO: Rename
+    Hexagon,
+    Internal,
+}
+
+pub struct GlobalConfig {
+    pub clock_src: ClockSrc,
+}
+
 #[derive(Clone, Copy, Encode)]
 pub enum Curve {
     #[n(0)]

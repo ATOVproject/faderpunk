@@ -10,6 +10,7 @@ mod config;
 mod constants;
 mod tasks;
 
+use config::GlobalConfig;
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
@@ -88,8 +89,7 @@ pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 pub enum XTxMsg {
     ButtonDown,
     FaderChange,
-    ClockInt,
-    ClockExt,
+    Clock,
 }
 
 /// Messages from core 1 to core 0
@@ -125,6 +125,7 @@ static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = S
 static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, u16, 64>> = StaticCell::new();
 /// Tasks (apps) that are currently running (number 17 is the publisher task)
 static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
+static GLOBAL_CONFIG: StaticCell<GlobalConfig> = StaticCell::new();
 
 #[derive(Debug)]
 enum SceneErr {
@@ -332,6 +333,8 @@ async fn main(spawner: Spawner) {
         p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
     );
 
+    let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
+
     // TODO: how do we re-spawn things??
     // 1) Make sure we can "unspawn" stuff
     // 2) Save all available scenes somewhere (16)
@@ -357,6 +360,11 @@ async fn main(spawner: Spawner) {
     let chan_leds = CHAN_LEDS.init(Channel::new());
     let chan_clock = CHAN_CLOCK.init(Channel::new());
 
+    // TODO: Get this from eeprom
+    let global_config = GLOBAL_CONFIG.init(GlobalConfig {
+        clock_src: config::ClockSrc::Atom,
+    });
+
     // spawner.spawn(read_clock(ports.port17)).unwrap();
 
     tasks::max::start_max(
@@ -377,7 +385,14 @@ async fn main(spawner: Spawner) {
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
-    tasks::clock::start_clock(&spawner, chan_x_0.sender(), chan_clock.receiver()).await;
+    tasks::clock::start_clock(
+        &spawner,
+        chan_x_0.sender(),
+        chan_clock.receiver(),
+        aux_inputs,
+        global_config,
+    )
+    .await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
