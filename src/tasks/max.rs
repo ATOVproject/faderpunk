@@ -1,14 +1,15 @@
-use core::sync::atomic::AtomicBool;
-
-use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
     peripherals::{PIN_12, PIN_13, PIN_14, PIN_15, PIN_17, PIO0, SPI0},
-    pio,
+    pio::{Config as PioConfig, Direction as PioDirection, Pio},
     spi::{self, Async, Spi},
 };
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    channel::Receiver,
+    mutex::Mutex,
+};
 use embassy_time::Timer;
 use max11300::{
     config::{
@@ -17,24 +18,21 @@ use max11300::{
     },
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
-use pio_proc::pio_asm;
 use portable_atomic::{AtomicU16, Ordering};
 use static_cell::StaticCell;
 
-use crate::{Irqs, XSender, XTxMsg};
+use crate::{Irqs, XTxMsg, XTxSender};
 
-static MAX: StaticCell<
-    Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, spi::Async>, Output>>,
-> = StaticCell::new();
+type SharedMax =
+    Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
+
+static MAX: StaticCell<SharedMax> = StaticCell::new();
 pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-pub static MAX_CHANNEL_RECONFIGURE: Channel<CriticalSectionRawMutex, MaxReconfigureAction, 16> =
-    Channel::new();
-
-pub type MaxReconfigureAction = (usize, MaxConfig);
 
 type MuxPins = (PIN_12, PIN_13, PIN_14, PIN_15);
+type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, MaxConfig), 64>;
 
 #[derive(Clone, Copy)]
 pub enum MaxConfig {
@@ -49,7 +47,8 @@ pub async fn start_max(
     pio0: PIO0,
     mux_pins: MuxPins,
     cs: PIN_17,
-    x_tx: XSender,
+    x_tx: XTxSender,
+    x_rx: XRxReceiver,
 ) {
     let device_config = DeviceConfig {
         thshdn: THSHDN::Enabled,
@@ -91,7 +90,7 @@ pub async fn start_max(
 
     spawner.spawn(process_channel_values(max)).unwrap();
 
-    spawner.spawn(reconfigure_ports(max)).unwrap();
+    spawner.spawn(reconfigure_ports(max, x_rx)).unwrap();
 }
 
 #[embassy_executor::task]
@@ -99,7 +98,7 @@ async fn read_fader(
     pio0: PIO0,
     mux_pins: MuxPins,
     max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, CriticalSectionRawMutex>,
-    x_tx: XSender,
+    x_tx: XTxSender,
 ) {
     let fader_port = max_port
         .into_configured_port(ConfigMode7(
@@ -110,13 +109,13 @@ async fn read_fader(
         .await
         .unwrap();
 
-    let pio::Pio {
+    let Pio {
         mut common,
         mut sm0,
         ..
-    } = pio::Pio::new(pio0, Irqs);
+    } = Pio::new(pio0, Irqs);
 
-    let prg = pio_asm!(
+    let prg = pio_proc::pio_asm!(
         "
         pull block
         out pins, 4
@@ -126,8 +125,8 @@ async fn read_fader(
     let pin1 = common.make_pio_pin(mux_pins.1);
     let pin2 = common.make_pio_pin(mux_pins.2);
     let pin3 = common.make_pio_pin(mux_pins.3);
-    sm0.set_pin_dirs(pio::Direction::Out, &[&pin0, &pin1, &pin2, &pin3]);
-    let mut cfg = pio::Config::default();
+    sm0.set_pin_dirs(PioDirection::Out, &[&pin0, &pin1, &pin2, &pin3]);
+    let mut cfg = PioConfig::default();
     cfg.set_out_pins(&[&pin0, &pin1, &pin2, &pin3]);
     cfg.use_program(&common.load_program(&prg.program), &[]);
     sm0.set_config(&cfg);
@@ -162,12 +161,7 @@ async fn read_fader(
 }
 
 #[embassy_executor::task]
-async fn process_channel_values(
-    max_driver: &'static Mutex<
-        CriticalSectionRawMutex,
-        Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
-    >,
-) {
+async fn process_channel_values(max_driver: &'static SharedMax) {
     loop {
         // hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
@@ -191,20 +185,14 @@ async fn process_channel_values(
 }
 
 #[embassy_executor::task]
-async fn reconfigure_ports(
-    max_driver: &'static Mutex<
-        CriticalSectionRawMutex,
-        Max11300<Spi<'static, SPI0, Async>, Output<'static>>,
-    >,
-) {
+async fn reconfigure_ports(max_driver: &'static SharedMax, x_rx: XRxReceiver) {
     // TODO: Put MAX port in hi-impedance mode when using the internal GPIO interrupts
     loop {
-        let (chan, config_mode) = MAX_CHANNEL_RECONFIGURE.receive().await;
+        let (chan, config) = x_rx.receive().await;
+        let port = Port::try_from(chan).unwrap();
         let mut max = max_driver.lock().await;
 
-        let port = Port::try_from(chan).unwrap();
-
-        match config_mode {
+        match config {
             MaxConfig::Mode0 => {
                 max.configure_port(port, ConfigMode0).await.unwrap();
             }

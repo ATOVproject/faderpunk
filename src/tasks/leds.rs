@@ -1,20 +1,24 @@
-use crate::drivers::ws2812::{Grb, Ws2812};
-use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::peripherals::SPI1;
 use embassy_rp::spi::{self, Spi};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::Receiver;
 use embassy_time::Timer;
-use smart_leds::{brightness, RGB8};
+use portable_atomic::{AtomicU32, Ordering};
+use smart_leds_trait::{SmartLedsWriteAsync, RGB8};
+use ws2812_async::{Grb, Ws2812};
 use {defmt_rtt as _, panic_probe as _};
 
 // TODO: Add snappy fade out for all LEDs when turning off
 
 const REFRESH_RATE: u64 = 60;
 const NUM_LEDS: usize = 50;
+pub static LED_VALUES: [AtomicU32; NUM_LEDS] = [const { AtomicU32::new(0) }; NUM_LEDS];
 
 #[derive(Clone, Copy)]
 pub enum LedsAction {
     Idle,
+    Flush,
     Blink(u64),
 }
 
@@ -23,40 +27,44 @@ impl LedsAction {
         match self {
             Self::Blink(_) => 255,
             Self::Idle => 0,
+            Self::Flush => 0,
         }
     }
 }
 
-pub async fn start_leds(spawner: &Spawner, spi1: Spi<'static, SPI1, spi::Async>) {
-    spawner.spawn(run_leds(spi1)).unwrap();
+type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, LedsAction), 64>;
+
+#[inline(always)]
+pub fn decode_val(value: u32) -> RGB8 {
+    let brightness = ((value >> 24) & 0xFF) as u16;
+    RGB8 {
+        r: (((value >> 16) & 0xFF) as u16 * (brightness + 1) / 256) as u8,
+        g: (((value >> 8) & 0xFF) as u16 * (brightness + 1) / 256) as u8,
+        b: ((value & 0xFF) as u16 * (brightness + 1) / 256) as u8,
+    }
 }
 
-fn wheel(mut wheel_pos: u8) -> RGB8 {
-    wheel_pos = 255 - wheel_pos;
-    if wheel_pos < 85 {
-        return (255 - wheel_pos * 3, 0, wheel_pos * 3).into();
-    }
-    if wheel_pos < 170 {
-        wheel_pos -= 85;
-        return (0, wheel_pos * 3, 255 - wheel_pos * 3).into();
-    }
-    wheel_pos -= 170;
-    (wheel_pos * 3, 255 - wheel_pos * 3, 0).into()
+pub async fn start_leds(
+    spawner: &Spawner,
+    spi1: Spi<'static, SPI1, spi::Async>,
+    x_rx: XRxReceiver,
+) {
+    spawner.spawn(run_leds(spi1, x_rx)).unwrap();
 }
 
 #[embassy_executor::task]
-async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>) {
+async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>, x_rx: XRxReceiver) {
     let mut ws: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi1);
 
-    let mut data = [RGB8::default(); NUM_LEDS];
-
     loop {
-        for j in 0..(256 * 5) {
-            for i in 0..NUM_LEDS {
-                data[i] = wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
-            }
-            ws.write(brightness(data.iter().cloned(), 32)).await.ok();
-            Timer::after_millis(5).await;
-        }
+        // TODO: match for effects and flush
+        let _ = x_rx.receive().await;
+
+        let data = LED_VALUES
+            .iter()
+            .map(|val| decode_val(val.load(Ordering::Relaxed)));
+
+        ws.write(data).await.ok();
+        Timer::after_millis(5).await;
     }
 }
