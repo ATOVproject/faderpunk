@@ -26,6 +26,7 @@ pub async fn start_clock(
         .unwrap();
 }
 
+// TODO: move to utils
 fn bpm_to_ms(bpm: u16) -> u64 {
     (1.0 / (bpm as f32 / 60_f32) * 1000.0) as u64
 }
@@ -38,11 +39,12 @@ async fn run_clock(
     aux_inputs: AuxInputs,
     config: &'static GlobalConfig,
 ) {
-    // TODO: get from eeprom
+    // TODO: get ms from eeprom
     let glob_ms: Mutex<NoopRawMutex, u64> = Mutex::new(bpm_to_ms(120));
-    let mut atom = Input::new(aux_inputs.0, Pull::Down);
-    let mut meteor = Input::new(aux_inputs.1, Pull::Down);
-    let mut hexagon = Input::new(aux_inputs.2, Pull::Down);
+    let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
+    let mut atom = Input::new(atom_pin, Pull::Down);
+    let mut meteor = Input::new(meteor_pin, Pull::Down);
+    let mut hexagon = Input::new(hexagon_pin, Pull::Down);
 
     let receiver_fut = async {
         loop {

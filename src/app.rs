@@ -117,10 +117,12 @@ impl Waiter {
             }
         }
     }
-    pub async fn wait_for_int_clock(&mut self, chan: usize) {
+    pub async fn wait_for_clock(&mut self, division: usize) {
+        let mut i: usize = 0;
         loop {
-            if let (channel, XTxMsg::Clock) = self.subscriber.next_message_pure().await {
-                if chan == channel {
+            if let (_, XTxMsg::Clock) = self.subscriber.next_message_pure().await {
+                i += 1;
+                if i == division {
                     return;
                 }
             }

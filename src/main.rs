@@ -361,6 +361,7 @@ async fn main(spawner: Spawner) {
     let chan_clock = CHAN_CLOCK.init(Channel::new());
 
     // TODO: Get this from eeprom
+    // Fuck I think this needs to be configurable on the fly??
     let global_config = GLOBAL_CONFIG.init(GlobalConfig {
         clock_src: config::ClockSrc::Atom,
     });
