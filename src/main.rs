@@ -166,7 +166,7 @@ impl Scene {
 
     // Creates an array which returns the app's start channel for every channel
     fn channel_map(&self) -> [usize; 16] {
-        let mut result = [0; 16];
+        let mut result = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
         for (_, start_chan) in self.apps_iter() {
             let size = 16 - start_chan;
