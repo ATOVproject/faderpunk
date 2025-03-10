@@ -3,61 +3,84 @@ use embassy_futures::join::join3;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use wmidi::{Channel as MidiChannel, ControlFunction, U7};
 
-use crate::app::App;
+use crate::app::{App, Global};
+use crate::constants::{WAVEFORM_SINE, WAVEFORM_TRIANGLE, WAVEFORM_SAW, WAVEFORM_RECT, CURVE_LOG};
 
 // API ideas:
 // - app.wait_for_midi_on_channel
 
-pub const CHANNELS: usize = 1;
-/*
-Strategy:
-Measure the Fader value every so often
-Calculate by how many u16 value has to change per 1ms (LFO speed) refresh rate of the DAC 
-    Function of fader value * by some constant to get the desired range (0.5s - 1min ??)
-add with warp to the lfo_pos
-reduce lfo_pos to 12bits
-lookup the DAC value for the waveform
-Button cycle through waveform tables
+pub const CHANNELS: usize = 2;
 
-
-Needed: 
-Do the math
-Wavetables: 
--Saw (not needed can be lfo_pos)
--Tri
--Sine
-
- */
 pub async fn run(app: App<CHANNELS>) {
+    info!("App AD envelope started on channel: {}", app.channels[0]);
+
+
+let glob_wave: Global<u16>= app.make_global(0);
+let glob_lfo_speed = app.make_global(0.0682);
+
+
+    let jacks = app.make_all_out_jacks().await;
     
 
-    
-    let lfo_pos: u16;
-    let mut vals: [u16; 1]= [0];
-    let jacks = app.make_all_out_jacks().await;
+    let mut vals: f32 = 0.0;
+
     let fut1 = async {
         loop {
-            app.delay_millis(10).await;
+
+            app.delay_millis(1).await;
+                
+                let lfo_speed = glob_lfo_speed.get().await;
+                vals = vals + lfo_speed;
+                if vals > 4095.0 {
+                    vals = 0.0;
+                }
+                let wave = glob_wave.get().await;
+                
+                if wave == 0 {
+                    let mut lfo_pos;
+                    lfo_pos = WAVEFORM_SINE[vals as usize];
+                    jacks.set_values([lfo_pos]);  
+                }
+                if wave == 1 {
+                    let mut lfo_pos;
+                    lfo_pos = WAVEFORM_TRIANGLE[vals as usize];
+                    jacks.set_values([lfo_pos]);  
+                }
+                if wave == 2 {
+                    let mut lfo_pos;
+                    lfo_pos = WAVEFORM_SAW[vals as usize];
+                    jacks.set_values([lfo_pos]);  
+                }
+                if wave == 3 {
+                    let mut lfo_pos;
+                    lfo_pos = WAVEFORM_RECT[vals as usize];
+                    jacks.set_values([lfo_pos]);    
+                }           
         }
     };
 
     let fut2 = async {
-
+        let mut waiter = app.make_waiter();
         loop {
-            app.delay_millis(1).await;
-            vals[0] += vals[0];
-            if vals[0] > 4095 {
-                vals[0] = 0;
-            }
-            jacks.set_values(vals);
-  
+            waiter.wait_for_fader_change(0).await;
+            let mut fader = app.get_fader_values();
+            fader = [CURVE_LOG[fader[0] as usize] as u16];
+            info!("Moved fader {} to {}", app.channels[0], fader);
+            glob_lfo_speed.set(fader[0] as f32 * 0.004 + 0.0682).await;
         }
     };
 
     let fut3 = async {
-    
+        let mut waiter = app.make_waiter();
         loop {
-            
+            waiter.wait_for_button_down(0).await;
+            let mut wave = glob_wave.get().await;
+            wave = wave + 1;
+            if wave > 3 {
+                wave = 0;
+            }
+            glob_wave.set(wave).await;
+            info!("Wave state {}", wave);
         }
     };
 

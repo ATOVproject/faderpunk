@@ -3,7 +3,8 @@ use embassy_futures::join::join3;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use wmidi::{Channel as MidiChannel, ControlFunction, U7};
 
-use crate::app::App;
+use crate::app::{App, Global};
+use crate::constants::{WAVEFORM_SINE, WAVEFORM_TRIANGLE, WAVEFORM_SAW, WAVEFORM_RECT, CURVE_LOG};
 
 // API ideas:
 // - app.wait_for_midi_on_channel
@@ -11,26 +12,50 @@ use crate::app::App;
 pub const CHANNELS: usize = 1;
 
 pub async fn run(app: App<CHANNELS>) {
-    info!("App default started on channel: {}", app.channels[0]);
+    info!("App simple LFO started on channel: {}", app.channels[0]);
 
-    let glob_muted: Mutex<NoopRawMutex, bool> = Mutex::new(false);
+
+let glob_wave: Global<u16>= app.make_global(0);
+let glob_lfo_speed = app.make_global(0.0682);
+
 
     let jacks = app.make_all_out_jacks().await;
     
 
     let mut vals: f32 = 0.0;
+
     let fut1 = async {
         loop {
 
             app.delay_millis(1).await;
-                let fader = app.get_fader_values();
-                let lfo_speed = fader[0] as f32 * 0.004 + 0.0682; //recalculate this only when a new fader value is read
+                
+                let lfo_speed = glob_lfo_speed.get().await;
                 vals = vals + lfo_speed;
                 if vals > 4095.0 {
                     vals = 0.0;
                 }
-                let lfo_pos: [u16; 1] = [vals as u16];
-                jacks.set_values(lfo_pos);            
+                let wave = glob_wave.get().await;
+                
+                if wave == 0 {
+                    let mut lfo_pos;
+                    lfo_pos = WAVEFORM_SINE[vals as usize];
+                    jacks.set_values([lfo_pos]);  
+                }
+                if wave == 1 {
+                    let mut lfo_pos;
+                    lfo_pos = WAVEFORM_TRIANGLE[vals as usize];
+                    jacks.set_values([lfo_pos]);  
+                }
+                if wave == 2 {
+                    let mut lfo_pos;
+                    lfo_pos = WAVEFORM_SAW[vals as usize];
+                    jacks.set_values([lfo_pos]);  
+                }
+                if wave == 3 {
+                    let mut lfo_pos;
+                    lfo_pos = WAVEFORM_RECT[vals as usize];
+                    jacks.set_values([lfo_pos]);    
+                }           
         }
     };
 
@@ -38,12 +63,10 @@ pub async fn run(app: App<CHANNELS>) {
         let mut waiter = app.make_waiter();
         loop {
             waiter.wait_for_fader_change(0).await;
-            let [fader] = app.get_fader_values();
+            let mut fader = app.get_fader_values();
+            fader = [CURVE_LOG[fader[0] as usize] as u16];
             info!("Moved fader {} to {}", app.channels[0], fader);
-            // let cc_chan = U7::from_u8_lossy(102 + app.channels[0] as u8);
-            // app.midi_send_cc(MidiChannel::Ch1, ControlFunction(cc_chan), fader)
-            //     .await;
-
+            glob_lfo_speed.set(fader[0] as f32 * 0.004 + 0.0682).await;
         }
     };
 
@@ -51,7 +74,13 @@ pub async fn run(app: App<CHANNELS>) {
         let mut waiter = app.make_waiter();
         loop {
             waiter.wait_for_button_down(0).await;
-    
+            let mut wave = glob_wave.get().await;
+            wave = wave + 1;
+            if wave > 3 {
+                wave = 0;
+            }
+            glob_wave.set(wave).await;
+            info!("Wave state {}", wave);
         }
     };
 
