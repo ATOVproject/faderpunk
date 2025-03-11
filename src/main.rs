@@ -225,10 +225,16 @@ async fn x_tx(channel_map: [usize; 16]) {
         CORE1_TASKS[16].store(true, Ordering::Relaxed);
         loop {
             let (chan, msg) = CHAN_X_TX.receive().await;
-            info!("{}", msg);
-            let start_chan = channel_map[chan];
-            let relative_index = chan.wrapping_sub(start_chan);
-            publishers[start_chan].publish((relative_index, msg)).await;
+            if chan == 16 {
+                // INFO: Special channel 16 sends to all publishers
+                for publisher in publishers.iter() {
+                    publisher.publish((chan, msg)).await;
+                }
+            } else {
+                let start_chan = channel_map[chan];
+                let relative_index = chan.wrapping_sub(start_chan);
+                publishers[start_chan].publish((relative_index, msg)).await;
+            }
         }
     };
 
