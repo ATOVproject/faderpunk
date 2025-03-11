@@ -27,14 +27,14 @@ pub async fn run(app: App<CHANNELS>) {
 
     let glob_muted = app.make_global(false);
 
-    let jacks = app.make_all_out_jacks().await;
+    let jack = app.make_out_jack(0).await;
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
             let muted = glob_muted.get().await;
             if !muted {
                 let vals = app.get_fader_values();
-                jacks.set_values_with_curve(curve, vals);
+                jack.set_value_with_curve(curve, vals[0]);
             }
         }
     };
@@ -56,7 +56,7 @@ pub async fn run(app: App<CHANNELS>) {
             info!("Pressed button {}", app.channels[0]);
             let muted = glob_muted.toggle().await;
             if muted {
-                jacks.set_values([0]);
+                jack.set_value(0);
             }
         }
     };
