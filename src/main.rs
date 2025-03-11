@@ -103,7 +103,7 @@ pub enum XRxMsg {
 
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
-pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, [usize; 16], 18> = Watch::new();
+pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
 /// Collector channel on core 0
@@ -225,6 +225,7 @@ async fn x_tx(channel_map: [usize; 16]) {
         CORE1_TASKS[16].store(true, Ordering::Relaxed);
         loop {
             let (chan, msg) = CHAN_X_TX.receive().await;
+            info!("{}", msg);
             let start_chan = channel_map[chan];
             let relative_index = chan.wrapping_sub(start_chan);
             publishers[start_chan].publish((relative_index, msg)).await;
@@ -262,7 +263,7 @@ async fn main_core1(spawner: Spawner) {
             Timer::after_millis(5).await;
         }
 
-        let scene = Scene::try_from(&scene_arr).unwrap();
+        let scene = Scene::try_from(scene_arr).unwrap();
         let channel_map = scene.channel_map();
         spawner
             // INFO: The next two _should_ be dropped properly when the task exits
@@ -446,7 +447,7 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    scene_sender.send([1; 16]);
+    scene_sender.send(&[1; 16]);
 
     join(fut, fut2).await;
 
