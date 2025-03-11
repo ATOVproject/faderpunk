@@ -20,6 +20,7 @@ use crate::{
     config::Curve,
     constants::{CURVE_EXP, CURVE_LOG},
     tasks::{
+        buttons::BUTTON_PRESSED,
         clock::BPM_DELTA_MS,
         leds::{LedsAction, LED_VALUES},
         max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
@@ -77,11 +78,13 @@ impl Waiter {
             }
         }
     }
-    pub async fn wait_for_button_down(&mut self, chan: usize) {
+
+    // Returns true if SHIFT is held at the same time
+    pub async fn wait_for_button_down(&mut self, chan: usize) -> bool {
         loop {
             if let (channel, XTxMsg::ButtonDown) = self.subscriber.next_message_pure().await {
                 if chan == channel {
-                    return;
+                    return BUTTON_PRESSED[16].load(Ordering::Relaxed);
                 }
             }
         }
@@ -218,6 +221,14 @@ impl<const N: usize> App<N> {
 
     pub fn get_bpm(&self) -> f32 {
         ms_to_bpm(BPM_DELTA_MS.load(Ordering::Relaxed))
+    }
+
+    pub fn is_button_pressed(&self, chan: usize) -> bool {
+        BUTTON_PRESSED[self.channels[chan]].load(Ordering::Relaxed)
+    }
+
+    pub fn is_shift_pressed(&self) -> bool {
+        BUTTON_PRESSED[16].load(Ordering::Relaxed)
     }
 
     // TODO: Currently only the setting of raw values is possible
