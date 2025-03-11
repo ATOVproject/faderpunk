@@ -33,9 +33,9 @@ pub async fn run(app: App<CHANNELS>) {
             app.delay_millis(10).await;
             let muted = glob_muted.get().await;
             if !muted {
-                let vals = app.get_fader_values();
-                jacks.set_values();
-                get_private_random_number()
+                let vals = rand();
+
+            
             }
         }
     };

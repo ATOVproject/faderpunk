@@ -455,7 +455,7 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    scene_sender.send([3; 16]); //Asign apps to channels
+    scene_sender.send([4; 16]); //Asign apps to channels
 
     join(fut, fut2).await;
 
