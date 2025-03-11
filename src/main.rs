@@ -9,6 +9,7 @@ mod apps;
 mod config;
 mod constants;
 mod tasks;
+mod utils;
 
 use config::GlobalConfig;
 use defmt::info;
@@ -97,7 +98,6 @@ pub enum XTxMsg {
 pub enum XRxMsg {
     MaxPortReconfigure(MaxConfig),
     MidiMessage(ChannelVoice1<[u8; 3]>),
-    SetBpm(u16),
     SetLed(LedsAction),
 }
 
@@ -365,7 +365,6 @@ async fn main(spawner: Spawner) {
     let chan_max = CHAN_MAX.init(Channel::new());
     let chan_midi = CHAN_MIDI.init(Channel::new());
     let chan_leds = CHAN_LEDS.init(Channel::new());
-    let chan_clock = CHAN_CLOCK.init(Channel::new());
 
     // TODO: Get this from eeprom
     // Fuck I think this needs to be configurable on the fly??
@@ -393,14 +392,7 @@ async fn main(spawner: Spawner) {
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
-    tasks::clock::start_clock(
-        &spawner,
-        chan_x_0.sender(),
-        chan_clock.receiver(),
-        aux_inputs,
-        global_config,
-    )
-    .await;
+    tasks::clock::start_clock(&spawner, chan_x_0.sender(), aux_inputs, global_config).await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
@@ -442,7 +434,6 @@ async fn main(spawner: Spawner) {
             match msg {
                 XRxMsg::MaxPortReconfigure(max_config) => chan_max.send((chan, max_config)).await,
                 XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
-                XRxMsg::SetBpm(bpm) => chan_clock.send(bpm).await,
                 XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
             }
 

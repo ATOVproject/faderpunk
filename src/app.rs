@@ -1,7 +1,6 @@
 use core::array;
 
 use defmt::info;
-use embassy_futures::join::join;
 use embassy_sync::{
     blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
@@ -12,7 +11,7 @@ use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midi2::{
     channel_voice1::{ChannelVoice1, ControlChange},
-    ux::{u4, u7},
+    ux::u4,
     Channeled,
 };
 use portable_atomic::Ordering;
@@ -21,17 +20,13 @@ use crate::{
     config::Curve,
     constants::{CURVE_EXP, CURVE_LOG},
     tasks::{
+        clock::BPM_DELTA_MS,
         leds::{LedsAction, LED_VALUES},
         max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
+    utils::{bpm_to_ms, ms_to_bpm, u16_to_u7},
     XRxMsg, XTxMsg, CHANS_X,
 };
-
-// TODO: put this into utils
-/// Scale from 4096 to 127
-fn u16_to_u7(value: u16) -> u7 {
-    u7::new(((value as u32 * 127) / 4095) as u8)
-}
 
 pub struct InJack {
     channel: usize,
@@ -215,18 +210,22 @@ impl<const N: usize> App<N> {
         Timer::after_secs(secs).await
     }
 
+    //TODO: Check if app is CLOCK app and if not, do not implement this
+    //HINT: Can we use struct markers? Or how to do it?
+    pub fn set_bpm(&self, bpm: f32) {
+        BPM_DELTA_MS.store(bpm_to_ms(bpm), Ordering::Relaxed);
+    }
+
+    pub fn get_bpm(&self) -> f32 {
+        ms_to_bpm(BPM_DELTA_MS.load(Ordering::Relaxed))
+    }
+
     // TODO: Currently only the setting of raw values is possible
     // TODO: Also add a custom flush() method and so on
     pub async fn set_led(&self, channel: usize, val: u32) {
         LED_VALUES[self.channels[channel]].store(val, Ordering::Relaxed);
         self.sender
             .send((self.channels[channel], XRxMsg::SetLed(LedsAction::Flush)))
-            .await;
-    }
-
-    pub async fn set_bpm(&self, bpm: u16) {
-        self.sender
-            .send((self.channels[0], XRxMsg::SetBpm(bpm)))
             .await;
     }
 
