@@ -111,10 +111,11 @@ async fn run_transports(
 
     // TODO: Can/should this be a task?
     // Maybe make all the other futs a task, then return midi_fut from here
-    // let midi_fut = start_midi_loops(usb_midi, uart0, uart1, x_rx);
+    let midi_fut = start_midi_loops(usb_midi, uart0, uart1, x_rx);
     // let webusb_fut = start_webusb_loop(webusb);
 
-    join(usb.run(), log_fut).await;
+    // join(usb.run(), log_fut).await;
+    join3(usb.run(), log_fut, midi_fut).await;
 
     // join3(usb.run(), webusb_fut, log_fut).await;
     // join4(usb.run(), midi_fut, webusb_fut, log_fut).await;
