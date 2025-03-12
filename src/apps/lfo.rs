@@ -19,7 +19,7 @@ let glob_wave: Global<u16>= app.make_global(0);
 let glob_lfo_speed = app.make_global(0.0682);
 
 
-    let jacks = app.make_all_out_jacks().await;
+    let output = app.make_out_jack(0).await;
     
 
     let mut vals: f32 = 0.0;
@@ -39,22 +39,22 @@ let glob_lfo_speed = app.make_global(0.0682);
                 if wave == 0 {
                     let mut lfo_pos;
                     lfo_pos = WAVEFORM_SINE[vals as usize];
-                    jacks.set_values([lfo_pos]);  
+                    output.set_value(lfo_pos);  
                 }
                 if wave == 1 {
                     let mut lfo_pos;
                     lfo_pos = WAVEFORM_TRIANGLE[vals as usize];
-                    jacks.set_values([lfo_pos]);  
+                    output.set_value(lfo_pos);  
                 }
                 if wave == 2 {
                     let mut lfo_pos;
                     lfo_pos = WAVEFORM_SAW[vals as usize];
-                    jacks.set_values([lfo_pos]);  
+                    output.set_value(lfo_pos);  
                 }
                 if wave == 3 {
                     let mut lfo_pos;
                     lfo_pos = WAVEFORM_RECT[vals as usize];
-                    jacks.set_values([lfo_pos]);    
+                    output.set_value(lfo_pos);    
                 }           
         }
     };
@@ -65,7 +65,7 @@ let glob_lfo_speed = app.make_global(0.0682);
             waiter.wait_for_fader_change(0).await;
             let mut fader = app.get_fader_values();
             fader = [CURVE_LOG[fader[0] as usize] as u16];
-            info!("Moved fader {} to {}", app.channels[0], fader);
+            //info!("Moved fader {} to {}", app.channels[0], fader);
             glob_lfo_speed.set(fader[0] as f32 * 0.004 + 0.0682).await;
         }
     };

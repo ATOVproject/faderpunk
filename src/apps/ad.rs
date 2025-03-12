@@ -39,9 +39,13 @@ let glob_fall_speed = app.make_global(0.0682);
 
             app.delay_millis(1).await;
             let inputval = input.get_value();
+            
+
             if inputval >= 406 && oldinputval < 406 { //detect passing the threshold
                 env_state = 1;
                 oldinputval = inputval;
+                info!("env state = {}", env_state);
+
             }
             else {
                 oldinputval = inputval;
@@ -53,15 +57,18 @@ let glob_fall_speed = app.make_global(0.0682);
                     vals = vals + glob_raise_speed.get().await;
                     if vals > 4095.0 {
                         env_state = 2;
+                        info!("env state = {}", env_state);
                     }
                 }
                 if env_state == 2{
                     vals = vals - glob_fall_speed.get().await;
                     if vals < 0.0 {
                         env_state = 0;
+                        info!("env state = {}", env_state);
                         vals = 0.0;
                     }
                 }
+                info!("Vals = {}", vals as u16);
                 output.set_value(vals as u16);
         }
     };
@@ -71,8 +78,8 @@ let glob_fall_speed = app.make_global(0.0682);
         loop {
             waiter.wait_for_fader_change(0).await;
             let mut fader = app.get_fader_values();
-            let fader0 = [CURVE_LOG[fader[0] as usize] as u16];
-            info!("Moved fader {} to {}", app.channels[0], fader);
+            fader[0] = 4096 - CURVE_EXP[fader[0] as usize] as u16;
+            info!("Moved fader {} to {}", app.channels[0], fader[0]);
             glob_raise_speed.set(fader[0] as f32 * 0.004 + 0.0682).await;
         }
     };
@@ -82,8 +89,8 @@ let glob_fall_speed = app.make_global(0.0682);
         loop {
             waiter.wait_for_fader_change(1).await;
             let mut fader = app.get_fader_values();
-            let fader1 = [CURVE_LOG[fader[1] as usize] as u16];
-            info!("Moved fader {} to {}", app.channels[1], fader);
+            fader[1] = 4096 - CURVE_EXP[fader[1] as usize] as u16;
+            info!("Moved fader {} to {}", app.channels[1], fader[1]);
             glob_fall_speed.set(fader[1] as f32 * 0.004 + 0.0682).await;
         }
     };

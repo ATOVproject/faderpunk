@@ -45,7 +45,7 @@ pub async fn run(app: App<CHANNELS>) {
             waiter.wait_for_fader_change(0).await;
             let [fader] = app.get_fader_values();
             info!("Moved fader {} to {}", app.channels[0], fader);
-            app.midi_send_cc(0, fader).await;
+            app.midi_send_cc(1, fader).await;
         }
     };
 
