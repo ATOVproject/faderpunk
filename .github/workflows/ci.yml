@@ -9,7 +9,7 @@ jobs:
     steps:
       # Checkout your repository code
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       # Install dependencies for building picotool and pico-sdk
       - name: Install dependencies
         run: |
@@ -33,7 +33,7 @@ jobs:
           echo "pico_sdk_hash=${pico_sdk_hash}" >> $GITHUB_ENV
       # Cache picotool build outputs based on both repo hashes
       - name: Cache picotool build outputs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: picotool/build
           key: ${{ runner.os }}-picotool-${{ env.picotool_hash }}-${{ env.pico_sdk_hash }}

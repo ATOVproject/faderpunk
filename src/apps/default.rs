@@ -27,15 +27,14 @@ pub async fn run(app: App<CHANNELS>) {
 
     let glob_muted = app.make_global(false);
 
-    let jacks = app.make_out_jack(0).await;
+    let jack = app.make_out_jack(0).await;
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
             let muted = glob_muted.get().await;
             if !muted {
                 let vals = app.get_fader_values();
-                jacks.set_values();
-                get_private_random_number()
+                jack.set_value_with_curve(curve, vals[0]);
             }
         }
     };
@@ -46,7 +45,7 @@ pub async fn run(app: App<CHANNELS>) {
             waiter.wait_for_fader_change(0).await;
             let [fader] = app.get_fader_values();
             info!("Moved fader {} to {}", app.channels[0], fader);
-            //app.midi_send_cc(0, fader).await;
+            app.midi_send_cc(0, fader).await;
         }
     };
 
@@ -57,7 +56,7 @@ pub async fn run(app: App<CHANNELS>) {
             info!("Pressed button {}", app.channels[0]);
             let muted = glob_muted.toggle().await;
             if muted {
-                jacks.set_values(0);
+                jack.set_value(0);
             }
         }
     };

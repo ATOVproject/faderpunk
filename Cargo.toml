@@ -43,7 +43,7 @@ max11300 = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 pio = "0.2"
 pio-proc = "0.2"
-portable-atomic = { version = "1.7", features = ["critical-section"] }
+portable-atomic = { version = "1.11", features = ["critical-section"] }
 sequential-storage = "4.0"
 smart-leds-trait = "0.3.1"
 static_cell = "2.1.0"

@@ -1,7 +1,6 @@
 use core::array;
 
 use defmt::info;
-use embassy_futures::join::join;
 use embassy_sync::{
     blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
@@ -12,7 +11,7 @@ use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midi2::{
     channel_voice1::{ChannelVoice1, ControlChange},
-    ux::{u4, u7},
+    ux::u4,
     Channeled,
 };
 use portable_atomic::Ordering;
@@ -21,17 +20,14 @@ use crate::{
     config::Curve,
     constants::{CURVE_EXP, CURVE_LOG},
     tasks::{
+        buttons::BUTTON_PRESSED,
+        clock::BPM_DELTA_MS,
         leds::{LedsAction, LED_VALUES},
         max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
+    utils::{bpm_to_ms, ms_to_bpm, u16_to_u7},
     XRxMsg, XTxMsg, CHANS_X,
 };
-
-// TODO: put this into utils
-/// Scale from 4096 to 127
-fn u16_to_u7(value: u16) -> u7 {
-    u7::new(((value as u32 * 127) / 4095) as u8)
-}
 
 pub struct InJack {
     channel: usize,
@@ -51,40 +47,14 @@ impl OutJack {
     pub fn set_value(&self, value: u16) {
         MAX_VALUES_DAC[self.channel].store(value, Ordering::Relaxed);
     }
-}
 
-pub struct InJacks<const N: usize> {
-    channels: [usize; N],
-}
-
-impl<const N: usize> InJacks<N> {
-    pub fn get_values(&self) -> [u16; N] {
-        let mut buf = [0_u16; N];
-        for i in 0..N {
-            buf[i] = MAX_VALUES_ADC[self.channels[i]].load(Ordering::Relaxed);
-        }
-        buf
-    }
-}
-
-pub struct OutJacks<const N: usize> {
-    channels: [usize; N],
-}
-
-impl<const N: usize> OutJacks<N> {
-    pub fn set_values(&self, values: [u16; N]) {
-        for (i, &chan) in self.channels.iter().enumerate() {
-            MAX_VALUES_DAC[chan].store(values[i], Ordering::Relaxed);
-        }
-    }
-
-    pub fn set_values_with_curve(&self, curve: Curve, values: [u16; N]) {
-        let transfomed = values.map(|val| match curve {
-            Curve::Linear => val,
-            Curve::Logarithmic => CURVE_LOG[val as usize],
-            Curve::Exponential => CURVE_EXP[val as usize],
-        });
-        self.set_values(transfomed);
+    pub fn set_value_with_curve(&self, curve: Curve, value: u16) {
+        let transformed = match curve {
+            Curve::Linear => value,
+            Curve::Logarithmic => CURVE_LOG[value as usize],
+            Curve::Exponential => CURVE_EXP[value as usize],
+        };
+        self.set_value(transformed);
     }
 }
 
@@ -108,10 +78,23 @@ impl Waiter {
             }
         }
     }
-    pub async fn wait_for_button_down(&mut self, chan: usize) {
+
+    // Returns true if SHIFT is held at the same time
+    pub async fn wait_for_button_down(&mut self, chan: usize) -> bool {
         loop {
             if let (channel, XTxMsg::ButtonDown) = self.subscriber.next_message_pure().await {
                 if chan == channel {
+                    return BUTTON_PRESSED[16].load(Ordering::Relaxed);
+                }
+            }
+        }
+    }
+    pub async fn wait_for_clock(&mut self, division: usize) {
+        let mut i: usize = 0;
+        loop {
+            if let (_, XTxMsg::Clock) = self.subscriber.next_message_pure().await {
+                i += 1;
+                if i == division {
                     return;
                 }
             }
@@ -182,13 +165,11 @@ impl<const N: usize> App<N> {
         buf
     }
 
-    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
-    // app (throw error or something)
     pub async fn make_in_jack(&self, chan: usize) -> InJack {
         if chan > N - 1 {
+            // TODO: Maybe move panics into usb logs and handle gracefully?
             panic!("Not a valid channel in this app");
         }
-
         self.reconfigure_jack(
             self.channels[chan],
             MaxConfig::Mode7(ConfigMode7(
@@ -199,54 +180,24 @@ impl<const N: usize> App<N> {
         )
         .await;
 
-        InJack { channel: chan }
+        InJack {
+            channel: self.channels[chan],
+        }
     }
 
     pub async fn make_out_jack(&self, chan: usize) -> OutJack {
         if chan > N - 1 {
+            // TODO: Maybe move panics into usb logs and handle gracefully?
             panic!("Not a valid channel in this app");
         }
-
         self.reconfigure_jack(
             self.channels[chan],
             MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
         )
         .await;
 
-        OutJack { channel: chan }
-    }
-
-    pub async fn make_all_in_jacks(&self) -> InJacks<N> {
-        // TODO: add a configure_jacks function that can configure multiple jacks at once (using
-        // the multiport feature of the MAX)
-        for channel in self.channels {
-            self.reconfigure_jack(
-                channel,
-                MaxConfig::Mode7(ConfigMode7(
-                    AVR::InternalRef,
-                    ADCRANGE::Rg0_10v,
-                    NSAMPLES::Samples16,
-                )),
-            )
-            .await;
-        }
-
-        InJacks {
-            channels: self.channels,
-        }
-    }
-
-    // TODO: Store internally which jacks have been configured
-    pub async fn make_all_out_jacks(&self) -> OutJacks<N> {
-        // TODO: add a configure_jacks function that can configure multiple jacks at once (using
-        // the multiport feature of the MAX)
-        for channel in self.channels {
-            self.reconfigure_jack(channel, MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)))
-                .await;
-        }
-
-        OutJacks {
-            channels: self.channels,
+        OutJack {
+            channel: self.channels[chan],
         }
     }
 
@@ -260,6 +211,24 @@ impl<const N: usize> App<N> {
 
     pub async fn delay_secs(&self, secs: u64) {
         Timer::after_secs(secs).await
+    }
+
+    //TODO: Check if app is CLOCK app and if not, do not implement this
+    //HINT: Can we use struct markers? Or how to do it?
+    pub fn set_bpm(&self, bpm: f32) {
+        BPM_DELTA_MS.store(bpm_to_ms(bpm), Ordering::Relaxed);
+    }
+
+    pub fn get_bpm(&self) -> f32 {
+        ms_to_bpm(BPM_DELTA_MS.load(Ordering::Relaxed))
+    }
+
+    pub fn is_button_pressed(&self, chan: usize) -> bool {
+        BUTTON_PRESSED[self.channels[chan]].load(Ordering::Relaxed)
+    }
+
+    pub fn is_shift_pressed(&self) -> bool {
+        BUTTON_PRESSED[16].load(Ordering::Relaxed)
     }
 
     // TODO: Currently only the setting of raw values is possible
@@ -307,6 +276,8 @@ impl<const N: usize> App<N> {
         Waiter::new(subscriber)
     }
 
+    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
+    // app (throw error or something)
     async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
         self.sender
             .send((channel, XRxMsg::MaxPortReconfigure(config)))

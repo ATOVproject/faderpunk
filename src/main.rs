@@ -9,7 +9,9 @@ mod apps;
 mod config;
 mod constants;
 mod tasks;
+mod utils;
 
+use config::GlobalConfig;
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
@@ -88,19 +90,20 @@ pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 pub enum XTxMsg {
     ButtonDown,
     FaderChange,
+    Clock,
 }
 
 /// Messages from core 1 to core 0
 #[derive(Clone)]
 pub enum XRxMsg {
-    SetLed(LedsAction),
     MaxPortReconfigure(MaxConfig),
     MidiMessage(ChannelVoice1<[u8; 3]>),
+    SetLed(LedsAction),
 }
 
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
-pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, [usize; 16], 18> = Watch::new();
+pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
 /// Collector channel on core 0
@@ -118,8 +121,11 @@ static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, ChannelVoice1<[u8; 3]
     StaticCell::new();
 /// Channel for sending messages to the LEDs
 static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
+/// Channel for sending messages to the clock
+static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, u16, 64>> = StaticCell::new();
 /// Tasks (apps) that are currently running (number 17 is the publisher task)
 static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
+static GLOBAL_CONFIG: StaticCell<GlobalConfig> = StaticCell::new();
 
 #[derive(Debug)]
 enum SceneErr {
@@ -166,7 +172,7 @@ impl Scene {
 
     // Creates an array which returns the app's start channel for every channel
     fn channel_map(&self) -> [usize; 16] {
-        let mut result = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mut result = [0; 16];
 
         for (_, start_chan) in self.apps_iter() {
             let size = 16 - start_chan;
@@ -219,9 +225,16 @@ async fn x_tx(channel_map: [usize; 16]) {
         CORE1_TASKS[16].store(true, Ordering::Relaxed);
         loop {
             let (chan, msg) = CHAN_X_TX.receive().await;
-            let start_chan = channel_map[chan];
-            let relative_index = chan.wrapping_sub(start_chan);
-            publishers[start_chan].publish((relative_index, msg)).await;
+            if chan == 16 {
+                // INFO: Special channel 16 sends to all publishers
+                for publisher in publishers.iter() {
+                    publisher.publish((chan, msg)).await;
+                }
+            } else {
+                let start_chan = channel_map[chan];
+                let relative_index = chan.wrapping_sub(start_chan);
+                publishers[start_chan].publish((relative_index, msg)).await;
+            }
         }
     };
 
@@ -236,40 +249,6 @@ async fn x_rx(receiver: Receiver<'static, NoopRawMutex, (usize, XRxMsg), 128>) {
         CHAN_X_RX.send(msg).await;
     }
 }
-
-// #[embassy_executor::task]
-// async fn read_clock(
-//     max_port: Mode0Port<Spi<'_, SPI0, spi::Async>, Output<'_>, ThreadModeRawMutex>,
-// ) {
-//     let clock_port = max_port
-//         .into_configured_port(ConfigMode7(
-//             AVR::InternalRef,
-//             ADCRANGE::Rg0_2v5,
-//             NSAMPLES::Samples16,
-//         ))
-//         .await
-//         .unwrap();
-//     let mut counter = 0u16;
-//     let mut now = Instant::now();
-//     info!("STARTED READING VALUES");
-//     loop {
-//         let _val = clock_port.get_value().await.unwrap();
-//         counter += 1;
-//         // Timer::after_micros(500).await;
-//         if counter == 1000 {
-//             let later = Instant::now();
-//             let duration = later.checked_duration_since(now).unwrap();
-//             now = later;
-//             counter = 0;
-//             info!(
-//                 "Read clock 1000 times within {} millis",
-//                 duration.as_millis()
-//             );
-//         }
-//     }
-// }
-
-// fn cancel_tasks()
 
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
@@ -290,7 +269,7 @@ async fn main_core1(spawner: Spawner) {
             Timer::after_millis(5).await;
         }
 
-        let scene = Scene::try_from(&scene_arr).unwrap();
+        let scene = Scene::try_from(scene_arr).unwrap();
         let channel_map = scene.channel_map();
         spawner
             // INFO: The next two _should_ be dropped properly when the task exits
@@ -361,6 +340,8 @@ async fn main(spawner: Spawner) {
         p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
     );
 
+    let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
+
     // TODO: how do we re-spawn things??
     // 1) Make sure we can "unspawn" stuff
     // 2) Save all available scenes somewhere (16)
@@ -385,6 +366,12 @@ async fn main(spawner: Spawner) {
     let chan_midi = CHAN_MIDI.init(Channel::new());
     let chan_leds = CHAN_LEDS.init(Channel::new());
 
+    // TODO: Get this from eeprom
+    // Fuck I think this needs to be configurable on the fly??
+    let global_config = GLOBAL_CONFIG.init(GlobalConfig {
+        clock_src: config::ClockSrc::Atom,
+    });
+
     // spawner.spawn(read_clock(ports.port17)).unwrap();
 
     tasks::max::start_max(
@@ -404,6 +391,8 @@ async fn main(spawner: Spawner) {
     tasks::leds::start_leds(&spawner, spi1, chan_leds.receiver()).await;
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
+
+    tasks::clock::start_clock(&spawner, chan_x_0.sender(), aux_inputs, global_config).await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
@@ -444,8 +433,8 @@ async fn main(spawner: Spawner) {
             let (chan, msg) = CHAN_X_RX.receive().await;
             match msg {
                 XRxMsg::MaxPortReconfigure(max_config) => chan_max.send((chan, max_config)).await,
-                XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
                 XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
+                XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
             }
 
             // FIXME: Next steps: create a channel for each component (LEDs, MAX, MIDI) and then
@@ -455,7 +444,7 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    scene_sender.send([4; 16]); //Asign apps to channels
+    scene_sender.send(&[1; 16]);
 
     join(fut, fut2).await;
 
