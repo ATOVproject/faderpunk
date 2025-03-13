@@ -231,10 +231,11 @@ impl<const N: usize> App<N> {
         BUTTON_PRESSED[16].load(Ordering::Relaxed)
     }
 
-    // TODO: Currently only the setting of raw values is possible
     // TODO: Also add a custom flush() method and so on
-    pub async fn set_led(&self, channel: usize, val: u32) {
-        LED_VALUES[self.channels[channel]].store(val, Ordering::Relaxed);
+    pub async fn set_led(&self, channel: usize, (r, g, b): (u8, u8, u8), brightness: u8) {
+        let value =
+            ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        LED_VALUES[self.channels[channel]].store(value, Ordering::Relaxed);
         self.sender
             .send((self.channels[channel], XRxMsg::SetLed(LedsAction::Flush)))
             .await;
