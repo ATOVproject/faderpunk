@@ -1,5 +1,4 @@
 use crate::config::{Config, Curve, Param};
-use defmt::info;
 use embassy_futures::join::join3;
 // use minicbor::encode;
 
@@ -20,8 +19,6 @@ pub static APP_CONFIG: Config<1> = Config::default().add_param(Param::Curve {
 // let x = encode(APP_CONFIG.params(), buffer.as_mut()).unwrap();
 
 pub async fn run(app: App<CHANNELS>) {
-    info!("App default started on channel: {}", app.channels[0]);
-
     let config = APP_CONFIG.to_runtime_config().await;
     let curve = config.get_curve_at(0);
 
@@ -44,7 +41,6 @@ pub async fn run(app: App<CHANNELS>) {
         loop {
             waiter.wait_for_fader_change(0).await;
             let [fader] = app.get_fader_values();
-            info!("Moved fader {} to {}", app.channels[0], fader);
             app.midi_send_cc(0, fader).await;
         }
     };
@@ -53,7 +49,6 @@ pub async fn run(app: App<CHANNELS>) {
         let mut waiter = app.make_waiter();
         loop {
             waiter.wait_for_button_down(0).await;
-            info!("Pressed button {}", app.channels[0]);
             let muted = glob_muted.toggle().await;
             if muted {
                 jack.set_value(0);

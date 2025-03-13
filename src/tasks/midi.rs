@@ -88,7 +88,6 @@ pub async fn start_midi_loops<'a>(
         let mut buf = [0; 64];
         loop {
             if let Ok(len) = usb_rx.read_packet(&mut buf).await {
-                info!("LEN: {}", len);
                 if len == 0 {
                     continue;
                 }
@@ -99,9 +98,10 @@ pub async fn start_midi_loops<'a>(
                 tx.write(data).await.unwrap();
                 match ChannelVoice1::try_from(data) {
                     Ok(_midi_msg) => {
-                        info!("DO SOMETHING WITH THIS MESSAGE: {:?}", data);
+                        // TODO: DO SOMETHING WITH THIS MESSAGE
                     }
                     Err(_err) => {
+                        // TODO: Log with USB
                         info!(
                             "There was an error but we should not panic. Len: {}, Data: {}",
                             len, data
@@ -115,7 +115,10 @@ pub async fn start_midi_loops<'a>(
     let uart_rx = async {
         let mut buf = [0; 3];
         loop {
-            uart1_rx.read(&mut buf).await.unwrap();
+            if let Err(err) = uart1_rx.read(&mut buf).await {
+                info!("uart rx err: {}", err);
+                continue;
+            }
 
             // Write to MIDI-THRU
             let mut tx = uart0_tx.lock().await;
@@ -123,9 +126,10 @@ pub async fn start_midi_loops<'a>(
 
             match ChannelVoice1::try_from(buf.as_slice()) {
                 Ok(_midi_msg) => {
-                    info!("DO SOMETHING WITH THIS MESSAGE: {:?}", buf);
+                    // TODO: DO SOMETHING WITH THIS MESSAGE
                 }
                 Err(_err) => {
+                    // TODO: Log with USB
                     info!("There was an error but we should not panic. Data: {}", buf);
                 }
             }
