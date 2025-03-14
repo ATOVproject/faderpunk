@@ -1,5 +1,6 @@
 use defmt::info;
-use embassy_futures::join::join3;
+
+use embassy_futures::join::{join3, join4};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use wmidi::{Channel as MidiChannel, ControlFunction, U7};
 
@@ -54,7 +55,6 @@ let glob_lfo_speed = app.make_global(0.0682);
                 if wave == 3 {
                     let mut lfo_pos;
                     lfo_pos = WAVEFORM_RECT[vals as usize];
-                    output.set_value(lfo_pos);    
                 }           
         }
     };
@@ -81,6 +81,16 @@ let glob_lfo_speed = app.make_global(0.0682);
             }
             glob_wave.set(wave).await;
             info!("Wave state {}", wave);
+        }
+    };
+
+
+    let fut4 = async {
+    
+        loop {
+            // app.delay_millis(100).await;
+            // app.set_led(0, (glob_lfo_pos.get().await as u8, 0, 0), 50).await;
+
         }
     };
 
