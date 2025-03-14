@@ -1,5 +1,4 @@
 use defmt::info;
-
 use embassy_futures::join::{join3, join4};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use wmidi::{Channel as MidiChannel, ControlFunction, U7};
@@ -18,6 +17,7 @@ pub async fn run(app: App<CHANNELS>) {
 
 let glob_wave: Global<u16>= app.make_global(0);
 let glob_lfo_speed = app.make_global(0.0682);
+let glob_lfo_pos = app.make_global(0);
 
 
     let output = app.make_out_jack(0).await;
@@ -41,20 +41,26 @@ let glob_lfo_speed = app.make_global(0.0682);
                     let mut lfo_pos;
                     lfo_pos = WAVEFORM_SINE[vals as usize];
                     output.set_value(lfo_pos);  
+                    //glob_lfo_pos.set(lfo_pos).await;
+                    
                 }
                 if wave == 1 {
                     let mut lfo_pos;
                     lfo_pos = WAVEFORM_TRIANGLE[vals as usize];
                     output.set_value(lfo_pos);  
+                    //glob_lfo_pos.set(lfo_pos).await;
                 }
                 if wave == 2 {
                     let mut lfo_pos;
                     lfo_pos = WAVEFORM_SAW[vals as usize];
                     output.set_value(lfo_pos);  
+                    //glob_lfo_pos.set(lfo_pos).await;
                 }
                 if wave == 3 {
                     let mut lfo_pos;
                     lfo_pos = WAVEFORM_RECT[vals as usize];
+                    output.set_value(lfo_pos); 
+                    //glob_lfo_pos.set(lfo_pos).await;   
                 }           
         }
     };
@@ -93,6 +99,8 @@ let glob_lfo_speed = app.make_global(0.0682);
 
         }
     };
+
+
 
     join3(fut1, fut2, fut3).await;
 }
