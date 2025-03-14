@@ -72,7 +72,7 @@ let glob_lfo_pos = app.make_global(0);
             let mut fader = app.get_fader_values();
             fader = [CURVE_LOG[fader[0] as usize] as u16];
             //info!("Moved fader {} to {}", app.channels[0], fader);
-            glob_lfo_speed.set(fader[0] as f32 * 0.004 + 0.0682).await;
+            glob_lfo_speed.set(fader[0] as f32 * 0.015 + 0.0682).await;
         }
     };
 
