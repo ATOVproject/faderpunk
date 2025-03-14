@@ -101,8 +101,8 @@ pub enum XRxMsg {
     SetLed(LedsAction),
 }
 
-static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-static mut CORE1_STACK: Stack<131_072> = Stack::new();
+// static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
+// static mut CORE1_STACK: Stack<131_072> = Stack::new();
 pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
@@ -350,16 +350,18 @@ async fn main(spawner: Spawner) {
     //    into ram
     // 5) On scene change, unspawn everything, change current scene, spawn everything again
 
-    spawn_core1(
-        p.CORE1,
-        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
-        move || {
-            let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| {
-                spawner.spawn(main_core1(spawner)).unwrap();
-            });
-        },
-    );
+    // spawn_core1(
+    //     p.CORE1,
+    //     unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+    //     move || {
+    //         let executor1 = EXECUTOR1.init(Executor::new());
+    //         executor1.run(|spawner| {
+    //             spawner.spawn(main_core1(spawner)).unwrap();
+    //         });
+    //     },
+    // );
+
+    spawner.spawn(main_core1(spawner)).unwrap();
 
     let chan_x_0 = CHAN_X_0.init(Channel::new());
     let chan_max = CHAN_MAX.init(Channel::new());
@@ -444,7 +446,7 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    scene_sender.send(&[4, 4, 4, 3 ]);
+    scene_sender.send(&[4, 4, 4, 3]);
 
     join(fut, fut2).await;
 
