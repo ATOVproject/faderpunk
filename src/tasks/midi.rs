@@ -1,17 +1,14 @@
 use defmt::info;
 use embassy_futures::join::{join, join3};
-use embassy_rp::peripherals::USB;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::channel::Receiver;
-use embassy_sync::mutex::Mutex;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver, mutex::Mutex};
 use embassy_time::{with_timeout, Duration};
 use embassy_usb::class::midi::MidiClass;
-
-use embassy_rp::peripherals::{UART0, UART1};
-use embassy_rp::uart::{Async, Uart, UartTx};
-use embassy_rp::usb::Driver;
-use midi2::channel_voice1::ChannelVoice1;
-use midi2::Data;
+use esp_hal::{
+    otg_fs::asynch::Driver,
+    uart::{Uart, UartTx},
+    Async,
+};
+use midi2::{channel_voice1::ChannelVoice1, Data};
 
 pub type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, ChannelVoice1<[u8; 3]>), 64>;
 
@@ -52,19 +49,21 @@ enum CodeIndexNumber {
 }
 
 pub async fn start_midi_loops<'a>(
-    usb_midi: MidiClass<'a, Driver<'a, USB>>,
-    uart0: UartTx<'static, UART0, Async>,
-    uart1: Uart<'static, UART1, Async>,
+    usb_midi: MidiClass<'a, Driver<'a>>,
+    uart_thru: UartTx<'static, Async>,
+    uart_midi: Uart<'static, Async>,
     x_rx: XRxReceiver,
 ) {
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
-    let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, UART0, Async>> = Mutex::new(uart0);
-    let (mut uart1_tx, mut uart1_rx) = uart1.split();
+    let uart_thru_tx: Mutex<NoopRawMutex, UartTx<'static, Async>> = Mutex::new(uart_thru);
+    let (mut uart_midi_rx, mut uart_midi_tx) = uart_midi.split();
 
     let midi_tx = async {
         let mut buf = [0; 4];
         // TODO: Do not try to send midi message to USB when not connected
         // usb_tx.wait_connection().await;
+        // TODO: Deal with backpressure as well
+        // See https://claude.ai/chat/1a702bdf-b1f9-4d52-a004-aa221cbb4642 for improving this
         loop {
             let (_chan, midi_msg) = x_rx.receive().await;
             buf[0] = cin_from_bytes_msg(&midi_msg) as u8;
@@ -78,7 +77,7 @@ pub async fn start_midi_loops<'a>(
                     usb_tx.write_packet(&buf),
                 ),
                 // Write excluding USB-MIDI CIN
-                uart1_tx.write(&buf[1..]),
+                uart_midi_tx.write_async(&buf[1..]),
             )
             .await;
         }
@@ -94,8 +93,8 @@ pub async fn start_midi_loops<'a>(
                 // Remove USB-MIDI CIN
                 let data = &buf[1..len];
                 // Write to MIDI-THRU
-                let mut tx = uart0_tx.lock().await;
-                tx.write(data).await.unwrap();
+                let mut tx = uart_thru_tx.lock().await;
+                tx.write_async(data).await.unwrap();
                 match ChannelVoice1::try_from(data) {
                     Ok(_midi_msg) => {
                         // TODO: DO SOMETHING WITH THIS MESSAGE
@@ -115,14 +114,14 @@ pub async fn start_midi_loops<'a>(
     let uart_rx = async {
         let mut buf = [0; 3];
         loop {
-            if let Err(err) = uart1_rx.read(&mut buf).await {
+            if let Err(err) = uart_midi_rx.read_async(&mut buf).await {
                 info!("uart rx err: {}", err);
                 continue;
             }
 
             // Write to MIDI-THRU
-            let mut tx = uart0_tx.lock().await;
-            tx.write(&buf).await.unwrap();
+            let mut tx = uart_thru_tx.lock().await;
+            tx.write_async(&buf).await.unwrap();
 
             match ChannelVoice1::try_from(buf.as_slice()) {
                 Ok(_midi_msg) => {

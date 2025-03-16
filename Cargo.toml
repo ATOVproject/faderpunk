@@ -1,85 +1,70 @@
 [package]
-name = "phoenix-16"
-version = "0.1.0"
 edition = "2021"
+name = "fader-punk"
+version = "0.1.0"
+
+[[bin]]
+name = "fader-punk"
+path = "./src/bin/main.rs"
 
 [dependencies]
-embassy-embedded-hal = { version = "0.3", features = ["defmt"] }
-embassy-sync = { version = "0.6", features = ["defmt"] }
-embassy-executor = { version = "0.7", features = [
-  "task-arena-size-98304",
-  "arch-cortex-m",
-  "executor-thread",
-  "executor-interrupt",
+at24cx = "0.1"
+array-init = "2.1"
+critical-section = "1.2.0"
+defmt = "0.3.10"
+embassy-embedded-hal = "0.3.0"
+embassy-executor = { version = "0.7.0", features = [
   "defmt",
+  "task-arena-size-20480",
 ] }
-embassy-time = { version = "0.4", features = [
+embassy-futures = "0.1.1"
+embassy-sync = "0.6.2"
+embassy-time = { version = "0.4.0", features = [
+  "generic-queue-8",
   "defmt",
   "defmt-timestamp-uptime",
 ] }
 embassy-usb = { version = "0.4", features = ["defmt", "max-interface-count-6"] }
-embassy-usb-logger = { version = "0.4" }
-embassy-rp = { version = "0.3", features = [
-  "defmt",
-  "unstable-pac",
-  "time-driver",
-  "critical-section-impl",
-  "rp235xb",
-  "binary-info",
+embassy-usb-logger = "0.4.0"
+embedded-io-async = "0.6.1"
+esp-backtrace = { version = "0.15.1", features = [
+  "esp32s3",
+  "exception-handler",
+  "panic-handler",
+  "println",
 ] }
-embassy-futures = { version = "0.1" }
-
-at24cx = "0.1"
-cortex-m = { version = "0.7", features = ["inline-asm"] }
-cortex-m-rt = "0.7"
-critical-section = "1.1"
-defmt = "0.3"
-defmt-rtt = "0.4"
-embedded-hal = "1.0"
-embedded-hal-async = "1.0"
+esp-hal = { version = "1.0.0-beta.0", features = [
+  "defmt",
+  "esp32s3",
+  "unstable",
+] }
+esp-hal-embassy = { version = "0.7.0", features = ["esp32s3"] }
+esp-println = { version = "0.13.0", features = ["defmt-espflash", "esp32s3"] }
 heapless = "0.8"
-log = "0.4"
+log = "0.4.26"
 max11300 = "0.4"
-panic-probe = { version = "0.3", features = ["print-defmt"] }
-pio = "0.2"
-pio-proc = "0.2"
-portable-atomic = { version = "1.11", features = ["critical-section"] }
-sequential-storage = "4.0"
-smart-leds-trait = "0.3.1"
-static_cell = "2.1.0"
-wmidi = { version = "4.0", default-features = false }
-array-init = "2.1"
-ws2812-async = "0.3"
 midi2 = { version = "0.8", default-features = false, features = [
   "channel-voice2",
   "channel-voice1",
 ] }
-serde = { version = "1", features = ["derive"], default-features = false }
-postcard = "1.1"
 minicbor = { version = "0.26", features = ["derive"] }
+panic-rtt-target = { version = "0.2.0", features = ["defmt"] }
+portable-atomic = "1.11.0"
+postcard = "1.1"
+serde = { version = "1", features = ["derive"], default-features = false }
+sequential-storage = "4.0"
+smart-leds-trait = "0.3.1"
+static_cell = { version = "2.1.0", features = ["nightly"] }
+ws2812-async = "0.3"
 
-
-# release
-[profile.release]
-lto = true
-opt-level = "s"
-incremental = false
-codegen-units = 1
-debug = true
-
-# cargo build/run
 [profile.dev]
+opt-level = "s"
+
+[profile.release]
 codegen-units = 1
 debug = 2
-debug-assertions = true
-incremental = false
-opt-level = 3
-overflow-checks = true
-
-# do not optimize proc-macro crates = faster builds from scratch
-[profile.dev.build-override]
-codegen-units = 8
-debug = false
 debug-assertions = false
-opt-level = 0
+incremental = false
+lto = 'fat'
+opt-level = 's'
 overflow-checks = false

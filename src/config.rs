@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 pub enum ClockSrc {
     Atom,
     Meteor,
-    // TODO: Rename
-    Hexagon,
+    Cube,
     Internal,
 }
 

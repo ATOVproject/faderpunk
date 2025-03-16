@@ -1,5 +1,5 @@
 {
-    "rust-analyzer.cargo.target": "thumbv8m.main-none-eabihf",
+    "rust-analyzer.cargo.target": "xtensa-esp32-none-elf",
     "rust-analyzer.checkOnSave.allTargets": false
 }
 

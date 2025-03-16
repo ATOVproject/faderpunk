@@ -1,16 +1,11 @@
 use embassy_executor::Spawner;
-use embassy_rp::{
-    gpio::{Level, Output},
-    peripherals::{PIN_12, PIN_13, PIN_14, PIN_15, PIN_17, PIO0, SPI0},
-    pio::{Config as PioConfig, Direction as PioDirection, Pio},
-    spi::{self, Async, Spi},
-};
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
-    channel::Receiver,
-    mutex::Mutex,
-};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver, mutex::Mutex};
 use embassy_time::Timer;
+use esp_hal::{
+    gpio::{GpioPin, Level, Output, OutputConfig},
+    spi::master::Spi,
+    Async,
+};
 use max11300::{
     config::{
         ConfigMode0, ConfigMode5, ConfigMode7, DeviceConfig, Port, ADCCTL, ADCRANGE, AVR, DACREF,
@@ -21,17 +16,16 @@ use max11300::{
 use portable_atomic::{AtomicU16, Ordering};
 use static_cell::StaticCell;
 
-use crate::{Irqs, XTxMsg, XTxSender};
+use crate::{XTxMsg, XTxSender};
 
-type SharedMax =
-    Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
+type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, Async>, Output<'static>>>;
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
 pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 
-type MuxPins = (PIN_12, PIN_13, PIN_14, PIN_15);
+type MuxPins = (GpioPin<30>, GpioPin<31>, GpioPin<32>, GpioPin<33>);
 type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, MaxConfig), 64>;
 
 #[derive(Clone, Copy)]
@@ -43,10 +37,9 @@ pub enum MaxConfig {
 
 pub async fn start_max(
     spawner: &Spawner,
-    spi0: Spi<'static, SPI0, spi::Async>,
-    pio0: PIO0,
+    spi: Spi<'static, Async>,
     mux_pins: MuxPins,
-    cs: PIN_17,
+    cs: GpioPin<10>,
     x_tx: XTxSender,
     x_rx: XRxReceiver,
 ) {
@@ -57,9 +50,13 @@ pub async fn start_max(
         ..Default::default()
     };
 
-    let max_driver = Max11300::try_new(spi0, Output::new(cs, Level::High), device_config)
-        .await
-        .unwrap();
+    let max_driver = Max11300::try_new(
+        spi,
+        Output::new(cs, Level::High, OutputConfig::default()),
+        device_config,
+    )
+    .await
+    .unwrap();
 
     let max = MAX.init(Mutex::new(max_driver));
 
@@ -85,7 +82,7 @@ pub async fn start_max(
 
     // TODO: Make individual port
     spawner
-        .spawn(read_fader(pio0, mux_pins, ports.port16, x_tx))
+        .spawn(read_fader(mux_pins, ports.port16, x_tx))
         .unwrap();
 
     spawner.spawn(process_channel_values(max)).unwrap();
@@ -95,9 +92,8 @@ pub async fn start_max(
 
 #[embassy_executor::task]
 async fn read_fader(
-    pio0: PIO0,
     mux_pins: MuxPins,
-    max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, CriticalSectionRawMutex>,
+    max_port: Mode0Port<Spi<'static, Async>, Output<'static>, NoopRawMutex>,
     x_tx: XTxSender,
 ) {
     let fader_port = max_port
@@ -109,54 +105,54 @@ async fn read_fader(
         .await
         .unwrap();
 
-    let Pio {
-        mut common,
-        mut sm0,
-        ..
-    } = Pio::new(pio0, Irqs);
-
-    let prg = pio_proc::pio_asm!(
-        "
-        pull block
-        out pins, 4
-        "
-    );
-    let pin0 = common.make_pio_pin(mux_pins.0);
-    let pin1 = common.make_pio_pin(mux_pins.1);
-    let pin2 = common.make_pio_pin(mux_pins.2);
-    let pin3 = common.make_pio_pin(mux_pins.3);
-    sm0.set_pin_dirs(PioDirection::Out, &[&pin0, &pin1, &pin2, &pin3]);
-    let mut cfg = PioConfig::default();
-    cfg.set_out_pins(&[&pin0, &pin1, &pin2, &pin3]);
-    cfg.use_program(&common.load_program(&prg.program), &[]);
-    sm0.set_config(&cfg);
-    sm0.set_enable(true);
+    let mut pin0 = Output::new(mux_pins.0, Level::Low, OutputConfig::default());
+    let mut pin1 = Output::new(mux_pins.1, Level::Low, OutputConfig::default());
+    let mut pin2 = Output::new(mux_pins.2, Level::Low, OutputConfig::default());
+    let mut pin3 = Output::new(mux_pins.3, Level::Low, OutputConfig::default());
 
     let mut chan: usize = 0;
     let mut prev_values: [u16; 16] = [0; 16];
 
     loop {
-        // Channels are in reverse
-        let channel = 15 - chan;
-        // send the channel value to the PIO state machine to trigger the program
-        sm0.tx().wait_push(chan as u32).await;
+        // Set pins according to CD74HC4067 multiplexer selection logic (S0-S3)
+        // S0 = pin0 (LSB), S1 = pin1, S2 = pin2, S3 = pin3 (MSB)
+        pin0.set_level(if (chan & 0b0001) != 0 {
+            Level::High
+        } else {
+            Level::Low
+        }); // S0
+        pin1.set_level(if (chan & 0b0010) != 0 {
+            Level::High
+        } else {
+            Level::Low
+        }); // S1
+        pin2.set_level(if (chan & 0b0100) != 0 {
+            Level::High
+        } else {
+            Level::Low
+        }); // S2
+        pin3.set_level(if (chan & 0b1000) != 0 {
+            Level::High
+        } else {
+            Level::Low
+        }); // S3
 
-        // this translates to ~30Hz refresh rate for the faders (1000 / (2 * 16) = 31.25)
-        // TODO: Why is this sometimes too short?
-        // Like with scene_sender.send(&[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+        // Allow time for multiplexer to settle
         Timer::after_micros(3000).await;
 
         let val = fader_port.get_value().await.unwrap();
-        let diff = (val as i16 - prev_values[channel] as i16).unsigned_abs();
-        // resolution of 256 should cover the full MIDI 1.0 range
-        prev_values[channel] = val;
+
+        // Use inverted channel for faders as they are inverted on on the mux output
+        let fader_chan = 15 - chan;
+
+        let diff = (val as i16 - prev_values[fader_chan] as i16).unsigned_abs();
+        prev_values[fader_chan] = val;
 
         if diff >= 4 {
-            x_tx.send((channel, XTxMsg::FaderChange)).await;
-            // MAX_CHANGED_FADER[15 - chan].store(true, Ordering::Relaxed);
+            x_tx.send((fader_chan, XTxMsg::FaderChange)).await;
         }
 
-        MAX_VALUES_FADER[channel].store(val, Ordering::Relaxed);
+        MAX_VALUES_FADER[fader_chan].store(val, Ordering::Relaxed);
 
         chan = (chan + 1) % 16;
     }

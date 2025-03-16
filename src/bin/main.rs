@@ -1,131 +1,66 @@
 #![no_std]
 #![no_main]
 
-#[macro_use]
-mod macros;
+use core::ptr::addr_of_mut;
 
-mod app;
-mod apps;
-mod config;
-mod constants;
-mod tasks;
-mod utils;
-
-use config::GlobalConfig;
-use defmt::info;
+use array_init::array_init;
+use at24cx::{Address, At24Cx};
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
-use embassy_executor::{Executor, Spawner};
+use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_futures::select::select;
-use embassy_rp::block::ImageDef;
-use embassy_rp::gpio::{Input, Pull};
-use embassy_rp::multicore::{spawn_core1, Stack};
-use embassy_rp::peripherals::{UART0, UART1, USB};
-use embassy_rp::spi::{self, Phase, Polarity, Spi};
-use embassy_rp::uart::{self, Async as UartAsync, Config as UartConfig, Uart, UartTx};
-use embassy_rp::usb;
-use embassy_rp::{
-    bind_interrupts,
-    i2c::{self, I2c},
-    peripherals::{I2C1, PIO0},
-    pio,
-};
-use embassy_sync::blocking_mutex::raw::{
-    CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex,
-};
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_sync::mutex::Mutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::signal::Signal;
 use embassy_sync::watch::{Receiver as WatchReceiver, Watch};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration, Timer};
+use esp_backtrace as _;
+use esp_hal::uart::UartTx;
+use esp_hal::{
+    i2c::master::{Config as I2cConfig, I2c},
+    otg_fs::{
+        asynch::{Config as UsbConfig, Driver as UsbDriver},
+        Usb,
+    },
+    spi::{
+        master::{Config as SpiConfig, Spi},
+        Mode as SpiMode,
+    },
+    system::{CpuControl, Stack},
+    time::Rate,
+    timer::{timg::TimerGroup, AnyTimer},
+    uart::{Config as UartConfig, Uart},
+    Async,
+};
+use esp_hal_embassy::Executor;
+use esp_println::println;
+use heapless::Vec;
 use midi2::channel_voice1::ChannelVoice1;
 use portable_atomic::{AtomicBool, Ordering};
-
-use heapless::Vec;
-use tasks::leds::LedsAction;
-use tasks::max::{MaxConfig, MAX_VALUES_FADER};
-use {defmt_rtt as _, panic_probe as _};
-
-use static_cell::StaticCell;
-
-use array_init::array_init;
-use at24cx::{Address, At24Cx};
 use sequential_storage::{
     cache::NoCache,
     map::{fetch_item, store_item},
 };
+use static_cell::StaticCell;
 
-use apps::{get_channels, run_app_by_id};
-
-#[link_section = ".start_block"]
-#[used]
-pub static IMAGE_DEF: ImageDef = ImageDef::secure_exe();
-
-// Program metadata for `picotool info`.
-// This isn't needed, but it's recomended to have these minimal entries.
-#[link_section = ".bi_entries"]
-#[used]
-pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
-    embassy_rp::binary_info::rp_program_name!(c"Fader Punk"),
-    embassy_rp::binary_info::rp_program_description!(
-        c"From ember's grip, a fader's rise, In ancient garb, under modern skies. A phoenix's touch, in keys it lays, A melody bold, through time's maze."
-    ),
-    embassy_rp::binary_info::rp_cargo_version!(),
-    embassy_rp::binary_info::rp_program_build_attribute!(),
-];
-
-bind_interrupts!(struct Irqs {
-    I2C1_IRQ => i2c::InterruptHandler<I2C1>;
-    PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
-    USBCTRL_IRQ => usb::InterruptHandler<USB>;
-    UART0_IRQ => uart::InterruptHandler<UART0>;
-    UART1_IRQ => uart::InterruptHandler<UART1>;
-});
-
-pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
-
-/// Messages from core 0 to core 1
-#[derive(Clone, Copy, Debug, defmt::Format)]
-pub enum XTxMsg {
-    ButtonDown,
-    FaderChange,
-    Clock,
-}
-
-/// Messages from core 1 to core 0
-#[derive(Clone)]
-pub enum XRxMsg {
-    MaxPortReconfigure(MaxConfig),
-    MidiMessage(ChannelVoice1<[u8; 3]>),
-    SetLed(LedsAction),
-}
+use fader_punk::apps::{get_channels, run_app_by_id};
+use fader_punk::tasks::{
+    self,
+    leds::LedsAction,
+    max::{MaxConfig, MAX_VALUES_FADER},
+};
+use fader_punk::{
+    config, XRxMsg, XTxMsg, CHANS_X, CHAN_LEDS, CHAN_MAX, CHAN_MIDI, CHAN_X_0, CHAN_X_1, CHAN_X_RX,
+    CHAN_X_TX, CORE1_TASKS, GLOBAL_CONFIG, WATCH_SCENE_SET,
+};
 
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
-pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
-pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
-    [const { PubSubChannel::new() }; 16];
-/// Collector channel on core 0
-static CHAN_X_0: StaticCell<Channel<NoopRawMutex, (usize, XTxMsg), 128>> = StaticCell::new();
-/// Collector channel on core 1
-static CHAN_X_1: StaticCell<Channel<NoopRawMutex, (usize, XRxMsg), 128>> = StaticCell::new();
-/// Channel from core 0 to core 1
-static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 64> = Channel::new();
-/// Channel from core 1 to core 0
-static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channel::new();
-/// Channel for sending messages to the MAX
-static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxConfig), 64>> = StaticCell::new();
-/// Channel for sending messages to the MIDI bus
-static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, ChannelVoice1<[u8; 3]>), 64>> =
-    StaticCell::new();
-/// Channel for sending messages to the LEDs
-static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
-/// Channel for sending messages to the clock
-static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, u16, 64>> = StaticCell::new();
-/// Tasks (apps) that are currently running (number 17 is the publisher task)
-static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
-static GLOBAL_CONFIG: StaticCell<GlobalConfig> = StaticCell::new();
+static I2C0_BUS: StaticCell<Mutex<NoopRawMutex, I2c<'static, Async>>> = StaticCell::new();
+static EP_OUT_BUFFER: StaticCell<[u8; 1024]> = StaticCell::new();
 
 #[derive(Debug)]
 enum SceneErr {
@@ -208,7 +143,7 @@ async fn run_app(
 
     select(run_app_fut, cancel_receiver.changed()).await;
     CORE1_TASKS[start_channel].store(false, Ordering::Relaxed);
-    info!("App {} on channel {} stopped", number, start_channel)
+    println!("App {} on channel {} stopped", number, start_channel)
 }
 
 // Cross core comms
@@ -220,8 +155,9 @@ async fn x_tx(channel_map: [usize; 16]) {
     let _ = cancel_receiver.changed().await;
     let x_tx_fut = async {
         // INFO: These _should_ all be properly dropped when task ends
-        let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
-            array_init(|i| CHANS_X[i].publisher().unwrap());
+        // FIXME: Can we use NoopRawMutex?
+        let publishers: [Publisher<'static, CriticalSectionRawMutex, (usize, XTxMsg), 64, 5, 1>;
+            16] = array_init(|i| CHANS_X[i].publisher().unwrap());
         CORE1_TASKS[16].store(true, Ordering::Relaxed);
         loop {
             let (chan, msg) = CHAN_X_TX.receive().await;
@@ -290,76 +226,101 @@ async fn main_core1(spawner: Spawner) {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let p = embassy_rp::init(Default::default());
+    let p = esp_hal::init(esp_hal::Config::default());
 
-    // SPI0 (MAX11300)
-    let mut spi0_config = spi::Config::default();
-    spi0_config.frequency = 20_000_000;
-    let spi0 = Spi::new(
-        p.SPI0,
-        p.PIN_18,
-        p.PIN_19,
-        p.PIN_16,
-        p.DMA_CH0,
-        p.DMA_CH1,
-        spi0_config,
-    );
-    let mux_pins = (p.PIN_12, p.PIN_13, p.PIN_14, p.PIN_15);
+    // FIXME: Which timer to use? Can we use SYS timer?
+    let timg0 = TimerGroup::new(p.TIMG0);
+    let timer0: AnyTimer = timg0.timer0.into();
+    let timer1: AnyTimer = timg0.timer1.into();
+    esp_hal_embassy::init([timer0, timer1]);
 
-    // SPI1 (WS2812)
-    let mut spi1_config = spi::Config::default();
-    spi1_config.frequency = 3_800_000;
-    let spi1 = Spi::new_txonly(p.SPI1, p.PIN_10, p.PIN_11, p.DMA_CH5, spi1_config);
+    let mut cpu_control = CpuControl::new(p.CPU_CTRL);
 
-    // I2C1 (EEPROM)
-    let i2c1 = i2c::I2c::new_async(p.I2C1, p.PIN_27, p.PIN_26, Irqs, i2c::Config::default());
+    let _guard = cpu_control
+        .start_app_core(unsafe { &mut *addr_of_mut!(CORE1_STACK) }, move || {
+            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+            let executor = EXECUTOR.init(Executor::new());
+            executor.run(|sp| {
+                sp.spawn(main_core1(sp)).ok();
+            });
+        })
+        .unwrap();
+
+    // SPI2 (MAX11300)
+    let mut spi_max = Spi::new(
+        p.SPI2,
+        SpiConfig::default().with_frequency(Rate::from_mhz(20)),
+    )
+    .unwrap()
+    // Recommended SPI2 pins
+    .with_sck(p.GPIO12)
+    .with_mosi(p.GPIO11)
+    .with_miso(p.GPIO13)
+    .into_async();
+
+    // Any pins are fine
+    let mux_pins = (p.GPIO30, p.GPIO31, p.GPIO32, p.GPIO33);
+
+    // SPI3 (WS2812)
+    let mut spi_leds = Spi::new(
+        p.SPI3,
+        SpiConfig::default().with_frequency(Rate::from_khz(3_800)),
+    )
+    .unwrap()
+    // Any pins are fine, really
+    .with_sck(p.GPIO41)
+    .with_mosi(p.GPIO40)
+    .into_async();
+
+    // I2C0 (EEPROM & Button expander)
+    let i2c0 = I2c::new(p.I2C0, I2cConfig::default())
+        .unwrap()
+        .with_sda(p.GPIO39)
+        .with_scl(p.GPIO38)
+        .into_async();
+
+    let i2c0_bus = Mutex::new(i2c0);
+    let i2c0_bus = I2C0_BUS.init(i2c0_bus);
+
+    let i2c_eeprom = I2cDevice::new(i2c0_bus);
+    let i2c_expander = I2cDevice::new(i2c0_bus);
 
     // MIDI
-    let mut uart_config = UartConfig::default();
-    // Classic MIDI baud rate
-    uart_config.baudrate = 31250;
+    let uart_config = UartConfig::default().with_baudrate(31_250);
+
     // MIDI Thru
-    let uart0: UartTx<'_, _, UartAsync> = UartTx::new(p.UART0, p.PIN_0, p.DMA_CH2, uart_config);
+    let mut uart_thru = UartTx::new(p.UART1, uart_config)
+        .unwrap()
+        .with_tx(p.GPIO17)
+        .into_async();
+
     // MIDI In/Out
-    let uart1 = Uart::new(
-        p.UART1,
-        p.PIN_8,
-        p.PIN_9,
-        Irqs,
-        p.DMA_CH3,
-        p.DMA_CH4,
-        uart_config,
-    );
+    let mut uart_midi = Uart::new(p.UART2, uart_config)
+        .unwrap()
+        .with_tx(p.GPIO43)
+        .with_rx(p.GPIO44)
+        .into_async();
 
     // USB
-    let usb_driver = usb::Driver::new(p.USB, Irqs);
+    let usb = Usb::new(p.USB0, p.GPIO20, p.GPIO19);
+    let ep_out_buffer = EP_OUT_BUFFER.init([0; 1024]);
+    let usb_config = UsbConfig::default();
+    let usb_driver = UsbDriver::new(usb, ep_out_buffer, usb_config);
 
-    // Buttons
-    let buttons = (
-        p.PIN_6, p.PIN_7, p.PIN_38, p.PIN_32, p.PIN_33, p.PIN_34, p.PIN_35, p.PIN_36, p.PIN_23,
-        p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
-    );
+    // AUX jacks inputs
+    let aux_inputs = (p.GPIO34, p.GPIO35, p.GPIO36);
 
-    let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
+    let mut cpu_control = CpuControl::new(p.CPU_CTRL);
 
-    // TODO: how do we re-spawn things??
-    // 1) Make sure we can "unspawn" stuff
-    // 2) Save all available scenes somewhere (16)
-    // 3) Save the current scene index somewhere
-    // 4) Store all available scenes and current scene index in eeprom, then read that on reboot
-    //    into ram
-    // 5) On scene change, unspawn everything, change current scene, spawn everything again
-
-    spawn_core1(
-        p.CORE1,
-        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
-        move || {
-            let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| {
-                spawner.spawn(main_core1(spawner)).unwrap();
+    let _guard = cpu_control
+        .start_app_core(unsafe { &mut *addr_of_mut!(CORE1_STACK) }, move || {
+            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+            let executor = EXECUTOR.init(Executor::new());
+            executor.run(|sp| {
+                sp.spawn(main_core1(sp)).ok();
             });
-        },
-    );
+        })
+        .unwrap();
 
     let chan_x_0 = CHAN_X_0.init(Channel::new());
     let chan_max = CHAN_MAX.init(Channel::new());
@@ -368,33 +329,38 @@ async fn main(spawner: Spawner) {
 
     // TODO: Get this from eeprom
     // Fuck I think this needs to be configurable on the fly??
-    let global_config = GLOBAL_CONFIG.init(GlobalConfig {
+    let global_config = GLOBAL_CONFIG.init(config::GlobalConfig {
         clock_src: config::ClockSrc::Atom,
     });
 
     // spawner.spawn(read_clock(ports.port17)).unwrap();
 
+    tasks::clock::start_clock(&spawner, chan_x_0.sender(), aux_inputs, global_config).await;
+
+    tasks::leds::start_leds(&spawner, spi_leds, chan_leds.receiver()).await;
+
     tasks::max::start_max(
         &spawner,
-        spi0,
-        p.PIO0,
+        spi_max,
         mux_pins,
-        p.PIN_17,
+        p.GPIO10,
         chan_x_0.sender(),
         chan_max.receiver(),
     )
     .await;
 
-    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1, chan_midi.receiver())
-        .await;
-
-    tasks::leds::start_leds(&spawner, spi1, chan_leds.receiver()).await;
+    tasks::transport::start_transports(
+        &spawner,
+        usb_driver,
+        uart_midi,
+        uart_thru,
+        chan_midi.receiver(),
+    )
+    .await;
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
-    tasks::clock::start_clock(&spawner, chan_x_0.sender(), aux_inputs, global_config).await;
-
-    let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
+    let mut eeprom = At24Cx::new(i2c_eeprom, Address(0, 0), 17, Delay);
 
     // These are the flash addresses in which the crate will operate.
     // The crate will not read, write or erase outside of this range.
