@@ -97,8 +97,8 @@ pub enum XRxMsg {
     SetLed(LedsAction),
 }
 
-static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
+static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];

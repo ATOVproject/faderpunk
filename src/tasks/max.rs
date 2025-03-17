@@ -23,8 +23,8 @@ use static_cell::StaticCell;
 
 use crate::{Irqs, XTxMsg, XTxSender};
 
+// TODO: This does not need to be a critical section mutex!
 type SharedMax =
-    // TODO: This does not need to be a critical section mutex!
     Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
