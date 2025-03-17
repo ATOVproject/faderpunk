@@ -58,10 +58,6 @@ use sequential_storage::{
 
 use apps::{get_channels, run_app_by_id};
 
-#[link_section = ".start_block"]
-#[used]
-pub static IMAGE_DEF: ImageDef = ImageDef::secure_exe();
-
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
 #[link_section = ".bi_entries"]
