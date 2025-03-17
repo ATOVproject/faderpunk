@@ -690,7 +690,7 @@ dependencies = [
  "postcard",
  "sequential-storage",
  "serde",
- "smart-leds-trait",
+ "smart-leds",
  "static_cell",
  "wmidi",
  "ws2812-async",
