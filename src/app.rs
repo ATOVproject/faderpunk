@@ -17,7 +17,7 @@ use portable_atomic::Ordering;
 
 use crate::{
     config::Curve,
-    constants::{CURVE_EXP, CURVE_LOG},
+    constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::BPM_DELTA_MS,
@@ -35,6 +35,12 @@ pub enum Range {
     _0_5V,
     // -5 - 5V
     _Neg5_5V,
+}
+
+pub enum Led {
+    Top,
+    Bottom,
+    Button,
 }
 
 pub struct InJack {
@@ -265,10 +271,16 @@ impl<const N: usize> App<N> {
 
     // TODO: Add effects
     // TODO: add methods to set brightness/color independently
-    pub fn set_led(&self, channel: usize, (r, g, b): (u8, u8, u8), brightness: u8) {
+    pub fn set_led(&self, channel: usize, position: Led, (r, g, b): (u8, u8, u8), brightness: u8) {
+        let chan = self.channels[channel];
+        let led_no = match position {
+            Led::Top => CHAN_LED_MAP[0][chan],
+            Led::Bottom => CHAN_LED_MAP[1][chan],
+            Led::Button => CHAN_LED_MAP[2][chan],
+        };
         let value =
             ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-        LED_VALUES[self.channels[channel]].store(value, Ordering::Relaxed);
+        LED_VALUES[led_no].store(value, Ordering::Relaxed);
     }
 
     // TODO: This is a short-hand function that should also send the msg via TRS
