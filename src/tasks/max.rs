@@ -5,11 +5,7 @@ use embassy_rp::{
     pio::{Config as PioConfig, Direction as PioDirection, Pio},
     spi::{self, Async, Spi},
 };
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
-    channel::Receiver,
-    mutex::Mutex,
-};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver, mutex::Mutex};
 use embassy_time::Timer;
 use max11300::{
     config::{
@@ -23,9 +19,7 @@ use static_cell::StaticCell;
 
 use crate::{Irqs, XTxMsg, XTxSender};
 
-type SharedMax =
-    // TODO: This does not need to be a critical section mutex!
-    Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
+type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
 pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
@@ -98,7 +92,7 @@ pub async fn start_max(
 async fn read_fader(
     pio0: PIO0,
     mux_pins: MuxPins,
-    max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, CriticalSectionRawMutex>,
+    max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, NoopRawMutex>,
     x_tx: XTxSender,
 ) {
     let fader_port = max_port

@@ -1,6 +1,5 @@
 use core::array;
 
-use defmt::info;
 use embassy_sync::{
     blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
@@ -29,23 +28,50 @@ use crate::{
     XRxMsg, XTxMsg, CHANS_X,
 };
 
+pub enum Range {
+    // 0 - 10V
+    _0_10V,
+    // 0 - 5V
+    _0_5V,
+    // -5 - 5V
+    _Neg5_5V,
+}
+
 pub struct InJack {
     channel: usize,
+    range: Range,
 }
 
 impl InJack {
+    fn new(channel: usize, range: Range) -> Self {
+        Self { channel, range }
+    }
+
     pub fn get_value(&self) -> u16 {
-        MAX_VALUES_ADC[self.channel].load(Ordering::Relaxed)
+        let val = MAX_VALUES_ADC[self.channel].load(Ordering::Relaxed);
+        match self.range {
+            Range::_0_5V => val.saturating_mul(2),
+            _ => val,
+        }
     }
 }
 
 pub struct OutJack {
     channel: usize,
+    range: Range,
 }
 
 impl OutJack {
+    fn new(channel: usize, range: Range) -> Self {
+        Self { channel, range }
+    }
+
     pub fn set_value(&self, value: u16) {
-        MAX_VALUES_DAC[self.channel].store(value, Ordering::Relaxed);
+        let val = match self.range {
+            Range::_0_5V => value / 2,
+            _ => value,
+        };
+        MAX_VALUES_DAC[self.channel].store(val, Ordering::Relaxed);
     }
 
     pub fn set_value_with_curve(&self, curve: Curve, value: u16) {
@@ -84,7 +110,7 @@ impl Waiter {
         loop {
             if let (channel, XTxMsg::ButtonDown) = self.subscriber.next_message_pure().await {
                 if chan == channel {
-                    return BUTTON_PRESSED[16].load(Ordering::Relaxed);
+                    return BUTTON_PRESSED[17].load(Ordering::Relaxed);
                 }
             }
         }
@@ -165,40 +191,46 @@ impl<const N: usize> App<N> {
         buf
     }
 
-    pub async fn make_in_jack(&self, chan: usize) -> InJack {
+    // TODO: How can we prevent people from doing this multiple times?
+    pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
         if chan > N - 1 {
             // TODO: Maybe move panics into usb logs and handle gracefully?
             panic!("Not a valid channel in this app");
         }
+        let adc_range = match range {
+            Range::_Neg5_5V => ADCRANGE::RgNeg5_5v,
+            _ => ADCRANGE::RgNeg10_0v,
+        };
         self.reconfigure_jack(
             self.channels[chan],
             MaxConfig::Mode7(ConfigMode7(
                 AVR::InternalRef,
-                ADCRANGE::Rg0_10v,
+                adc_range,
                 NSAMPLES::Samples16,
             )),
         )
         .await;
 
-        InJack {
-            channel: self.channels[chan],
-        }
+        InJack::new(self.channels[chan], range)
     }
 
-    pub async fn make_out_jack(&self, chan: usize) -> OutJack {
+    // TODO: How can we prevent people from doing this multiple times?
+    pub async fn make_out_jack(&self, chan: usize, range: Range) -> OutJack {
         if chan > N - 1 {
             // TODO: Maybe move panics into usb logs and handle gracefully?
             panic!("Not a valid channel in this app");
         }
+        let dac_range = match range {
+            Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
+            _ => DACRANGE::Rg0_10v,
+        };
         self.reconfigure_jack(
             self.channels[chan],
-            MaxConfig::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
+            MaxConfig::Mode5(ConfigMode5(dac_range)),
         )
         .await;
 
-        OutJack {
-            channel: self.channels[chan],
-        }
+        OutJack::new(self.channels[chan], range)
     }
 
     pub async fn delay_micros(&self, micros: u64) {
@@ -228,7 +260,7 @@ impl<const N: usize> App<N> {
     }
 
     pub fn is_shift_pressed(&self) -> bool {
-        BUTTON_PRESSED[16].load(Ordering::Relaxed)
+        BUTTON_PRESSED[17].load(Ordering::Relaxed)
     }
 
     // TODO: Also add a custom flush() method and so on

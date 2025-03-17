@@ -65,6 +65,7 @@ async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>, x_rx: XRxReceiver) {
             .map(|val| decode_val(val.load(Ordering::Relaxed)));
 
         ws.write(data).await.ok();
+        // TODO: A bit weird. Find a good method for refreshing/flushing/throttling
         Timer::after_millis(5).await;
     }
 }
