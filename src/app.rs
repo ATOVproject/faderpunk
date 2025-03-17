@@ -1,6 +1,5 @@
 use core::array;
 
-use defmt::info;
 use embassy_sync::{
     blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
@@ -84,7 +83,7 @@ impl Waiter {
         loop {
             if let (channel, XTxMsg::ButtonDown) = self.subscriber.next_message_pure().await {
                 if chan == channel {
-                    return BUTTON_PRESSED[16].load(Ordering::Relaxed);
+                    return BUTTON_PRESSED[17].load(Ordering::Relaxed);
                 }
             }
         }
@@ -228,7 +227,7 @@ impl<const N: usize> App<N> {
     }
 
     pub fn is_shift_pressed(&self) -> bool {
-        BUTTON_PRESSED[16].load(Ordering::Relaxed)
+        BUTTON_PRESSED[17].load(Ordering::Relaxed)
     }
 
     // TODO: Also add a custom flush() method and so on
