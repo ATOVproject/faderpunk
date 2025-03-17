@@ -5,7 +5,7 @@ use crate::app::App;
 pub const CHANNELS: usize = 1;
 
 pub async fn run(app: App<CHANNELS>) {
-    let jacks = app.make_in_jack(0).await;
+    let jacks = app.make_in_jack(0, crate::app::Range::_0_10V).await;
     let fut1 = async {
         loop {
             let value = jacks.get_value();

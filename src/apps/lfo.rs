@@ -1,9 +1,7 @@
 use defmt::info;
 use embassy_futures::join::{join3, join4};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use wmidi::{Channel as MidiChannel, ControlFunction, U7};
 
-use crate::app::{App, Global};
+use crate::app::{App, Global, Range};
 use crate::constants::{CURVE_LOG, WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SINE, WAVEFORM_TRIANGLE};
 
 // API ideas:
@@ -18,7 +16,7 @@ pub async fn run(app: App<CHANNELS>) {
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0);
 
-    let output = app.make_out_jack(0).await;
+    let output = app.make_out_jack(0, Range::_0_10V).await;
 
     let mut vals: f32 = 0.0;
 

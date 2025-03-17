@@ -2,7 +2,7 @@ use crate::config::{Config, Curve, Param};
 use embassy_futures::join::join3;
 // use minicbor::encode;
 
-use crate::app::App;
+use crate::app::{App, Range};
 
 // API ideas:
 // - app.wait_for_midi_on_channel
@@ -24,7 +24,7 @@ pub async fn run(app: App<CHANNELS>) {
 
     let glob_muted = app.make_global(false);
 
-    let jack = app.make_out_jack(0).await;
+    let jack = app.make_out_jack(0, Range::_0_10V).await;
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
