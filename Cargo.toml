@@ -44,7 +44,7 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 pio = "0.3"
 portable-atomic = { version = "1.11", features = ["critical-section"] }
 sequential-storage = "4.0"
-smart-leds-trait = "0.3.1"
+smart-leds = "0.4.0"
 static_cell = "2.1.0"
 wmidi = { version = "4.0", default-features = false }
 array-init = "2.1"

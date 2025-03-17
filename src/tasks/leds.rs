@@ -5,7 +5,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_time::Timer;
 use portable_atomic::{AtomicU32, Ordering};
-use smart_leds_trait::{SmartLedsWriteAsync, RGB8};
+use smart_leds::{gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -36,6 +36,7 @@ type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, LedsAction), 64>;
 
 #[inline(always)]
 pub fn decode_val(value: u32) -> RGB8 {
+    // TODO: Add global max led brightness
     let brightness = ((value >> 24) & 0xFF) as u16;
     RGB8 {
         r: (((value >> 16) & 0xFF) as u16 * (brightness + 1) / 256) as u8,
@@ -59,9 +60,11 @@ async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>, _x_rx: XRxReceiver) {
     let delta = 1000 / REFRESH_RATE;
 
     loop {
-        let data = LED_VALUES
-            .iter()
-            .map(|val| decode_val(val.load(Ordering::Relaxed)));
+        let data = gamma(
+            LED_VALUES
+                .iter()
+                .map(|val| decode_val(val.load(Ordering::Relaxed))),
+        );
 
         ws.write(data).await.ok();
         Timer::after_millis(delta).await;

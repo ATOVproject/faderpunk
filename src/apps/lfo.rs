@@ -26,10 +26,10 @@ pub async fn run(app: App<CHANNELS>) {
             output.set_value(val);
 
             let color = match wave {
-                Waveform::Sine => (50, 0, 0),
-                Waveform::Triangle => (0, 50, 0),
-                Waveform::Saw => (0, 0, 50),
-                Waveform::Rect => (50, 50, 0),
+                Waveform::Sine => (156, 84, 179),
+                Waveform::Triangle => (223, 179, 75),
+                Waveform::Saw => (68, 247, 246),
+                Waveform::Rect => (15, 108, 189),
             };
 
             app.set_led(0, color, (val as f32 / 16.0) as u8);
