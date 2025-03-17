@@ -659,6 +659,44 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
+name = "faderpunk"
+version = "0.1.0"
+dependencies = [
+ "array-init",
+ "at24cx",
+ "cortex-m",
+ "cortex-m-rt",
+ "critical-section",
+ "defmt",
+ "defmt-rtt",
+ "embassy-embedded-hal",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-rp",
+ "embassy-sync",
+ "embassy-time",
+ "embassy-usb",
+ "embassy-usb-logger",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "heapless 0.8.0",
+ "log",
+ "max11300",
+ "midi2",
+ "minicbor",
+ "panic-probe",
+ "pio",
+ "portable-atomic",
+ "postcard",
+ "sequential-storage",
+ "serde",
+ "smart-leds-trait",
+ "static_cell",
+ "wmidi",
+ "ws2812-async",
+]
+
+[[package]]
 name = "fixed"
 version = "1.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1067,44 +1105,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6796ad771acdc0123d2a88dc428b5e38ef24456743ddb1744ed628f9815c096"
 dependencies = [
  "siphasher",
-]
-
-[[package]]
-name = "phoenix-16"
-version = "0.1.0"
-dependencies = [
- "array-init",
- "at24cx",
- "cortex-m",
- "cortex-m-rt",
- "critical-section",
- "defmt",
- "defmt-rtt",
- "embassy-embedded-hal",
- "embassy-executor",
- "embassy-futures",
- "embassy-rp",
- "embassy-sync",
- "embassy-time",
- "embassy-usb",
- "embassy-usb-logger",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "heapless 0.8.0",
- "log",
- "max11300",
- "midi2",
- "minicbor",
- "panic-probe",
- "pio",
- "portable-atomic",
- "postcard",
- "sequential-storage",
- "serde",
- "smart-leds-trait",
- "static_cell",
- "wmidi",
- "ws2812-async",
 ]
 
 [[package]]

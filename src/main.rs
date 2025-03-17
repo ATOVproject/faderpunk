@@ -63,7 +63,7 @@ use apps::{get_channels, run_app_by_id};
 #[link_section = ".bi_entries"]
 #[used]
 pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
-    embassy_rp::binary_info::rp_program_name!(c"Fader Punk"),
+    embassy_rp::binary_info::rp_program_name!(c"Faderpunk"),
     embassy_rp::binary_info::rp_program_description!(
         c"From ember's grip, a fader's rise, In ancient garb, under modern skies. A phoenix's touch, in keys it lays, A melody bold, through time's maze."
     ),
