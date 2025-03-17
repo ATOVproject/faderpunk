@@ -11,7 +11,7 @@ use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midi2::{
     channel_voice1::{ChannelVoice1, ControlChange},
-    ux::u4,
+    ux::{u4, u7},
     Channeled,
 };
 use portable_atomic::Ordering;
@@ -256,9 +256,9 @@ impl<const N: usize> App<N> {
     // Create and use a function called midi_send_both and use it here
     pub async fn midi_send_cc(&self, chan: usize, val: u16) {
         // TODO: Make configurable
-        let midi_channel = u4::new(1);
+        let midi_channel = u4::new(0);
         let mut cc = ControlChange::<[u8; 3]>::new();
-        cc.set_control(u16_to_u7(102 + chan as u16));
+        cc.set_control(u7::new(32 + self.channels[chan] as u8));
         cc.set_control_data(u16_to_u7(val));
         cc.set_channel(midi_channel);
         let msg = ChannelVoice1::ControlChange(cc);

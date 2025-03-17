@@ -19,7 +19,7 @@ embassy-time = { version = "0.4", features = [
 ] }
 embassy-usb = { version = "0.4", features = ["defmt", "max-interface-count-6"] }
 embassy-usb-logger = { version = "0.4" }
-embassy-rp = { version = "0.3", features = [
+embassy-rp = { version = "0.4", features = [
   "defmt",
   "unstable-pac",
   "time-driver",
@@ -41,8 +41,7 @@ heapless = "0.8"
 log = "0.4"
 max11300 = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-pio = "0.2"
-pio-proc = "0.2"
+pio = "0.3"
 portable-atomic = { version = "1.11", features = ["critical-section"] }
 sequential-storage = "4.0"
 smart-leds-trait = "0.3.1"
