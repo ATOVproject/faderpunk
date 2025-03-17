@@ -1,6 +1,6 @@
 use embassy_futures::join::join3;
 
-use crate::app::{App, Range};
+use crate::app::{App, Led, Range};
 use crate::constants::{Waveform, CURVE_LOG};
 
 pub const CHANNELS: usize = 1;
@@ -32,7 +32,7 @@ pub async fn run(app: App<CHANNELS>) {
                 Waveform::Rect => (15, 108, 189),
             };
 
-            app.set_led(0, color, (val as f32 / 16.0) as u8);
+            app.set_led(0, Led::Button, color, (val as f32 / 16.0) as u8);
             glob_lfo_pos.set(next_pos).await;
         }
     };
