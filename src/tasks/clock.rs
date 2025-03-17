@@ -38,6 +38,7 @@ async fn run_clock(sender: XTxSender, aux_inputs: AuxInputs, config: &'static Gl
     loop {
         match config.clock_src {
             ClockSrc::Internal => {
+                // TODO: use Ticker!!!
                 Timer::after_millis(BPM_DELTA_MS.load(Ordering::Relaxed)).await;
             }
             ClockSrc::Atom => atom.wait_for_rising_edge().await,

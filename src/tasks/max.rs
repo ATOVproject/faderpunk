@@ -24,6 +24,7 @@ use static_cell::StaticCell;
 use crate::{Irqs, XTxMsg, XTxSender};
 
 type SharedMax =
+    // TODO: This does not need to be a critical section mutex!
     Mutex<CriticalSectionRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
@@ -115,7 +116,7 @@ async fn read_fader(
         ..
     } = Pio::new(pio0, Irqs);
 
-    let prg = pio_proc::pio_asm!(
+    let prg = pio::pio_asm!(
         "
         pull block
         out pins, 4
