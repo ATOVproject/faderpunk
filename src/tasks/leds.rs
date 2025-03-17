@@ -53,19 +53,17 @@ pub async fn start_leds(
 }
 
 #[embassy_executor::task]
-async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>, x_rx: XRxReceiver) {
+// TODO: Implement effects (using x_rx)
+async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>, _x_rx: XRxReceiver) {
     let mut ws: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi1);
+    let delta = 1000 / REFRESH_RATE;
 
     loop {
-        // TODO: match for effects and flush
-        let _ = x_rx.receive().await;
-
         let data = LED_VALUES
             .iter()
             .map(|val| decode_val(val.load(Ordering::Relaxed)));
 
         ws.write(data).await.ok();
-        // TODO: A bit weird. Find a good method for refreshing/flushing/throttling
-        Timer::after_millis(5).await;
+        Timer::after_millis(delta).await;
     }
 }

@@ -263,26 +263,13 @@ impl<const N: usize> App<N> {
         BUTTON_PRESSED[17].load(Ordering::Relaxed)
     }
 
-    // TODO: Also add a custom flush() method and so on
-    pub async fn set_led(&self, channel: usize, (r, g, b): (u8, u8, u8), brightness: u8) {
+    // TODO: Add effects
+    // TODO: add methods to set brightness/color independently
+    pub fn set_led(&self, channel: usize, (r, g, b): (u8, u8, u8), brightness: u8) {
         let value =
             ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
         LED_VALUES[self.channels[channel]].store(value, Ordering::Relaxed);
-        self.sender
-            .send((self.channels[channel], XRxMsg::SetLed(LedsAction::Flush)))
-            .await;
     }
-
-    // pub async fn led_blink(&self, chan: usize, duration: u64) {
-    //     // TODO: We're doing this a lot, let's abstract this
-    //     if chan > N - 1 {
-    //         panic!("Not a valid channel in this app");
-    //     }
-    //     let channel = self.channels[chan];
-    //     CHANNEL_LEDS
-    //         .send((channel, LedsAction::Blink(duration)))
-    //         .await;
-    // }
 
     // TODO: This is a short-hand function that should also send the msg via TRS
     // Create and use a function called midi_send_both and use it here

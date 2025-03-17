@@ -65,7 +65,7 @@ pub async fn start_midi_loops<'a>(
         let mut buf = [0; 4];
         // TODO: Do not try to send midi message to USB when not connected
         // usb_tx.wait_connection().await;
-        // TODO: Deal with backpressure as well
+        // TODO: Deal with backpressure as well (do it on core b maybe?)
         // See https://claude.ai/chat/1a702bdf-b1f9-4d52-a004-aa221cbb4642 for improving this
         loop {
             let (_chan, midi_msg) = x_rx.receive().await;
