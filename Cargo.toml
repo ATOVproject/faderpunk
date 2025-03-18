@@ -1,5 +1,5 @@
 [package]
-name = "phoenix-16"
+name = "faderpunk"
 version = "0.1.0"
 edition = "2021"
 
@@ -44,7 +44,7 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 pio = "0.3"
 portable-atomic = { version = "1.11", features = ["critical-section"] }
 sequential-storage = "4.0"
-smart-leds-trait = "0.3.1"
+smart-leds = "0.4.0"
 static_cell = "2.1.0"
 wmidi = { version = "4.0", default-features = false }
 array-init = "2.1"
@@ -57,28 +57,12 @@ serde = { version = "1", features = ["derive"], default-features = false }
 postcard = "1.1"
 minicbor = { version = "0.26", features = ["derive"] }
 
-
-# release
 [profile.release]
 lto = true
-opt-level = "s"
 incremental = false
-codegen-units = 1
-debug = true
-
-# cargo build/run
-[profile.dev]
 codegen-units = 1
 debug = 2
-debug-assertions = true
-incremental = false
-opt-level = 3
-overflow-checks = true
 
-# do not optimize proc-macro crates = faster builds from scratch
-[profile.dev.build-override]
-codegen-units = 8
-debug = false
-debug-assertions = false
-opt-level = 0
-overflow-checks = false
+[profile.dev]
+lto = true
+opt-level = "z"

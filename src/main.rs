@@ -18,6 +18,8 @@ use embassy_executor::{Executor, Spawner};
 use embassy_futures::join::join;
 use embassy_futures::select::select;
 use embassy_rp::block::ImageDef;
+use embassy_rp::clocks::{clk_sys_freq, ClockConfig};
+use embassy_rp::config::Config;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
@@ -63,7 +65,7 @@ use apps::{get_channels, run_app_by_id};
 #[link_section = ".bi_entries"]
 #[used]
 pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
-    embassy_rp::binary_info::rp_program_name!(c"Fader Punk"),
+    embassy_rp::binary_info::rp_program_name!(c"Faderpunk"),
     embassy_rp::binary_info::rp_program_description!(
         c"From ember's grip, a fader's rise, In ancient garb, under modern skies. A phoenix's touch, in keys it lays, A melody bold, through time's maze."
     ),
@@ -286,7 +288,22 @@ async fn main_core1(spawner: Spawner) {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let p = embassy_rp::init(Default::default());
+    let mut clock_config = ClockConfig::crystal(12_000_000);
+
+    if let Some(ref mut xosc) = clock_config.xosc {
+        if let Some(ref mut sys_pll) = xosc.sys_pll {
+            //  TODO: Add calculation
+            // Changed from 5 to 3
+            sys_pll.post_div1 = 3;
+            // Keep this the same
+            sys_pll.post_div2 = 2;
+        }
+    }
+
+    let mut config = Config::default();
+    config.clocks = clock_config;
+
+    let p = embassy_rp::init(config);
 
     // SPI0 (MAX11300)
     let mut spi0_config = spi::Config::default();
@@ -440,7 +457,7 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    scene_sender.send(&[1; 16]);
+    scene_sender.send(&[3; 16]);
 
     join(fut, fut2).await;
 
