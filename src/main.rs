@@ -81,6 +81,7 @@ bind_interrupts!(struct Irqs {
     UART1_IRQ => uart::InterruptHandler<UART1>;
 });
 
+// TODO: Move all of the message stuff to own file
 pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 
 /// Messages from core 0 to core 1
@@ -97,6 +98,7 @@ pub enum XRxMsg {
     MaxPortReconfigure(MaxConfig),
     MidiMessage(ChannelVoice1<[u8; 3]>),
     SetLed(LedsAction),
+    SetBpm(f32),
 }
 
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
@@ -120,7 +122,7 @@ static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, ChannelVoice1<[u8; 3]
 /// Channel for sending messages to the LEDs
 static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
 /// Channel for sending messages to the clock
-static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, u16, 64>> = StaticCell::new();
+static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, f32, 64>> = StaticCell::new();
 /// Tasks (apps) that are currently running (number 17 is the publisher task)
 static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 static GLOBAL_CONFIG: StaticCell<GlobalConfig> = StaticCell::new();
@@ -196,7 +198,7 @@ async fn run_app(
 ) {
     // INFO: This _should_ be properly dropped when task ends
     let mut cancel_receiver = WATCH_SCENE_SET.receiver().unwrap();
-    // FIXME: Is the first value always new?
+    // TODO: Is the first value always new?
     let _ = cancel_receiver.changed().await;
 
     let run_app_fut = async {
@@ -214,7 +216,7 @@ async fn run_app(
 async fn x_tx(channel_map: [usize; 16]) {
     // INFO: This _should_ be properly dropped when task ends
     let mut cancel_receiver = WATCH_SCENE_SET.receiver().unwrap();
-    // FIXME: Is the first value always new?
+    // TODO: Is the first value always new?
     let _ = cancel_receiver.changed().await;
     let x_tx_fut = async {
         // INFO: These _should_ all be properly dropped when task ends
@@ -224,6 +226,7 @@ async fn x_tx(channel_map: [usize; 16]) {
         loop {
             let (chan, msg) = CHAN_X_TX.receive().await;
             if chan == 16 {
+                // TODO: Is this fast enough for the clock or do we need a Watch in a CriticalSectionRawMutex?
                 // INFO: Special channel 16 sends to all publishers
                 for publisher in publishers.iter() {
                     publisher.publish((chan, msg)).await;
@@ -378,11 +381,12 @@ async fn main(spawner: Spawner) {
     let chan_max = CHAN_MAX.init(Channel::new());
     let chan_midi = CHAN_MIDI.init(Channel::new());
     let chan_leds = CHAN_LEDS.init(Channel::new());
+    let chan_clock = CHAN_CLOCK.init(Channel::new());
 
     // TODO: Get this from eeprom
     // Fuck I think this needs to be configurable on the fly??
     let global_config = GLOBAL_CONFIG.init(GlobalConfig {
-        clock_src: config::ClockSrc::Atom,
+        clock_src: config::ClockSrc::Internal,
     });
 
     // spawner.spawn(read_clock(ports.port17)).unwrap();
@@ -405,7 +409,14 @@ async fn main(spawner: Spawner) {
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
-    tasks::clock::start_clock(&spawner, chan_x_0.sender(), aux_inputs, global_config).await;
+    tasks::clock::start_clock(
+        &spawner,
+        aux_inputs,
+        global_config,
+        chan_x_0.sender(),
+        chan_clock.receiver(),
+    )
+    .await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
@@ -448,10 +459,8 @@ async fn main(spawner: Spawner) {
                 XRxMsg::MaxPortReconfigure(max_config) => chan_max.send((chan, max_config)).await,
                 XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
                 XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
+                XRxMsg::SetBpm(bpm) => chan_clock.send(bpm).await,
             }
-
-            // FIXME: Next steps: create a channel for each component (LEDs, MAX, MIDI) and then
-            // listen on CHAN_X_RX on core 0, then send a message to the appropriate channels
         }
     };
 

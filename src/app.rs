@@ -20,11 +20,10 @@ use crate::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
     tasks::{
         buttons::BUTTON_PRESSED,
-        clock::BPM_DELTA_MS,
         leds::{LedsAction, LED_VALUES},
         max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
-    utils::{bpm_to_ms, ms_to_bpm, u16_to_u7},
+    utils::u16_to_u7,
     XRxMsg, XTxMsg, CHANS_X,
 };
 
@@ -121,6 +120,7 @@ impl Waiter {
             }
         }
     }
+
     pub async fn wait_for_clock(&mut self, division: usize) {
         let mut i: usize = 0;
         loop {
@@ -205,7 +205,7 @@ impl<const N: usize> App<N> {
         }
         let adc_range = match range {
             Range::_Neg5_5V => ADCRANGE::RgNeg5_5v,
-            _ => ADCRANGE::RgNeg10_0v,
+            _ => ADCRANGE::Rg0_10v,
         };
         self.reconfigure_jack(
             self.channels[chan],
@@ -253,12 +253,8 @@ impl<const N: usize> App<N> {
 
     //TODO: Check if app is CLOCK app and if not, do not implement this
     //HINT: Can we use struct markers? Or how to do it?
-    pub fn set_bpm(&self, bpm: f32) {
-        BPM_DELTA_MS.store(bpm_to_ms(bpm), Ordering::Relaxed);
-    }
-
-    pub fn get_bpm(&self) -> f32 {
-        ms_to_bpm(BPM_DELTA_MS.load(Ordering::Relaxed))
+    pub async fn set_bpm(&self, bpm: f32) {
+        self.sender.send((16, XRxMsg::SetBpm(bpm))).await;
     }
 
     pub fn is_button_pressed(&self, chan: usize) -> bool {
