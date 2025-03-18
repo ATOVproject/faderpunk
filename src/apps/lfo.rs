@@ -16,45 +16,31 @@ pub async fn run(app: App<CHANNELS>) {
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0);
 
-    let output = app.make_out_jack(0, Range::_0_10V).await;
-
-    let mut vals: f32 = 0.0;
+    let output = app.make_out_jack(0, Range::_Neg5_5V).await;
 
     let fut1 = async {
         loop {
             app.delay_millis(1).await;
 
             let lfo_speed = glob_lfo_speed.get().await;
-            vals = vals + lfo_speed;
-            if vals > 4095.0 {
-                vals = 0.0;
-            }
-            let wave = glob_wave.get().await;
+            let lfo_pos = glob_lfo_pos.get().await;
+            let next_pos = (lfo_pos + lfo_speed) % 4096.0;
 
-            if wave == 0 {
-                let mut lfo_pos;
-                lfo_pos = WAVEFORM_SINE[vals as usize];
-                output.set_value(lfo_pos);
-                //glob_lfo_pos.set(lfo_pos).await;
-            }
-            if wave == 1 {
-                let mut lfo_pos;
-                lfo_pos = WAVEFORM_TRIANGLE[vals as usize];
-                output.set_value(lfo_pos);
-                //glob_lfo_pos.set(lfo_pos).await;
-            }
-            if wave == 2 {
-                let mut lfo_pos;
-                lfo_pos = WAVEFORM_SAW[vals as usize];
-                output.set_value(lfo_pos);
-                //glob_lfo_pos.set(lfo_pos).await;
-            }
-            if wave == 3 {
-                let mut lfo_pos;
-                lfo_pos = WAVEFORM_RECT[vals as usize];
-                output.set_value(lfo_pos);
-                //glob_lfo_pos.set(lfo_pos).await;
-            }
+            let val = wave.at(next_pos as usize);
+
+            output.set_value(val);
+
+            let color = match wave {
+                Waveform::Sine => (243, 191, 78),
+                Waveform::Triangle => (188, 77, 216),
+                Waveform::Saw => (78, 243, 243),
+                Waveform::Rect => (250, 250, 250),
+            };
+
+            app.set_led(0, Led::Button, color, 200);
+            app.set_led(0, Led::Top, color, (val as f32 / 16.0) as u8);
+            app.set_led(0, Led::Bottom, color, (255.0 - (val as f32) / 16.0) as u8);
+            glob_lfo_pos.set(next_pos).await;
         }
     };
 
