@@ -1,10 +1,11 @@
 use core::array;
 
 use embassy_sync::{
-    blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
     mutex::Mutex,
     pubsub::Subscriber,
+    watch::Receiver,
 };
 use embassy_time::Timer;
 use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
@@ -24,7 +25,7 @@ use crate::{
         max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
     utils::u16_to_u7,
-    XRxMsg, XTxMsg, CHANS_X,
+    XRxMsg, XTxMsg, CHANS_X, CLOCK_WATCH,
 };
 
 pub enum Range {
@@ -120,18 +121,6 @@ impl Waiter {
             }
         }
     }
-
-    pub async fn wait_for_clock(&mut self, division: usize) {
-        let mut i: usize = 0;
-        loop {
-            if let (_, XTxMsg::Clock) = self.subscriber.next_message_pure().await {
-                i += 1;
-                if i == division {
-                    return;
-                }
-            }
-        }
-    }
 }
 
 pub struct Global<T: Sized + Copy> {
@@ -168,6 +157,7 @@ pub struct App<const N: usize> {
     app_id: usize,
     pub channels: [usize; N],
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    clock_receiver: Receiver<'static, CriticalSectionRawMutex, bool, 16>,
 }
 
 impl<const N: usize> App<N> {
@@ -182,7 +172,16 @@ impl<const N: usize> App<N> {
             app_id,
             channels,
             sender,
+            clock_receiver: CLOCK_WATCH.receiver().unwrap(),
         }
+    }
+
+    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
+    // app (throw error or something)
+    async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
+        self.sender
+            .send((channel, XRxMsg::MaxPortReconfigure(config)))
+            .await
     }
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
@@ -304,11 +303,14 @@ impl<const N: usize> App<N> {
         Waiter::new(subscriber)
     }
 
-    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
-    // app (throw error or something)
-    async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
-        self.sender
-            .send((channel, XRxMsg::MaxPortReconfigure(config)))
-            .await
+    pub async fn wait_for_clock(&mut self, division: usize) {
+        let mut i: usize = 0;
+        loop {
+            self.clock_receiver.changed().await;
+            i += 1;
+            if i == division {
+                return;
+            }
+        }
     }
 }

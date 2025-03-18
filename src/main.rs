@@ -89,7 +89,6 @@ pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 pub enum XTxMsg {
     ButtonDown,
     FaderChange,
-    Clock,
 }
 
 /// Messages from core 1 to core 0
@@ -106,6 +105,7 @@ static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
+pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 /// Collector channel on core 0
 static CHAN_X_0: StaticCell<Channel<NoopRawMutex, (usize, XTxMsg), 128>> = StaticCell::new();
 /// Collector channel on core 1
@@ -413,7 +413,6 @@ async fn main(spawner: Spawner) {
         &spawner,
         aux_inputs,
         global_config,
-        chan_x_0.sender(),
         chan_clock.receiver(),
     )
     .await;

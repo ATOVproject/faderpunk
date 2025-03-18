@@ -9,7 +9,7 @@ use embassy_time::{Duration, Ticker};
 use crate::{
     config::{ClockSrc, GlobalConfig},
     utils::bpm_to_ms,
-    Spawner, XTxMsg, XTxSender,
+    Spawner, CLOCK_WATCH,
 };
 
 type AuxInputs = (PIN_1, PIN_2, PIN_3);
@@ -18,11 +18,10 @@ pub async fn start_clock(
     spawner: &Spawner,
     aux_inputs: AuxInputs,
     config: &'static GlobalConfig,
-    sender: XTxSender,
     receiver: Receiver<'static, NoopRawMutex, f32, 64>,
 ) {
     spawner
-        .spawn(run_clock(aux_inputs, config, sender, receiver))
+        .spawn(run_clock(aux_inputs, config, receiver))
         .unwrap();
 }
 
@@ -31,13 +30,13 @@ pub async fn start_clock(
 async fn run_clock(
     aux_inputs: AuxInputs,
     config: &'static GlobalConfig,
-    sender: XTxSender,
     receiver: Receiver<'static, NoopRawMutex, f32, 64>,
 ) {
     let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
     let mut atom = Input::new(atom_pin, Pull::Down);
     let mut meteor = Input::new(meteor_pin, Pull::Down);
     let mut cube = Input::new(hexagon_pin, Pull::Down);
+    let clock_sender = CLOCK_WATCH.sender();
 
     // TODO: get ms from eeprom
     let internal: Mutex<NoopRawMutex, Ticker> =
@@ -54,7 +53,7 @@ async fn run_clock(
                 ClockSrc::Meteor => meteor.wait_for_rising_edge().await,
                 ClockSrc::Cube => cube.wait_for_rising_edge().await,
             }
-            sender.send((16, XTxMsg::Clock)).await;
+            clock_sender.send(true);
         }
     };
 
