@@ -40,8 +40,11 @@ pub async fn run(app: App<CHANNELS>) {
         let mut waiter = app.make_waiter();
         loop {
             waiter.wait_for_fader_change(0).await;
-            let [fader] = app.get_fader_values();
-            app.midi_send_cc(0, fader).await;
+            let muted = glob_muted.get().await;
+            if !muted {
+                let [fader] = app.get_fader_values();
+                app.midi_send_cc(0, fader).await;
+            }
         }
     };
 
