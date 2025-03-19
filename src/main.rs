@@ -103,6 +103,7 @@ pub enum XRxMsg {
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
+// TODO: See if we can use a StaticCell + NoopRawMutex here
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
@@ -291,15 +292,13 @@ async fn main_core1(spawner: Spawner) {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    // Overclock to 250Mhz
     let mut clock_config = ClockConfig::crystal(12_000_000);
-
     if let Some(ref mut xosc) = clock_config.xosc {
         if let Some(ref mut sys_pll) = xosc.sys_pll {
-            //  TODO: Add calculation
+            //  TODO: Add calculation (post_div2 is 2)
             // Changed from 5 to 3
             sys_pll.post_div1 = 3;
-            // Keep this the same
-            sys_pll.post_div2 = 2;
         }
     }
 
@@ -358,14 +357,6 @@ async fn main(spawner: Spawner) {
 
     let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
 
-    // TODO: how do we re-spawn things??
-    // 1) Make sure we can "unspawn" stuff
-    // 2) Save all available scenes somewhere (16)
-    // 3) Save the current scene index somewhere
-    // 4) Store all available scenes and current scene index in eeprom, then read that on reboot
-    //    into ram
-    // 5) On scene change, unspawn everything, change current scene, spawn everything again
-
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
@@ -388,8 +379,6 @@ async fn main(spawner: Spawner) {
     let global_config = GLOBAL_CONFIG.init(GlobalConfig {
         clock_src: config::ClockSrc::Internal,
     });
-
-    // spawner.spawn(read_clock(ports.port17)).unwrap();
 
     tasks::max::start_max(
         &spawner,
@@ -463,14 +452,14 @@ async fn main(spawner: Spawner) {
 
     join(fut, fut2).await;
 
-    // // These are the flash addresses in which the crate will operate.
-    // // The crate will not read, write or erase outside of this range.
-    // let flash_range = 0x1000..0x3000;
-    // // We need to give the crate a buffer to work with.
-    // // It must be big enough to serialize the biggest value of your storage type in,
-    // // rounded up to to word alignment of the flash. Some kinds of internal flash may require
-    // // this buffer to be aligned in RAM as well.
-    // let mut data_buffer = [0; 128];
+    // These are the flash addresses in which the crate will operate.
+    // The crate will not read, write or erase outside of this range.
+    let flash_range = 0x1000..0x3000;
+    // We need to give the crate a buffer to work with.
+    // It must be big enough to serialize the biggest value of your storage type in,
+    // rounded up to to word alignment of the flash. Some kinds of internal flash may require
+    // this buffer to be aligned in RAM as well.
+    let mut data_buffer = [0; 128];
 
     // Now we store an item the flash with key 42.
     // Again we make sure we pass the correct key and value types, u8 and u32.
