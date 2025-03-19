@@ -9,8 +9,8 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver, mutex::
 use embassy_time::Timer;
 use max11300::{
     config::{
-        ConfigMode0, ConfigMode5, ConfigMode7, DeviceConfig, Port, ADCCTL, ADCRANGE, AVR, DACREF,
-        NSAMPLES, THSHDN,
+        ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, DeviceConfig, Port, ADCCTL, ADCRANGE,
+        AVR, DACREF, NSAMPLES, THSHDN,
     },
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
@@ -27,11 +27,19 @@ pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16]
 pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 
 type MuxPins = (PIN_12, PIN_13, PIN_14, PIN_15);
-type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, MaxConfig), 64>;
+type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, MaxMessage), 64>;
+
+#[derive(Clone, Copy)]
+pub enum MaxMessage {
+    ConfigurePort(MaxConfig),
+    GpoSetHigh,
+    GpoSetLow,
+}
 
 #[derive(Clone, Copy)]
 pub enum MaxConfig {
     Mode0,
+    Mode3(ConfigMode3, u16),
     Mode5(ConfigMode5),
     Mode7(ConfigMode7),
 }
@@ -85,7 +93,7 @@ pub async fn start_max(
 
     spawner.spawn(process_channel_values(max)).unwrap();
 
-    spawner.spawn(reconfigure_ports(max, x_rx)).unwrap();
+    spawner.spawn(message_loop(max, x_rx)).unwrap();
 }
 
 #[embassy_executor::task]
@@ -157,6 +165,7 @@ async fn read_fader(
     }
 }
 
+// TODO: Should we make this message based?
 #[embassy_executor::task]
 async fn process_channel_values(max_driver: &'static SharedMax) {
     loop {
@@ -182,22 +191,34 @@ async fn process_channel_values(max_driver: &'static SharedMax) {
 }
 
 #[embassy_executor::task]
-async fn reconfigure_ports(max_driver: &'static SharedMax, x_rx: XRxReceiver) {
-    // TODO: Put MAX port in hi-impedance mode when using the internal GPIO interrupts
+async fn message_loop(max_driver: &'static SharedMax, x_rx: XRxReceiver) {
+    // TODO: Put ports 17-19 in hi-impedance mode when using the internal GPIO interrupts
     loop {
-        let (chan, config) = x_rx.receive().await;
+        let (chan, msg) = x_rx.receive().await;
         let port = Port::try_from(chan).unwrap();
         let mut max = max_driver.lock().await;
 
-        match config {
-            MaxConfig::Mode0 => {
-                max.configure_port(port, ConfigMode0).await.unwrap();
+        match msg {
+            MaxMessage::ConfigurePort(config) => match config {
+                MaxConfig::Mode0 => {
+                    max.configure_port(port, ConfigMode0).await.unwrap();
+                }
+                MaxConfig::Mode3(config, gpo_level) => {
+                    max.dac_set_value(port, gpo_level).await.unwrap();
+                    max.configure_port(port, config).await.unwrap();
+                }
+                MaxConfig::Mode5(config) => {
+                    max.configure_port(port, config).await.unwrap();
+                }
+                MaxConfig::Mode7(config) => {
+                    max.configure_port(port, config).await.unwrap();
+                }
+            },
+            MaxMessage::GpoSetHigh => {
+                max.gpo_set_high(port).await.unwrap();
             }
-            MaxConfig::Mode5(config) => {
-                max.configure_port(port, config).await.unwrap();
-            }
-            MaxConfig::Mode7(config) => {
-                max.configure_port(port, config).await.unwrap();
+            MaxMessage::GpoSetLow => {
+                max.gpo_set_low(port).await.unwrap();
             }
         }
     }

@@ -33,9 +33,9 @@ async fn run_clock(
     receiver: Receiver<'static, NoopRawMutex, f32, 64>,
 ) {
     let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
-    let mut atom = Input::new(atom_pin, Pull::Down);
-    let mut meteor = Input::new(meteor_pin, Pull::Down);
-    let mut cube = Input::new(hexagon_pin, Pull::Down);
+    let mut atom = Input::new(atom_pin, Pull::Up);
+    let mut meteor = Input::new(meteor_pin, Pull::Up);
+    let mut cube = Input::new(hexagon_pin, Pull::Up);
     let clock_sender = CLOCK_WATCH.sender();
 
     // TODO: get ms from eeprom
@@ -49,9 +49,18 @@ async fn run_clock(
                     let mut clock = internal.lock().await;
                     clock.next().await;
                 }
-                ClockSrc::Atom => atom.wait_for_rising_edge().await,
-                ClockSrc::Meteor => meteor.wait_for_rising_edge().await,
-                ClockSrc::Cube => cube.wait_for_rising_edge().await,
+                ClockSrc::Atom => {
+                    atom.wait_for_falling_edge().await;
+                    atom.wait_for_low().await;
+                }
+                ClockSrc::Meteor => {
+                    meteor.wait_for_falling_edge().await;
+                    meteor.wait_for_low().await;
+                }
+                ClockSrc::Cube => {
+                    cube.wait_for_falling_edge().await;
+                    cube.wait_for_low().await;
+                }
             }
             clock_sender.send(true);
         }

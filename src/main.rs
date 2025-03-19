@@ -46,7 +46,7 @@ use portable_atomic::{AtomicBool, Ordering};
 
 use heapless::Vec;
 use tasks::leds::LedsAction;
-use tasks::max::{MaxConfig, MAX_VALUES_FADER};
+use tasks::max::{MaxConfig, MaxMessage, MAX_VALUES_FADER};
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
@@ -94,7 +94,7 @@ pub enum XTxMsg {
 /// Messages from core 1 to core 0
 #[derive(Clone)]
 pub enum XRxMsg {
-    MaxPortReconfigure(MaxConfig),
+    MaxMessage(MaxMessage),
     MidiMessage(ChannelVoice1<[u8; 3]>),
     SetLed(LedsAction),
     SetBpm(f32),
@@ -115,7 +115,7 @@ static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 64> = Channe
 /// Channel from core 1 to core 0
 static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channel::new();
 /// Channel for sending messages to the MAX
-static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxConfig), 64>> = StaticCell::new();
+static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxMessage), 64>> = StaticCell::new();
 /// Channel for sending messages to the MIDI bus
 static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, ChannelVoice1<[u8; 3]>), 64>> =
     StaticCell::new();
@@ -409,13 +409,7 @@ async fn main(spawner: Spawner) {
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
-    tasks::clock::start_clock(
-        &spawner,
-        aux_inputs,
-        global_config,
-        chan_clock.receiver(),
-    )
-    .await;
+    tasks::clock::start_clock(&spawner, aux_inputs, global_config, chan_clock.receiver()).await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
@@ -455,7 +449,7 @@ async fn main(spawner: Spawner) {
         loop {
             let (chan, msg) = CHAN_X_RX.receive().await;
             match msg {
-                XRxMsg::MaxPortReconfigure(max_config) => chan_max.send((chan, max_config)).await,
+                XRxMsg::MaxMessage(max_config) => chan_max.send((chan, max_config)).await,
                 XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
                 XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
                 XRxMsg::SetBpm(bpm) => chan_clock.send(bpm).await,
