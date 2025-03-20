@@ -205,7 +205,7 @@ impl<const N: usize> App<N> {
         }
         let adc_range = match range {
             Range::_Neg5_5V => ADCRANGE::RgNeg5_5v,
-            _ => ADCRANGE::RgNeg10_0v,
+            _ => ADCRANGE::Rg0_10v,
         };
         self.reconfigure_jack(
             self.channels[chan],

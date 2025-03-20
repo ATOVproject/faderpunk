@@ -1,10 +1,9 @@
 
-
 use embassy_futures::join::{join3, join4, join5};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use wmidi::{Channel as MidiChannel, ControlFunction, U7};
 
-use crate::app::{App, Global};
+use crate::app::{App, Global, Range, Led};
 use crate::config::{Config, Curve, Param};
 use crate::constants::{CURVE_LOG, CURVE_EXP};
 
@@ -21,8 +20,8 @@ let glob_curve0 = app.make_global(0);
 let glob_curve1 = app.make_global(0);
 
 
-    let input = app.make_in_jack(0).await;
-    let output = app.make_out_jack(1).await;
+    let input = app.make_in_jack(0, Range::_0_10V).await;
+    let output = app.make_out_jack(1, Range::_0_10V).await;
 
     let minispeed = 0.1365;
     let fadstep = 0.05;
@@ -31,24 +30,23 @@ let glob_curve1 = app.make_global(0);
     let mut oldinputval = 0;
     let mut env_state = 0;
 /* 
-    Strat:
-    3 state: idle, raising, falling
-    input: rising edge 1V thresh -> set to raising
-
-    to do track the rising edge of the input = compare to previous value and see if it goes from under to above the 1V
+    TODO:
+    LED colours
+    LED buttons
 
     */
 
     let fut1 = async {
         loop {
+            let color = (255, 255, 255);
+            
 
             app.delay_millis(1).await;
+            
             let inputval = input.get_value();
-
             if inputval >= 406 && oldinputval < 406 { //detect passing the threshold
                 env_state = 1;
                 oldinputval = inputval;
-
             }
             else {
                 oldinputval = inputval;
@@ -62,7 +60,12 @@ let glob_curve1 = app.make_global(0);
                         vals = 4094.0;
                     }
                     let curve: [Curve; 3] = [Curve::Linear, Curve::Exponential, Curve::Logarithmic];
-                    output.set_value_with_curve(curve[glob_curve0.get().await as usize],vals as u16)
+                    output.set_value_with_curve(curve[glob_curve0.get().await as usize],vals as u16);
+                    app.set_led(0, Led::Top, color, (vals as f32 / 16.0) as u8);
+                    app.set_led(0, Led::Bottom, color, (255.0 - (vals as f32) / 16.0) as u8);
+                    if vals == 4094.0 {
+                        app.set_led(0, Led::Top, (0, 0, 0), 0);
+                    }
                 }
 
                 if env_state == 2{
@@ -70,9 +73,17 @@ let glob_curve1 = app.make_global(0);
                     if vals < 0.0 {
                         env_state = 0;
                         vals = 0.0;
+
                     }
                     let curve: [Curve; 3] = [Curve::Linear, Curve::Exponential, Curve::Logarithmic];
                     output.set_value_with_curve(curve[glob_curve1.get().await as usize],vals as u16);
+                    app.set_led(1, Led::Top, color, (vals as f32 / 16.0) as u8);
+                    app.set_led(1, Led::Bottom, color, (255.0 - (vals as f32) / 16.0) as u8);
+                    
+                    if vals == 0.0 {
+                        app.set_led(1, Led::Bottom, (0, 0, 0), 0);
+                    }
+                  
                 }
 
         }
@@ -124,6 +135,7 @@ let glob_curve1 = app.make_global(0);
                 curve = 0;
             }
             glob_curve1.set(curve).await;
+            
         }
     };
 

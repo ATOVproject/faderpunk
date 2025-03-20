@@ -457,7 +457,7 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    scene_sender.send(&[3; 16]);
+    scene_sender.send(&[2; 16]);
 
     join(fut, fut2).await;
 
