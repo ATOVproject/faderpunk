@@ -10,7 +10,7 @@ use embassy_sync::{
 use embassy_time::Timer;
 use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midi2::{
-    channel_voice1::{ChannelVoice1, ControlChange},
+    channel_voice1::{ChannelVoice1, ControlChange, NoteOff, NoteOn},
     ux::{u4, u7},
     Channeled,
 };
@@ -322,13 +322,33 @@ impl<const N: usize> App<N> {
         // TODO: Make configurable
         let midi_channel = u4::new(0);
         let mut cc = ControlChange::<[u8; 3]>::new();
+        // TODO: Make 32 a global config option
         cc.set_control(u7::new(32 + self.channels[chan] as u8));
         cc.set_control_data(u16_to_u7(val));
         cc.set_channel(midi_channel);
-        let msg = ChannelVoice1::ControlChange(cc);
-        self.send_midi_msg(msg).await;
+        self.send_midi_msg(ChannelVoice1::ControlChange(cc)).await;
     }
 
+    pub async fn midi_send_note_on(&self, note_number: u7, velocity: u16) {
+        // TODO: Make configurable
+        let midi_channel = u4::new(0);
+        let mut note_on = NoteOn::<[u8; 3]>::new();
+        note_on.set_channel(midi_channel);
+        note_on.set_note_number(note_number);
+        note_on.set_velocity(u16_to_u7(velocity));
+        self.send_midi_msg(ChannelVoice1::NoteOn(note_on)).await;
+    }
+
+    pub async fn midi_send_note_off(&self, note_number: u7) {
+        // TODO: Make configurable
+        let midi_channel = u4::new(0);
+        let mut note_off = NoteOff::<[u8; 3]>::new();
+        note_off.set_channel(midi_channel);
+        note_off.set_note_number(note_number);
+        self.send_midi_msg(ChannelVoice1::NoteOff(note_off)).await;
+    }
+
+    // TODO: Check if making midi an own struct with a listener would make sense
     pub async fn send_midi_msg(&self, msg: ChannelVoice1<[u8; 3]>) {
         self.sender
             .send((self.channels[0], XRxMsg::MidiMessage(msg)))
