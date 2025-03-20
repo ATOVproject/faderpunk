@@ -1,13 +1,14 @@
 use core::array;
 
 use embassy_sync::{
-    blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
     mutex::Mutex,
     pubsub::Subscriber,
+    watch::Receiver,
 };
 use embassy_time::Timer;
-use max11300::config::{ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
+use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midi2::{
     channel_voice1::{ChannelVoice1, ControlChange},
     ux::{u4, u7},
@@ -20,12 +21,11 @@ use crate::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
     tasks::{
         buttons::BUTTON_PRESSED,
-        clock::BPM_DELTA_MS,
         leds::{LedsAction, LED_VALUES},
-        max::{MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
+        max::{MaxConfig, MaxMessage, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
-    utils::{bpm_to_ms, ms_to_bpm, u16_to_u7},
-    XRxMsg, XTxMsg, CHANS_X,
+    utils::u16_to_u7,
+    XRxMsg, XTxMsg, CHANS_X, CLOCK_WATCH,
 };
 
 pub enum Range {
@@ -59,6 +59,29 @@ impl InJack {
             Range::_0_5V => val.saturating_mul(2),
             _ => val,
         }
+    }
+}
+
+pub struct GateJack {
+    channel: usize,
+    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+}
+
+impl GateJack {
+    fn new(channel: usize, sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>) -> Self {
+        Self { channel, sender }
+    }
+
+    pub async fn set_high(&self) {
+        self.sender
+            .send((self.channel, XRxMsg::MaxMessage(MaxMessage::GpoSetHigh)))
+            .await;
+    }
+
+    pub async fn set_low(&self) {
+        self.sender
+            .send((self.channel, XRxMsg::MaxMessage(MaxMessage::GpoSetLow)))
+            .await;
     }
 }
 
@@ -121,17 +144,6 @@ impl Waiter {
             }
         }
     }
-    pub async fn wait_for_clock(&mut self, division: usize) {
-        let mut i: usize = 0;
-        loop {
-            if let (_, XTxMsg::Clock) = self.subscriber.next_message_pure().await {
-                i += 1;
-                if i == division {
-                    return;
-                }
-            }
-        }
-    }
 }
 
 pub struct Global<T: Sized + Copy> {
@@ -168,6 +180,7 @@ pub struct App<const N: usize> {
     app_id: usize,
     pub channels: [usize; N],
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    clock_receiver: Receiver<'static, CriticalSectionRawMutex, bool, 16>,
 }
 
 impl<const N: usize> App<N> {
@@ -182,7 +195,19 @@ impl<const N: usize> App<N> {
             app_id,
             channels,
             sender,
+            clock_receiver: CLOCK_WATCH.receiver().unwrap(),
         }
+    }
+
+    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
+    // app (throw error or something)
+    async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
+        self.sender
+            .send((
+                channel,
+                XRxMsg::MaxMessage(MaxMessage::ConfigurePort(config)),
+            ))
+            .await
     }
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
@@ -239,6 +264,18 @@ impl<const N: usize> App<N> {
         OutJack::new(self.channels[chan], range)
     }
 
+    pub async fn make_gate_jack(&self, chan: usize, level: u16) -> GateJack {
+        if chan > N - 1 {
+            // TODO: Maybe move panics into usb logs and handle gracefully?
+            panic!("Not a valid channel in this app");
+        }
+
+        self.reconfigure_jack(self.channels[chan], MaxConfig::Mode3(ConfigMode3, level))
+            .await;
+
+        GateJack::new(self.channels[chan], self.sender)
+    }
+
     pub async fn delay_micros(&self, micros: u64) {
         Timer::after_micros(micros).await
     }
@@ -253,12 +290,8 @@ impl<const N: usize> App<N> {
 
     //TODO: Check if app is CLOCK app and if not, do not implement this
     //HINT: Can we use struct markers? Or how to do it?
-    pub fn set_bpm(&self, bpm: f32) {
-        BPM_DELTA_MS.store(bpm_to_ms(bpm), Ordering::Relaxed);
-    }
-
-    pub fn get_bpm(&self) -> f32 {
-        ms_to_bpm(BPM_DELTA_MS.load(Ordering::Relaxed))
+    pub async fn set_bpm(&self, bpm: f32) {
+        self.sender.send((16, XRxMsg::SetBpm(bpm))).await;
     }
 
     pub fn is_button_pressed(&self, chan: usize) -> bool {
@@ -308,11 +341,19 @@ impl<const N: usize> App<N> {
         Waiter::new(subscriber)
     }
 
-    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
-    // app (throw error or something)
-    async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
-        self.sender
-            .send((channel, XRxMsg::MaxPortReconfigure(config)))
-            .await
+    pub async fn wait_for_clock(&mut self, division: usize) -> bool {
+        let mut i: usize = 0;
+        loop {
+            // Reset always gets through
+            if self.clock_receiver.changed().await {
+                return true;
+            }
+            i += 1;
+            // TODO: Maybe we can make this more efficient by just having subscribers to
+            // subdivisions of the clock
+            if i == division {
+                return false;
+            }
+        }
     }
 }

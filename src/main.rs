@@ -11,7 +11,7 @@ mod constants;
 mod tasks;
 mod utils;
 
-use config::GlobalConfig;
+use config::{ClockSrc, GlobalConfig};
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
@@ -46,7 +46,7 @@ use portable_atomic::{AtomicBool, Ordering};
 
 use heapless::Vec;
 use tasks::leds::LedsAction;
-use tasks::max::{MaxConfig, MAX_VALUES_FADER};
+use tasks::max::{MaxConfig, MaxMessage, MAX_VALUES_FADER};
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
@@ -81,6 +81,7 @@ bind_interrupts!(struct Irqs {
     UART1_IRQ => uart::InterruptHandler<UART1>;
 });
 
+// TODO: Move all of the message stuff to own file
 pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 
 /// Messages from core 0 to core 1
@@ -88,22 +89,27 @@ pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 pub enum XTxMsg {
     ButtonDown,
     FaderChange,
-    Clock,
 }
 
 /// Messages from core 1 to core 0
 #[derive(Clone)]
 pub enum XRxMsg {
-    MaxPortReconfigure(MaxConfig),
+    MaxMessage(MaxMessage),
     MidiMessage(ChannelVoice1<[u8; 3]>),
     SetLed(LedsAction),
+    SetBpm(f32),
 }
 
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
+// pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
+// TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
+// mention all uses
+pub static WATCH_CONFIG_CHANGE: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
+// TODO: See if we can use a StaticCell + NoopRawMutex here
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
+pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 /// Collector channel on core 0
 static CHAN_X_0: StaticCell<Channel<NoopRawMutex, (usize, XTxMsg), 128>> = StaticCell::new();
 /// Collector channel on core 1
@@ -113,34 +119,33 @@ static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 64> = Channe
 /// Channel from core 1 to core 0
 static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channel::new();
 /// Channel for sending messages to the MAX
-static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxConfig), 64>> = StaticCell::new();
+static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxMessage), 64>> = StaticCell::new();
 /// Channel for sending messages to the MIDI bus
 static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, ChannelVoice1<[u8; 3]>), 64>> =
     StaticCell::new();
 /// Channel for sending messages to the LEDs
 static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
 /// Channel for sending messages to the clock
-static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, u16, 64>> = StaticCell::new();
+static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, f32, 64>> = StaticCell::new();
 /// Tasks (apps) that are currently running (number 17 is the publisher task)
 static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
-static GLOBAL_CONFIG: StaticCell<GlobalConfig> = StaticCell::new();
 
 #[derive(Debug)]
-enum SceneErr {
+enum LayoutErr {
     AppSize,
     LayoutSize,
 }
 
-/// Scene creates a proper scene vec from just a slice of app ids
+/// Layout creates a proper layout vec from just a slice of app ids
 /// The vec contains a tupel of app ids and their corresponding size of chans
-struct Scene {
+struct Layout {
     apps: Vec<(usize, usize), 16>,
 }
 
-impl Scene {
-    fn try_from(app_ids: &[usize]) -> Result<Self, SceneErr> {
+impl Layout {
+    fn try_from(app_ids: &[usize]) -> Result<Self, LayoutErr> {
         if app_ids.len() > 16 {
-            return Err(SceneErr::AppSize);
+            return Err(LayoutErr::AppSize);
         }
         // Create vec of (app_id, size). Will remove invalid app ids
         let apps: Vec<(usize, usize), 16> = app_ids
@@ -155,7 +160,7 @@ impl Scene {
         // Check if apps fit into the layout
         let count = apps.iter().copied().fold(0, |acc, (_, size)| acc + size);
         if count > 16 {
-            return Err(SceneErr::LayoutSize);
+            return Err(LayoutErr::LayoutSize);
         }
         Ok(Self { apps })
     }
@@ -195,8 +200,8 @@ async fn run_app(
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 ) {
     // INFO: This _should_ be properly dropped when task ends
-    let mut cancel_receiver = WATCH_SCENE_SET.receiver().unwrap();
-    // FIXME: Is the first value always new?
+    let mut cancel_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
+    // TODO: Is the first value always new?
     let _ = cancel_receiver.changed().await;
 
     let run_app_fut = async {
@@ -213,8 +218,8 @@ async fn run_app(
 #[embassy_executor::task]
 async fn x_tx(channel_map: [usize; 16]) {
     // INFO: This _should_ be properly dropped when task ends
-    let mut cancel_receiver = WATCH_SCENE_SET.receiver().unwrap();
-    // FIXME: Is the first value always new?
+    let mut cancel_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
+    // TODO: Is the first value always new?
     let _ = cancel_receiver.changed().await;
     let x_tx_fut = async {
         // INFO: These _should_ all be properly dropped when task ends
@@ -224,6 +229,7 @@ async fn x_tx(channel_map: [usize; 16]) {
         loop {
             let (chan, msg) = CHAN_X_TX.receive().await;
             if chan == 16 {
+                // TODO: Is this fast enough for the clock or do we need a Watch in a CriticalSectionRawMutex?
                 // INFO: Special channel 16 sends to all publishers
                 for publisher in publishers.iter() {
                     publisher.publish((chan, msg)).await;
@@ -253,10 +259,10 @@ async fn main_core1(spawner: Spawner) {
     let chan_x_1 = CHAN_X_1.init(Channel::new());
     spawner.spawn(x_rx(chan_x_1.receiver())).unwrap();
 
-    let mut receiver_scene = WATCH_SCENE_SET.receiver().unwrap();
+    let mut receiver_config = WATCH_CONFIG_CHANGE.receiver().unwrap();
 
     loop {
-        let scene_arr = receiver_scene.changed().await;
+        let config = receiver_config.changed().await;
 
         // Check if all tasks are properly exited
         loop {
@@ -267,13 +273,13 @@ async fn main_core1(spawner: Spawner) {
             Timer::after_millis(5).await;
         }
 
-        let scene = Scene::try_from(scene_arr).unwrap();
-        let channel_map = scene.channel_map();
+        let layout = Layout::try_from(config.layout).unwrap();
+        let channel_map = layout.channel_map();
         spawner
             // INFO: The next two _should_ be dropped properly when the task exits
             .spawn(x_tx(channel_map))
             .unwrap();
-        for (app_id, start_chan) in scene.apps_iter() {
+        for (app_id, start_chan) in layout.apps_iter() {
             spawner
                 .spawn(run_app(
                     app_id,
@@ -288,15 +294,13 @@ async fn main_core1(spawner: Spawner) {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    // Overclock to 250Mhz
     let mut clock_config = ClockConfig::crystal(12_000_000);
-
     if let Some(ref mut xosc) = clock_config.xosc {
         if let Some(ref mut sys_pll) = xosc.sys_pll {
-            //  TODO: Add calculation
+            //  TODO: Add calculation (post_div2 is 2)
             // Changed from 5 to 3
             sys_pll.post_div1 = 3;
-            // Keep this the same
-            sys_pll.post_div2 = 2;
         }
     }
 
@@ -355,14 +359,6 @@ async fn main(spawner: Spawner) {
 
     let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
 
-    // TODO: how do we re-spawn things??
-    // 1) Make sure we can "unspawn" stuff
-    // 2) Save all available scenes somewhere (16)
-    // 3) Save the current scene index somewhere
-    // 4) Store all available scenes and current scene index in eeprom, then read that on reboot
-    //    into ram
-    // 5) On scene change, unspawn everything, change current scene, spawn everything again
-
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
@@ -378,14 +374,7 @@ async fn main(spawner: Spawner) {
     let chan_max = CHAN_MAX.init(Channel::new());
     let chan_midi = CHAN_MIDI.init(Channel::new());
     let chan_leds = CHAN_LEDS.init(Channel::new());
-
-    // TODO: Get this from eeprom
-    // Fuck I think this needs to be configurable on the fly??
-    let global_config = GLOBAL_CONFIG.init(GlobalConfig {
-        clock_src: config::ClockSrc::Atom,
-    });
-
-    // spawner.spawn(read_clock(ports.port17)).unwrap();
+    let chan_clock = CHAN_CLOCK.init(Channel::new());
 
     tasks::max::start_max(
         &spawner,
@@ -405,7 +394,7 @@ async fn main(spawner: Spawner) {
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
-    tasks::clock::start_clock(&spawner, chan_x_0.sender(), aux_inputs, global_config).await;
+    tasks::clock::start_clock(&spawner, aux_inputs, chan_clock.receiver()).await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
@@ -419,7 +408,7 @@ async fn main(spawner: Spawner) {
     let mut data_buffer = [0; 128];
     let mut i = 0_u8;
 
-    let scene_sender = WATCH_SCENE_SET.sender();
+    let config_sender = WATCH_CONFIG_CHANGE.sender();
 
     let fut = async {
         loop {
@@ -445,30 +434,32 @@ async fn main(spawner: Spawner) {
         loop {
             let (chan, msg) = CHAN_X_RX.receive().await;
             match msg {
-                XRxMsg::MaxPortReconfigure(max_config) => chan_max.send((chan, max_config)).await,
+                XRxMsg::MaxMessage(max_config) => chan_max.send((chan, max_config)).await,
                 XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
                 XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
+                XRxMsg::SetBpm(bpm) => chan_clock.send(bpm).await,
             }
-
-            // FIXME: Next steps: create a channel for each component (LEDs, MAX, MIDI) and then
-            // listen on CHAN_X_RX on core 0, then send a message to the appropriate channels
         }
     };
 
     Timer::after_millis(100).await;
 
-    scene_sender.send(&[2; 16]);
+    // TODO: Get this from eeprom
+    let mut config = GlobalConfig::default();
+    config.reset_src = ClockSrc::Atom;
+    config.layout = &[4];
+    config_sender.send(config);
 
     join(fut, fut2).await;
 
-    // // These are the flash addresses in which the crate will operate.
-    // // The crate will not read, write or erase outside of this range.
-    // let flash_range = 0x1000..0x3000;
-    // // We need to give the crate a buffer to work with.
-    // // It must be big enough to serialize the biggest value of your storage type in,
-    // // rounded up to to word alignment of the flash. Some kinds of internal flash may require
-    // // this buffer to be aligned in RAM as well.
-    // let mut data_buffer = [0; 128];
+    // These are the flash addresses in which the crate will operate.
+    // The crate will not read, write or erase outside of this range.
+    let flash_range = 0x1000..0x3000;
+    // We need to give the crate a buffer to work with.
+    // It must be big enough to serialize the biggest value of your storage type in,
+    // rounded up to to word alignment of the flash. Some kinds of internal flash may require
+    // this buffer to be aligned in RAM as well.
+    let mut data_buffer = [0; 128];
 
     // Now we store an item the flash with key 42.
     // Again we make sure we pass the correct key and value types, u8 and u32.

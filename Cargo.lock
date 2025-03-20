@@ -932,9 +932,9 @@ checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
 
 [[package]]
 name = "max11300"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a7677721988ce4ff6aac3849468c123e18c9987544afe9a1d3c0b36368a794e"
+checksum = "465b2a9f51e910b02371a149eeec8bb571ecfd1f888f76081f94c8b87e751e2d"
 dependencies = [
  "critical-section",
  "embassy-sync",

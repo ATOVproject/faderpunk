@@ -1,16 +1,29 @@
 use minicbor::Encode;
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, PartialEq)]
 pub enum ClockSrc {
     Atom,
     Meteor,
-    // TODO: Rename
-    Hexagon,
+    Cube,
     Internal,
 }
 
-pub struct GlobalConfig {
+#[derive(Clone, Copy)]
+pub struct GlobalConfig<'a> {
     pub clock_src: ClockSrc,
+    pub reset_src: ClockSrc,
+    pub layout: &'a [usize],
+}
+
+impl Default for GlobalConfig<'_> {
+    fn default() -> Self {
+        Self {
+            clock_src: ClockSrc::Internal,
+            reset_src: ClockSrc::Internal,
+            layout: &[1; 16],
+        }
+    }
 }
 
 #[derive(Clone, Copy, Encode)]
@@ -103,7 +116,7 @@ impl Param {
     }
 }
 
-// FIXME: Encode with postcard (https://github.com/jamesmunns/postcard)
+// TODO: Encode with postcard (https://github.com/jamesmunns/postcard)
 #[derive(Clone, Copy)]
 pub enum Value {
     None,
