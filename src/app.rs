@@ -1,5 +1,6 @@
 use core::array;
 
+use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
@@ -15,6 +16,7 @@ use midi2::{
     Channeled,
 };
 use portable_atomic::Ordering;
+use rand::Rng;
 
 use crate::{
     config::Curve,
@@ -173,6 +175,17 @@ impl Global<bool> {
         let mut value = self.mutex.lock().await;
         *value = !*value;
         *value
+    }
+}
+
+pub struct Die {
+    rng: RoscRng,
+}
+
+impl Die {
+    /// Returns a random number between 0 and 4095
+    pub fn roll(&mut self) -> u16 {
+        self.rng.gen_range(0..=4095)
     }
 }
 
@@ -359,6 +372,10 @@ impl<const N: usize> App<N> {
         // Subscribers only listen on the start channel of an app
         let subscriber = CHANS_X[self.channels[0]].subscriber().unwrap();
         Waiter::new(subscriber)
+    }
+
+    pub fn make_die(&self) -> Die {
+        Die { rng: RoscRng }
     }
 
     pub async fn wait_for_clock(&mut self, division: usize) -> bool {

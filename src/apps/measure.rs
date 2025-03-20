@@ -5,10 +5,10 @@ use crate::app::App;
 pub const CHANNELS: usize = 1;
 
 pub async fn run(app: App<CHANNELS>) {
-    let jacks = app.make_in_jack(0, crate::app::Range::_0_10V).await;
+    let mut die = app.make_die();
     let fut1 = async {
         loop {
-            let value = jacks.get_value();
+            let value = die.roll();
             info!("VALUE, {:?}", value);
             app.delay_millis(2000).await;
         }
