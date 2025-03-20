@@ -11,7 +11,7 @@ mod constants;
 mod tasks;
 mod utils;
 
-use config::GlobalConfig;
+use config::{ClockSrc, GlobalConfig};
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
@@ -102,7 +102,10 @@ pub enum XRxMsg {
 
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
+// pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
+// TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
+// mention all uses
+pub static WATCH_CONFIG_CHANGE: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
 // TODO: See if we can use a StaticCell + NoopRawMutex here
 pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
@@ -126,24 +129,23 @@ static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = S
 static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, f32, 64>> = StaticCell::new();
 /// Tasks (apps) that are currently running (number 17 is the publisher task)
 static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
-static GLOBAL_CONFIG: StaticCell<GlobalConfig> = StaticCell::new();
 
 #[derive(Debug)]
-enum SceneErr {
+enum LayoutErr {
     AppSize,
     LayoutSize,
 }
 
-/// Scene creates a proper scene vec from just a slice of app ids
+/// Layout creates a proper layout vec from just a slice of app ids
 /// The vec contains a tupel of app ids and their corresponding size of chans
-struct Scene {
+struct Layout {
     apps: Vec<(usize, usize), 16>,
 }
 
-impl Scene {
-    fn try_from(app_ids: &[usize]) -> Result<Self, SceneErr> {
+impl Layout {
+    fn try_from(app_ids: &[usize]) -> Result<Self, LayoutErr> {
         if app_ids.len() > 16 {
-            return Err(SceneErr::AppSize);
+            return Err(LayoutErr::AppSize);
         }
         // Create vec of (app_id, size). Will remove invalid app ids
         let apps: Vec<(usize, usize), 16> = app_ids
@@ -158,7 +160,7 @@ impl Scene {
         // Check if apps fit into the layout
         let count = apps.iter().copied().fold(0, |acc, (_, size)| acc + size);
         if count > 16 {
-            return Err(SceneErr::LayoutSize);
+            return Err(LayoutErr::LayoutSize);
         }
         Ok(Self { apps })
     }
@@ -198,7 +200,7 @@ async fn run_app(
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 ) {
     // INFO: This _should_ be properly dropped when task ends
-    let mut cancel_receiver = WATCH_SCENE_SET.receiver().unwrap();
+    let mut cancel_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
     // TODO: Is the first value always new?
     let _ = cancel_receiver.changed().await;
 
@@ -216,7 +218,7 @@ async fn run_app(
 #[embassy_executor::task]
 async fn x_tx(channel_map: [usize; 16]) {
     // INFO: This _should_ be properly dropped when task ends
-    let mut cancel_receiver = WATCH_SCENE_SET.receiver().unwrap();
+    let mut cancel_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
     // TODO: Is the first value always new?
     let _ = cancel_receiver.changed().await;
     let x_tx_fut = async {
@@ -257,10 +259,10 @@ async fn main_core1(spawner: Spawner) {
     let chan_x_1 = CHAN_X_1.init(Channel::new());
     spawner.spawn(x_rx(chan_x_1.receiver())).unwrap();
 
-    let mut receiver_scene = WATCH_SCENE_SET.receiver().unwrap();
+    let mut receiver_config = WATCH_CONFIG_CHANGE.receiver().unwrap();
 
     loop {
-        let scene_arr = receiver_scene.changed().await;
+        let config = receiver_config.changed().await;
 
         // Check if all tasks are properly exited
         loop {
@@ -271,13 +273,13 @@ async fn main_core1(spawner: Spawner) {
             Timer::after_millis(5).await;
         }
 
-        let scene = Scene::try_from(scene_arr).unwrap();
-        let channel_map = scene.channel_map();
+        let layout = Layout::try_from(config.layout).unwrap();
+        let channel_map = layout.channel_map();
         spawner
             // INFO: The next two _should_ be dropped properly when the task exits
             .spawn(x_tx(channel_map))
             .unwrap();
-        for (app_id, start_chan) in scene.apps_iter() {
+        for (app_id, start_chan) in layout.apps_iter() {
             spawner
                 .spawn(run_app(
                     app_id,
@@ -374,12 +376,6 @@ async fn main(spawner: Spawner) {
     let chan_leds = CHAN_LEDS.init(Channel::new());
     let chan_clock = CHAN_CLOCK.init(Channel::new());
 
-    // TODO: Get this from eeprom
-    // Fuck I think this needs to be configurable on the fly??
-    let global_config = GLOBAL_CONFIG.init(GlobalConfig {
-        clock_src: config::ClockSrc::Internal,
-    });
-
     tasks::max::start_max(
         &spawner,
         spi0,
@@ -398,7 +394,7 @@ async fn main(spawner: Spawner) {
 
     tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
 
-    tasks::clock::start_clock(&spawner, aux_inputs, global_config, chan_clock.receiver()).await;
+    tasks::clock::start_clock(&spawner, aux_inputs, chan_clock.receiver()).await;
 
     let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
@@ -412,7 +408,7 @@ async fn main(spawner: Spawner) {
     let mut data_buffer = [0; 128];
     let mut i = 0_u8;
 
-    let scene_sender = WATCH_SCENE_SET.sender();
+    let config_sender = WATCH_CONFIG_CHANGE.sender();
 
     let fut = async {
         loop {
@@ -448,7 +444,11 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    scene_sender.send(&[1; 16]);
+    // TODO: Get this from eeprom
+    let mut config = GlobalConfig::default();
+    config.reset_src = ClockSrc::Atom;
+    config.layout = &[1; 16];
+    config_sender.send(config);
 
     join(fut, fut2).await;
 
