@@ -341,13 +341,18 @@ impl<const N: usize> App<N> {
         Waiter::new(subscriber)
     }
 
-    pub async fn wait_for_clock(&mut self, division: usize) {
+    pub async fn wait_for_clock(&mut self, division: usize) -> bool {
         let mut i: usize = 0;
         loop {
-            self.clock_receiver.changed().await;
+            // Reset always gets through
+            if self.clock_receiver.changed().await {
+                return true;
+            }
             i += 1;
+            // TODO: Maybe we can make this more efficient by just having subscribers to
+            // subdivisions of the clock
             if i == division {
-                return;
+                return false;
             }
         }
     }
