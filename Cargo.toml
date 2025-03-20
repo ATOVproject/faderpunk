@@ -48,6 +48,7 @@ minicbor = { version = "0.26", features = ["derive"] }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 pio = "0.3"
 portable-atomic = { version = "1.11", features = ["critical-section"] }
+postcard-bindgen = { git = "https://github.com/teamplayer3/postcard-bindgen", rev = "3143d6d04ecb91da682a876afb885ecb26ad5737", package = "postcard-bindgen" }
 postcard = "1.1"
 # NOTE: Older version needed by embassy-rp
 rand = { version = "0.8", default-features = false }

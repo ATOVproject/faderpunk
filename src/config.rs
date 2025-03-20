@@ -1,5 +1,8 @@
 use minicbor::Encode;
+use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
+
+use crate::constants::{WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SINE, WAVEFORM_TRIANGLE};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum ClockSrc {
@@ -26,7 +29,7 @@ impl Default for GlobalConfig<'_> {
     }
 }
 
-#[derive(Clone, Copy, Encode)]
+#[derive(Clone, Copy, Encode, Serialize, PostcardBindings)]
 pub enum Curve {
     #[n(0)]
     Linear,
@@ -41,11 +44,32 @@ pub enum Waveform {
     #[n(0)]
     Sine,
     #[n(1)]
-    Rect,
-    #[n(2)]
     Triangle,
-    #[n(3)]
+    #[n(2)]
     Saw,
+    #[n(3)]
+    Rect,
+}
+
+impl Waveform {
+    pub fn at(&self, index: usize) -> u16 {
+        let i = index % 4096;
+        match self {
+            Waveform::Sine => WAVEFORM_SINE[i],
+            Waveform::Triangle => WAVEFORM_TRIANGLE[i],
+            Waveform::Saw => WAVEFORM_SAW[i],
+            Waveform::Rect => WAVEFORM_RECT[i],
+        }
+    }
+
+    pub fn cycle(&self) -> Waveform {
+        match self {
+            Waveform::Sine => Waveform::Triangle,
+            Waveform::Triangle => Waveform::Saw,
+            Waveform::Saw => Waveform::Rect,
+            Waveform::Rect => Waveform::Sine,
+        }
+    }
 }
 
 #[derive(Encode)]
