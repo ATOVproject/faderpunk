@@ -6,12 +6,8 @@ mod macros;
 
 mod app;
 mod apps;
-mod config;
-mod constants;
 mod tasks;
-mod utils;
 
-use config::{ClockSrc, GlobalConfig};
 use defmt::info;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
@@ -59,6 +55,7 @@ use sequential_storage::{
 };
 
 use apps::{get_channels, run_app_by_id};
+use config::{ClockSrc, GlobalConfig};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.

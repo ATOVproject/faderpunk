@@ -1,8 +1,8 @@
 use embassy_futures::join::join3;
 
 use crate::app::{App, Led, Range};
-use crate::config::Waveform;
-use crate::constants::CURVE_LOG;
+use config::Waveform;
+use libfp::constants::CURVE_LOG;
 
 pub const CHANNELS: usize = 1;
 

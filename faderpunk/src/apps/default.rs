@@ -1,4 +1,4 @@
-use crate::config::{Config, Curve, Param};
+use config::{Config, Curve, Param};
 use embassy_futures::join::join3;
 // use minicbor::encode;
 

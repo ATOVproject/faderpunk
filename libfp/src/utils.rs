@@ -1,4 +1,4 @@
-use midi2::ux::u7;
+use ux::u7;
 
 pub const fn bpm_to_ms(bpm: f32) -> u64 {
     (60000.0 / bpm) as u64

@@ -1,0 +1,10 @@
+[package]
+name = "gen-bindings"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+config = { path = "../config" }
+postcard-bindgen = { git = "https://github.com/teamplayer3/postcard-bindgen", rev = "3143d6d04ecb91da682a876afb885ecb26ad5737", package = "postcard-bindgen", features = [
+  "generating",
+] }

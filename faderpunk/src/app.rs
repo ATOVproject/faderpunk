@@ -18,15 +18,18 @@ use midi2::{
 use portable_atomic::Ordering;
 use rand::Rng;
 
-use crate::{
-    config::Curve,
+use config::Curve;
+use libfp::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
+    utils::u16_to_u7,
+};
+
+use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
         leds::{LedsAction, LED_VALUES},
         max::{MaxConfig, MaxMessage, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
-    utils::u16_to_u7,
     XRxMsg, XTxMsg, CHANS_X, CLOCK_WATCH,
 };
 

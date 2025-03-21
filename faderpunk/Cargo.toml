@@ -1,0 +1,73 @@
+[package]
+name = "faderpunk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embassy-embedded-hal = { version = "0.3", features = ["defmt"] }
+embassy-sync = { version = "0.6", features = ["defmt"] }
+embassy-executor = { version = "0.7", features = [
+  "task-arena-size-98304",
+  "arch-cortex-m",
+  "executor-thread",
+  "executor-interrupt",
+  "defmt",
+] }
+embassy-time = { version = "0.4", features = [
+  "defmt",
+  "defmt-timestamp-uptime",
+] }
+embassy-usb = { version = "0.4", features = ["defmt", "max-interface-count-6"] }
+embassy-usb-logger = { version = "0.4" }
+embassy-rp = { version = "0.4", features = [
+  "defmt",
+  "unstable-pac",
+  "time-driver",
+  "critical-section-impl",
+  "rp235xb",
+  "binary-info",
+] }
+embassy-futures = { version = "0.1" }
+
+at24cx = "0.1"
+cortex-m = { version = "0.7", features = ["inline-asm"], optional = true }
+cortex-m-rt = "0.7"
+critical-section = "1.1"
+defmt = "0.3"
+defmt-rtt = "0.4"
+embedded-hal = "1.0"
+embedded-hal-async = "1.0"
+heapless = "0.8"
+log = "0.4"
+max11300 = "0.4"
+midi2 = { version = "0.8", default-features = false, features = [
+  "channel-voice2",
+  "channel-voice1",
+] }
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+pio = "0.3"
+portable-atomic = { version = "1.11", features = ["critical-section"] }
+postcard-bindgen = { git = "https://github.com/teamplayer3/postcard-bindgen", rev = "3143d6d04ecb91da682a876afb885ecb26ad5737", package = "postcard-bindgen" }
+postcard = "1.1"
+# NOTE: Older version needed by embassy-rp
+rand = { version = "0.8", default-features = false }
+sequential-storage = "4.0"
+serde = { version = "1", features = ["derive"], default-features = false }
+smart-leds = "0.4.0"
+static_cell = "2.1.0"
+wmidi = { version = "4.0", default-features = false }
+array-init = "2.1"
+ws2812-async = "0.3"
+
+config = { path = "../config" }
+libfp = { path = "../libfp" }
+
+[profile.release]
+lto = true
+incremental = false
+codegen-units = 1
+debug = 2
+
+[profile.dev]
+lto = true
+opt-level = "z"
