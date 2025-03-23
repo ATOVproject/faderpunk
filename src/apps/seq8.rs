@@ -1,4 +1,4 @@
-use crate::config::{Config, Curve, Param};
+use crate::{config::{Config, Curve, Param}, tasks::clock};
 use defmt::info;
 use embassy_futures::join::join3;
 // use minicbor::encode;
@@ -48,9 +48,8 @@ pub async fn run(app: App<CHANNELS>) {
     };
 
     let fut3 = async {
-        let mut waiter = app.make_waiter();
         loop {
-            waiter.wait_for_clock(4).await;
+            app.wait_for_clock(24).await;
             info!("clock");
         }
     };

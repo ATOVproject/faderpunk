@@ -2,7 +2,7 @@ use crate::config::{Config, Curve, Param};
 use embassy_futures::join::join3;
 // use minicbor::encode;
 
-use crate::app::{App, Range};
+use crate::app::{App, Range, Led};
 
 // API ideas:
 // - app.wait_for_midi_on_channel
@@ -24,6 +24,8 @@ pub async fn run(app: App<CHANNELS>) {
 
     let glob_muted = app.make_global(false);
 
+    let color: (u8, u8, u8)=  (255, 255, 100);
+
     let jack = app.make_out_jack(0, Range::_0_10V).await;
     let fut1 = async {
         loop {
@@ -44,6 +46,9 @@ pub async fn run(app: App<CHANNELS>) {
             if !muted {
                 let [fader] = app.get_fader_values();
                 app.midi_send_cc(0, fader).await;
+                app.set_led(0, Led::Button, color, 200);
+                app.set_led(0, Led::Top, color, (fader as u16 / 16) as u8);
+                app.set_led(0, Led::Bottom, color, (255 - (fader as u16) / 16) as u8);
             }
         }
     };
@@ -55,7 +60,19 @@ pub async fn run(app: App<CHANNELS>) {
             let muted = glob_muted.toggle().await;
             if muted {
                 jack.set_value(0);
+                app.midi_send_cc(0, 0).await;
+                app.set_led(0, Led::Button, color, 50);
+                app.set_led(0, Led::Top, color, 0);
+                app.set_led(0, Led::Bottom, color, 0);
             }
+            else {
+                let [fader] = app.get_fader_values();
+                app.midi_send_cc(0, fader).await;
+                app.set_led(0, Led::Button, color, 200);
+                app.set_led(0, Led::Top, color, (fader as u16 / 16) as u8);
+                app.set_led(0, Led::Bottom, color, (255 - (fader as u16) / 16) as u8);
+            }
+        
         }
     };
 

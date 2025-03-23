@@ -4,6 +4,7 @@ pub const CHANNELS: usize = 1;
 
 pub async fn run(mut app: App<CHANNELS>) {
     let jack = app.make_gate_jack(0, 2048).await;
+    let mut random = app.make_die();
     // let color = (243, 191, 78);
     loop {
         // TODO: We need to implement a waiter for this somehow
