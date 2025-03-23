@@ -40,22 +40,25 @@ embedded-hal-async = "1.0"
 heapless = "0.8"
 log = "0.4"
 max11300 = "0.4"
+midi2 = { version = "0.8", default-features = false, features = [
+  "channel-voice2",
+  "channel-voice1",
+] }
+minicbor = { version = "0.26", features = ["derive"] }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 pio = "0.3"
 portable-atomic = { version = "1.11", features = ["critical-section"] }
+postcard-bindgen = { git = "https://github.com/teamplayer3/postcard-bindgen", rev = "3143d6d04ecb91da682a876afb885ecb26ad5737", package = "postcard-bindgen" }
+postcard = "1.1"
+# NOTE: Older version needed by embassy-rp
+rand = { version = "0.8", default-features = false }
 sequential-storage = "4.0"
+serde = { version = "1", features = ["derive"], default-features = false }
 smart-leds = "0.4.0"
 static_cell = "2.1.0"
 wmidi = { version = "4.0", default-features = false }
 array-init = "2.1"
 ws2812-async = "0.3"
-midi2 = { version = "0.8", default-features = false, features = [
-  "channel-voice2",
-  "channel-voice1",
-] }
-serde = { version = "1", features = ["derive"], default-features = false }
-postcard = "1.1"
-minicbor = { version = "0.26", features = ["derive"] }
 
 [profile.release]
 lto = true

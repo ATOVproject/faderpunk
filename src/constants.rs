@@ -1,33 +1,3 @@
-// TODO: Merge with config?
-#[derive(Copy, Clone)]
-pub enum Waveform {
-    Sine,
-    Triangle,
-    Saw,
-    Rect,
-}
-
-impl Waveform {
-    pub fn at(&self, index: usize) -> u16 {
-        let i = index % 4096;
-        match self {
-            Waveform::Sine => WAVEFORM_SINE[i],
-            Waveform::Triangle => WAVEFORM_TRIANGLE[i],
-            Waveform::Saw => WAVEFORM_SAW[i],
-            Waveform::Rect => WAVEFORM_RECT[i],
-        }
-    }
-
-    pub fn cycle(&self) -> Waveform {
-        match self {
-            Waveform::Sine => Waveform::Triangle,
-            Waveform::Triangle => Waveform::Saw,
-            Waveform::Saw => Waveform::Rect,
-            Waveform::Rect => Waveform::Sine,
-        }
-    }
-}
-
 pub static CHAN_LED_MAP: [[usize; 16]; 3] = [
     // Top LEDs
     [
