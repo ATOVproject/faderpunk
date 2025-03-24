@@ -1,10 +1,12 @@
 #![no_std]
 
-use minicbor::Encode;
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
 use libfp::constants::{WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SINE, WAVEFORM_TRIANGLE};
+
+/// Maximum number of params per app
+pub const MAX_PARAMS: usize = 16;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum ClockSrc {
@@ -31,25 +33,18 @@ impl Default for GlobalConfig<'_> {
     }
 }
 
-#[derive(Clone, Copy, Encode, Serialize, PostcardBindings)]
+#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings)]
 pub enum Curve {
-    #[n(0)]
     Linear,
-    #[n(1)]
     Exponential,
-    #[n(2)]
     Logarithmic,
 }
 
-#[derive(Clone, Copy, Encode)]
+#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings)]
 pub enum Waveform {
-    #[n(0)]
     Sine,
-    #[n(1)]
     Triangle,
-    #[n(2)]
     Saw,
-    #[n(3)]
     Rect,
 }
 
@@ -74,56 +69,34 @@ impl Waveform {
     }
 }
 
-#[derive(Encode)]
+#[derive(Clone, Copy, Serialize, PostcardBindings)]
 pub enum Param {
-    #[n(0)]
     None,
-    #[n(1)]
     Int {
-        #[n(0)]
         name: &'static str,
-        #[n(1)]
         default: i32,
     },
-    #[n(2)]
     Float {
-        #[n(0)]
         name: &'static str,
-        #[n(1)]
         default: f32,
     },
-    #[n(3)]
     Bool {
-        #[n(0)]
         name: &'static str,
-        #[n(1)]
         default: bool,
     },
-    #[n(4)]
     Enum {
-        #[n(0)]
         name: &'static str,
-        #[n(1)]
         default: usize,
-        #[n(2)]
         variants: &'static [&'static str],
     },
-    #[n(5)]
     Curve {
-        #[n(0)]
         name: &'static str,
-        #[n(1)]
         default: Curve,
-        #[n(2)]
         variants: &'static [Curve],
     },
-    #[n(6)]
     Waveform {
-        #[n(0)]
         name: &'static str,
-        #[n(1)]
         default: Waveform,
-        #[n(2)]
         variants: &'static [Waveform],
     },
 }
@@ -142,8 +115,7 @@ impl Param {
     }
 }
 
-// TODO: Encode with postcard (https://github.com/jamesmunns/postcard)
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize)]
 pub enum Value {
     None,
     Int(i32),
@@ -154,20 +126,31 @@ pub enum Value {
     Waveform(Waveform),
 }
 
-#[derive(Serialize, Deserialize)]
-pub enum ConfigureMessage {
+#[derive(Clone, Copy, Deserialize, PostcardBindings)]
+pub enum ConfigMsgIn {
     GetApps,
+}
+
+#[derive(Clone, Copy, Serialize, PostcardBindings)]
+pub enum ConfigMsgOut<'a> {
+    Heartbeat,
+    AppList(&'a [(&'a str, &'a str, &'a [Param])]),
 }
 
 pub struct Config<const N: usize> {
     len: usize,
+    name: &'static str,
+    description: &'static str,
     params: [Param; N],
 }
 
 impl<const N: usize> Config<N> {
-    pub const fn default() -> Self {
+    pub const fn new(name: &'static str, description: &'static str) -> Self {
+        assert!(N <= MAX_PARAMS, "Too many params");
         Config {
+            description,
             len: 0,
+            name,
             params: [const { Param::None }; N],
         }
     }
@@ -176,13 +159,19 @@ impl<const N: usize> Config<N> {
         self.params[self.len] = param;
         let new_len = self.len + 1;
         Config {
+            description: self.description,
             len: new_len,
+            name: self.name,
             params: self.params,
         }
     }
 
+    pub fn get_meta(&self) -> (&str, &str, &[Param]) {
+        (self.name, self.description, &self.params)
+    }
+
     // Create a function that returns a RuntimeConfig with values from EEPROM
-    pub async fn to_runtime_config(&self) -> RuntimeConfig<N> {
+    pub async fn as_runtime_config(&self) -> RuntimeConfig<N> {
         // TODO: Read stored values from EEPROM
         let stored_values = [Value::None; 4];
 

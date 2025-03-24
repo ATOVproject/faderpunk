@@ -6,7 +6,21 @@ macro_rules! register_apps {
 
         use embassy_sync::blocking_mutex::raw::NoopRawMutex;
         use embassy_sync::channel::Sender;
+        use heapless::Vec;
+        use config::{Param, MAX_PARAMS};
         use crate::XRxMsg;
+
+        const _APP_COUNT: usize = {
+            let mut count = 0;
+            $(
+                // Use each ID to force expansion
+                let _ = $id;
+                count += 1;
+            )*
+            count
+        };
+
+        pub const REGISTERED_APP_IDS: [usize; _APP_COUNT] = [$($id),*];
 
         pub async fn run_app_by_id(
             app_id: usize,
@@ -24,10 +38,21 @@ macro_rules! register_apps {
             }
         }
 
-        pub fn get_channels(app_id: usize) -> Option<usize> {
+        pub fn get_channels(app_id: usize) -> usize {
             match app_id {
                 $(
-                    $id => Some($app_mod::CHANNELS),
+                    $id => $app_mod::CHANNELS,
+                )*
+                _ => panic!("Unknown app ID: {}", app_id),
+            }
+        }
+
+        pub fn get_config<'a>(app_id: usize) -> (&'static str, &'static str, &'static [Param]) {
+            match app_id {
+                $(
+                    $id => {
+                        $app_mod::CONFIG.get_meta()
+                    },
                 )*
                 _ => panic!("Unknown app ID: {}", app_id),
             }

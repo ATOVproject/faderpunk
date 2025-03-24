@@ -1,50 +1,82 @@
 import { useCallback } from "react";
-import { InputOtp } from "@heroui/input-otp";
-import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Form } from "@heroui/form";
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { button as buttonStyles } from "@heroui/theme";
+import { deserialize, Param } from "@atov/fp-config";
 
 import { title } from "@/components/primitives";
 import DefaultLayout from "@/layouts/default";
 
+export function cobsDecode(data: Uint8Array): Uint8Array {
+  if (data.length === 0) {
+    return new Uint8Array(0);
+  }
+
+  // Allocate output buffer
+  const decoded = new Uint8Array(data.length);
+  let writeIndex = 0;
+  let readIndex = 0;
+
+  while (readIndex < data.length) {
+    // Read the code byte
+    const code = data[readIndex++];
+
+    if (code === 0) {
+      throw new Error("Invalid COBS-encoded data: zero code byte found");
+    }
+
+    // Copy data bytes
+    for (let i = 1; i < code; i++) {
+      if (readIndex >= data.length) {
+        break; // End of input reached
+      }
+      decoded[writeIndex++] = data[readIndex++];
+    }
+
+    // Unless this was the last block or the code was 255, add a zero byte
+    if (readIndex < data.length && code < 255) {
+      decoded[writeIndex++] = 0;
+    }
+  }
+
+  // Return the actual decoded data
+  return decoded.slice(0, writeIndex);
+}
+
 // TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
   const [usbDevice, setUsbDevice] = useState<USBDevice | null>(null);
-  const [size, setSize] = useState("5");
-  const [apps, setApps] = useState("");
-  const [deviceApps, setDeviceApps] = useState<number[] | null>(null);
+  const [apps, setApps] = useState<[string, string, Param[]][]>();
 
   const connectToFaderPunk = useCallback(async () => {
-    const device = await navigator.usb.requestDevice({
+    const usbDevice = await navigator.usb.requestDevice({
       filters: [{ vendorId: 0xf569, productId: 0x1 }],
     });
 
-    await device.open();
+    await usbDevice.open();
 
-    await device.claimInterface(1);
+    await usbDevice.claimInterface(1);
+    setUsbDevice(usbDevice);
 
-    setUsbDevice(device);
-  }, []);
+    await usbDevice?.transferOut(1, new Uint8Array([1]));
+    const data = await usbDevice?.transferIn(1, 256);
 
-  const sendApps = useCallback(
-    async (ev: FormEvent<HTMLFormElement>) => {
-      ev.preventDefault();
-      setDeviceApps(null);
-      const appArr = Array.from(apps).map(Number);
+    if (data?.data?.buffer) {
+      const dataBuf = new Uint8Array(data.data.buffer);
+      const cobsDecoded = cobsDecode(dataBuf.slice(0, dataBuf.length - 1));
 
-      await usbDevice?.transferOut(1, new Uint8Array(appArr));
-      const data = await usbDevice?.transferIn(1, 64);
+      const len = (cobsDecoded[0] << 8) | cobsDecoded[1];
 
-      if (data?.data?.buffer) {
-        const dataBuf = new Uint8Array(data.data.buffer);
+      const postcardDecoded = deserialize("ConfigMsgOut", cobsDecoded.slice(2));
 
-        setDeviceApps(Array.from(dataBuf));
+      if (postcardDecoded.value.tag === "AppList") {
+        let availableApps = postcardDecoded.value.value;
+
+        setApps(availableApps);
       }
-    },
-    [apps],
-  );
+    }
+  }, []);
 
   const deviceName = `${usbDevice?.manufacturerName} ${usbDevice?.productName} v${usbDevice?.deviceVersionMajor}.${usbDevice?.deviceVersionMinor}.${usbDevice?.deviceVersionSubminor}`;
 
@@ -71,34 +103,23 @@ export default function IndexPage() {
           <Form
             className="flex flex-col items-start gap-2"
             validationBehavior="native"
-            onSubmit={sendApps}
           >
             <span>Connected to {deviceName}</span>
-            <Input
-              label="Number of apps"
-              labelPlacement="outside"
-              max={16}
-              min={1}
-              type="number"
-              value={size}
-              onValueChange={setSize}
-            />
-            <div className="text-small">App numbers</div>
-            <InputOtp
-              required
-              label="Apps"
-              length={parseInt(size)}
-              value={apps}
-              onValueChange={setApps}
-            />
-            <Button type="submit" variant="bordered">
-              Submit
-            </Button>
-            {deviceApps && (
-              <div className="text-small text-default-500">
-                Set device apps to <code>{JSON.stringify(deviceApps)}</code>
+            {apps && apps.length && (
+              <div>
+                <h2 className={title({ size: "sm" })}>Available apps</h2>
+                <ul>
+                  {apps.map((app) => (
+                    <li key={app[0]}>
+                      {app[0]} - {app[1]}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
+            {/* <Button type="submit" variant="bordered"> */}
+            {/*   Submit */}
+            {/* </Button> */}
           </Form>
         )}
       </section>

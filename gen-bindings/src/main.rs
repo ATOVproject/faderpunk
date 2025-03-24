@@ -13,7 +13,13 @@ fn main() {
             version: "0.1.0".try_into().unwrap(),
         },
         javascript::GenerationSettings::enable_all(),
-        generate_bindings!(config::Curve),
+        generate_bindings!(
+            config::ConfigMsgIn,
+            config::ConfigMsgOut,
+            config::Param,
+            config::Curve,
+            config::Waveform
+        ),
     )
     .unwrap();
 }

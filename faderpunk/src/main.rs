@@ -147,12 +147,7 @@ impl Layout {
         // Create vec of (app_id, size). Will remove invalid app ids
         let apps: Vec<(usize, usize), 16> = app_ids
             .iter()
-            .filter_map(|&id| {
-                if let Some(size) = get_channels(id) {
-                    return Some((id, size));
-                }
-                None
-            })
+            .map(|&id| (id, get_channels(id)))
             .collect::<Vec<(usize, usize), 16>>();
         // Check if apps fit into the layout
         let count = apps.iter().copied().fold(0, |acc, (_, size)| acc + size);

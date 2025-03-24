@@ -8,18 +8,20 @@ use crate::app::{App, Range};
 // - app.wait_for_midi_on_channel
 
 pub const CHANNELS: usize = 1;
+pub const PARAMS: usize = 1;
 
-pub static APP_CONFIG: Config<1> = Config::default().add_param(Param::Curve {
-    name: "Curve",
-    default: Curve::Linear,
-    variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-});
+pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
+    .add_param(Param::Curve {
+        name: "Curve",
+        default: Curve::Linear,
+        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+    });
 
 // let mut buffer = [0u8; 128];
 // let x = encode(APP_CONFIG.params(), buffer.as_mut()).unwrap();
 
 pub async fn run(app: App<CHANNELS>) {
-    let config = APP_CONFIG.to_runtime_config().await;
+    let config = CONFIG.as_runtime_config().await;
     let curve = config.get_curve_at(0);
 
     let glob_muted = app.make_global(false);
