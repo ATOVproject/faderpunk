@@ -21,7 +21,6 @@ pub async fn run(mut app: App<CHANNELS>) {
         div[0] = (25 - (((div[0] as u32 * 24) /4095) + 1)) as u16;
         if clkn % div[0] == 0{
             let val = rnd.roll();
-            info!("div value {}", div[0]);
             output.set_value(val);
             app.set_led(0, Led::Top, color, (val / 16) as u8);
             app.set_led(0, Led::Bottom, color, (255 - val / 16) as u8);
