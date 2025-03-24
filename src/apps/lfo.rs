@@ -11,7 +11,7 @@ pub async fn run(app: App<CHANNELS>) {
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);
 
-    let output = app.make_out_jack(0, Range::_0_10V).await;
+    let output = app.make_out_jack(0, Range::_Neg5_5V).await;
 
     let fut1 = async {
         loop {
@@ -27,13 +27,15 @@ pub async fn run(app: App<CHANNELS>) {
             output.set_value(val);
 
             let color = match wave {
-                Waveform::Sine => (156, 84, 179),
-                Waveform::Triangle => (223, 179, 75),
-                Waveform::Saw => (68, 247, 246),
-                Waveform::Rect => (15, 108, 189),
+                Waveform::Sine => (243, 191, 78),
+                Waveform::Triangle => (188, 77, 216),
+                Waveform::Saw => (78, 243, 243),
+                Waveform::Rect => (250, 250, 250),
             };
 
-            app.set_led(0, Led::Button, color, (val as f32 / 16.0) as u8);
+            app.set_led(0, Led::Button, color, 200);
+            app.set_led(0, Led::Top, color, (val as f32 / 16.0) as u8);
+            app.set_led(0, Led::Bottom, color, (255.0 - (val as f32) / 16.0) as u8);
             glob_lfo_pos.set(next_pos).await;
         }
     };
