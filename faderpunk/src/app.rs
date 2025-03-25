@@ -162,6 +162,7 @@ impl<T: Sized + Copy> Global<T> {
         }
     }
 
+    // TODO: implement something like replace (using a closure)
     pub async fn get(&self) -> T {
         let value = self.mutex.lock().await;
         *value

@@ -115,7 +115,7 @@ impl Param {
     }
 }
 
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Clone, Copy, Deserialize, PostcardBindings)]
 pub enum Value {
     None,
     Int(i32),
@@ -134,7 +134,9 @@ pub enum ConfigMsgIn {
 #[derive(Clone, Copy, Serialize, PostcardBindings)]
 pub enum ConfigMsgOut<'a> {
     Heartbeat,
-    AppList(&'a [(&'a str, &'a str, &'a [Param])]),
+    BatchMsgStart(usize),
+    BatchMsgEnd,
+    AppConfig((&'a str, &'a str, &'a [Param])),
 }
 
 pub struct Config<const N: usize> {

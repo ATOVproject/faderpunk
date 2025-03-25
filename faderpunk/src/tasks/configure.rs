@@ -1,17 +1,20 @@
-use cobs::try_encode;
+use cobs::{decode_in_place, try_encode};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, Endpoint as UsbEndpoint, In, Out};
+use embassy_time::{with_timeout, Duration};
 use embassy_usb::driver::{Endpoint, EndpointIn, EndpointOut};
 use heapless::Vec;
-use postcard::to_vec;
+use postcard::{from_bytes, to_vec};
 
-use config::ConfigMsgOut;
+use config::{ConfigMsgIn, ConfigMsgOut};
 
 use crate::apps::{get_config, REGISTERED_APP_IDS};
 
 use super::transport::WebEndpoints;
 
-// TODO: We need to make this bigger for lots of params
+// TODO: Share this with USB implementation
+const USB_PACKET_SIZE: usize = 64;
+// TODO: We need to make this bigger for lots of apps with params
 const MAX_PAYLOAD_SIZE: usize = 256;
 // NOTE: cobs needs max 1 byte for every 254 bytes of payload
 // cobs (2) + delimiter (1)
@@ -20,6 +23,8 @@ const COBS_BYTES: usize = 3;
 const PROTOCOL_BYTES: usize = 2;
 /// Delimiter byte used for COBS framing
 const FRAME_DELIMITER: u8 = 0;
+/// Multi-packet message timeout in ms
+const MULTI_PACKET_TIMEOUT_MS: u64 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProtocolError {
@@ -31,20 +36,28 @@ pub enum ProtocolError {
     IncompleteMessage,
     TransmissionError,
     CorruptedMessage,
+    Timeout,
 }
 
 pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
     let mut proto = ConfigProtocol::new(webusb);
+    // TODO: think about sending apps individually to save on buffer size
+    // Then add batching to messages (message x/y) to the header
     let app_list = REGISTERED_APP_IDS.map(get_config);
 
     proto.wait_enabled().await;
     loop {
         // Test: send some app config to parse on the client side
-        proto.read_msg().await.unwrap();
-        proto
-            .send_msg(ConfigMsgOut::AppList(&app_list))
-            .await
-            .unwrap();
+        let msg = proto.read_msg().await.unwrap();
+        match msg {
+            ConfigMsgIn::GetApps => {
+                defmt::info!("GetApps");
+            }
+        }
+        // proto
+        //     .send_msg(ConfigMsgOut::AppConfig(&app_list))
+        //     .await
+        //     .unwrap();
     }
 }
 
@@ -69,13 +82,69 @@ impl<'a> ConfigProtocol<'a> {
         self.webusb_tx.wait_enabled().await;
         self.webusb_rx.wait_enabled().await;
     }
-    async fn read_msg(&mut self) -> Result<(), ProtocolError> {
-        let mut buf = [0; 64];
-        self.webusb_rx
-            .read(&mut buf)
+    async fn read_remaining_packets(
+        &mut self,
+        buf: &mut [u8],
+        mut cursor: usize,
+    ) -> Result<ConfigMsgIn, ProtocolError> {
+        loop {
+            if cursor + USB_PACKET_SIZE > buf.len() {
+                return Err(ProtocolError::MessageTooLarge);
+            }
+
+            let bytes_read = self
+                .webusb_rx
+                .read(&mut buf[cursor..cursor + USB_PACKET_SIZE])
+                .await
+                .map_err(|_| ProtocolError::TransmissionError)?;
+
+            // Check if the message is complete
+            if let Some(end) = buf[cursor..cursor + bytes_read]
+                .iter()
+                .position(|&x| x == FRAME_DELIMITER)
+            {
+                return self.process_message(&mut buf[..cursor + end]);
+            }
+
+            cursor += bytes_read;
+        }
+    }
+    fn process_message(&self, buf: &mut [u8]) -> Result<ConfigMsgIn, ProtocolError> {
+        let rx_size = decode_in_place(buf).map_err(|_| ProtocolError::DecodingError)?;
+
+        let payload_len = ((buf[0] as usize) << 8) | buf[1] as usize;
+        if payload_len != rx_size - 2 {
+            return Err(ProtocolError::CorruptedMessage);
+        }
+
+        let msg = from_bytes(&buf[2..rx_size]).map_err(|_| ProtocolError::DecodingError)?;
+        Ok(msg)
+    }
+    // TODO: chunk up message
+    async fn read_msg(&mut self) -> Result<ConfigMsgIn, ProtocolError> {
+        let mut buf = [0; MAX_PAYLOAD_SIZE + PROTOCOL_BYTES + COBS_BYTES];
+
+        let bytes_read = self
+            .webusb_rx
+            .read(&mut buf[0..USB_PACKET_SIZE])
             .await
             .map_err(|_| ProtocolError::TransmissionError)?;
-        Ok(())
+
+        if bytes_read == 0 {
+            return Err(ProtocolError::TransmissionError);
+        }
+
+        // Check if the message is already complete
+        if let Some(end) = buf[..bytes_read].iter().position(|&x| x == FRAME_DELIMITER) {
+            return self.process_message(&mut buf[..end]);
+        }
+
+        with_timeout(
+            Duration::from_millis(MULTI_PACKET_TIMEOUT_MS),
+            self.read_remaining_packets(&mut buf, bytes_read),
+        )
+        .await
+        .map_err(|_| ProtocolError::Timeout)?
     }
     async fn send_msg(&mut self, msg: ConfigMsgOut<'_>) -> Result<(), ProtocolError> {
         let mut out: Vec<u8, { MAX_PAYLOAD_SIZE + PROTOCOL_BYTES }> =
