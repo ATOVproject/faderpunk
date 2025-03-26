@@ -50,14 +50,20 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
         // Test: send some app config to parse on the client side
         let msg = proto.read_msg().await.unwrap();
         match msg {
+            ConfigMsgIn::Ping => {
+                proto.send_msg(ConfigMsgOut::Pong).await.unwrap();
+            }
             ConfigMsgIn::GetApps => {
-                defmt::info!("GetApps");
+                proto
+                    .send_msg(ConfigMsgOut::BatchMsgStart(app_list.len()))
+                    .await
+                    .unwrap();
+                for app in app_list {
+                    proto.send_msg(ConfigMsgOut::AppConfig(app)).await.unwrap();
+                }
+                proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
         }
-        // proto
-        //     .send_msg(ConfigMsgOut::AppConfig(&app_list))
-        //     .await
-        //     .unwrap();
     }
 }
 

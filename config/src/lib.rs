@@ -128,12 +128,13 @@ pub enum Value {
 
 #[derive(Clone, Copy, Deserialize, PostcardBindings)]
 pub enum ConfigMsgIn {
+    Ping,
     GetApps,
 }
 
 #[derive(Clone, Copy, Serialize, PostcardBindings)]
 pub enum ConfigMsgOut<'a> {
-    Heartbeat,
+    Pong,
     BatchMsgStart(usize),
     BatchMsgEnd,
     AppConfig((&'a str, &'a str, &'a [Param])),

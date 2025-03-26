@@ -3,7 +3,13 @@ import { Button } from "@heroui/button";
 import { Form } from "@heroui/form";
 import { useState } from "react";
 import { button as buttonStyles } from "@heroui/theme";
-import { ConfigMsgIn, deserialize, Param, serialize } from "@atov/fp-config";
+import {
+  ConfigMsgIn,
+  ConfigMsgOut,
+  deserialize,
+  Param,
+  serialize,
+} from "@atov/fp-config";
 
 import { title } from "@/components/primitives";
 import DefaultLayout from "@/layouts/default";
@@ -83,7 +89,7 @@ export function cobsDecode(data: Uint8Array): Uint8Array {
   return decoded.slice(0, writeIndex);
 }
 
-const createMessage = (msg: ConfigMsgIn) => {
+const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
   const serialized = serialize("ConfigMsgIn", msg);
   const buf = new Uint8Array(serialized.length + 2);
 
@@ -97,13 +103,54 @@ const createMessage = (msg: ConfigMsgIn) => {
   cobsEncoded.set(cobsResult, 0);
   cobsEncoded[cobsEncoded.length] = FRAME_DELIMITER;
 
-  return cobsEncoded;
+  await usbDevice?.transferOut(1, cobsEncoded);
+
+  return receiveMessage(usbDevice);
+};
+
+const receiveMessage = async (usbDevice: USBDevice): Promise<ConfigMsgOut> => {
+  const data = await usbDevice?.transferIn(1, 256);
+
+  if (!data?.data?.buffer) {
+    throw new Error("No data received");
+  }
+
+  const dataBuf = new Uint8Array(data.data.buffer);
+  const cobsDecoded = cobsDecode(dataBuf.slice(0, dataBuf.length - 1));
+
+  const len = (cobsDecoded[0] << 8) | cobsDecoded[1];
+
+  let res = deserialize("ConfigMsgOut", cobsDecoded.slice(2));
+
+  return res.value;
+};
+
+const receiveBatchMessages = async (usbDevice: USBDevice, count: bigint) => {
+  let resArray: Promise<ConfigMsgOut>[] = [];
+
+  for (let i = 0; i < count; i++) {
+    resArray.push(receiveMessage(usbDevice));
+  }
+  let results = await Promise.all(resArray);
+  let last = await receiveMessage(usbDevice);
+
+  if (last.tag !== "BatchMsgEnd") {
+    throw new Error("Unexpected message in batch end.");
+  }
+
+  return results;
 };
 
 // TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
   const [usbDevice, setUsbDevice] = useState<USBDevice | null>(null);
-  const [apps, setApps] = useState<[string, string, Param[]][]>();
+  const [apps, setApps] = useState<
+    {
+      name: string;
+      description: string;
+      params: Param[];
+    }[]
+  >();
 
   const connectToFaderPunk = useCallback(async () => {
     const usbDevice = await navigator.usb.requestDevice({
@@ -115,28 +162,25 @@ export default function IndexPage() {
     await usbDevice.claimInterface(1);
     setUsbDevice(usbDevice);
 
-    let msg = createMessage({
+    let result = await punkRequest(usbDevice, {
       tag: "GetApps",
     });
 
-    await usbDevice?.transferOut(1, msg);
-    const data = await usbDevice?.transferIn(1, 256);
+    if (result.tag === "BatchMsgStart") {
+      const results = await receiveBatchMessages(usbDevice, result.value);
 
-    if (data?.data?.buffer) {
-      const dataBuf = new Uint8Array(data.data.buffer);
-      const cobsDecoded = cobsDecode(dataBuf.slice(0, dataBuf.length - 1));
+      const appConfigs = results
+        .filter(
+          (res): res is Extract<ConfigMsgOut, { tag: "AppConfig" }> =>
+            res.tag === "AppConfig",
+        )
+        .map(({ value }) => ({
+          name: value[0],
+          description: value[1],
+          params: value[2],
+        }));
 
-      const len = (cobsDecoded[0] << 8) | cobsDecoded[1];
-
-      const postcardDecoded = deserialize("ConfigMsgOut", cobsDecoded.slice(2));
-
-      console.log(postcardDecoded);
-
-      // if (postcardDecoded.value.tag === "AppList") {
-      //   let availableApps = postcardDecoded.value.value;
-      //
-      //   setApps(availableApps);
-      // }
+      setApps(appConfigs);
     }
   }, []);
 
@@ -172,8 +216,8 @@ export default function IndexPage() {
                 <h2 className={title({ size: "sm" })}>Available apps</h2>
                 <ul>
                   {apps.map((app) => (
-                    <li key={app[0]}>
-                      {app[0]} - {app[1]}
+                    <li key={app.name}>
+                      {app.name} - {app.description}
                     </li>
                   ))}
                 </ul>
