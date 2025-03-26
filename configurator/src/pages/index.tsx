@@ -16,6 +16,8 @@ import DefaultLayout from "@/layouts/default";
 
 const FRAME_DELIMITER = 0;
 
+type ValidParam = Exclude<Param, { tag: "None" }>;
+
 export function cobsEncode(data: Uint8Array): Uint8Array {
   // Allocate output buffer with worst-case size
   const maxSize = data.length + Math.ceil(data.length / 254) + 1;
@@ -148,7 +150,7 @@ export default function IndexPage() {
     {
       name: string;
       description: string;
-      params: Param[];
+      params: ValidParam[];
     }[]
   >();
 
@@ -177,7 +179,7 @@ export default function IndexPage() {
         .map(({ value }) => ({
           name: value[0],
           description: value[1],
-          params: value[2],
+          params: value[2] as ValidParam[],
         }));
 
       setApps(appConfigs);
@@ -216,8 +218,21 @@ export default function IndexPage() {
                 <h2 className={title({ size: "sm" })}>Available apps</h2>
                 <ul>
                   {apps.map((app) => (
-                    <li key={app.name}>
-                      {app.name} - {app.description}
+                    <li key={app.name} className="mb-2">
+                      <span>
+                        {app.name} - {app.description}
+                      </span>
+                      <br />
+                      {app.params.length ? (
+                        <span className="ml-1 text-small">
+                          Parameters:{" "}
+                          {app.params
+                            .map(
+                              (param) => `${param.value.name} (${param.tag})`,
+                            )
+                            .join(",")}
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
