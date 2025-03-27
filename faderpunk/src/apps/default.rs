@@ -2,7 +2,7 @@ use config::{Config, Curve, Param};
 use embassy_futures::join::join3;
 // use minicbor::encode;
 
-use crate::app::{App, Range};
+use crate::app::{App, Led, Range};
 
 // API ideas:
 // - app.wait_for_midi_on_channel
@@ -19,12 +19,15 @@ pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute 
 
 // let mut buffer = [0u8; 128];
 // let x = encode(APP_CONFIG.params(), buffer.as_mut()).unwrap();
+//
+const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 
 pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
     let curve = config.get_curve_at(0);
 
     let glob_muted = app.make_global(false);
+    app.set_led(0, Led::Button, LED_COLOR, 75);
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
     let fut1 = async {
@@ -56,7 +59,10 @@ pub async fn run(app: App<CHANNELS>) {
             waiter.wait_for_button_down(0).await;
             let muted = glob_muted.toggle().await;
             if muted {
+                app.set_led(0, Led::Button, LED_COLOR, 0);
                 jack.set_value(0);
+            } else {
+                app.set_led(0, Led::Button, LED_COLOR, 75);
             }
             waiter.debounce_button().await;
         }
