@@ -58,6 +58,7 @@ pub async fn run(app: App<CHANNELS>) {
             waiter.wait_for_button_down(0).await;
             let wave = glob_wave.get().await;
             glob_wave.set(wave.cycle()).await;
+            waiter.debounce_button().await;
         }
     };
 

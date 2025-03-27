@@ -1,5 +1,6 @@
 use core::array;
 
+use embassy_futures::{join::join, select::select};
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
@@ -8,7 +9,7 @@ use embassy_sync::{
     pubsub::Subscriber,
     watch::Receiver,
 };
-use embassy_time::Timer;
+use embassy_time::{with_timeout, Duration, Timer};
 use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midi2::{
     channel_voice1::{ChannelVoice1, ControlChange, NoteOff, NoteOn},
@@ -148,6 +149,19 @@ impl Waiter {
                 }
             }
         }
+    }
+
+    pub async fn debounce_button(&mut self) {
+        select(
+            async {
+                loop {
+                    // Eat the next messages for 50ms
+                    self.subscriber.next_message_pure().await;
+                }
+            },
+            Timer::after_millis(35),
+        )
+        .await;
     }
 }
 

@@ -58,6 +58,7 @@ pub async fn run(app: App<CHANNELS>) {
             if muted {
                 jack.set_value(0);
             }
+            waiter.debounce_button().await;
         }
     };
 
