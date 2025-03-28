@@ -37,9 +37,9 @@ pub async fn run(app: App<CHANNELS>) {
                 Waveform::Rect => (250, 250, 250),
             };
 
-            app.set_led(0, Led::Button, color, 200);
-            app.set_led(0, Led::Top, color, (val as f32 / 16.0) as u8);
-            app.set_led(0, Led::Bottom, color, (255.0 - (val as f32) / 16.0) as u8);
+            app.set_led(0, Led::Button, color,75); //75 is good for shooting
+            app.set_led(0, Led::Top, color, ((val as f32 / 16.0) / 2.0) as u8);
+            app.set_led(0, Led::Bottom, color, ((255.0 - (val as f32) / 16.0) / 2.0) as u8);
             glob_lfo_pos.set(next_pos).await;
         }
     };

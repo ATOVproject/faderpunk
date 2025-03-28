@@ -23,7 +23,7 @@ let glob_curve1 = app.make_global(0);
     let input = app.make_in_jack(0, Range::_0_10V).await;
     let output = app.make_out_jack(1, Range::_0_10V).await;
 
-    let minispeed = 0.1365;
+    let minispeed = 0.5;
     let fadstep = 0.05;
 
     let mut vals: f32 = 0.0;
@@ -33,6 +33,7 @@ let glob_curve1 = app.make_global(0);
     TODO:
     LED colours
     LED buttons
+    Work on timing and fader response
 
     */
 

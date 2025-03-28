@@ -6,5 +6,7 @@ register_apps!(
     3 => lfo,
     4 => trigger,
     5 => ad,
-    6 => rndcvclk
+    6 => rndcvclk,
+    7 => probatrigger
+    //7 => seq8
 );
