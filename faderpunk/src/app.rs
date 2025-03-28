@@ -143,14 +143,23 @@ impl<const N: usize> Buttons<N> {
         }
     }
 
-    /// Returns true if SHIFT is held at the same time
+    /// Returns if shift was pressed during button down
     pub async fn wait_for_down(&self, chan: usize) -> bool {
-        // Subscribers only listen on the start channel of an app
-        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
         loop {
-            if let (channel, XTxMsg::ButtonDown) = subscriber.next_message_pure().await {
-                if chan == channel {
-                    return BUTTON_PRESSED[17].load(Ordering::Relaxed);
+            let channel = self.wait_for_any_down().await;
+            if chan == channel {
+                return self.is_shift_pressed();
+            }
+        }
+    }
+
+    pub async fn wait_for_long_press(&self, chan: usize, duration: Duration) -> bool {
+        loop {
+            let channel = self.wait_for_any_down().await;
+            if chan == channel {
+                Timer::after(duration).await;
+                if BUTTON_PRESSED[self.start_channel + chan].load(Ordering::Relaxed) {
+                    return self.is_shift_pressed();
                 }
             }
         }
@@ -175,13 +184,10 @@ impl<const N: usize> Faders<N> {
     }
 
     pub async fn wait_for_change(&self, chan: usize) {
-        // Subscribers only listen on the start channel of an app
-        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
         loop {
-            if let (channel, XTxMsg::FaderChange) = subscriber.next_message_pure().await {
-                if chan == channel {
-                    return;
-                }
+            let channel = self.wait_for_any_change().await;
+            if chan == channel {
+                return;
             }
         }
     }

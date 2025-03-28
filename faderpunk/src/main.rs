@@ -85,6 +85,7 @@ pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 #[derive(Clone, Copy, Debug, defmt::Format)]
 pub enum XTxMsg {
     ButtonDown,
+    ButtonUp,
     FaderChange,
 }
 

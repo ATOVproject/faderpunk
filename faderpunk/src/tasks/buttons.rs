@@ -7,6 +7,7 @@ use embassy_rp::peripherals::{
     PIN_23, PIN_24, PIN_25, PIN_28, PIN_29, PIN_30, PIN_31, PIN_32, PIN_33, PIN_34, PIN_35, PIN_36,
     PIN_37, PIN_38, PIN_4, PIN_5, PIN_6, PIN_7,
 };
+use embassy_time::Timer;
 use portable_atomic::{AtomicBool, Ordering};
 
 use {defmt_rtt as _, panic_probe as _};
@@ -48,8 +49,12 @@ async fn process_button(i: usize, mut button: Input<'_>, sender: &XTxSender) {
             // TODO: Do we want to handle the special buttons somehow?
         }
         BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
+        // Debounce a bit (bounces are all in sub 1ms)
+        Timer::after_millis(1).await;
         button.wait_for_rising_edge().await;
         BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
+        // Debounce a bit more (bounces are all in sub 1ms)
+        Timer::after_millis(1).await;
     }
 }
 

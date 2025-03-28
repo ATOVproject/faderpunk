@@ -58,7 +58,6 @@ pub async fn run(app: App<CHANNELS>) {
             } else {
                 app.set_led(0, Led::Button, LED_COLOR, 75);
             }
-            // button.debounce().await;
         }
     };
 
