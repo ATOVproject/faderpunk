@@ -91,6 +91,9 @@ impl GateJack {
     }
 }
 
+// FIXME: An app should be able to create at least as many waiters as it has channels multiplied
+// by use cases
+
 pub struct OutJack {
     channel: usize,
     range: Range,
@@ -119,31 +122,33 @@ impl OutJack {
     }
 }
 
-pub struct Waiter {
-    subscriber: Subscriber<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>,
+pub struct Buttons<const N: usize> {
+    start_channel: usize,
 }
 
-impl Waiter {
-    pub fn new(
-        subscriber: Subscriber<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>,
-    ) -> Self {
-        Self { subscriber }
+impl<const N: usize> Buttons<N> {
+    pub fn new(start_channel: usize) -> Self {
+        Self { start_channel }
     }
 
-    pub async fn wait_for_fader_change(&mut self, chan: usize) {
+    /// Returns the number of the button that was pressed
+    pub async fn wait_for_any_down(&self) -> usize {
+        // Subscribers only listen on the start channel of an app
+        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
+
         loop {
-            if let (channel, XTxMsg::FaderChange) = self.subscriber.next_message_pure().await {
-                if chan == channel {
-                    return;
-                }
+            if let (channel, XTxMsg::ButtonDown) = subscriber.next_message_pure().await {
+                return channel;
             }
         }
     }
 
-    // Returns true if SHIFT is held at the same time
-    pub async fn wait_for_button_down(&mut self, chan: usize) -> bool {
+    /// Returns true if SHIFT is held at the same time
+    pub async fn wait_for_down(&self, chan: usize) -> bool {
+        // Subscribers only listen on the start channel of an app
+        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
         loop {
-            if let (channel, XTxMsg::ButtonDown) = self.subscriber.next_message_pure().await {
+            if let (channel, XTxMsg::ButtonDown) = subscriber.next_message_pure().await {
                 if chan == channel {
                     return BUTTON_PRESSED[17].load(Ordering::Relaxed);
                 }
@@ -151,17 +156,78 @@ impl Waiter {
         }
     }
 
-    pub async fn debounce_button(&mut self) {
-        select(
-            async {
-                loop {
-                    // Eat the next messages for 50ms
-                    self.subscriber.next_message_pure().await;
+    pub fn is_button_pressed(&self, chan: usize) -> bool {
+        BUTTON_PRESSED[self.start_channel + chan].load(Ordering::Relaxed)
+    }
+
+    pub fn is_shift_pressed(&self) -> bool {
+        BUTTON_PRESSED[17].load(Ordering::Relaxed)
+    }
+}
+
+pub struct Faders<const N: usize> {
+    start_channel: usize,
+}
+
+impl<const N: usize> Faders<N> {
+    pub fn new(start_channel: usize) -> Self {
+        Self { start_channel }
+    }
+
+    pub async fn wait_for_change(&self, chan: usize) {
+        // Subscribers only listen on the start channel of an app
+        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
+        loop {
+            if let (channel, XTxMsg::FaderChange) = subscriber.next_message_pure().await {
+                if chan == channel {
+                    return;
                 }
-            },
-            Timer::after_millis(35),
-        )
-        .await;
+            }
+        }
+    }
+
+    /// Returns the number of the fader than was changed
+    pub async fn wait_for_any_change(&self) -> usize {
+        // Subscribers only listen on the start channel of an app
+        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
+        loop {
+            if let (channel, XTxMsg::FaderChange) = subscriber.next_message_pure().await {
+                return channel;
+            }
+        }
+    }
+
+    pub fn get_values(&self) -> [u16; N] {
+        let mut buf = [0_u16; N];
+        for i in 0..N {
+            buf[i] = MAX_VALUES_FADER[self.start_channel + i].load(Ordering::Relaxed);
+        }
+        buf
+    }
+}
+
+pub struct Clock {}
+
+impl Clock {
+    pub fn default() -> Self {
+        Self {}
+    }
+
+    pub async fn wait_for_tick(&self, division: usize) -> bool {
+        let mut receiver = CLOCK_WATCH.receiver().unwrap();
+        let mut i: usize = 0;
+        loop {
+            // Reset always gets through
+            if receiver.changed().await {
+                return true;
+            }
+            i += 1;
+            // TODO: Maybe we can make this more efficient by just having subscribers to
+            // subdivisions of the clock
+            if i == division {
+                return false;
+            }
+        }
     }
 }
 
@@ -209,9 +275,9 @@ impl Die {
 
 pub struct App<const N: usize> {
     app_id: usize,
-    pub channels: [usize; N],
+    start_channel: usize,
+    channel_count: usize,
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
-    clock_receiver: Receiver<'static, CriticalSectionRawMutex, bool, 16>,
 }
 
 impl<const N: usize> App<N> {
@@ -220,13 +286,11 @@ impl<const N: usize> App<N> {
         start_channel: usize,
         sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
     ) -> Self {
-        // Create an array of all channels numbers that this app is using
-        let channels: [usize; N] = array::from_fn(|i| start_channel + i);
         Self {
             app_id,
-            channels,
+            start_channel,
+            channel_count: N,
             sender,
-            clock_receiver: CLOCK_WATCH.receiver().unwrap(),
         }
     }
 
@@ -245,14 +309,6 @@ impl<const N: usize> App<N> {
         Global::new(initial)
     }
 
-    pub fn get_fader_values(&self) -> [u16; N] {
-        let mut buf = [0_u16; N];
-        for i in 0..N {
-            buf[i] = MAX_VALUES_FADER[self.channels[i]].load(Ordering::Relaxed);
-        }
-        buf
-    }
-
     // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
         if chan > N - 1 {
@@ -264,7 +320,7 @@ impl<const N: usize> App<N> {
             _ => ADCRANGE::Rg0_10v,
         };
         self.reconfigure_jack(
-            self.channels[chan],
+            self.start_channel + chan,
             MaxConfig::Mode7(ConfigMode7(
                 AVR::InternalRef,
                 adc_range,
@@ -273,7 +329,7 @@ impl<const N: usize> App<N> {
         )
         .await;
 
-        InJack::new(self.channels[chan], range)
+        InJack::new(self.start_channel + chan, range)
     }
 
     // TODO: How can we prevent people from doing this multiple times?
@@ -287,12 +343,12 @@ impl<const N: usize> App<N> {
             _ => DACRANGE::Rg0_10v,
         };
         self.reconfigure_jack(
-            self.channels[chan],
+            self.start_channel + chan,
             MaxConfig::Mode5(ConfigMode5(dac_range)),
         )
         .await;
 
-        OutJack::new(self.channels[chan], range)
+        OutJack::new(self.start_channel + chan, range)
     }
 
     pub async fn make_gate_jack(&self, chan: usize, level: u16) -> GateJack {
@@ -301,10 +357,13 @@ impl<const N: usize> App<N> {
             panic!("Not a valid channel in this app");
         }
 
-        self.reconfigure_jack(self.channels[chan], MaxConfig::Mode3(ConfigMode3, level))
-            .await;
+        self.reconfigure_jack(
+            self.start_channel + chan,
+            MaxConfig::Mode3(ConfigMode3, level),
+        )
+        .await;
 
-        GateJack::new(self.channels[chan], self.sender)
+        GateJack::new(self.start_channel + chan, self.sender)
     }
 
     pub async fn delay_micros(&self, micros: u64) {
@@ -325,18 +384,10 @@ impl<const N: usize> App<N> {
         self.sender.send((16, XRxMsg::SetBpm(bpm))).await;
     }
 
-    pub fn is_button_pressed(&self, chan: usize) -> bool {
-        BUTTON_PRESSED[self.channels[chan]].load(Ordering::Relaxed)
-    }
-
-    pub fn is_shift_pressed(&self) -> bool {
-        BUTTON_PRESSED[17].load(Ordering::Relaxed)
-    }
-
     // TODO: Add effects
     // TODO: add methods to set brightness/color independently
-    pub fn set_led(&self, channel: usize, position: Led, (r, g, b): (u8, u8, u8), brightness: u8) {
-        let chan = self.channels[channel];
+    pub fn set_led(&self, chan: usize, position: Led, (r, g, b): (u8, u8, u8), brightness: u8) {
+        let chan = self.start_channel + chan;
         let led_no = match position {
             Led::Top => CHAN_LED_MAP[0][chan],
             Led::Bottom => CHAN_LED_MAP[1][chan],
@@ -354,7 +405,7 @@ impl<const N: usize> App<N> {
         let midi_channel = u4::new(0);
         let mut cc = ControlChange::<[u8; 3]>::new();
         // TODO: Make 32 a global config option
-        cc.set_control(u7::new(32 + self.channels[chan] as u8));
+        cc.set_control(u7::new(32 + (self.start_channel + chan) as u8));
         cc.set_control_data(u16_to_u7(val));
         cc.set_channel(midi_channel);
         self.send_midi_msg(ChannelVoice1::ControlChange(cc)).await;
@@ -382,33 +433,23 @@ impl<const N: usize> App<N> {
     // TODO: Check if making midi an own struct with a listener would make sense
     pub async fn send_midi_msg(&self, msg: ChannelVoice1<[u8; 3]>) {
         self.sender
-            .send((self.channels[0], XRxMsg::MidiMessage(msg)))
+            .send((self.start_channel, XRxMsg::MidiMessage(msg)))
             .await;
     }
 
-    pub fn make_waiter(&self) -> Waiter {
-        // Subscribers only listen on the start channel of an app
-        let subscriber = CHANS_X[self.channels[0]].subscriber().unwrap();
-        Waiter::new(subscriber)
+    pub fn use_buttons(&self) -> Buttons<N> {
+        Buttons::new(self.start_channel)
     }
 
-    pub fn make_die(&self) -> Die {
+    pub fn use_faders(&self) -> Faders<N> {
+        Faders::new(self.start_channel)
+    }
+
+    pub fn use_die(&self) -> Die {
         Die { rng: RoscRng }
     }
 
-    pub async fn wait_for_clock(&mut self, division: usize) -> bool {
-        let mut i: usize = 0;
-        loop {
-            // Reset always gets through
-            if self.clock_receiver.changed().await {
-                return true;
-            }
-            i += 1;
-            // TODO: Maybe we can make this more efficient by just having subscribers to
-            // subdivisions of the clock
-            if i == division {
-                return false;
-            }
-        }
+    pub fn use_clock(&self) -> Clock {
+        Clock::default()
     }
 }

@@ -7,13 +7,12 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Trigger", "Test app to test the clock and GPOs");
 
-pub async fn run(mut app: App<CHANNELS>) {
+pub async fn run(app: App<CHANNELS>) {
     let jack = app.make_gate_jack(0, 2048).await;
+    let clock = app.use_clock();
     // let color = (243, 191, 78);
     loop {
-        // TODO: We need to implement a waiter for this somehow
-        // An app can have as many clock waiters as it has channels
-        app.wait_for_clock(24).await;
+        clock.wait_for_tick(24).await;
         jack.set_high().await;
         // TODO: We need an app.led_blink or something, otherwise one won't be able to see the led
         // blink

@@ -15,6 +15,8 @@ pub async fn run(app: App<CHANNELS>) {
     let glob_lfo_pos = app.make_global(0.0);
 
     let output = app.make_out_jack(0, Range::_0_10V).await;
+    let faders = app.use_faders();
+    let buttons = app.use_buttons();
 
     let fut1 = async {
         loop {
@@ -42,10 +44,9 @@ pub async fn run(app: App<CHANNELS>) {
     };
 
     let fut2 = async {
-        let mut waiter = app.make_waiter();
         loop {
-            waiter.wait_for_fader_change(0).await;
-            let [fader] = app.get_fader_values();
+            faders.wait_for_change(0).await;
+            let [fader] = faders.get_values();
             glob_lfo_speed
                 .set(CURVE_LOG[fader as usize] as f32 * 0.015 + 0.0682)
                 .await;
@@ -53,12 +54,12 @@ pub async fn run(app: App<CHANNELS>) {
     };
 
     let fut3 = async {
-        let mut waiter = app.make_waiter();
         loop {
-            waiter.wait_for_button_down(0).await;
+            buttons.wait_for_down(0).await;
             let wave = glob_wave.get().await;
             glob_wave.set(wave.cycle()).await;
-            waiter.debounce_button().await;
+            // TODO: debounce
+            // button.debounce().await;
         }
     };
 
