@@ -67,13 +67,14 @@ pub async fn run(app: App<CHANNELS>) {
         loop {
             //clk.wait_for_tick(24).await;
             app.delay_millis(100).await;
-            gate1.set_high().await;
-            app.delay_millis(25).await;
-            gate1.set_low().await;
             let mut clockn = clockn_glob.get().await;
             clockn += 1;
             clockn = clockn % 8;
             clockn_glob.set(clockn).await;
+            gate1.set_high().await;
+            app.delay_millis(25).await;
+            gate1.set_low().await;
+
         }
     };
 
