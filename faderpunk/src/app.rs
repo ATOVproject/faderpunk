@@ -22,6 +22,7 @@ use rand::Rng;
 use config::Curve;
 use libfp::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
+    quantizer::Quantizer,
     utils::u16_to_u7,
 };
 
@@ -33,6 +34,8 @@ use crate::{
     },
     XRxMsg, XTxMsg, CHANS_X, CLOCK_WATCH,
 };
+
+const QUANTIZER_RANGER: usize = 9 * 12;
 
 pub enum Range {
     // 0 - 10V
@@ -460,5 +463,9 @@ impl<const N: usize> App<N> {
 
     pub fn use_clock(&self) -> Clock {
         Clock::default()
+    }
+
+    pub fn use_quantizer(&self) -> Quantizer<QUANTIZER_RANGER> {
+        Quantizer::default()
     }
 }
