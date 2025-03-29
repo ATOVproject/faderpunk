@@ -9,10 +9,12 @@ pub static CONFIG: Config<PARAMS> = Config::new("Trigger", "Test app to test the
 
 pub async fn run(app: App<CHANNELS>) {
     let jack = app.make_gate_jack(0, 2048).await;
-    let clock = app.use_clock();
+    let mut clock = app.use_clock();
     // let color = (243, 191, 78);
     loop {
-        clock.wait_for_tick(24).await;
+        // TODO: We need to implement a waiter for this somehow
+        // An app can have as many clock waiters as it has channels
+        clock.wait_for_tick(1).await;
         jack.set_high().await;
         // TODO: We need an app.led_blink or something, otherwise one won't be able to see the led
         // blink
