@@ -19,47 +19,61 @@ const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 
 pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
-    let curve = config.get_curve_at(0);
 
-    let glob_muted = app.make_global(false);
     app.set_led(0, Led::Button, LED_COLOR, 75);
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
-    let clk = app.use_clock();
+    let clockn_glob = app.make_global(0);
 
-    let jack = app.make_out_jack(0, Range::_0_10V).await;
+    let cv1 = app.make_out_jack(0, Range::_0_10V).await;
+    let gate1 = app.make_gate_jack(1, 4095).await;
+
+    let mut seq_glob = app.make_global([0, 0, 0, 0, 0, 0, 0, 0]);
+
+    let seq_init = faders.get_values();
+    seq_glob.set(seq_init).await;
+
+
+
     let fut1 = async {
         loop {
-            app.delay_millis(10).await;
-            let muted = glob_muted.get().await;
-            if !muted {
-                let vals = faders.get_values();
-                jack.set_value_with_curve(curve, vals[0]);
-            }
+            app.delay_millis(1).await;
+            let clockn = clockn_glob.get().await;
+            let seq = seq_glob.get().await;
+            cv1.set_value(seq[clockn]);
         }
     };
 
     let fut2 = async {
         loop {
-            faders.wait_for_change(0).await;
-
+            let chan = faders.wait_for_any_change().await;
+            let vals = faders.get_values();
+            let mut seq = seq_glob.get().await;
+            seq[chan] = vals[chan];
+            seq_glob.set(seq).await;
             }
         
     };
 
     let fut3 = async {
         loop {
-
             let chan= buttons.wait_for_any_down().await;
-            info!("{}", chan);
+            //info!("{}", chan);
         }
     };
 
     let fut4 = async {
         loop {
-            clk.wait_for_tick(24).await;
-            info!("clock");
+            //clk.wait_for_tick(24).await;
+            app.delay_millis(100).await;
+            gate1.set_high().await;
+            app.delay_millis(25).await;
+            gate1.set_low().await;
+            let mut clockn = clockn_glob.get().await;
+            clockn += 1;
+            clockn = clockn % 8;
+            clockn_glob.set(clockn).await;
         }
     };
 
