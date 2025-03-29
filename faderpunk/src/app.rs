@@ -212,19 +212,22 @@ impl<const N: usize> Faders<N> {
     }
 }
 
-pub struct Clock {}
+pub struct Clock {
+    receiver: Receiver<'static, CriticalSectionRawMutex, bool, 16>,
+}
 
 impl Clock {
     pub fn default() -> Self {
-        Self {}
+        let receiver = CLOCK_WATCH.receiver().unwrap();
+        Self { receiver }
     }
 
-    pub async fn wait_for_tick(&self, division: usize) -> bool {
-        let mut receiver = CLOCK_WATCH.receiver().unwrap();
+    pub async fn wait_for_tick(&mut self, division: usize) -> bool {
         let mut i: usize = 0;
+
         loop {
             // Reset always gets through
-            if receiver.changed().await {
+            if self.receiver.changed().await {
                 return true;
             }
             i += 1;
