@@ -19,11 +19,12 @@ pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
     let curve = config.get_curve_at(0);
 
-    let glob_muted = app.make_global(false);
-    app.set_led(0, Led::Button, LED_COLOR, 75);
-
     let buttons = app.use_buttons();
     let faders = app.use_faders();
+    let leds = app.use_leds();
+
+    let glob_muted = app.make_global(false);
+    leds.set(0, Led::Button, LED_COLOR, 75);
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
     let fut1 = async {
@@ -53,10 +54,10 @@ pub async fn run(app: App<CHANNELS>) {
             buttons.wait_for_down(0).await;
             let muted = glob_muted.toggle().await;
             if muted {
-                app.set_led(0, Led::Button, LED_COLOR, 0);
+                leds.set(0, Led::Button, LED_COLOR, 0);
                 jack.set_value(0);
             } else {
-                app.set_led(0, Led::Button, LED_COLOR, 75);
+                leds.set(0, Led::Button, LED_COLOR, 75);
             }
         }
     };

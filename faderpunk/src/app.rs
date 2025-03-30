@@ -49,6 +49,30 @@ pub enum Led {
     Button,
 }
 
+pub struct Leds<const N: usize> {
+    start_channel: usize,
+}
+
+impl<const N: usize> Leds<N> {
+    pub fn new(start_channel: usize) -> Self {
+        Self { start_channel }
+    }
+
+    // TODO: Add effects
+    // TODO: add methods to set brightness/color independently
+    pub fn set(&self, chan: usize, position: Led, (r, g, b): (u8, u8, u8), brightness: u8) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        let led_no = match position {
+            Led::Top => CHAN_LED_MAP[0][channel],
+            Led::Bottom => CHAN_LED_MAP[1][channel],
+            Led::Button => CHAN_LED_MAP[2][channel],
+        };
+        let value =
+            ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        LED_VALUES[led_no].store(value, Ordering::Relaxed);
+    }
+}
+
 pub struct InJack {
     channel: usize,
     range: Range,
@@ -142,6 +166,7 @@ impl<const N: usize> Buttons<N> {
 
     /// Returns if shift was pressed during button down
     pub async fn wait_for_down(&self, chan: usize) -> bool {
+        let chan = chan.clamp(0, N - 1);
         loop {
             let channel = self.wait_for_any_down().await;
             if chan == channel {
@@ -161,6 +186,7 @@ impl<const N: usize> Buttons<N> {
     }
 
     pub async fn wait_for_long_press(&self, chan: usize, duration: Duration) -> bool {
+        let chan = chan.clamp(0, N - 1);
         loop {
             let channel = self.wait_for_any_long_press(duration).await;
             if chan == channel {
@@ -170,6 +196,7 @@ impl<const N: usize> Buttons<N> {
     }
 
     pub fn is_button_pressed(&self, chan: usize) -> bool {
+        let chan = chan.clamp(0, N - 1);
         BUTTON_PRESSED[self.start_channel + chan].load(Ordering::Relaxed)
     }
 
@@ -188,6 +215,7 @@ impl<const N: usize> Faders<N> {
     }
 
     pub async fn wait_for_change(&self, chan: usize) {
+        let chan = chan.clamp(0, N - 1);
         loop {
             let channel = self.wait_for_any_change().await;
             if chan == channel {
@@ -324,10 +352,7 @@ impl<const N: usize> App<N> {
 
     // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
-        if chan > N - 1 {
-            // TODO: Maybe move panics into usb logs and handle gracefully?
-            panic!("Not a valid channel in this app");
-        }
+        let chan = chan.clamp(0, N - 1);
         let adc_range = match range {
             Range::_Neg5_5V => ADCRANGE::RgNeg5_5v,
             _ => ADCRANGE::Rg0_10v,
@@ -347,10 +372,7 @@ impl<const N: usize> App<N> {
 
     // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_out_jack(&self, chan: usize, range: Range) -> OutJack {
-        if chan > N - 1 {
-            // TODO: Maybe move panics into usb logs and handle gracefully?
-            panic!("Not a valid channel in this app");
-        }
+        let chan = chan.clamp(0, N - 1);
         let dac_range = match range {
             Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
             _ => DACRANGE::Rg0_10v,
@@ -365,11 +387,7 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn make_gate_jack(&self, chan: usize, level: u16) -> GateJack {
-        if chan > N - 1 {
-            // TODO: Maybe move panics into usb logs and handle gracefully?
-            panic!("Not a valid channel in this app");
-        }
-
+        let chan = chan.clamp(0, N - 1);
         self.reconfigure_jack(
             self.start_channel + chan,
             MaxConfig::Mode3(ConfigMode3, level),
@@ -397,23 +415,10 @@ impl<const N: usize> App<N> {
         self.sender.send((16, XRxMsg::SetBpm(bpm))).await;
     }
 
-    // TODO: Add effects
-    // TODO: add methods to set brightness/color independently
-    pub fn set_led(&self, chan: usize, position: Led, (r, g, b): (u8, u8, u8), brightness: u8) {
-        let chan = self.start_channel + chan;
-        let led_no = match position {
-            Led::Top => CHAN_LED_MAP[0][chan],
-            Led::Bottom => CHAN_LED_MAP[1][chan],
-            Led::Button => CHAN_LED_MAP[2][chan],
-        };
-        let value =
-            ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-        LED_VALUES[led_no].store(value, Ordering::Relaxed);
-    }
-
     // TODO: This is a short-hand function that should also send the msg via TRS
     // Create and use a function called midi_send_both and use it here
     pub async fn midi_send_cc(&self, chan: usize, val: u16) {
+        let chan = chan.clamp(0, N - 1);
         // TODO: Make configurable
         let midi_channel = u4::new(0);
         let mut cc = ControlChange::<[u8; 3]>::new();
@@ -456,6 +461,10 @@ impl<const N: usize> App<N> {
 
     pub fn use_faders(&self) -> Faders<N> {
         Faders::new(self.start_channel)
+    }
+
+    pub fn use_leds(&self) -> Leds<N> {
+        Leds::new(self.start_channel)
     }
 
     pub fn use_die(&self) -> Die {

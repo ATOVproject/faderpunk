@@ -17,6 +17,7 @@ pub async fn run(app: App<CHANNELS>) {
     let output = app.make_out_jack(0, Range::_Neg5_5V).await;
     let faders = app.use_faders();
     let buttons = app.use_buttons();
+    let leds = app.use_leds();
 
     let fut1 = async {
         loop {
@@ -38,9 +39,9 @@ pub async fn run(app: App<CHANNELS>) {
                 Waveform::Rect => (250, 250, 250),
             };
 
-            app.set_led(0, Led::Button, color, 75); //75 is good for shooting
-            app.set_led(0, Led::Top, color, ((val as f32 / 16.0) / 2.0) as u8);
-            app.set_led(
+            leds.set(0, Led::Button, color, 75); //75 is good for shooting
+            leds.set(0, Led::Top, color, ((val as f32 / 16.0) / 2.0) as u8);
+            leds.set(
                 0,
                 Led::Bottom,
                 color,

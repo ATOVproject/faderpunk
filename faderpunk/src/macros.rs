@@ -6,8 +6,7 @@ macro_rules! register_apps {
 
         use embassy_sync::blocking_mutex::raw::NoopRawMutex;
         use embassy_sync::channel::Sender;
-        use heapless::Vec;
-        use config::{Param, MAX_PARAMS};
+        use config::Param;
         use crate::XRxMsg;
 
         const _APP_COUNT: usize = {
@@ -47,7 +46,7 @@ macro_rules! register_apps {
             }
         }
 
-        pub fn get_config<'a>(app_id: usize) -> (&'static str, &'static str, &'static [Param]) {
+        pub fn get_config(app_id: usize) -> (&'static str, &'static str, &'static [Param]) {
             match app_id {
                 $(
                     $id => {
