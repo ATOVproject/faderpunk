@@ -91,9 +91,6 @@ impl GateJack {
     }
 }
 
-// FIXME: An app should be able to create at least as many waiters as it has channels multiplied
-// by use cases
-
 pub struct OutJack {
     channel: usize,
     range: Range,
@@ -153,14 +150,21 @@ impl<const N: usize> Buttons<N> {
         }
     }
 
-    pub async fn wait_for_long_press(&self, chan: usize, duration: Duration) -> bool {
+    pub async fn wait_for_any_long_press(&self, duration: Duration) -> usize {
         loop {
             let channel = self.wait_for_any_down().await;
+            Timer::after(duration).await;
+            if BUTTON_PRESSED[self.start_channel + channel].load(Ordering::Relaxed) {
+                return channel;
+            }
+        }
+    }
+
+    pub async fn wait_for_long_press(&self, chan: usize, duration: Duration) -> bool {
+        loop {
+            let channel = self.wait_for_any_long_press(duration).await;
             if chan == channel {
-                Timer::after(duration).await;
-                if BUTTON_PRESSED[self.start_channel + chan].load(Ordering::Relaxed) {
-                    return self.is_shift_pressed();
-                }
+                return self.is_shift_pressed();
             }
         }
     }
