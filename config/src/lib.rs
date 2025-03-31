@@ -75,6 +75,8 @@ pub enum Param {
     Int {
         name: &'static str,
         default: i32,
+        min: usize,
+        max: usize,
     },
     Float {
         name: &'static str,

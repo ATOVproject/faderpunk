@@ -5,13 +5,19 @@ use midi2::ux::u4;
 use crate::app::{App, Led, Range};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 1;
+pub const PARAMS: usize = 2;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
     .add_param(Param::Curve {
         name: "Curve",
         default: Curve::Linear,
         variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+    })
+    .add_param(Param::Int {
+        name: "Midi channel",
+        default: 0,
+        min: 0,
+        max: 15,
     });
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
@@ -19,12 +25,12 @@ const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
     let curve = config.get_curve_at(0);
+    let midi_channel = u4::new(config.get_int_at(1) as u8);
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    // TODO: Make channel configurable
-    let midi = app.use_midi(u4::new(0));
+    let midi = app.use_midi(midi_channel);
 
     let glob_muted = app.make_global(false);
     leds.set(0, Led::Button, LED_COLOR, 75);
