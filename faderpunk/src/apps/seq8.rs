@@ -25,6 +25,7 @@ pub async fn run(app: App<CHANNELS>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let mut clk = app.use_clock();
+    let led = app.use_leds();
 
 
     let clockn_glob = app.make_global(0);
@@ -77,10 +78,10 @@ pub async fn run(app: App<CHANNELS>) {
             gateseq[chan] = !gateseq[chan];
             gateseq_glob.set(gateseq).await;
             if gateseq[chan] {
-                app.set_led(chan, Led::Button , LED_COLOR, 75);
+                led.set(chan, Led::Button , LED_COLOR, 75);
             }
             if !gateseq[chan] {
-                app.set_led(chan, Led::Button , LED_COLOR, 0);
+                led.set(chan, Led::Button , LED_COLOR, 0);
             }
         }
     };
@@ -98,23 +99,24 @@ pub async fn run(app: App<CHANNELS>) {
         loop {
             let gateseq = gateseq_glob.get().await;
             clk.wait_for_tick(24).await;
+            info!("clock!");
             let mut clockn = clockn_glob.get().await;
             clockn += 1;
             clockn = clockn % 8;
             clockn_glob.set(clockn).await;
-            app.set_led(clockn, Led::Button , (255, 255, 255), 100);
+            led.set(clockn, Led::Button , (255, 255, 255), 100);
 
             if gateseq[clockn]{
                 gate1.set_high().await;
                 app.delay_millis(gatet).await;
                 gate1.set_low().await;
-                app.set_led(clockn, Led::Button , LED_COLOR, 75);
+                led.set(clockn, Led::Button , LED_COLOR, 75);
             }
 
             
             if !gateseq[clockn] {
                 app.delay_millis(gatet).await;
-                app.set_led(clockn, Led::Button , LED_COLOR, 0);
+                led.set(clockn, Led::Button , LED_COLOR, 0);
             }
             
             }
