@@ -1,5 +1,6 @@
 use config::{Config, Curve, Param};
 use embassy_futures::join::join3;
+use midi2::ux::u4;
 
 use crate::app::{App, Led, Range};
 
@@ -22,6 +23,8 @@ pub async fn run(app: App<CHANNELS>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
+    // TODO: Make channel configurable
+    let midi = app.use_midi(u4::new(0));
 
     let glob_muted = app.make_global(false);
     leds.set(0, Led::Button, LED_COLOR, 75);
@@ -44,7 +47,7 @@ pub async fn run(app: App<CHANNELS>) {
             let muted = glob_muted.get().await;
             if !muted {
                 let [fader] = faders.get_values();
-                app.midi_send_cc(0, fader).await;
+                midi.send_cc(0, fader).await;
             }
         }
     };
