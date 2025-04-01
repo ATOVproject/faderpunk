@@ -259,9 +259,9 @@ impl Clock {
         let mut i: usize = 0;
 
         loop {
-            // Reset always gets through
+            // We'll ignore reset here
             if self.receiver.changed().await {
-                return true;
+                continue;
             }
             i += 1;
             // TODO: Maybe we can make this more efficient by just having subscribers to

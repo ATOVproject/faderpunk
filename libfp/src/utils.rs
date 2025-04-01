@@ -1,11 +1,8 @@
+use embassy_time::Duration;
 use ux::u7;
 
-pub const fn bpm_to_ms(bpm: f32) -> u64 {
-    (60000.0 / bpm) as u64
-}
-
-pub const fn ms_to_bpm(ms: u64) -> f32 {
-    60000.0 / ms as f32
+pub const fn bpm_to_clock_duration(bpm: f32, ppqn: u8) -> Duration {
+    Duration::from_nanos((1_000_000_000.0 / (bpm / 60.0 * ppqn as f32)) as u64)
 }
 
 /// Scale from 4096 to 127
