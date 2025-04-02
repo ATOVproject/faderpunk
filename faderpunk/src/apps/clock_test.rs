@@ -13,9 +13,9 @@ pub async fn run(app: App<CHANNELS>) {
     let leds = app.use_leds();
     let mut cur: usize = 0;
     loop {
+        clock.wait_for_tick(6).await;
         cur = (cur + 1) % 16;
         let prev = if cur == 0 { 15 } else { cur - 1 };
-        clock.wait_for_tick(6).await;
         leds.set(cur, Led::Button, color, 100);
         leds.set(prev, Led::Button, color, 0);
     }
