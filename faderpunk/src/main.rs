@@ -6,41 +6,55 @@ mod macros;
 
 mod app;
 mod apps;
-mod layout;
-mod storage;
 mod tasks;
-pub mod storage;
 
+use defmt::info;
+use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::{Executor, Spawner};
-use embassy_rp::clocks::ClockConfig;
+use embassy_futures::join::join;
+use embassy_futures::select::select;
+use embassy_rp::block::ImageDef;
+use embassy_rp::clocks::{clk_sys_freq, ClockConfig};
 use embassy_rp::config::Config;
+use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
-use embassy_rp::spi::{self, Spi};
-use embassy_rp::uart::{self, Async as UartAsync, BufferedUart, Config as UartConfig, UartTx};
+use embassy_rp::spi::{self, Phase, Polarity, Spi};
+use embassy_rp::uart::{self, Async as UartAsync, Config as UartConfig, Uart, UartTx};
 use embassy_rp::usb;
 use embassy_rp::{
-    bind_interrupts, i2c,
+    bind_interrupts,
+    i2c::{self, I2c},
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::{Channel, Sender};
+use embassy_sync::blocking_mutex::raw::{
+    CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex,
+};
+use embassy_sync::channel::{Channel, Receiver, Sender};
+use embassy_sync::mutex::Mutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher};
-use embassy_sync::watch::Watch;
-use embassy_time::Timer;
-use fm24v10::{Address, Fm24v10};
-use layout::{LayoutManager, LAYOUT_MANAGER};
-use libfp::constants::GLOBAL_CHANNELS;
-use midly::live::LiveEvent;
+use embassy_sync::signal::Signal;
+use embassy_sync::watch::{Receiver as WatchReceiver, Watch};
+use embassy_time::{Delay, Duration, Timer};
+use midi2::channel_voice1::ChannelVoice1;
+use portable_atomic::{AtomicBool, Ordering};
 
-use tasks::fram::MAX_DATA_LEN;
-use tasks::max::{MaxCmd, MAX_CHANNEL};
-use tasks::midi::MIDI_CHANNEL;
+use heapless::Vec;
+use tasks::leds::LedsAction;
+use tasks::max::{MaxConfig, MaxMessage, MAX_VALUES_FADER};
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
 
+use array_init::array_init;
+use at24cx::{Address, At24Cx};
+use sequential_storage::{
+    cache::NoCache,
+    map::{fetch_item, store_item},
+};
+
+use apps::{get_channels, run_app_by_id};
 use config::{ClockSrc, GlobalConfig};
 
 // Program metadata for `picotool info`.
@@ -61,83 +75,212 @@ bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
     USBCTRL_IRQ => usb::InterruptHandler<USB>;
     UART0_IRQ => uart::InterruptHandler<UART0>;
-    UART1_IRQ => uart::BufferedInterruptHandler<UART1>;
+    UART1_IRQ => uart::InterruptHandler<UART1>;
 });
 
-static mut CORE1_STACK: Stack<131_072> = Stack::new();
-static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
-
 // TODO: Move all of the message stuff to own file
+pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
+
 /// Messages from core 0 to core 1
-#[derive(Clone)]
-pub enum InputEvent {
-    ButtonDown(usize),
-    ButtonUp(usize),
-    FaderChange(usize),
-    MidiMsg(LiveEvent<'static>),
-    LoadScene(u8),
-    SaveScene(u8),
+#[derive(Clone, Copy, Debug, defmt::Format)]
+pub enum XTxMsg {
+    ButtonDown,
+    ButtonUp,
+    FaderChange,
 }
 
 /// Messages from core 1 to core 0
-pub enum HardwareCmd {
-    MaxCmd(usize, MaxCmd),
-    MidiMsg(LiveEvent<'static>),
+#[derive(Clone)]
+pub enum XRxMsg {
+    MaxMessage(MaxMessage),
+    MidiMessage(ChannelVoice1<[u8; 3]>),
+    SetLed(LedsAction),
+    SetBpm(f32),
 }
 
-// TODO: Move all the channels and signalling to own module
-pub const CMD_CHANNEL_SIZE: usize = 16;
-pub const EVENT_PUBSUB_SIZE: usize = 64;
-pub const EVENT_PUBSUB_SUBS: usize = 64;
-
+static mut CORE1_STACK: Stack<131_072> = Stack::new();
+static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
+// pub static WATCH_SCENE_SET: Watch<CriticalSectionRawMutex, &[usize], 18> = Watch::new();
 // TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
 // mention all uses
-pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> =
-    Watch::new_with(GlobalConfig::new());
+pub static WATCH_CONFIG_CHANGE: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
+// TODO: See if we can use a StaticCell + NoopRawMutex here
+pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
+    [const { PubSubChannel::new() }; 16];
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
+/// Collector channel on core 0
+static CHAN_X_0: StaticCell<Channel<NoopRawMutex, (usize, XTxMsg), 128>> = StaticCell::new();
+/// Collector channel on core 1
+static CHAN_X_1: StaticCell<Channel<NoopRawMutex, (usize, XRxMsg), 128>> = StaticCell::new();
+/// Channel from core 0 to core 1
+static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 64> = Channel::new();
+/// Channel from core 1 to core 0
+static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channel::new();
+/// Channel for sending messages to the MAX
+static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxMessage), 64>> = StaticCell::new();
+/// Channel for sending messages to the MIDI bus
+static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, ChannelVoice1<[u8; 3]>), 64>> =
+    StaticCell::new();
+/// Channel for sending messages to the LEDs
+static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
+/// Channel for sending messages to the clock
+static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, f32, 64>> = StaticCell::new();
+/// Tasks (apps) that are currently running (number 17 is the publisher task)
+static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 
-// 32 receivers (ephemeral)
-// 18 senders (16 apps for scenes, 1 buttons, 1 max)
-pub type EventPubSubChannel =
-    PubSubChannel<CriticalSectionRawMutex, InputEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 18>;
-pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
-pub type EventPubSubPublisher = Publisher<
-    'static,
-    CriticalSectionRawMutex,
-    InputEvent,
-    EVENT_PUBSUB_SIZE,
-    EVENT_PUBSUB_SUBS,
-    18,
->;
-pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE> =
-    Channel::new();
-pub type CmdSender = Sender<'static, CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE>;
+#[derive(Debug)]
+enum LayoutErr {
+    AppSize,
+    LayoutSize,
+}
 
-/// MIDI buffers (RX and TX)
-static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
-static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
+/// Layout creates a proper layout vec from just a slice of app ids
+/// The vec contains a tupel of app ids and their corresponding size of chans
+struct Layout {
+    apps: Vec<(usize, usize), 16>,
+}
 
-/// FRAM write buffer
-// TODO: Find a good value here
-static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
+impl Layout {
+    fn try_from(app_ids: &[usize]) -> Result<Self, LayoutErr> {
+        if app_ids.len() > 16 {
+            return Err(LayoutErr::AppSize);
+        }
+        // Create vec of (app_id, size). Will remove invalid app ids
+        let apps: Vec<(usize, usize), 16> = app_ids
+            .iter()
+            .map(|&id| (id, get_channels(id)))
+            .collect::<Vec<(usize, usize), 16>>();
+        // Check if apps fit into the layout
+        let count = apps.iter().copied().fold(0, |acc, (_, size)| acc + size);
+        if count > 16 {
+            return Err(LayoutErr::LayoutSize);
+        }
+        Ok(Self { apps })
+    }
+
+    fn apps_iter(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.apps.iter().scan(0, |start_channel, &(app_id, size)| {
+            let result = Some((app_id, *start_channel));
+            *start_channel += size;
+            result
+        })
+    }
+
+    // Creates an array which returns the app's start channel for every channel
+    fn channel_map(&self) -> [usize; 16] {
+        let mut result = [0; 16];
+
+        for (_, start_chan) in self.apps_iter() {
+            let size = 16 - start_chan;
+            let end = (start_chan + size).min(16);
+            result[start_chan..end].fill(start_chan);
+        }
+
+        result
+    }
+}
+
+// TODO: create config builder to create full 16 channel layout with various apps
+// The app at some point needs access to the MAX to configure it. Maybe this can happen via
+// CHANNEL?
+// Builder config needs to be serializable to store in eeprom
+
+// App slots
+#[embassy_executor::task(pool_size = 16)]
+async fn run_app(
+    number: usize,
+    start_channel: usize,
+    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+) {
+    // INFO: This _should_ be properly dropped when task ends
+    let mut cancel_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
+    // TODO: Is the first value always new?
+    let _ = cancel_receiver.changed().await;
+
+    let run_app_fut = async {
+        CORE1_TASKS[start_channel].store(true, Ordering::Relaxed);
+        run_app_by_id(number, start_channel, sender).await;
+    };
+
+    select(run_app_fut, cancel_receiver.changed()).await;
+    CORE1_TASKS[start_channel].store(false, Ordering::Relaxed);
+    info!("App {} on channel {} stopped", number, start_channel)
+}
+
+// Cross core comms
+#[embassy_executor::task]
+async fn x_tx(channel_map: [usize; 16]) {
+    // INFO: This _should_ be properly dropped when task ends
+    let mut cancel_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
+    // TODO: Is the first value always new?
+    let _ = cancel_receiver.changed().await;
+    let x_tx_fut = async {
+        // INFO: These _should_ all be properly dropped when task ends
+        let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
+            array_init(|i| CHANS_X[i].publisher().unwrap());
+        CORE1_TASKS[16].store(true, Ordering::Relaxed);
+        loop {
+            let (chan, msg) = CHAN_X_TX.receive().await;
+            if chan == 16 {
+                // TODO: Is this fast enough for the clock or do we need a Watch in a CriticalSectionRawMutex?
+                // INFO: Special channel 16 sends to all publishers
+                for publisher in publishers.iter() {
+                    publisher.publish((chan, msg)).await;
+                }
+            } else {
+                let start_chan = channel_map[chan];
+                let relative_index = chan.wrapping_sub(start_chan);
+                publishers[start_chan].publish((relative_index, msg)).await;
+            }
+        }
+    };
+
+    select(x_tx_fut, cancel_receiver.changed()).await;
+    CORE1_TASKS[16].store(false, Ordering::Relaxed);
+}
 
 #[embassy_executor::task]
-async fn main_core1(spawner: Spawner) {
-    let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
-    let mut receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
+async fn x_rx(receiver: Receiver<'static, NoopRawMutex, (usize, XRxMsg), 128>) {
     loop {
-        let global_config = receiver.changed().await;
-        // TODO: Check if the layout actually changed and if we need to spawn it
-        lm.spawn_layout(global_config.layout).await;
+        let msg = receiver.receive().await;
+        CHAN_X_RX.send(msg).await;
     }
 }
 
 #[embassy_executor::task]
-async fn hardware_cmd_router() {
+async fn main_core1(spawner: Spawner) {
+    let chan_x_1 = CHAN_X_1.init(Channel::new());
+    spawner.spawn(x_rx(chan_x_1.receiver())).unwrap();
+
+    let mut receiver_config = WATCH_CONFIG_CHANGE.receiver().unwrap();
+
     loop {
-        match CMD_CHANNEL.receive().await {
-            HardwareCmd::MaxCmd(channel, max_cmd) => MAX_CHANNEL.send((channel, max_cmd)).await,
-            HardwareCmd::MidiMsg(live_event) => MIDI_CHANNEL.send(live_event).await,
+        let config = receiver_config.changed().await;
+
+        // Check if all tasks are properly exited
+        loop {
+            if CORE1_TASKS.iter().all(|val| !val.load(Ordering::Relaxed)) {
+                break;
+            }
+            // yield to give apps time to close
+            Timer::after_millis(5).await;
+        }
+
+        let layout = Layout::try_from(config.layout).unwrap();
+        let channel_map = layout.channel_map();
+        spawner
+            // INFO: The next two _should_ be dropped properly when the task exits
+            .spawn(x_tx(channel_map))
+            .unwrap();
+        for (app_id, start_chan) in layout.apps_iter() {
+            spawner
+                .spawn(run_app(
+                    app_id,
+                    start_chan,
+                    // INFO: This _should_ be dropped properly when the task exits
+                    chan_x_1.sender(),
+                ))
+                .unwrap();
         }
     }
 }
@@ -179,9 +322,7 @@ async fn main(spawner: Spawner) {
     let spi1 = Spi::new_txonly(p.SPI1, p.PIN_10, p.PIN_11, p.DMA_CH5, spi1_config);
 
     // I2C1 (EEPROM)
-    let mut i2c1_config = i2c::Config::default();
-    i2c1_config.frequency = 1_000_000;
-    let i2c1 = i2c::I2c::new_async(p.I2C1, p.PIN_27, p.PIN_26, Irqs, i2c1_config);
+    let i2c1 = i2c::I2c::new_async(p.I2C1, p.PIN_27, p.PIN_26, Irqs, i2c::Config::default());
 
     // MIDI
     let mut uart_config = UartConfig::default();
@@ -190,15 +331,13 @@ async fn main(spawner: Spawner) {
     // MIDI Thru
     let uart0: UartTx<'_, _, UartAsync> = UartTx::new(p.UART0, p.PIN_0, p.DMA_CH2, uart_config);
     // MIDI In/Out
-    let uart1_tx_buffer = BUF_UART1_TX.init([0; 64]);
-    let uart1_rx_buffer = BUF_UART1_RX.init([0; 64]);
-    let uart1 = BufferedUart::new(
+    let uart1 = Uart::new(
         p.UART1,
-        Irqs,
         p.PIN_8,
         p.PIN_9,
-        uart1_tx_buffer,
-        uart1_rx_buffer,
+        Irqs,
+        p.DMA_CH3,
+        p.DMA_CH4,
         uart_config,
     );
 
@@ -211,26 +350,7 @@ async fn main(spawner: Spawner) {
         p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
     );
 
-    // EEPROM
-    let write_buf = BUF_FRAM_WRITE.init([0; MAX_DATA_LEN]);
-    let eeprom = Fm24v10::new(i2c1, Address(0, 0), write_buf);
-
-    // AUX inputs
     let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
-
-    tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17).await;
-
-    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
-
-    tasks::leds::start_leds(&spawner, spi1).await;
-
-    tasks::buttons::start_buttons(&spawner, buttons).await;
-
-    tasks::clock::start_clock(&spawner, aux_inputs).await;
-
-    tasks::fram::start_fram(&spawner, eeprom).await;
-
-    spawner.spawn(hardware_cmd_router()).unwrap();
 
     spawn_core1(
         p.CORE1,
@@ -243,16 +363,128 @@ async fn main(spawner: Spawner) {
         },
     );
 
-    let config_sender = CONFIG_CHANGE_WATCH.sender();
+    let chan_x_0 = CHAN_X_0.init(Channel::new());
+    let chan_max = CHAN_MAX.init(Channel::new());
+    let chan_midi = CHAN_MIDI.init(Channel::new());
+    let chan_leds = CHAN_LEDS.init(Channel::new());
+    let chan_clock = CHAN_CLOCK.init(Channel::new());
+
+    tasks::max::start_max(
+        &spawner,
+        spi0,
+        p.PIO0,
+        mux_pins,
+        p.PIN_17,
+        chan_x_0.sender(),
+        chan_max.receiver(),
+    )
+    .await;
+
+    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1, chan_midi.receiver())
+        .await;
+
+    tasks::leds::start_leds(&spawner, spi1, chan_leds.receiver()).await;
+
+    tasks::buttons::start_buttons(&spawner, buttons, chan_x_0.sender()).await;
+
+    tasks::clock::start_clock(&spawner, aux_inputs, chan_clock.receiver()).await;
+
+    let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
+
+    // These are the flash addresses in which the crate will operate.
+    // The crate will not read, write or erase outside of this range.
+    let flash_range = 0x1000..0x3000;
+    // We need to give the crate a buffer to work with.
+    // It must be big enough to serialize the biggest value of your storage type in,
+    // rounded up to to word alignment of the flash. Some kinds of internal flash may require
+    // this buffer to be aligned in RAM as well.
+    let mut data_buffer = [0; 128];
+    let mut i = 0_u8;
+
+    let config_sender = WATCH_CONFIG_CHANGE.sender();
+
+    let fut = async {
+        loop {
+            let msg = chan_x_0.receive().await;
+            CHAN_X_TX.send(msg).await;
+            // let mut chan_x_tx = CHAN_X_TX.lock().await;
+            // loop {
+            //     let mut i: usize = 0;
+            //     if let Ok(msg) = chan_x_0.try_receive() {
+            //         chan_x_tx.enqueue(msg).unwrap();
+            //     }
+            //     if chan_x_0.is_empty() {
+            //         SIG_X_TX.signal(());
+            //         info!("Sent {} commands", i);
+            //         break;
+            //     }
+            //     i += 1;
+            // }
+        }
+    };
+
+    let fut2 = async {
+        loop {
+            let (chan, msg) = CHAN_X_RX.receive().await;
+            match msg {
+                XRxMsg::MaxMessage(max_config) => chan_max.send((chan, max_config)).await,
+                XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
+                XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
+                XRxMsg::SetBpm(bpm) => chan_clock.send(bpm).await,
+            }
+        }
+    };
 
     Timer::after_millis(100).await;
 
-    // TODO: Get this from fram
-    let mut config = GlobalConfig::new();
-    // let layout = get_layout_from_slice(&[1; 16]);
-    config.clock_src = ClockSrc::MidiIn;
-    config.reset_src = ClockSrc::MidiIn;
-    // config.layout = layout;
-
+    // TODO: Get this from eeprom
+    let mut config = GlobalConfig::default();
+    config.clock_src = ClockSrc::Atom;
+    config.layout = &[3, 6];
     config_sender.send(config);
+
+    join(fut, fut2).await;
+
+    // These are the flash addresses in which the crate will operate.
+    // The crate will not read, write or erase outside of this range.
+    let flash_range = 0x1000..0x3000;
+    // We need to give the crate a buffer to work with.
+    // It must be big enough to serialize the biggest value of your storage type in,
+    // rounded up to to word alignment of the flash. Some kinds of internal flash may require
+    // this buffer to be aligned in RAM as well.
+    let mut data_buffer = [0; 128];
+
+    // Now we store an item the flash with key 42.
+    // Again we make sure we pass the correct key and value types, u8 and u32.
+    // It is important to do this consistently.
+
+    // store_item(
+    //     &mut eeprom,
+    //     flash_range.clone(),
+    //     &mut NoCache::new(),
+    //     &mut data_buffer,
+    //     &42u8,
+    //     &104729u32,
+    // )
+    // .await
+    // .unwrap();
+
+    // When we ask for key 42, we not get back a Some with the correct value
+    //
+    // let val = fetch_item::<u8, u32, _>(
+    //     &mut eeprom,
+    //     flash_range.clone(),
+    //     &mut NoCache::new(),
+    //     &mut data_buffer,
+    //     &42,
+    // )
+    // .await
+    // .unwrap()
+    // .unwrap();
+    //
+    // info!("VAL IS {}", val);
+    //
+    // assert_eq!(val, 104729);
+    //
+    // info!("INITIALIZED");
 }
