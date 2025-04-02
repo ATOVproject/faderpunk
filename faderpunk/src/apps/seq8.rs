@@ -88,7 +88,7 @@ pub async fn run(app: App<CHANNELS>) {
                     let mut seq_lenght = seq_length_glob.get().await;
                     seq_lenght[(chan / 2)] = ((vals[chan]) / 256) + 1;
                     seq_length_glob.set(seq_lenght).await;
-                    led_flag_glob.set(true).await;
+                    
                 }
 
                 if chan % 2 == 1 {
@@ -96,6 +96,7 @@ pub async fn run(app: App<CHANNELS>) {
                 }
                                 
             }
+            led_flag_glob.set(true).await;
         }
         
     };
@@ -130,6 +131,7 @@ pub async fn run(app: App<CHANNELS>) {
                 let page = page_glob.get().await;
                 let gateseq = gateseq_glob.get().await;
                 let seq_length = seq_length_glob.get().await; //use this to highlight active notes
+                let seq = seq_glob.get().await;
                 let mut colour = (243, 191, 78);
                 
                 if page / 2 == 0 {
@@ -146,13 +148,16 @@ pub async fn run(app: App<CHANNELS>) {
                 } 
 
                 for n in 0..=7 {
+                    led.set(n, Led::Top, colour, (seq[n + (page * 8)] / 16)as u8 / 2 );
+                    led.set(n, Led::Bottom, colour, (255 - (seq[n + (page * 8)] / 16)  as u8) / 2);
                     if gateseq[n + (page * 8)] {
                         led.set(n, Led::Button , colour, 100);
-                        led.set(n, Led::Bottom , colour, 0);
+                        
+                        //led.set(n, Led::Bottom , colour, 0);
                     }
                     if !gateseq[n + (page * 8)] {
                         led.set(n, Led::Button , colour, 50);
-                        led.set(n, Led::Bottom , colour, 0);
+                        //led.set(n, Led::Bottom , colour, 0);
                         
                     }
 
@@ -165,7 +170,9 @@ pub async fn run(app: App<CHANNELS>) {
                     }
                     
                 }
-                led.set(page, Led::Bottom , colour, 75);
+
+                led.set(page, Led::Bottom , colour,255);
+
                 led_flag_glob.set(false).await;
             }
         }
