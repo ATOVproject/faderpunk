@@ -25,6 +25,7 @@ const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 
 pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
+    // TODO: Maybe rename: get_curve_from_param(idx)
     let curve = config.get_curve_at(0);
     let midi_channel = u4::new(config.get_int_at(1) as u8);
 

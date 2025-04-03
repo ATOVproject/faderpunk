@@ -255,13 +255,14 @@ impl Clock {
         Self { receiver, sender }
     }
 
+    // TODO: division needs to be an enum
     pub async fn wait_for_tick(&mut self, division: usize) -> bool {
         let mut i: usize = 0;
 
         loop {
-            // We'll ignore reset here
+            // Reset always gets through
             if self.receiver.changed().await {
-                continue;
+                return true;
             }
             i += 1;
             // TODO: Maybe we can make this more efficient by just having subscribers to

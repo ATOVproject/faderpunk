@@ -440,6 +440,7 @@ async fn main(spawner: Spawner) {
     // TODO: Get this from eeprom
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::Atom;
+    config.reset_src = ClockSrc::Meteor;
     config.layout = &[1; 16];
     config_sender.send(config);
 
