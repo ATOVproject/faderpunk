@@ -34,51 +34,109 @@ pub async fn run(app: App<CHANNELS>) {
     let mut clock = app.use_clock();
 
     let rec_flag = app.make_global(false);
+    let del_flag = app.make_global(false);
+    let offset_glob = app.make_global(0) ; 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
+
+    let mut last_midi = 0;
     
     let mut index= 0;
     let mut recording = false;
-    let mut buffer = [0; 16];
+    let mut buffer = [0; 64];
+    let mut length = 64;
+    let color = (255, 255, 255);
 
     let fut1 = async {
         loop {
             clock.wait_for_tick(1).await;
             index += 1;
-            index = index % 16;
-            
-            if index == 0 {
+            index = index % length;
+
+            if index == 0 && recording {
                 recording = false;
+                
             }
 
             if rec_flag.get().await  {
                 index = 0;
                 recording = true;
+                rec_flag.set(false).await;
+                length = 64;
+                offset_glob.set(0).await;
+                
             }
 
-            
-
-            if recording && buttons.is_button_pressed(0){
+            if recording {
                 let val = faders.get_values();
                 buffer[index] = val[0];
+                jack.set_value(buffer[index]);
+                if last_midi / 16 != (buffer[index]) / 16 {
+                    midi.send_cc(0, buffer[index]).await;
+                    last_midi = buffer[index];
+                }
+
+
+                midi.send_cc(0, buffer[index]).await;
+                leds.set(0, Led::Button, (255, 0, 0), 75);
+                leds.set(0, Led::Top, (255, 0, 0), (buffer[index]/32) as u8);
+                leds.set(0, Led::Bottom, (255, 0, 0), (255 - (buffer[index]/16) as u8) / 2)
+            }
+
+            if recording && !buttons.is_button_pressed(0) && index % 16 == 0 && index != 0 {
+                recording = !recording;
+                length = index;
             }
             
             if !recording{
-                jack.set_value(buffer[index]);
+                let offset = offset_glob.get().await;
+                let mut val: u16 = buffer[index] + offset;
+                if val > 4095 {
+                    val = 4095;
+                } 
+                jack.set_value(val);
+                if last_midi / 16 != (val) / 16 {
+                    midi.send_cc(0, val).await;
+                    last_midi = val;
+                }
+                leds.set(0, Led::Button, color, 75);
+                leds.set(0, Led::Top, color, ((buffer[index] + offset) / 16) as u8);
+                leds.set(0, Led::Bottom, color,(255 - ((buffer[index] + offset)/16) as u8) / 2);
             }
+
+            if index ==  0{
+                leds.set(0, Led::Button, (255, 255, 255), 0);
+            }
+
+            if del_flag.get().await {
+                for n in 0..=63 {
+                    buffer[n] = 0;
+                }
+                recording = false;
+                offset_glob.set(0).await;
+                del_flag.set(false).await;
+            }
+
 
         }
     };
 
     let fut2 = async {
         loop {
-            faders.wait_for_change(0).await;            
+            faders.wait_for_change(0).await;
+            let val = faders.get_values();        
+            offset_glob.set(val[0]).await;
         }
     };
 
     let fut3 = async {
         loop {
             buttons.wait_for_down(0).await;
-            rec_flag.set(true).await;
+            if buttons.is_shift_pressed() {
+                del_flag.set(true).await;
+            }
+            else{
+                rec_flag.set(true).await;
+            }
         }
     };
 
