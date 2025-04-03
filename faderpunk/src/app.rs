@@ -299,12 +299,10 @@ impl<const N: usize> Midi<N> {
     }
     // TODO: This is a short-hand function that should also send the msg via TRS
     // Create and use a function called midi_send_both and use it here
-    pub async fn send_cc(&self, chan: usize, val: u16) {
-        let chan = chan.clamp(0, N - 1);
+    pub async fn send_cc(&self, cc_no: u8, val: u16) {
         let midi_channel = self.midi_channel;
         let mut cc = ControlChange::<[u8; 3]>::new();
-        // TODO: Make 32 a global config option
-        cc.set_control(u7::new(32 + (self.start_channel + chan) as u8));
+        cc.set_control(u7::new(cc_no));
         cc.set_control_data(u16_to_u7(val));
         cc.set_channel(midi_channel);
         self.send_msg(ChannelVoice1::ControlChange(cc)).await;
@@ -379,7 +377,7 @@ impl Die {
 
 pub struct App<const N: usize> {
     app_id: usize,
-    start_channel: usize,
+    pub start_channel: usize,
     channel_count: usize,
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 }

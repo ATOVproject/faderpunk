@@ -5,8 +5,9 @@ use midi2::ux::u4;
 use crate::app::{App, Led, Range};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 2;
+pub const PARAMS: usize = 3;
 
+// TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
     .add_param(Param::Curve {
         name: "Curve",
@@ -53,7 +54,7 @@ pub async fn run(app: App<CHANNELS>) {
             let muted = glob_muted.get().await;
             if !muted {
                 let [fader] = faders.get_values();
-                midi.send_cc(0, fader).await;
+                midi.send_cc(32 + app.start_channel as u8, fader).await;
             }
         }
     };
