@@ -59,6 +59,10 @@ async fn run_leds(spi1: Spi<'static, SPI1, spi::Async>, _x_rx: XRxReceiver) {
     let mut ws: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi1);
     let delta = 1000 / REFRESH_RATE;
 
+    // White at 75 brightness
+    LED_VALUES[16].store(1275068415, Ordering::Relaxed);
+    LED_VALUES[17].store(1275068415, Ordering::Relaxed);
+
     loop {
         let data = gamma(
             LED_VALUES
