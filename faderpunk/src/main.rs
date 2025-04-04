@@ -121,8 +121,7 @@ static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channe
 /// Channel for sending messages to the MAX
 static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxMessage), 64>> = StaticCell::new();
 /// Channel for sending messages to the MIDI bus
-static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, LiveEvent<'_>), 64>> =
-    StaticCell::new();
+static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, LiveEvent<'_>), 64>> = StaticCell::new();
 /// Channel for sending messages to the LEDs
 static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
 /// Channel for sending messages to the clock
@@ -447,8 +446,8 @@ async fn main(spawner: Spawner) {
 
     // TODO: Get this from eeprom
     let mut config = GlobalConfig::default();
-    config.clock_src = ClockSrc::Atom;
-    config.reset_src = ClockSrc::Meteor;
+    config.clock_src = ClockSrc::MidiUsb;
+    config.reset_src = ClockSrc::MidiUsb;
     config.layout = &[1; 16];
     config_sender.send(config);
 
