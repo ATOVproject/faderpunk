@@ -12,13 +12,14 @@ use embassy_futures::join::{join3, join4, join5};
 use embassy_rp::pac::dma::vals::TreqSel;
 use embassy_sync::channel;
 use embassy_time::Duration;
+use midi2::ux::{u4, u7};
 
 use crate::app::{App, Led, Range};
 
 pub const CHANNELS: usize = 8;
 pub const PARAMS: usize = 1;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
+pub static CONFIG: Config<PARAMS> = Config::new("Sequencer", "16n vibes plus mute buttons")
     .add_param(Param::Curve {
         name: "Curve",
         default: Curve::Linear,
@@ -35,10 +36,11 @@ pub async fn run(app: App<CHANNELS>) {
     let faders = app.use_faders();
     let mut clk = app.use_clock();
     let led = app.use_leds();
+    let midi = app.use_midi(u4::new(1));
 
 
     let clockn_glob = app.make_global(0);
-    let gatet = 20;
+    let gatet = 75;
 
     let cv_out = [app.make_out_jack(0, Range::_0_10V).await, app.make_out_jack(2, Range::_0_10V).await, app.make_out_jack(4, Range::_0_10V).await, app.make_out_jack(6, Range::_0_10V).await];
     //let cv1 = app.make_out_jack(2, Range::_0_10V).await;
@@ -65,7 +67,6 @@ pub async fn run(app: App<CHANNELS>) {
         loop { // do the slides here
             app.delay_millis(1).await;
 
-
         }
     };
 
@@ -79,19 +80,17 @@ pub async fn run(app: App<CHANNELS>) {
 
             if !_shift {
                 seq[chan + (page * 8)] = vals[chan];
-                seq_glob.set(seq).await;
-                
+                seq_glob.set(seq).await;                
             }
 
             if _shift {
-                if chan % 2 == 0 {
+                if chan % 2 == 0 {//Odd number fader + shift
                     let mut seq_lenght = seq_length_glob.get().await;
                     seq_lenght[(chan / 2)] = ((vals[chan]) / 256) + 1;
-                    seq_length_glob.set(seq_lenght).await;
-                    
+                    seq_length_glob.set(seq_lenght).await;                    
                 }
 
-                if chan % 2 == 1 {
+                if chan % 2 == 1 {//Odd number fader + shift
 
                 }
                                 
@@ -185,45 +184,56 @@ pub async fn run(app: App<CHANNELS>) {
             let seq_length = seq_length_glob.get().await;
             let mut clockn = clockn_glob.get().await;
             let page = page_glob.get().await;
-            clk.wait_for_tick(24).await;
+            let reset = clk.wait_for_tick(1).await;
             clockn += 1;
-            
-            clockn_glob.set(clockn).await;
-            led.set((clockn % seq_length[page / 2] as usize) % 8, Led::Button , (255, 0, 0), 100);
-            
-            let seq = seq_glob.get().await;
-            for n in 0..=3 {
-                let clkindex = ((clockn % seq_length[n] as usize)  + (n * 16));
-                cv_out[n].set_value(seq[clkindex] / 5);
-                if gateseq[clkindex]{
-                    gate_out[n].set_high().await;
-                    //gate_flag_glob[n].set(true).await;
+            if reset {
+                clockn = 0;
+            }
+            if !reset {
+                clockn_glob.set(clockn).await;
+                led.set((clockn % seq_length[page / 2] as usize) % 8, Led::Button , (255, 0, 0), 100);
                 
+                let seq = seq_glob.get().await;
+                for n in 0..=3 {
+                    let clkindex = ((clockn % seq_length[n] as usize)  + (n * 16));
+                    cv_out[n].set_value(seq[clkindex] / 5);
+                    if gateseq[clkindex]{
+                        gate_out[n].set_high().await;
+                        if n == 0 {
+                            midi.send_note_on(u7::new((seq[clkindex] / 170) as u8), 4095).await;
+                        }
+                        //gate_flag_glob[n].set(true).await;
                     
-                    //app.delay_millis(gatet).await;
-                    //gate_out[n].set_low().await;
-                }
-                else {
-                    gate_out[n].set_low().await;
-                    //app.delay_millis(gatet).await;
+                        
+                        //app.delay_millis(gatet).await;
+                        //gate_out[n].set_low().await;
+                    }
+                    else {
+                        gate_out[n].set_low().await;
+                        
+                        //app.delay_millis(gatet).await;
+                        //led_flag_glob.set(true).await;
+                    }
                     //led_flag_glob.set(true).await;
                 }
-                //led_flag_glob.set(true).await;
-            }
 
-            app.delay_millis(gatet).await;
-            for n in 0..=3 {
-                let clkindex = (clockn % seq_length[n] as usize)  + (n * 16);
-                if gateseq[clkindex]{
-                    //gate_out[n].set_high().await;
-                    //gate_flag_glob[n].set(true).await;
-                
+                app.delay_millis(gatet).await;
+                for n in 0..=3 {
+                    let clkindex = (clockn % seq_length[n] as usize)  + (n * 16);
+                    if gateseq[clkindex]{
+                        //gate_out[n].set_high().await;
+                        //gate_flag_glob[n].set(true).await;
                     
-                    //app.delay_millis(gatet).await;
-                    gate_out[n].set_low().await;
+                        
+                        //app.delay_millis(gatet).await;
+                        gate_out[n].set_low().await;
+                        if n == 0 {
+                            midi.send_note_off(u7::new((seq[clkindex] / 170) as u8)).await
+                        }
+                    }
+                    led_flag_glob.set(true).await;
                 }
-                led_flag_glob.set(true).await;
-            }
+        }
 
 
         
