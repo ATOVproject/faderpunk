@@ -4,16 +4,23 @@ use embassy_rp::peripherals::USB;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{with_timeout, Duration};
-use embassy_usb::class::midi::MidiClass;
+use embassy_time::{with_timeout, Duration, TimeoutError};
+use embassy_usb::class::midi::{MidiClass, Sender};
+use embedded_io_async::{Read, Write};
 
 use embassy_rp::peripherals::{UART0, UART1};
-use embassy_rp::uart::{Async, Uart, UartTx};
+use embassy_rp::uart::{Async, BufferedUart, BufferedUartTx, Error as UartError, Uart, UartTx};
 use embassy_rp::usb::Driver;
-use midi2::channel_voice1::ChannelVoice1;
-use midi2::Data;
+use midly::io::Cursor;
+use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
+use midly::stream::MidiStream;
+use midly::MidiMessage;
 
-pub type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, ChannelVoice1<[u8; 3]>), 64>;
+midly::stack_buffer! {
+    struct UartRxBuffer([u8; 3]);
+}
+
+pub type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, LiveEvent<'static>), 64>;
 
 #[derive(Copy, Clone)]
 enum CodeIndexNumber {
@@ -51,10 +58,44 @@ enum CodeIndexNumber {
     SingleByte = 0xF,
 }
 
+async fn write_msg_to_usb<'a>(
+    usb_tx: &mut Sender<'a, Driver<'a, USB>>,
+    midi_ev: LiveEvent<'a>,
+) -> Result<(), TimeoutError> {
+    let mut usb_buf = [0_u8; 4];
+    usb_buf[0] = cin_from_live_event(&midi_ev) as u8;
+    let mut usb_cursor = Cursor::new(&mut usb_buf[1..]);
+    midi_ev.write(&mut usb_cursor).unwrap();
+    let _ = with_timeout(
+        // 1ms of timeout should be enough for USB host to have acknowledged
+        Duration::from_millis(1),
+        // Write including USB-MIDI CIN
+        usb_tx.write_packet(&usb_buf),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn write_msg_to_uart(
+    uart1_tx: &mut BufferedUartTx<'static, UART1>,
+    midi_ev: LiveEvent<'_>,
+    running_status: &mut Option<u8>,
+) -> Result<(), UartError> {
+    let mut ser_buf = [0_u8; 3];
+    let mut ser_cursor = Cursor::new(&mut ser_buf);
+    midi_ev
+        .write_with_running_status(running_status, &mut ser_cursor)
+        .unwrap();
+    let bytes_written = ser_cursor.cursor();
+    uart1_tx.write(&ser_buf[..bytes_written]).await?;
+    uart1_tx.flush().await?;
+    Ok(())
+}
+
 pub async fn start_midi_loops<'a>(
     usb_midi: MidiClass<'a, Driver<'a, USB>>,
     uart0: UartTx<'static, UART0, Async>,
-    uart1: Uart<'static, UART1, Async>,
+    uart1: BufferedUart<'static, UART1>,
     x_rx: XRxReceiver,
 ) {
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
@@ -62,25 +103,17 @@ pub async fn start_midi_loops<'a>(
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
 
     let midi_tx = async {
-        let mut buf = [0; 4];
         // TODO: Do not try to send midi message to USB when not connected
         // usb_tx.wait_connection().await;
         // TODO: Deal with backpressure as well (do it on core b maybe?)
         // See https://claude.ai/chat/1a702bdf-b1f9-4d52-a004-aa221cbb4642 for improving this
+        let mut running_status: Option<u8> = None;
         loop {
-            let (_chan, midi_msg) = x_rx.receive().await;
-            buf[0] = cin_from_bytes_msg(&midi_msg) as u8;
-            buf[1..].copy_from_slice(midi_msg.data());
+            let (_chan, midi_ev) = x_rx.receive().await;
             // TODO: Handle these Results?
             let _ = join(
-                with_timeout(
-                    // 1ms of timeout should be enough for USB host to have acknowledged
-                    Duration::from_millis(1),
-                    // Write including USB-MIDI CIN
-                    usb_tx.write_packet(&buf),
-                ),
-                // Write excluding USB-MIDI CIN
-                uart1_tx.write(&buf[1..]),
+                write_msg_to_uart(&mut uart1_tx, midi_ev, &mut running_status),
+                write_msg_to_usb(&mut usb_tx, midi_ev),
             )
             .await;
         }
@@ -98,8 +131,8 @@ pub async fn start_midi_loops<'a>(
                 // Write to MIDI-THRU
                 let mut tx = uart0_tx.lock().await;
                 tx.write(data).await.unwrap();
-                match ChannelVoice1::try_from(data) {
-                    Ok(_midi_msg) => {
+                match LiveEvent::parse(data) {
+                    Ok(_msg) => {
                         // TODO: DO SOMETHING WITH THIS MESSAGE
                     }
                     Err(_err) => {
@@ -115,25 +148,22 @@ pub async fn start_midi_loops<'a>(
     };
 
     let uart_rx = async {
-        let mut buf = [0; 3];
+        let mut uart_rx_buffer = [0u8; 16];
+        let mut midi_stream = MidiStream::<UartRxBuffer>::default();
         loop {
-            if let Err(err) = uart1_rx.read(&mut buf).await {
-                info!("uart rx err: {}", err);
-                continue;
-            }
-
-            // Write to MIDI-THRU
-            let mut tx = uart0_tx.lock().await;
-            tx.write(&buf).await.unwrap();
-
-            match ChannelVoice1::try_from(buf.as_slice()) {
-                Ok(_midi_msg) => {
-                    // TODO: DO SOMETHING WITH THIS MESSAGE
-                }
-                Err(_err) => {
-                    // TODO: Log with USB
-                    info!("There was an error but we should not panic. Data: {}", buf);
-                }
+            if let Ok(bytes_read) = uart1_rx.read(&mut uart_rx_buffer).await {
+                midi_stream.feed(
+                    &uart_rx_buffer[..bytes_read],
+                    |event: LiveEvent| match event {
+                        LiveEvent::Realtime(msg) => match msg {
+                            SystemRealtime::TimingClock => {
+                                // TODO: Send midi clock
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    },
+                );
             }
         }
     };
@@ -141,14 +171,32 @@ pub async fn start_midi_loops<'a>(
     join3(midi_tx, usb_rx, uart_rx).await;
 }
 
-fn cin_from_bytes_msg(msg: &ChannelVoice1<[u8; 3]>) -> CodeIndexNumber {
-    match msg {
-        ChannelVoice1::NoteOn(..) => CodeIndexNumber::NoteOn,
-        ChannelVoice1::NoteOff(..) => CodeIndexNumber::NoteOff,
-        ChannelVoice1::KeyPressure(..) => CodeIndexNumber::KeyPressure,
-        ChannelVoice1::ChannelPressure(..) => CodeIndexNumber::ChannelPressure,
-        ChannelVoice1::ProgramChange(..) => CodeIndexNumber::ProgramChange,
-        ChannelVoice1::ControlChange(..) => CodeIndexNumber::ControlChange,
-        ChannelVoice1::PitchBend(..) => CodeIndexNumber::PitchBendChange,
+fn cin_from_live_event(midi_ev: &LiveEvent) -> CodeIndexNumber {
+    match midi_ev {
+        LiveEvent::Realtime(..) => CodeIndexNumber::SingleByte,
+        LiveEvent::Midi { message, .. } => match message {
+            MidiMessage::NoteOn { .. } => CodeIndexNumber::NoteOn,
+            MidiMessage::NoteOff { .. } => CodeIndexNumber::NoteOff,
+            MidiMessage::Aftertouch { .. } => CodeIndexNumber::KeyPressure,
+            MidiMessage::ChannelAftertouch { .. } => CodeIndexNumber::ChannelPressure,
+            MidiMessage::ProgramChange { .. } => CodeIndexNumber::ProgramChange,
+            MidiMessage::Controller { .. } => CodeIndexNumber::ControlChange,
+            MidiMessage::PitchBend { .. } => CodeIndexNumber::PitchBendChange,
+        },
+        LiveEvent::Common(common_message) => match common_message {
+            SystemCommon::SysEx(data) => {
+                // TODO: Implement stateful SysEx CIN determination once needed
+                if data.is_empty() {
+                    CodeIndexNumber::SysExEndsNext3
+                } else {
+                    CodeIndexNumber::SysExStarts
+                }
+            }
+            SystemCommon::SongSelect(..) => CodeIndexNumber::SystemCommonLen2,
+            SystemCommon::TuneRequest => CodeIndexNumber::SingleByte,
+            SystemCommon::Undefined(..) => CodeIndexNumber::MiscFunction,
+            SystemCommon::SongPosition(..) => CodeIndexNumber::SystemCommonLen3,
+            SystemCommon::MidiTimeCodeQuarterFrame(..) => CodeIndexNumber::SystemCommonLen2,
+        },
     }
 }

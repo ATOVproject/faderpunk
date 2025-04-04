@@ -9,7 +9,7 @@ use embassy_usb::driver::Driver;
 use embassy_usb::{Builder, Config as UsbConfig};
 
 use embassy_rp::peripherals::{UART0, UART1};
-use embassy_rp::uart::{Async, Uart, UartTx};
+use embassy_rp::uart::{Async, BufferedUart, Uart, UartTx};
 
 use super::configure::start_webusb_loop;
 // use super::configure::start_webusb_loop;
@@ -44,7 +44,7 @@ pub async fn start_transports(
     spawner: &Spawner,
     usb_driver: usb::Driver<'static, USB>,
     uart0: UartTx<'static, UART0, Async>,
-    uart1: Uart<'static, UART1, Async>,
+    uart1: BufferedUart<'static, UART1>,
     x_rx: XRxReceiver,
 ) {
     spawner
@@ -56,7 +56,7 @@ pub async fn start_transports(
 async fn run_transports(
     usb_driver: usb::Driver<'static, USB>,
     uart0: UartTx<'static, UART0, Async>,
-    uart1: Uart<'static, UART1, Async>,
+    uart1: BufferedUart<'static, UART1>,
     x_rx: XRxReceiver,
 ) {
     let mut usb_config = UsbConfig::new(0xf569, 0x1);

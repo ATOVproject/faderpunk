@@ -11,10 +11,10 @@ use embassy_sync::{
 };
 use embassy_time::{with_timeout, Duration, Timer};
 use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
-use midi2::{
-    channel_voice1::{ChannelVoice1, ControlChange, NoteOff, NoteOn},
-    ux::{u4, u7},
-    Channeled,
+use midly::{
+    live::LiveEvent,
+    num::{u4, u7},
+    MidiMessage,
 };
 use portable_atomic::Ordering;
 use rand::Rng;
@@ -22,7 +22,7 @@ use rand::Rng;
 use config::Curve;
 use libfp::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
-    utils::u16_to_u7,
+    utils::scale_bits_12_7,
 };
 
 use crate::{
@@ -300,34 +300,42 @@ impl<const N: usize> Midi<N> {
     }
     // TODO: This is a short-hand function that should also send the msg via TRS
     // Create and use a function called midi_send_both and use it here
-    pub async fn send_cc(&self, cc_no: u8, val: u16) {
-        let midi_channel = self.midi_channel;
-        let mut cc = ControlChange::<[u8; 3]>::new();
-        cc.set_control(u7::new(cc_no));
-        cc.set_control_data(u16_to_u7(val));
-        cc.set_channel(midi_channel);
-        self.send_msg(ChannelVoice1::ControlChange(cc)).await;
+    pub async fn send_cc(&self, cc: u8, val: u16) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::Controller {
+                controller: cc.into(),
+                value: scale_bits_12_7(val),
+            },
+        };
+        self.send_msg(msg).await;
     }
 
-    pub async fn send_note_on(&self, note_number: u7, velocity: u16) {
-        let midi_channel = self.midi_channel;
-        let mut note_on = NoteOn::<[u8; 3]>::new();
-        note_on.set_channel(midi_channel);
-        note_on.set_note_number(note_number);
-        note_on.set_velocity(u16_to_u7(velocity));
-        self.send_msg(ChannelVoice1::NoteOn(note_on)).await;
+    pub async fn send_note_on(&self, note_number: u8, velocity: u16) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::NoteOn {
+                key: note_number.into(),
+
+                vel: scale_bits_12_7(velocity),
+            },
+        };
+        self.send_msg(msg).await;
     }
 
-    pub async fn send_note_off(&self, note_number: u7) {
-        let midi_channel = self.midi_channel;
-        let mut note_off = NoteOff::<[u8; 3]>::new();
-        note_off.set_channel(midi_channel);
-        note_off.set_note_number(note_number);
-        self.send_msg(ChannelVoice1::NoteOff(note_off)).await;
+    pub async fn send_note_off(&self, note_number: u8) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::NoteOff {
+                key: note_number.into(),
+                vel: 0.into(),
+            },
+        };
+        self.send_msg(msg).await;
     }
 
     // TODO: Check if making midi an own struct with a listener would make sense
-    pub async fn send_msg(&self, msg: ChannelVoice1<[u8; 3]>) {
+    pub async fn send_msg(&self, msg: LiveEvent<'static>) {
         self.sender
             .send((self.start_channel, XRxMsg::MidiMessage(msg)))
             .await;
@@ -491,7 +499,7 @@ impl<const N: usize> App<N> {
         Clock::new(self.sender)
     }
 
-    pub fn use_midi(&self, midi_channel: u4) -> Midi<N> {
-        Midi::new(self.start_channel, midi_channel, self.sender)
+    pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
+        Midi::new(self.start_channel, midi_channel.into(), self.sender)
     }
 }
