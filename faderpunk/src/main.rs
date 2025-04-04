@@ -20,7 +20,9 @@ use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::spi::{self, Phase, Polarity, Spi};
-use embassy_rp::uart::{self, Async as UartAsync, Config as UartConfig, Uart, UartTx};
+use embassy_rp::uart::{
+    self, Async as UartAsync, BufferedUart, Config as UartConfig, Uart, UartTx,
+};
 use embassy_rp::usb;
 use embassy_rp::{
     bind_interrupts,
@@ -37,7 +39,7 @@ use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::signal::Signal;
 use embassy_sync::watch::{Receiver as WatchReceiver, Watch};
 use embassy_time::{Delay, Duration, Timer};
-use midi2::channel_voice1::ChannelVoice1;
+use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
 use heapless::Vec;
@@ -75,7 +77,7 @@ bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
     USBCTRL_IRQ => usb::InterruptHandler<USB>;
     UART0_IRQ => uart::InterruptHandler<UART0>;
-    UART1_IRQ => uart::InterruptHandler<UART1>;
+    UART1_IRQ => uart::BufferedInterruptHandler<UART1>;
 });
 
 // TODO: Move all of the message stuff to own file
@@ -93,7 +95,7 @@ pub enum XTxMsg {
 #[derive(Clone)]
 pub enum XRxMsg {
     MaxMessage(MaxMessage),
-    MidiMessage(ChannelVoice1<[u8; 3]>),
+    MidiMessage(LiveEvent<'static>),
     SetLed(LedsAction),
     SetBpm(f32),
 }
@@ -119,7 +121,7 @@ static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channe
 /// Channel for sending messages to the MAX
 static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxMessage), 64>> = StaticCell::new();
 /// Channel for sending messages to the MIDI bus
-static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, ChannelVoice1<[u8; 3]>), 64>> =
+static CHAN_MIDI: StaticCell<Channel<NoopRawMutex, (usize, LiveEvent<'_>), 64>> =
     StaticCell::new();
 /// Channel for sending messages to the LEDs
 static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = StaticCell::new();
@@ -127,6 +129,10 @@ static CHAN_LEDS: StaticCell<Channel<NoopRawMutex, (usize, LedsAction), 64>> = S
 static CHAN_CLOCK: StaticCell<Channel<NoopRawMutex, f32, 64>> = StaticCell::new();
 /// Tasks (apps) that are currently running (number 17 is the publisher task)
 static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
+
+/// MIDI buffers (RX and TX)
+static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
+static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 
 #[derive(Debug)]
 enum LayoutErr {
@@ -331,13 +337,15 @@ async fn main(spawner: Spawner) {
     // MIDI Thru
     let uart0: UartTx<'_, _, UartAsync> = UartTx::new(p.UART0, p.PIN_0, p.DMA_CH2, uart_config);
     // MIDI In/Out
-    let uart1 = Uart::new(
+    let uart1_tx_buffer = BUF_UART1_TX.init([0; 64]);
+    let uart1_rx_buffer = BUF_UART1_RX.init([0; 64]);
+    let uart1 = BufferedUart::new(
         p.UART1,
+        Irqs,
         p.PIN_8,
         p.PIN_9,
-        Irqs,
-        p.DMA_CH3,
-        p.DMA_CH4,
+        uart1_tx_buffer,
+        uart1_rx_buffer,
         uart_config,
     );
 

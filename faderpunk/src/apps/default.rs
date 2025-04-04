@@ -1,6 +1,5 @@
 use config::{Config, Curve, Param};
 use embassy_futures::join::join3;
-use midi2::ux::u4;
 
 use crate::app::{App, Led, Range};
 
@@ -27,7 +26,7 @@ pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
     // TODO: Maybe rename: get_curve_from_param(idx)
     let curve = config.get_curve_at(0);
-    let midi_channel = u4::new(config.get_int_at(1) as u8);
+    let midi_channel = config.get_int_at(1) as u8;
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
