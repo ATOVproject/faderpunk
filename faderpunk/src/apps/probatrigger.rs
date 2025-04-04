@@ -41,7 +41,7 @@ pub async fn run(mut app: App<CHANNELS>) {
                 //midi.send_note_on(75 ,4095);
                 app.delay_millis(20).await;
                 jack.set_low().await;
-                leds.set(0, Led::Top, LED_COLOR, 40);
+                leds.set(0, Led::Top, LED_COLOR, 0);
                 //midi.send_note_off(75 as u8); 
             }
         }
@@ -52,7 +52,7 @@ pub async fn run(mut app: App<CHANNELS>) {
             buttons.wait_for_down(0).await;
             let muted = glob_muted.toggle().await;
             if muted {
-                leds.set(0, Led::Button, LED_COLOR, 0);
+                leds.set(0, Led::Button, LED_COLOR, 40);
                 leds.set(0, Led::Top, LED_COLOR, 0);
             } else {
                 leds.set(0, Led::Button, LED_COLOR, 75);
@@ -65,7 +65,6 @@ pub async fn run(mut app: App<CHANNELS>) {
             faders.wait_for_change(0).await;
             let val = faders.get_values();
             fad_glob.set(val).await;
-
         }
     };
 
