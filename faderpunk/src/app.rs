@@ -246,14 +246,16 @@ impl<const N: usize> Faders<N> {
 
 pub struct Clock {
     receiver: Receiver<'static, CriticalSectionRawMutex, bool, 16>,
+    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 }
 
 impl Clock {
-    pub fn default() -> Self {
+    pub fn new(sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>) -> Self {
         let receiver = CLOCK_WATCH.receiver().unwrap();
-        Self { receiver }
+        Self { receiver, sender }
     }
 
+    // TODO: division needs to be an enum
     pub async fn wait_for_tick(&mut self, division: usize) -> bool {
         let mut i: usize = 0;
 
@@ -269,6 +271,66 @@ impl Clock {
                 return false;
             }
         }
+    }
+
+    //TODO: Check if app is CLOCK app and if not, do not implement this
+    //HINT: Can we use struct markers? Or how to do it?
+    pub async fn set_bpm(&self, bpm: f32) {
+        self.sender.send((16, XRxMsg::SetBpm(bpm))).await;
+    }
+}
+
+pub struct Midi<const N: usize> {
+    midi_channel: u4,
+    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    start_channel: usize,
+}
+
+impl<const N: usize> Midi<N> {
+    pub fn new(
+        start_channel: usize,
+        midi_channel: u4,
+        sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    ) -> Self {
+        Self {
+            midi_channel,
+            sender,
+            start_channel,
+        }
+    }
+    // TODO: This is a short-hand function that should also send the msg via TRS
+    // Create and use a function called midi_send_both and use it here
+    pub async fn send_cc(&self, cc_no: u8, val: u16) {
+        let midi_channel = self.midi_channel;
+        let mut cc = ControlChange::<[u8; 3]>::new();
+        cc.set_control(u7::new(cc_no));
+        cc.set_control_data(u16_to_u7(val));
+        cc.set_channel(midi_channel);
+        self.send_msg(ChannelVoice1::ControlChange(cc)).await;
+    }
+
+    pub async fn send_note_on(&self, note_number: u7, velocity: u16) {
+        let midi_channel = self.midi_channel;
+        let mut note_on = NoteOn::<[u8; 3]>::new();
+        note_on.set_channel(midi_channel);
+        note_on.set_note_number(note_number);
+        note_on.set_velocity(u16_to_u7(velocity));
+        self.send_msg(ChannelVoice1::NoteOn(note_on)).await;
+    }
+
+    pub async fn send_note_off(&self, note_number: u7) {
+        let midi_channel = self.midi_channel;
+        let mut note_off = NoteOff::<[u8; 3]>::new();
+        note_off.set_channel(midi_channel);
+        note_off.set_note_number(note_number);
+        self.send_msg(ChannelVoice1::NoteOff(note_off)).await;
+    }
+
+    // TODO: Check if making midi an own struct with a listener would make sense
+    pub async fn send_msg(&self, msg: ChannelVoice1<[u8; 3]>) {
+        self.sender
+            .send((self.start_channel, XRxMsg::MidiMessage(msg)))
+            .await;
     }
 }
 
@@ -316,7 +378,7 @@ impl Die {
 
 pub struct App<const N: usize> {
     app_id: usize,
-    start_channel: usize,
+    pub start_channel: usize,
     channel_count: usize,
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 }
@@ -409,52 +471,6 @@ impl<const N: usize> App<N> {
         Timer::after_secs(secs).await
     }
 
-    //TODO: Check if app is CLOCK app and if not, do not implement this
-    //HINT: Can we use struct markers? Or how to do it?
-    pub async fn set_bpm(&self, bpm: f32) {
-        self.sender.send((16, XRxMsg::SetBpm(bpm))).await;
-    }
-
-    // TODO: This is a short-hand function that should also send the msg via TRS
-    // Create and use a function called midi_send_both and use it here
-    pub async fn midi_send_cc(&self, chan: usize, val: u16) {
-        let chan = chan.clamp(0, N - 1);
-        // TODO: Make configurable
-        let midi_channel = u4::new(0);
-        let mut cc = ControlChange::<[u8; 3]>::new();
-        // TODO: Make 32 a global config option
-        cc.set_control(u7::new(32 + (self.start_channel + chan) as u8));
-        cc.set_control_data(u16_to_u7(val));
-        cc.set_channel(midi_channel);
-        self.send_midi_msg(ChannelVoice1::ControlChange(cc)).await;
-    }
-
-    pub async fn midi_send_note_on(&self, note_number: u7, velocity: u16) {
-        // TODO: Make configurable
-        let midi_channel = u4::new(0);
-        let mut note_on = NoteOn::<[u8; 3]>::new();
-        note_on.set_channel(midi_channel);
-        note_on.set_note_number(note_number);
-        note_on.set_velocity(u16_to_u7(velocity));
-        self.send_midi_msg(ChannelVoice1::NoteOn(note_on)).await;
-    }
-
-    pub async fn midi_send_note_off(&self, note_number: u7) {
-        // TODO: Make configurable
-        let midi_channel = u4::new(0);
-        let mut note_off = NoteOff::<[u8; 3]>::new();
-        note_off.set_channel(midi_channel);
-        note_off.set_note_number(note_number);
-        self.send_midi_msg(ChannelVoice1::NoteOff(note_off)).await;
-    }
-
-    // TODO: Check if making midi an own struct with a listener would make sense
-    pub async fn send_midi_msg(&self, msg: ChannelVoice1<[u8; 3]>) {
-        self.sender
-            .send((self.start_channel, XRxMsg::MidiMessage(msg)))
-            .await;
-    }
-
     pub fn use_buttons(&self) -> Buttons<N> {
         Buttons::new(self.start_channel)
     }
@@ -472,6 +488,10 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_clock(&self) -> Clock {
-        Clock::default()
+        Clock::new(self.sender)
+    }
+
+    pub fn use_midi(&self, midi_channel: u4) -> Midi<N> {
+        Midi::new(self.start_channel, midi_channel, self.sender)
     }
 }

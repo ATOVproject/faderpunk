@@ -9,11 +9,11 @@ use embassy_sync::{
     mutex::Mutex,
     watch::Sender,
 };
-use embassy_time::{Duration, Ticker};
+use embassy_time::Ticker;
 
 use crate::{Spawner, CLOCK_WATCH, WATCH_CONFIG_CHANGE};
 use config::ClockSrc;
-use libfp::utils::bpm_to_ms;
+use libfp::utils::bpm_to_clock_duration;
 
 type AuxInputs = (PIN_1, PIN_2, PIN_3);
 
@@ -43,6 +43,7 @@ async fn make_ext_clock_loop(
             continue;
         }
 
+        // TODO: Config here changes only after a tick, we need to use select
         pin.wait_for_falling_edge().await;
         pin.wait_for_low().await;
 
@@ -63,10 +64,12 @@ async fn run_clock(aux_inputs: AuxInputs, receiver: Receiver<'static, NoopRawMut
     let meteor = Input::new(meteor_pin, Pull::Up);
     let cube = Input::new(hexagon_pin, Pull::Up);
     let clock_sender = CLOCK_WATCH.sender();
+    // TODO: Get PPQN from config somehow (and keep updated)
+    const PPQN: u8 = 24;
 
-    // TODO: get ms from eeprom
+    // TODO: get ms AND ppqn from eeprom (or config somehow??!)
     let internal_clock: Mutex<NoopRawMutex, Ticker> =
-        Mutex::new(Ticker::every(Duration::from_millis(bpm_to_ms(60.0))));
+        Mutex::new(Ticker::every(bpm_to_clock_duration(120.0, PPQN)));
 
     let internal_fut = async {
         let mut config_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
@@ -82,10 +85,11 @@ async fn run_clock(aux_inputs: AuxInputs, receiver: Receiver<'static, NoopRawMut
                 continue;
             }
 
+            // TODO: Config here changes only after a tick, we need to use select
             let mut clock = internal_clock.lock().await;
             clock.next().await;
 
-            clock_sender.send(current_config.reset_src == ClockSrc::Internal);
+            clock_sender.send(false);
 
             // Check if config has changed after waiting
             if let Some(new_config) = config_receiver.try_get() {
@@ -102,7 +106,7 @@ async fn run_clock(aux_inputs: AuxInputs, receiver: Receiver<'static, NoopRawMut
         loop {
             let bpm = receiver.receive().await;
             let mut clock = internal_clock.lock().await;
-            *clock = Ticker::every(Duration::from_millis(bpm_to_ms(bpm)));
+            *clock = Ticker::every(bpm_to_clock_duration(bpm, PPQN));
         }
     };
 

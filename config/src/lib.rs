@@ -10,6 +10,7 @@ pub const MAX_PARAMS: usize = 16;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum ClockSrc {
+    None,
     Atom,
     Meteor,
     Cube,
@@ -27,7 +28,7 @@ impl Default for GlobalConfig<'_> {
     fn default() -> Self {
         Self {
             clock_src: ClockSrc::Internal,
-            reset_src: ClockSrc::Internal,
+            reset_src: ClockSrc::None,
             layout: &[1; 16],
         }
     }
@@ -75,6 +76,8 @@ pub enum Param {
     Int {
         name: &'static str,
         default: i32,
+        min: usize,
+        max: usize,
     },
     Float {
         name: &'static str,
