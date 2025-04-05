@@ -32,7 +32,12 @@ pub async fn run(app: App<CHANNELS>) {
     let faders = app.use_faders();
     let mut clk = app.use_clock();
     let led = app.use_leds();
-    let midi = app.use_midi(1);
+    let midi = [
+        app.use_midi(0),
+        app.use_midi(1),
+        app.use_midi(2),
+        app.use_midi(3),
+    ];
 
     let clockn_glob = app.make_global(0);
     let gatet = 75;
@@ -57,11 +62,11 @@ pub async fn run(app: App<CHANNELS>) {
         0, 0, 0, 0,
     ]);
     let gateseq_glob = app.make_global([
-        true, false, false, false, false, false, false, false, false, false, false, false, false,
-        false, false, false, true, true, true, true, true, true, true, true, true, true, true,
         true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
         true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
-        true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+        true, true, true, true,
     ]);
 
     //let mut latched_glob = app.make_global([true, true, true, true, true, true, true, true]);
@@ -205,7 +210,6 @@ pub async fn run(app: App<CHANNELS>) {
                 clockn_glob.set(clockn).await;
             }
             if !reset {
-                
                 clockn_glob.set(clockn).await;
                 led.set(
                     (clockn % seq_length[page / 2] as usize) % 8,
@@ -220,9 +224,10 @@ pub async fn run(app: App<CHANNELS>) {
                     cv_out[n].set_value(seq[clkindex] / 5);
                     if gateseq[clkindex] {
                         gate_out[n].set_high().await;
-                        if n == 0 {
-                            midi.send_note_on((seq[clkindex] / 170) as u8, 4095).await;
-                        }
+                        midi[n]
+                            .send_note_on((seq[clkindex] / 170) as u8 + 60, 4095)
+                            .await;
+
                         //gate_flag_glob[n].set(true).await;
 
                         //app.delay_millis(gatet).await;
@@ -245,15 +250,12 @@ pub async fn run(app: App<CHANNELS>) {
 
                         //app.delay_millis(gatet).await;
                         gate_out[n].set_low().await;
-                        if n == 0 {
-                            midi.send_note_off((seq[clkindex] / 170) as u8).await
-                        }
+                        midi[n].send_note_off((seq[clkindex] / 170) as u8).await
                     }
                     led_flag_glob.set(true).await;
                 }
                 //clockn += 1;
             }
-            
         }
     };
 
