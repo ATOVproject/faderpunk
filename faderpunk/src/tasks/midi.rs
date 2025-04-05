@@ -1,5 +1,6 @@
+use config::{ClockSrc, GlobalConfig};
 use defmt::info;
-use embassy_futures::join::{join, join3};
+use embassy_futures::join::{join, join4};
 use embassy_rp::peripherals::USB;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Receiver;
@@ -15,6 +16,8 @@ use midly::io::Cursor;
 use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
 use midly::stream::MidiStream;
 use midly::MidiMessage;
+
+use crate::{CLOCK_WATCH, WATCH_CONFIG_CHANGE};
 
 midly::stack_buffer! {
     struct UartRxBuffer([u8; 3]);
@@ -101,6 +104,10 @@ pub async fn start_midi_loops<'a>(
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
     let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, UART0, Async>> = Mutex::new(uart0);
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
+    let clock_sender = CLOCK_WATCH.sender();
+    let mut config_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
+    let initial_config = config_receiver.get().await;
+    let config: Mutex<NoopRawMutex, GlobalConfig> = Mutex::new(initial_config);
 
     let midi_tx = async {
         // TODO: Do not try to send midi message to USB when not connected
@@ -132,8 +139,27 @@ pub async fn start_midi_loops<'a>(
                 let mut tx = uart0_tx.lock().await;
                 tx.write(data).await.unwrap();
                 match LiveEvent::parse(data) {
-                    Ok(_msg) => {
-                        // TODO: DO SOMETHING WITH THIS MESSAGE
+                    Ok(event) => {
+                        let cfg = config.lock().await;
+                        let clock_src = cfg.clock_src;
+                        let reset_src = cfg.reset_src;
+                        drop(cfg);
+                        match event {
+                            LiveEvent::Realtime(msg) => match msg {
+                                SystemRealtime::TimingClock => {
+                                    if let ClockSrc::MidiUsb = clock_src {
+                                        clock_sender.send(false);
+                                    }
+                                }
+                                SystemRealtime::Start => {
+                                    if let ClockSrc::MidiUsb = reset_src {
+                                        clock_sender.send(true);
+                                    }
+                                }
+                                _ => {}
+                            },
+                            _ => {}
+                        }
                     }
                     Err(_err) => {
                         // TODO: Log with USB
@@ -152,12 +178,23 @@ pub async fn start_midi_loops<'a>(
         let mut midi_stream = MidiStream::<UartRxBuffer>::default();
         loop {
             if let Ok(bytes_read) = uart1_rx.read(&mut uart_rx_buffer).await {
+                let cfg = config.lock().await;
+                let clock_src = cfg.clock_src;
+                let reset_src = cfg.reset_src;
+                drop(cfg);
                 midi_stream.feed(
                     &uart_rx_buffer[..bytes_read],
                     |event: LiveEvent| match event {
                         LiveEvent::Realtime(msg) => match msg {
                             SystemRealtime::TimingClock => {
-                                // TODO: Send midi clock
+                                if let ClockSrc::MidiIn = clock_src {
+                                    clock_sender.send(false);
+                                }
+                            }
+                            SystemRealtime::Start => {
+                                if let ClockSrc::MidiIn = reset_src {
+                                    clock_sender.send(true);
+                                }
                             }
                             _ => {}
                         },
@@ -168,7 +205,15 @@ pub async fn start_midi_loops<'a>(
         }
     };
 
-    join3(midi_tx, usb_rx, uart_rx).await;
+    let config_fut = async {
+        loop {
+            let new_config = config_receiver.changed().await;
+            let mut cfg = config.lock().await;
+            *cfg = new_config;
+        }
+    };
+
+    join4(midi_tx, usb_rx, uart_rx, config_fut).await;
 }
 
 fn cin_from_live_event(midi_ev: &LiveEvent) -> CodeIndexNumber {
