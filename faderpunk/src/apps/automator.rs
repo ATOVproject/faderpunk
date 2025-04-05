@@ -1,6 +1,7 @@
 use config::{Config, Curve, Param};
+use defmt::info;
 use embassy_futures::join::join3;
-use midi2::ux::u4;
+//use midi2::ux::u4;
 
 use crate::app::{App, Led, Range};
 
@@ -25,45 +26,52 @@ const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
     let curve = config.get_curve_at(0);
-    let midi_channel = u4::new(config.get_int_at(1) as u8);
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let midi = app.use_midi(midi_channel);
+    let midi = app.use_midi(4);
     let mut clock = app.use_clock();
 
     let rec_flag = app.make_global(false);
     let del_flag = app.make_global(false);
-    let offset_glob = app.make_global(0) ; 
+    let offset_glob = app.make_global(0);
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
     let mut last_midi = 0;
-    
-    let mut index= 0;
+
+    let mut index = 0;
     let mut recording = false;
-    let mut buffer = [0; 64];
-    let mut length = 64;
+    let mut buffer = [0; 384];
+    let mut length = 384;
     let color = (255, 255, 255);
+    let mut start = 0;
 
     let fut1 = async {
         loop {
-            clock.wait_for_tick(1).await;
+            let reset = clock.wait_for_tick(1).await;
+            
             index += 1;
-            index = index % length;
-
-            if index == 0 && recording {
+            //info!("reset = {}", reset);
+            if reset {
+                index = 0;
                 recording = false;
-                
+                //info!("reset");
             }
 
-            if rec_flag.get().await  {
+            //info!("clock");
+            index = index % length;
+
+            if index == 0 && recording { //stop recording at max c
+                recording = false;
+            }
+
+            if rec_flag.get().await {
                 index = 0;
                 recording = true;
                 rec_flag.set(false).await;
-                length = 64;
+                length = 384;
                 offset_glob.set(0).await;
-                
             }
 
             if recording {
@@ -75,24 +83,28 @@ pub async fn run(app: App<CHANNELS>) {
                     last_midi = buffer[index];
                 }
 
-
                 midi.send_cc(0, buffer[index]).await;
                 leds.set(0, Led::Button, (255, 0, 0), 75);
-                leds.set(0, Led::Top, (255, 0, 0), (buffer[index]/32) as u8);
-                leds.set(0, Led::Bottom, (255, 0, 0), (255 - (buffer[index]/16) as u8) / 2)
+                leds.set(0, Led::Top, (255, 0, 0), (buffer[index] / 32) as u8);
+                leds.set(
+                    0,
+                    Led::Bottom,
+                    (255, 0, 0),
+                    (255 - (buffer[index] / 16) as u8) / 2,
+                )
             }
 
-            if recording && !buttons.is_button_pressed(0) && index % 16 == 0 && index != 0 {
+            if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
                 recording = !recording;
                 length = index;
             }
-            
-            if !recording{
+
+            if !recording {
                 let offset = offset_glob.get().await;
                 let mut val: u16 = buffer[index] + offset;
                 if val > 4095 {
                     val = 4095;
-                } 
+                }
                 jack.set_value(val);
                 if last_midi / 16 != (val) / 16 {
                     midi.send_cc(0, val).await;
@@ -100,30 +112,33 @@ pub async fn run(app: App<CHANNELS>) {
                 }
                 leds.set(0, Led::Button, color, 75);
                 leds.set(0, Led::Top, color, ((buffer[index] + offset) / 16) as u8);
-                leds.set(0, Led::Bottom, color,(255 - ((buffer[index] + offset)/16) as u8) / 2);
+                leds.set(
+                    0,
+                    Led::Bottom,
+                    color,
+                    (255 - ((buffer[index] + offset) / 16) as u8) / 2,
+                );
             }
 
-            if index ==  0{
+            if index == 0 {
                 leds.set(0, Led::Button, (255, 255, 255), 0);
             }
 
             if del_flag.get().await {
-                for n in 0..=63 {
+                for n in 0..=383 {
                     buffer[n] = 0;
                 }
                 recording = false;
                 offset_glob.set(0).await;
                 del_flag.set(false).await;
             }
-
-
         }
     };
 
     let fut2 = async {
         loop {
             faders.wait_for_change(0).await;
-            let val = faders.get_values();        
+            let val = faders.get_values();
             offset_glob.set(val[0]).await;
         }
     };
@@ -133,8 +148,7 @@ pub async fn run(app: App<CHANNELS>) {
             buttons.wait_for_down(0).await;
             if buttons.is_shift_pressed() {
                 del_flag.set(true).await;
-            }
-            else{
+            } else {
                 rec_flag.set(true).await;
             }
         }
