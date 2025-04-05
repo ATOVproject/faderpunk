@@ -39,7 +39,7 @@ pub async fn run(app: App<CHANNELS>) {
                 Waveform::Rect => (250, 250, 250),
             };
 
-            leds.set(0, Led::Button, color, 75); //75 is good for shooting
+            leds.set(0, Led::Button, color, 100); //75 is good for shooting
             leds.set(0, Led::Top, color, ((val as f32 / 16.0) / 2.0) as u8);
             leds.set(
                 0,

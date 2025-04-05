@@ -14,7 +14,7 @@ pub async fn run(app: App<CHANNELS>) {
     loop {
         // TODO: We need to implement a waiter for this somehow
         // An app can have as many clock waiters as it has channels
-        clock.wait_for_tick(1).await;
+        clock.wait_for_tick(24).await;
         jack.set_high().await;
         // TODO: We need an app.led_blink or something, otherwise one won't be able to see the led
         // blink
