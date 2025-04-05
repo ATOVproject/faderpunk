@@ -2,7 +2,7 @@
 use defmt::info;
 use embassy_futures::join::{join3, join4, join5};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use wmidi::{Channel as MidiChannel, ControlFunction, U7};
+//use wmidi::{Channel as MidiChannel, ControlFunction, U7};
 
 use crate::app::{App, Global, Range, Led};
 use config::{Config, Curve, Param};

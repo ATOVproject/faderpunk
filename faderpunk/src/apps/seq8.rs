@@ -40,7 +40,7 @@ pub async fn run(app: App<CHANNELS>) {
     ];
 
     let clockn_glob = app.make_global(0);
-    let gatet = 75;
+    let gatet = 20;
 
     let cv_out = [
         app.make_out_jack(0, Range::_0_10V).await,
@@ -203,7 +203,7 @@ pub async fn run(app: App<CHANNELS>) {
             let seq_length = seq_length_glob.get().await;
             let mut clockn = clockn_glob.get().await;
             let page = page_glob.get().await;
-            let reset = clk.wait_for_tick(4).await;
+            let reset = clk.wait_for_tick(6).await;
             clockn += 1;
             if reset {
                 clockn = 0;
