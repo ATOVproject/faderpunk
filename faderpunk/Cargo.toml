@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+embedded-io-async = "0.6.1"
 embassy-embedded-hal = { version = "0.3", features = ["defmt"] }
 embassy-sync = { version = "0.6", features = ["defmt"] }
 embassy-executor = { version = "0.7", features = [
@@ -41,10 +42,7 @@ embedded-hal-async = "1.0"
 heapless = "0.7"
 log = "0.4"
 max11300 = "0.4"
-midi2 = { version = "0.8", default-features = false, features = [
-  "channel-voice2",
-  "channel-voice1",
-] }
+midly = { version = "0.5", default-features = false }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 pio = "0.3"
 portable-atomic = { version = "1.11", features = ["critical-section"] }
@@ -55,7 +53,6 @@ sequential-storage = "4.0"
 serde = { version = "1", features = ["derive"], default-features = false }
 smart-leds = "0.4.0"
 static_cell = "2.1.0"
-wmidi = { version = "4.0", default-features = false }
 array-init = "2.1"
 ws2812-async = "0.3"
 

@@ -1,12 +1,12 @@
 use config::{Config, Curve, Param};
 use embassy_futures::join::join3;
-use midi2::ux::u4;
 
 use crate::app::{App, Led, Range};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 2;
+pub const PARAMS: usize = 3;
 
+// TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
     .add_param(Param::Curve {
         name: "Curve",
@@ -24,8 +24,9 @@ const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 
 pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
+    // TODO: Maybe rename: get_curve_from_param(idx)
     let curve = config.get_curve_at(0);
-    let midi_channel = u4::new(config.get_int_at(1) as u8);
+    let midi_channel = config.get_int_at(1) as u8;
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
@@ -53,7 +54,7 @@ pub async fn run(app: App<CHANNELS>) {
             let muted = glob_muted.get().await;
             if !muted {
                 let [fader] = faders.get_values();
-                midi.send_cc(0, fader).await;
+                midi.send_cc(32 + app.start_channel as u8, fader).await;
             }
         }
     };

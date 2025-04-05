@@ -15,6 +15,8 @@ pub enum ClockSrc {
     Meteor,
     Cube,
     Internal,
+    MidiIn,
+    MidiUsb,
 }
 
 #[derive(Clone, Copy)]
