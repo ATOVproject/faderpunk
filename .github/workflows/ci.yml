@@ -85,7 +85,7 @@ jobs:
           targets: thumbv8m.main-none-eabihf
       - run: cargo fmt -- --check
       # - run: cargo clippy -- -D warnings
-      - run: cargo clippy
+      - run: cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf
   build:
     name: Build
     needs: [lint]
@@ -102,14 +102,14 @@ jobs:
           toolchain: stable
           targets: thumbv8m.main-none-eabihf
       - run: cargo install flip-link
-      - run: cargo build --all --release
+      - run: cargo build --bin faderpunk --release --target thumbv8m.main-none-eabihf
       # Upload picotool binary as an artifact (if it's a release)
       - name: Upload build artifact
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: build
-          path: target/thumbv8m.main-none-eabihf/release/phoenix-16
+          path: target/thumbv8m.main-none-eabihf/release/faderpunk
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v') # Run this job only for tags starting with "v"
@@ -126,13 +126,13 @@ jobs:
         with:
           name: build
           path: target
-      - run: cp target/phoenix-16 target/phoenix-16.elf
+      - run: cp target/faderpunk target/faderpunk.elf
       - run: chmod +x picotool/picotool
-      - run: picotool/picotool uf2 convert target/phoenix-16.elf target/phoenix-16.uf2
+      - run: picotool/picotool uf2 convert target/faderpunk.elf target/faderpunk.uf2
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            target/phoenix-16.elf
-            target/phoenix-16.uf2
+            target/faderpunk.elf
+            target/faderpunk.uf2
           prerelease: true
