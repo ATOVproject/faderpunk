@@ -692,6 +692,7 @@ dependencies = [
  "embedded-io-async",
  "heapless 0.7.17",
  "libfp",
+ "libm",
  "log",
  "max11300",
  "midly",
@@ -948,6 +949,12 @@ dependencies = [
  "embassy-time",
  "midly",
 ]
+
+[[package]]
+name = "libm"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8355be11b20d696c8f18f6cc018c4e372165b1fa8126cef092399c9951984ffa"
 
 [[package]]
 name = "litrs"

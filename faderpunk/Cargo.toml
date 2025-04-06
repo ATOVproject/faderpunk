@@ -60,6 +60,8 @@ config = { path = "../config" }
 libfp = { path = "../libfp" }
 cobs = { version = "0.3.0", default-features = false }
 
+libm = "0.2.11"
+
 [profile.release]
 lto = true
 incremental = false
