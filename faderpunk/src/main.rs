@@ -43,6 +43,7 @@ use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
 use heapless::Vec;
+use tasks::eeprom::StorageMsg;
 use tasks::leds::LedsAction;
 use tasks::max::{MaxConfig, MaxMessage, MAX_VALUES_FADER};
 use {defmt_rtt as _, panic_probe as _};
@@ -84,20 +85,21 @@ bind_interrupts!(struct Irqs {
 pub type XTxSender = Sender<'static, NoopRawMutex, (usize, XTxMsg), 128>;
 
 /// Messages from core 0 to core 1
-#[derive(Clone, Copy, Debug, defmt::Format)]
+#[derive(Clone)]
 pub enum XTxMsg {
     ButtonDown,
     ButtonUp,
     FaderChange,
+    StorageMsg(StorageMsg),
 }
 
 /// Messages from core 1 to core 0
-#[derive(Clone)]
 pub enum XRxMsg {
     MaxMessage(MaxMessage),
     MidiMessage(LiveEvent<'static>),
     SetLed(LedsAction),
     SetBpm(f32),
+    StorageMsg(StorageMsg),
 }
 
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
@@ -107,7 +109,8 @@ static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 // mention all uses
 pub static WATCH_CONFIG_CHANGE: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
 // TODO: See if we can use a StaticCell + NoopRawMutex here
-pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
+// TODO: All of these channel sizes can be much smaller
+pub static CHANS_X: [PubSubChannel<ThreadModeRawMutex, (usize, XTxMsg), 64, 6, 1>; 16] =
     [const { PubSubChannel::new() }; 16];
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 /// Collector channel on core 0
@@ -118,6 +121,8 @@ static CHAN_X_1: StaticCell<Channel<NoopRawMutex, (usize, XRxMsg), 128>> = Stati
 static CHAN_X_TX: Channel<CriticalSectionRawMutex, (usize, XTxMsg), 64> = Channel::new();
 /// Channel from core 1 to core 0
 static CHAN_X_RX: Channel<CriticalSectionRawMutex, (usize, XRxMsg), 64> = Channel::new();
+/// Channel for sending messages to the EEPROM
+static CHAN_EEPROM: StaticCell<Channel<NoopRawMutex, (usize, StorageMsg), 64>> = StaticCell::new();
 /// Channel for sending messages to the MAX
 static CHAN_MAX: StaticCell<Channel<NoopRawMutex, (usize, MaxMessage), 64>> = StaticCell::new();
 /// Channel for sending messages to the MIDI bus
@@ -221,7 +226,7 @@ async fn x_tx(channel_map: [usize; 16]) {
     let _ = cancel_receiver.changed().await;
     let x_tx_fut = async {
         // INFO: These _should_ all be properly dropped when task ends
-        let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 5, 1>; 16] =
+        let publishers: [Publisher<'static, ThreadModeRawMutex, (usize, XTxMsg), 64, 6, 1>; 16] =
             array_init(|i| CHANS_X[i].publisher().unwrap());
         CORE1_TASKS[16].store(true, Ordering::Relaxed);
         loop {
@@ -230,7 +235,7 @@ async fn x_tx(channel_map: [usize; 16]) {
                 // TODO: Is this fast enough for the clock or do we need a Watch in a CriticalSectionRawMutex?
                 // INFO: Special channel 16 sends to all publishers
                 for publisher in publishers.iter() {
-                    publisher.publish((chan, msg)).await;
+                    publisher.publish((chan, msg.clone())).await;
                 }
             } else {
                 let start_chan = channel_map[chan];
@@ -286,6 +291,7 @@ async fn main_core1(spawner: Spawner) {
                     chan_x_1.sender(),
                 ))
                 .unwrap();
+            Timer::after_millis(20).await;
         }
     }
 }
@@ -327,7 +333,9 @@ async fn main(spawner: Spawner) {
     let spi1 = Spi::new_txonly(p.SPI1, p.PIN_10, p.PIN_11, p.DMA_CH5, spi1_config);
 
     // I2C1 (EEPROM)
-    let i2c1 = i2c::I2c::new_async(p.I2C1, p.PIN_27, p.PIN_26, Irqs, i2c::Config::default());
+    let mut i2c1_config = i2c::Config::default();
+    i2c1_config.frequency = 1_000_000;
+    let i2c1 = i2c::I2c::new_async(p.I2C1, p.PIN_27, p.PIN_26, Irqs, i2c1_config);
 
     // MIDI
     let mut uart_config = UartConfig::default();
@@ -357,24 +365,18 @@ async fn main(spawner: Spawner) {
         p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
     );
 
-    let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
+    // EEPROM
+    let eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
 
-    spawn_core1(
-        p.CORE1,
-        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
-        move || {
-            let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| {
-                spawner.spawn(main_core1(spawner)).unwrap();
-            });
-        },
-    );
+    // AUX inputs
+    let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
 
     let chan_x_0 = CHAN_X_0.init(Channel::new());
     let chan_max = CHAN_MAX.init(Channel::new());
     let chan_midi = CHAN_MIDI.init(Channel::new());
     let chan_leds = CHAN_LEDS.init(Channel::new());
     let chan_clock = CHAN_CLOCK.init(Channel::new());
+    let chan_eeprom = CHAN_EEPROM.init(Channel::new());
 
     tasks::max::start_max(
         &spawner,
@@ -396,17 +398,18 @@ async fn main(spawner: Spawner) {
 
     tasks::clock::start_clock(&spawner, aux_inputs, chan_clock.receiver()).await;
 
-    let mut eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
+    tasks::eeprom::start_eeprom(&spawner, eeprom, chan_x_0.sender(), chan_eeprom.receiver()).await;
 
-    // These are the flash addresses in which the crate will operate.
-    // The crate will not read, write or erase outside of this range.
-    let flash_range = 0x1000..0x3000;
-    // We need to give the crate a buffer to work with.
-    // It must be big enough to serialize the biggest value of your storage type in,
-    // rounded up to to word alignment of the flash. Some kinds of internal flash may require
-    // this buffer to be aligned in RAM as well.
-    let mut data_buffer = [0; 128];
-    let mut i = 0_u8;
+    spawn_core1(
+        p.CORE1,
+        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+        move || {
+            let executor1 = EXECUTOR1.init(Executor::new());
+            executor1.run(|spawner| {
+                spawner.spawn(main_core1(spawner)).unwrap();
+            });
+        },
+    );
 
     let config_sender = WATCH_CONFIG_CHANGE.sender();
 
@@ -438,6 +441,7 @@ async fn main(spawner: Spawner) {
                 XRxMsg::MidiMessage(midi_msg) => chan_midi.send((chan, midi_msg)).await,
                 XRxMsg::SetLed(action) => chan_leds.send((chan, action)).await,
                 XRxMsg::SetBpm(bpm) => chan_clock.send(bpm).await,
+                XRxMsg::StorageMsg(storage_msg) => chan_eeprom.send((chan, storage_msg)).await,
             }
         }
     };
@@ -446,53 +450,10 @@ async fn main(spawner: Spawner) {
 
     // TODO: Get this from eeprom
     let mut config = GlobalConfig::default();
-    config.clock_src = ClockSrc::MidiUsb;
-    config.reset_src = ClockSrc::MidiUsb;
+    config.clock_src = ClockSrc::MidiIn;
+    config.reset_src = ClockSrc::MidiIn;
     config.layout = &[1; 16];
     config_sender.send(config);
 
     join(fut, fut2).await;
-
-    // These are the flash addresses in which the crate will operate.
-    // The crate will not read, write or erase outside of this range.
-    let flash_range = 0x1000..0x3000;
-    // We need to give the crate a buffer to work with.
-    // It must be big enough to serialize the biggest value of your storage type in,
-    // rounded up to to word alignment of the flash. Some kinds of internal flash may require
-    // this buffer to be aligned in RAM as well.
-    let mut data_buffer = [0; 128];
-
-    // Now we store an item the flash with key 42.
-    // Again we make sure we pass the correct key and value types, u8 and u32.
-    // It is important to do this consistently.
-
-    // store_item(
-    //     &mut eeprom,
-    //     flash_range.clone(),
-    //     &mut NoCache::new(),
-    //     &mut data_buffer,
-    //     &42u8,
-    //     &104729u32,
-    // )
-    // .await
-    // .unwrap();
-
-    // When we ask for key 42, we not get back a Some with the correct value
-    //
-    // let val = fetch_item::<u8, u32, _>(
-    //     &mut eeprom,
-    //     flash_range.clone(),
-    //     &mut NoCache::new(),
-    //     &mut data_buffer,
-    //     &42,
-    // )
-    // .await
-    // .unwrap()
-    // .unwrap();
-    //
-    // info!("VAL IS {}", val);
-    //
-    // assert_eq!(val, 104729);
-    //
-    // info!("INITIALIZED");
 }

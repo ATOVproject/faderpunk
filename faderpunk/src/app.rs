@@ -1,15 +1,17 @@
 use core::array;
 
+use defmt::{info, Format};
 use embassy_futures::{join::join, select::select};
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
     mutex::Mutex,
-    pubsub::Subscriber,
+    pubsub::{PubSubChannel, Subscriber},
     watch::Receiver,
 };
-use embassy_time::{with_timeout, Duration, Timer};
+use embassy_time::{with_timeout, Duration, Instant, TimeoutError, Timer};
+use heapless::Vec;
 use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midly::{
     live::LiveEvent,
@@ -17,6 +19,7 @@ use midly::{
     MidiMessage,
 };
 use portable_atomic::Ordering;
+use postcard::{from_bytes, to_vec};
 use rand::Rng;
 
 use config::Curve;
@@ -24,10 +27,12 @@ use libfp::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
     utils::scale_bits_12_7,
 };
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
+        eeprom::StorageMsg,
         leds::{LedsAction, LED_VALUES},
         max::{MaxConfig, MaxMessage, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
@@ -343,33 +348,119 @@ impl<const N: usize> Midi<N> {
 }
 
 pub struct Global<T: Sized + Copy> {
-    mutex: Mutex<NoopRawMutex, T>,
+    inner: Mutex<NoopRawMutex, T>,
 }
 
 impl<T: Sized + Copy> Global<T> {
     pub fn new(initial: T) -> Self {
         Self {
-            mutex: Mutex::new(initial),
+            inner: Mutex::new(initial),
         }
     }
 
     // TODO: implement something like replace (using a closure)
     pub async fn get(&self) -> T {
-        let value = self.mutex.lock().await;
+        let value = self.inner.lock().await;
         *value
     }
 
     pub async fn set(&self, val: T) {
-        let mut value = self.mutex.lock().await;
+        let mut value = self.inner.lock().await;
         *value = val
     }
 }
 
 impl Global<bool> {
     pub async fn toggle(&self) -> bool {
-        let mut value = self.mutex.lock().await;
+        let mut value = self.inner.lock().await;
         *value = !*value;
         *value
+    }
+}
+
+pub struct GlobalWithStorage<T: Sized + Copy + Default + Serialize + DeserializeOwned> {
+    app_id: u8,
+    inner: Global<T>,
+    start_channel: u8,
+    storage_slot: u8,
+    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+}
+
+impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage<T> {
+    pub fn new(
+        app_id: u8,
+        initial: T,
+        start_channel: u8,
+        storage_slot: u8,
+        sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    ) -> Self {
+        Self {
+            app_id,
+            start_channel,
+            inner: Global::new(initial),
+            storage_slot,
+            sender,
+        }
+    }
+
+    async fn ser(&self) -> Vec<u8, 64> {
+        let value = self.get().await;
+        to_vec(&value).unwrap()
+    }
+
+    async fn des(&mut self, data: &[u8]) {
+        if let Ok(val) = from_bytes::<T>(data) {
+            self.set(val).await;
+        }
+    }
+
+    pub async fn get(&self) -> T {
+        self.inner.get().await
+    }
+
+    pub async fn set(&mut self, val: T) {
+        self.inner.set(val).await
+    }
+
+    pub async fn save(&self) {
+        let ser = self.ser().await;
+        self.sender
+            .send((
+                self.start_channel as usize,
+                XRxMsg::StorageMsg(StorageMsg::Store(self.app_id, self.storage_slot, ser)),
+            ))
+            .await;
+    }
+
+    pub async fn load(&mut self) {
+        self.sender
+            .send((
+                self.start_channel as usize,
+                XRxMsg::StorageMsg(StorageMsg::Request(self.app_id, self.storage_slot)),
+            ))
+            .await;
+        // Make this timeout roughly as long as the boot sequence ;)
+        with_timeout(Duration::from_millis(2000), async {
+            let mut subscriber = CHANS_X[self.start_channel as usize].subscriber().unwrap();
+            loop {
+                if let (_, XTxMsg::StorageMsg(StorageMsg::Read(app_id, storage_slot, res))) =
+                    subscriber.next_message_pure().await
+                {
+                    if self.app_id == app_id && self.storage_slot == storage_slot {
+                        self.des(res.as_slice()).await;
+                        return;
+                    }
+                }
+            }
+        })
+        .await
+        .ok();
+    }
+}
+
+impl GlobalWithStorage<bool> {
+    pub async fn toggle(&self) -> bool {
+        self.inner.toggle().await
     }
 }
 
@@ -418,6 +509,23 @@ impl<const N: usize> App<N> {
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
         Global::new(initial)
+    }
+
+    pub fn make_global_with_store<
+        T: Sized + Copy + Format + Default + Serialize + DeserializeOwned,
+    >(
+        &self,
+        initial: T,
+        storage_slot: u8,
+    ) -> GlobalWithStorage<T> {
+        let storage_slot = storage_slot.clamp(0, 15);
+        GlobalWithStorage::new(
+            self.app_id as u8,
+            initial,
+            self.start_channel as u8,
+            storage_slot,
+            self.sender,
+        )
     }
 
     // TODO: How can we prevent people from doing this multiple times?
