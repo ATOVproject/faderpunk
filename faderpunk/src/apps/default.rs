@@ -1,7 +1,7 @@
 use config::{Config, Curve, Param};
 use embassy_futures::join::join3;
 
-use crate::app::{App, Led, Range};
+use crate::app::{App, Led, Range, StorageSlot};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 3;
@@ -34,7 +34,7 @@ pub async fn run(app: App<CHANNELS>) {
     let leds = app.use_leds();
     let midi = app.use_midi(midi_channel);
 
-    let mut glob_muted = app.make_global_with_store(false, 0);
+    let mut glob_muted = app.make_global_with_store(false, StorageSlot::A);
     glob_muted.load().await;
 
     let muted = glob_muted.get().await;
