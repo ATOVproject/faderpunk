@@ -21,6 +21,7 @@ pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute 
     });
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
+const BUTTON_BRIGHTNESS: u8 = 75;
 
 pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
@@ -33,8 +34,16 @@ pub async fn run(app: App<CHANNELS>) {
     let leds = app.use_leds();
     let midi = app.use_midi(midi_channel);
 
-    let glob_muted = app.make_global(false);
-    leds.set(0, Led::Button, LED_COLOR, 75);
+    let mut glob_muted = app.make_global_with_store(false, 0);
+    glob_muted.load().await;
+
+    let muted = glob_muted.get().await;
+    leds.set(
+        0,
+        Led::Button,
+        LED_COLOR,
+        if muted { 0 } else { BUTTON_BRIGHTNESS },
+    );
 
     let mut old_midi = 0;
 
@@ -70,17 +79,17 @@ pub async fn run(app: App<CHANNELS>) {
         loop {
             buttons.wait_for_down(0).await;
             let muted = glob_muted.toggle().await;
+            glob_muted.save().await;
             if muted {
                 leds.set(0, Led::Button, LED_COLOR, 0);
                 jack.set_value(0);
                 midi.send_cc(32 + app.start_channel as u8, 0).await;
-                leds.set(0, Led::Top,LED_COLOR, 0);
+                leds.set(0, Led::Top, LED_COLOR, 0);
                 leds.set(0, Led::Bottom, LED_COLOR, 0);
             } else {
-                leds.set(0, Led::Button, LED_COLOR, 75);
+                leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
                 let vals = faders.get_values();
                 midi.send_cc(32 + app.start_channel as u8, vals[0]).await
-
             }
         }
     };
