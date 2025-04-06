@@ -54,6 +54,19 @@ pub enum Led {
     Button,
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum StorageSlot {
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+}
+
 pub struct Leds<const N: usize> {
     start_channel: usize,
 }
@@ -382,7 +395,7 @@ pub struct GlobalWithStorage<T: Sized + Copy + Default + Serialize + Deserialize
     app_id: u8,
     inner: Global<T>,
     start_channel: u8,
-    storage_slot: u8,
+    storage_slot: StorageSlot,
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 }
 
@@ -391,7 +404,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
         app_id: u8,
         initial: T,
         start_channel: u8,
-        storage_slot: u8,
+        storage_slot: StorageSlot,
         sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
     ) -> Self {
         Self {
@@ -427,7 +440,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
         self.sender
             .send((
                 self.start_channel as usize,
-                XRxMsg::StorageMsg(StorageMsg::Store(self.app_id, self.storage_slot, ser)),
+                XRxMsg::StorageMsg(StorageMsg::Store(self.app_id, self.storage_slot as u8, ser)),
             ))
             .await;
     }
@@ -436,7 +449,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
         self.sender
             .send((
                 self.start_channel as usize,
-                XRxMsg::StorageMsg(StorageMsg::Request(self.app_id, self.storage_slot)),
+                XRxMsg::StorageMsg(StorageMsg::Request(self.app_id, self.storage_slot as u8)),
             ))
             .await;
         // Make this timeout roughly as long as the boot sequence ;)
@@ -446,7 +459,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
                 if let (_, XTxMsg::StorageMsg(StorageMsg::Read(app_id, storage_slot, res))) =
                     subscriber.next_message_pure().await
                 {
-                    if self.app_id == app_id && self.storage_slot == storage_slot {
+                    if self.app_id == app_id && self.storage_slot as u8 == storage_slot {
                         self.des(res.as_slice()).await;
                         return;
                     }
@@ -516,9 +529,8 @@ impl<const N: usize> App<N> {
     >(
         &self,
         initial: T,
-        storage_slot: u8,
+        storage_slot: StorageSlot,
     ) -> GlobalWithStorage<T> {
-        let storage_slot = storage_slot.clamp(0, 15);
         GlobalWithStorage::new(
             self.app_id as u8,
             initial,
