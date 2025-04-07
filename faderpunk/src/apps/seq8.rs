@@ -52,9 +52,9 @@ pub async fn run(app: App<CHANNELS>) {
         app.make_gate_jack(7, 4095).await,
     ];
 
-    let mut seq_glob = app.make_global_with_store(Arr([0; 32]), StorageSlot::A);
+    let mut seq_glob = app.make_global_with_store(Arr([0; 64]), StorageSlot::A);
     seq_glob.load().await;
-    let mut gateseq_glob = app.make_global_with_store(Arr([true; 32]), StorageSlot::B);
+    let mut gateseq_glob = app.make_global_with_store(Arr([true; 64]), StorageSlot::B);
     gateseq_glob.load().await;
     let mut seq_length_glob = app.make_global_with_store(Arr([16; 4]), StorageSlot::C);
     seq_length_glob.load().await;
@@ -234,10 +234,10 @@ pub async fn run(app: App<CHANNELS>) {
                 let seq = seq_glob.get_array().await;
                 for n in 0..=3 {
                     let clkindex = ((clockn % seq_length[n] as usize) + (n * 16));
-                    cv_out[n].set_value(seq[clkindex] / 5);
+                    
                     if gateseq[clkindex] {
                         gate_out[n].set_high().await;
-
+                        cv_out[n].set_value(seq[clkindex] / 5);
                         midi[n]
                             .send_note_on((seq[clkindex] / 170) as u8 + 60, 4095)
                             .await;
