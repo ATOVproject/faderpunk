@@ -1,6 +1,3 @@
-use core::array;
-
-use defmt::{info, Format};
 use embassy_futures::{join::join, select::select};
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
@@ -27,7 +24,10 @@ use libfp::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
     utils::scale_bits_12_7,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{
+    de::{DeserializeOwned, Error},
+    Deserialize, Serialize,
+};
 
 use crate::{
     tasks::{
@@ -65,6 +65,49 @@ pub enum StorageSlot {
     F,
     G,
     H,
+}
+
+#[derive(Clone, Copy)]
+pub struct Arr<T: Sized + Copy + Default, const N: usize>(pub [T; N]);
+
+impl<T: Sized + Copy + Default, const N: usize> Default for Arr<T, N> {
+    fn default() -> Self {
+        Self([T::default(); N])
+    }
+}
+
+impl<T, const N: usize> Serialize for Arr<T, N>
+where
+    T: Serialize + Sized + Copy + Default,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let vec = Vec::<T, N>::from_slice(&self.0).unwrap();
+        vec.serialize(serializer)
+    }
+}
+
+impl<'de, T, const N: usize> Deserialize<'de> for Arr<T, N>
+where
+    T: Deserialize<'de> + Sized + Copy + Default,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let vec = Vec::<T, N>::deserialize(deserializer)?;
+        if vec.len() != N {
+            return Err(D::Error::invalid_length(
+                vec.len(),
+                &"an array of exact length N",
+            ));
+        }
+        let mut arr = [T::default(); N];
+        arr.copy_from_slice(vec.as_slice()); // Safe due to length check above
+        Ok(Arr(arr))
+    }
 }
 
 pub struct Leds<const N: usize> {
@@ -391,7 +434,7 @@ impl Global<bool> {
     }
 }
 
-pub struct GlobalWithStorage<T: Sized + Copy + Default + Serialize + DeserializeOwned> {
+pub struct GlobalWithStorage<T: Sized + Copy + Default> {
     app_id: u8,
     inner: Global<T>,
     start_channel: u8,
@@ -477,6 +520,16 @@ impl GlobalWithStorage<bool> {
     }
 }
 
+impl<T: Sized + Copy + Default, const N: usize> GlobalWithStorage<Arr<T, N>> {
+    pub async fn set_array(&self, val: [T; N]) {
+        self.inner.set(Arr(val)).await
+    }
+
+    pub async fn get_array(&self) -> [T; N] {
+        self.inner.get().await.0
+    }
+}
+
 pub struct Die {
     rng: RoscRng,
 }
@@ -524,9 +577,7 @@ impl<const N: usize> App<N> {
         Global::new(initial)
     }
 
-    pub fn make_global_with_store<
-        T: Sized + Copy + Format + Default + Serialize + DeserializeOwned,
-    >(
+    pub fn make_global_with_store<T: Sized + Copy + Default + Serialize + DeserializeOwned>(
         &self,
         initial: T,
         storage_slot: StorageSlot,
