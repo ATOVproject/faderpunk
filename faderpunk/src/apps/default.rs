@@ -53,6 +53,13 @@ pub async fn run(app: App<CHANNELS>) {
             if !muted {
                 let vals = faders.get_values();
                 jack.set_value_with_curve(curve, vals[0]);
+                leds.set(0, Led::Top, LED_COLOR, ((vals[0] as f32 / 16.0) / 2.0) as u8);
+                leds.set(
+                    0,
+                    Led::Bottom,
+                    LED_COLOR,
+                    ((255.0 - (vals[0] as f32) / 16.0) / 2.0) as u8,
+                );
             }
         }
     };
@@ -82,7 +89,14 @@ pub async fn run(app: App<CHANNELS>) {
             } else {
                 leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
                 let vals = faders.get_values();
-                midi.send_cc(32 + app.start_channel as u8, vals[0]).await
+                midi.send_cc(32 + app.start_channel as u8, vals[0]).await;
+                leds.set(0, Led::Top, LED_COLOR, ((vals[0] as f32 / 16.0) / 2.0) as u8);
+                leds.set(
+                    0,
+                    Led::Bottom,
+                    LED_COLOR,
+                    ((255.0 - (vals[0] as f32) / 16.0) / 2.0) as u8,
+                );
             }
         }
     };

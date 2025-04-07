@@ -237,7 +237,7 @@ pub async fn run(app: App<CHANNELS>) {
                     
                     if gateseq[clkindex] {
                         gate_out[n].set_high().await;
-                        cv_out[n].set_value(seq[clkindex] / 5);
+                        cv_out[n].set_value(seq[clkindex] / 4); //only update CV out on active step
                         midi[n]
                             .send_note_on((seq[clkindex] / 170) as u8 + 60, 4095)
                             .await;
