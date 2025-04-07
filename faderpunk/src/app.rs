@@ -16,7 +16,7 @@ use midly::{
     MidiMessage,
 };
 use portable_atomic::Ordering;
-use postcard::{from_bytes, to_vec};
+use postcard::{from_bytes, to_slice, to_vec};
 use rand::Rng;
 
 use config::Curve;
@@ -461,7 +461,9 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
 
     async fn ser(&self) -> Vec<u8, 64> {
         let value = self.get().await;
-        to_vec(&value).unwrap()
+        let mut buf: [u8; 64] = [0; 64];
+        let serialized = to_slice(&value, &mut buf).unwrap();
+        Vec::<u8, 64>::from_slice(serialized).unwrap()
     }
 
     async fn des(&mut self, data: &[u8]) {
