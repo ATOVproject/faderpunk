@@ -7,13 +7,9 @@
 
 use config::{Config, Curve, Param};
 use defmt::info;
-use embassy_futures::join::{join3, join4, join5};
-use embassy_rp::pac::dma::vals::TreqSel;
-use embassy_sync::channel;
-use embassy_time::Duration;
-//use midi2::ux::{u4, u7};
+use embassy_futures::join::join5;
 
-use crate::app::{App, Led, Range};
+use crate::app::{App, Led, Range, StorageSlot};
 
 pub const CHANNELS: usize = 8;
 pub const PARAMS: usize = 1;
@@ -56,22 +52,22 @@ pub async fn run(app: App<CHANNELS>) {
         app.make_gate_jack(7, 4095).await,
     ];
 
-    let seq_glob = app.make_global([
+    let seq_glob = app.make_global_with_store([
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0,
-    ]);
-    let gateseq_glob = app.make_global([
+    ], StorageSlot::A) ;
+    let gateseq_glob = app.make_global_with_store([
         true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
         true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
         true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
         true, true, true, true, true, true, true, true, true, true, true, true, true, true, true,
         true, true, true, true,
-    ]);
+    ], StorageSlot::B);
 
     //let mut latched_glob = app.make_global([true, true, true, true, true, true, true, true]);
 
-    let seq_length_glob = app.make_global([16, 16, 16, 16]);
+    let seq_length_glob = app.make_global_with_store([16, 16, 16, 16], StorageSlot::C);
     let page_glob = app.make_global(0);
     let led_flag_glob = app.make_global(true);
     let div = app.make_global(1);
@@ -81,6 +77,7 @@ pub async fn run(app: App<CHANNELS>) {
 
     //let seq_init = faders.get_values();
     //seq_glob.set(seq_init).await;
+    seq_glob.load();
 
     let fut1 = async {
         loop {

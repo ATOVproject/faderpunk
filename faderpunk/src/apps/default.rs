@@ -45,8 +45,6 @@ pub async fn run(app: App<CHANNELS>) {
         if muted { 0 } else { BUTTON_BRIGHTNESS },
     );
 
-    let mut old_midi = 0;
-
     let jack = app.make_out_jack(0, Range::_0_10V).await;
     let fut1 = async {
         loop {
@@ -55,8 +53,6 @@ pub async fn run(app: App<CHANNELS>) {
             if !muted {
                 let vals = faders.get_values();
                 jack.set_value_with_curve(curve, vals[0]);
-                leds.set(0, Led::Top, LED_COLOR, (vals[0] / 16) as u8);
-                leds.set(0, Led::Bottom, LED_COLOR, (255 - vals[0] / 16) as u8);
             }
         }
     };
@@ -67,10 +63,7 @@ pub async fn run(app: App<CHANNELS>) {
             let muted = glob_muted.get().await;
             if !muted {
                 let [fader] = faders.get_values();
-                if old_midi / 16 != fader / 16 {
-                    midi.send_cc(32 + app.start_channel as u8, fader).await;
-                    old_midi = fader;
-                }
+                midi.send_cc(32 + app.start_channel as u8, fader).await;
             }
         }
     };
