@@ -17,13 +17,14 @@ use crate::{XTxMsg, XTxSender};
 
 pub type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, StorageMsg), 64>;
 
+pub const DATA_LENGTH: usize = 65;
 const MAX_PENDING_SAVES: usize = 64;
 
 #[derive(Clone)]
 pub enum StorageMsg {
-    Read(u8, u8, Vec<u8, 64>),
+    Read(u8, u8, Vec<u8, DATA_LENGTH>),
     Request(u8, u8),
-    Store(u8, u8, Vec<u8, 64>),
+    Store(u8, u8, Vec<u8, DATA_LENGTH>),
 }
 
 pub async fn start_eeprom(
@@ -42,7 +43,7 @@ fn create_storage_key(app_id: u8, start_channel: u8, storage_slot: u8) -> u32 {
 // Helper struct to store pending save info
 struct PendingSave {
     last_update: Instant,
-    data: Vec<u8, 64>,
+    data: Vec<u8, DATA_LENGTH>,
     app_id: u8,        // Keep for potential logging/debugging
     storage_slot: u8,  // Keep for potential logging/debugging
     start_channel: u8, // Keep for potential logging/debugging
@@ -98,7 +99,7 @@ async fn run_eeprom(
                     )
                     .await
                     {
-                        if let Ok(vec) = Vec::<u8, 64>::from_slice(item) {
+                        if let Ok(vec) = Vec::<u8, DATA_LENGTH>::from_slice(item) {
                             sender
                                 .send((
                                     chan,
