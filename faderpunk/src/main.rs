@@ -450,8 +450,8 @@ async fn main(spawner: Spawner) {
 
     // TODO: Get this from eeprom
     let mut config = GlobalConfig::default();
-    config.clock_src = ClockSrc::MidiUsb;
-    config.reset_src = ClockSrc::MidiUsb;
+    config.clock_src = ClockSrc::MidiIn;
+    config.reset_src = ClockSrc::MidiIn;
     config.layout = &[6, 3, 7, 8, 8, 1, 9];
     config_sender.send(config);
 
