@@ -1,4 +1,3 @@
-use embassy_futures::{join::join, select::select};
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
@@ -32,7 +31,7 @@ use serde::{
 use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
-        eeprom::StorageMsg,
+        eeprom::{StorageMsg, DATA_LENGTH},
         leds::{LedsAction, LED_VALUES},
         max::{MaxConfig, MaxMessage, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
@@ -459,11 +458,11 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
         }
     }
 
-    async fn ser(&self) -> Vec<u8, 64> {
+    async fn ser(&self) -> Vec<u8, DATA_LENGTH> {
         let value = self.get().await;
-        let mut buf: [u8; 64] = [0; 64];
+        let mut buf: [u8; DATA_LENGTH] = [0; DATA_LENGTH];
         let serialized = to_slice(&value, &mut buf).unwrap();
-        Vec::<u8, 64>::from_slice(serialized).unwrap()
+        Vec::<u8, DATA_LENGTH>::from_slice(serialized).unwrap()
     }
 
     async fn des(&mut self, data: &[u8]) {

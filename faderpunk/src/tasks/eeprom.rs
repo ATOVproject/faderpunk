@@ -17,7 +17,8 @@ use crate::{XTxMsg, XTxSender};
 
 pub type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, StorageMsg), 64>;
 
-pub const DATA_LENGTH: usize = 65;
+// TODO: Find a good number for this (allowed storage size is 64)
+pub const DATA_LENGTH: usize = 128;
 const MAX_PENDING_SAVES: usize = 64;
 
 #[derive(Clone)]
