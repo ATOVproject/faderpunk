@@ -8,6 +8,7 @@
 use config::{Config, Curve, Param};
 use defmt::info;
 use embassy_futures::join::join5;
+use smart_leds::brightness;
 
 use crate::app::{App, Arr, Led, Range, StorageSlot};
 
@@ -63,6 +64,7 @@ pub async fn run(app: App<CHANNELS>) {
 
     let page_glob = app.make_global(0);
     let led_flag_glob = app.make_global(true);
+    let lenght_flag = app.make_global(false);
     let div = app.make_global(1);
     let mut shif_old = false;
 
@@ -75,7 +77,7 @@ pub async fn run(app: App<CHANNELS>) {
         }
     };
 
-    let fut2 = async {
+    let fut2 = async { //Fader handling
         loop {
             let chan = faders.wait_for_any_change().await;
             let vals = faders.get_values();
@@ -90,25 +92,25 @@ pub async fn run(app: App<CHANNELS>) {
             }
 
             if _shift {
-                if chan % 2 == 0 {
-                    //Odd number fader + shift
+                if chan == 0 {
+                    //fader 1 + shift
                     let mut seq_lenght = seq_length_glob.get_array().await;
-                    seq_lenght[(chan / 2)] = ((vals[chan]) / 256) + 1;
+                    seq_lenght[(page / 2)] = ((vals[0]) / 256) + 1;
+                    info!("{}", seq_lenght[page / 2]);
                     seq_length_glob.set_array(seq_lenght).await;
                     seq_length_glob.save().await;
+                    lenght_flag.set(true).await;
                 }
 
                 if chan % 2 == 1 {
-                    //Odd number fader + shift
-                    div.set(vals[chan] / 170 + 1).await;
-                    info!("{}", (vals[chan] / 170 + 1));
+;
                 }
             }
             led_flag_glob.set(true).await;
         }
     };
 
-    let fut3 = async {
+    let fut3 = async { //button handling
         //Short button presses
         loop {
             let chan = buttons.wait_for_any_down().await;
@@ -129,8 +131,9 @@ pub async fn run(app: App<CHANNELS>) {
         }
     };
 
-    let fut4 = async {
+    let fut4 = async { //LED update
         loop {
+            let intencity = [50, 120, 200];
             let colours = [
                 (243, 191, 78),
                 (188, 77, 216),
@@ -140,16 +143,39 @@ pub async fn run(app: App<CHANNELS>) {
             app.delay_millis(10).await;
             //if buttons.is_shift_pressed().await;
             if buttons.is_shift_pressed() {
+                let clockn = clockn_glob.get().await;
+                let seq_length = seq_length_glob.get_array().await;
                 let page = page_glob.get().await;
                 let mut bright = 75;
                 for n in 0..=7 {
                     if n == page {
-                        bright = 150;
+                        bright = intencity[2];
                     } else {
-                        bright = 75;
+                        bright = intencity[1];
                     }
                     led.set(n, Led::Button, colours[n / 2], bright);
                 }
+                for n in 0..=15 {
+                    if n < seq_length[ page / 2 ] {
+                        bright = 100
+                    }
+                    if n == clockn as u16 % seq_length[ page / 2 ] {
+                        bright = 200
+                    }
+                    if n >= seq_length[ page / 2 ]{
+                        bright = 0
+                    }
+                    if n < 8 {
+                        led.set(n as usize, Led::Top, (255, 0, 0), bright)
+                    }
+                    else {
+                        led.set(n as usize - 8, Led::Bottom , (255, 0, 0), bright)
+
+                    }
+
+                }
+
+
             }
 
             let led_flag = led_flag_glob.get().await;
@@ -177,19 +203,14 @@ pub async fn run(app: App<CHANNELS>) {
 
                 for n in 0..=7 {
                     led.set(n, Led::Top, colour, (seq[n + (page * 8)] / 16) as u8 / 2);
-                    led.set(
-                        n,
-                        Led::Bottom,
-                        colour,
-                        (255 - (seq[n + (page * 8)] / 16) as u8) / 2,
-                    );
+                    
                     if gateseq[n + (page * 8)] {
-                        led.set(n, Led::Button, colour, 75);
+                        led.set(n, Led::Button, colour, intencity[1]);
 
                         //led.set(n, Led::Bottom , colour, 0);
                     }
                     if !gateseq[n + (page * 8)] {
-                        led.set(n, Led::Button, colour, 50);
+                        led.set(n, Led::Button, colour, intencity[0]);
                         //led.set(n, Led::Bottom , colour, 0);
                     }
 
@@ -200,13 +221,18 @@ pub async fn run(app: App<CHANNELS>) {
                         led.set(n, Led::Button, colour, 0);
                     }
 
-                    led.set(
-                        (clockn % seq_length[page / 2] as usize) % 8,
-                        Led::Button,
-                        (255, 0, 0),
-                        100,
-                    );
+                    if (clockn % seq_length[n / 2] as usize) % 16 - (n % 2) * 8 < 8 {
+                        led.set(n, Led::Bottom, (255, 0, 0), 100)
+                    }
+                    else{
+                        led.set(n, Led::Bottom, (255, 0, 0), 0)
+                    }
                 }
+                //runing light on buttons
+                if (clockn % seq_length[page / 2] as usize) % 16 - (page % 2) * 8 < 8{
+                    led.set((clockn % seq_length[page / 2] as usize) % 16 - (page % 2) * 8,Led::Button,(255, 0, 0),100,);
+                    
+                    }
 
                 led.set(page, Led::Bottom, colour, 255);
 
@@ -215,7 +241,7 @@ pub async fn run(app: App<CHANNELS>) {
         }
     };
 
-    let fut5 = async {
+    let fut5 = async { //sequencer functions
         loop {
             let gateseq = gateseq_glob.get_array().await;
             let seq_length = seq_length_glob.get_array().await;
@@ -246,15 +272,10 @@ pub async fn run(app: App<CHANNELS>) {
 
                         //app.delay_millis(gatet).await;
                         //gate_out[n].set_low().await;
-                    } else {
+                    } else { // note that are not triggered
                         gate_out[n].set_low().await;
 
-                        midi[n]
-                            .send_note_off((seq[clkindex] / 170) as u8 + 60)
-                            .await
-
-                        //app.delay_millis(gatet).await;
-                        //led_flag_glob.set(true).await;
+                        //midi[n].send_note_off((seq[clkindex] / 170) as u8 + 60).await
                     }
                     //led_flag_glob.set(true).await;
                 }

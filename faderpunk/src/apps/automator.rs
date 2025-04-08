@@ -47,6 +47,8 @@ pub async fn run(app: App<CHANNELS>) {
     let color = (255, 255, 255);
     let mut start = 0;
 
+    leds.set(0, Led::Button, (255, 255, 255), 0);
+
     let fut1 = async {
         loop {
             let reset = clock.wait_for_tick(1).await;
