@@ -5,7 +5,7 @@ use embassy_rp::peripherals::USB;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{with_timeout, Duration, TimeoutError};
+use embassy_time::{with_timeout, Duration, Instant, TimeoutError};
 use embassy_usb::class::midi::{MidiClass, Sender};
 use embedded_io_async::{Read, Write};
 
@@ -24,6 +24,8 @@ midly::stack_buffer! {
 }
 
 pub type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, LiveEvent<'static>), 64>;
+
+const RUNNING_STATUS_DEBOUNCE: Duration = Duration::from_millis(200);
 
 #[derive(Copy, Clone)]
 enum CodeIndexNumber {
@@ -79,6 +81,7 @@ async fn write_msg_to_usb<'a>(
     Ok(())
 }
 
+// TODO: Use running status again, but use default UART implementation as opposed to BufferedUart
 async fn write_msg_to_uart(
     uart1_tx: &mut BufferedUartTx<'static, UART1>,
     midi_ev: LiveEvent<'_>,
@@ -86,9 +89,7 @@ async fn write_msg_to_uart(
 ) -> Result<(), UartError> {
     let mut ser_buf = [0_u8; 3];
     let mut ser_cursor = Cursor::new(&mut ser_buf);
-    midi_ev
-        .write_with_running_status(running_status, &mut ser_cursor)
-        .unwrap();
+    midi_ev.write(&mut ser_cursor).unwrap();
     let bytes_written = ser_cursor.cursor();
     uart1_tx.write(&ser_buf[..bytes_written]).await?;
     uart1_tx.flush().await?;
@@ -115,14 +116,24 @@ pub async fn start_midi_loops<'a>(
         // TODO: Deal with backpressure as well (do it on core b maybe?)
         // See https://claude.ai/chat/1a702bdf-b1f9-4d52-a004-aa221cbb4642 for improving this
         let mut running_status: Option<u8> = None;
+        let mut last_sent = Instant::now();
+
         loop {
             let (_chan, midi_ev) = x_rx.receive().await;
-            // TODO: Handle these Results?
-            let _ = join(
+
+            let now = Instant::now();
+            if now.saturating_duration_since(last_sent) >= RUNNING_STATUS_DEBOUNCE {
+                running_status = None;
+            }
+            let (res_uart, _) = join(
                 write_msg_to_uart(&mut uart1_tx, midi_ev, &mut running_status),
                 write_msg_to_usb(&mut usb_tx, midi_ev),
             )
             .await;
+
+            if res_uart.is_ok() {
+                last_sent = now;
+            }
         }
     };
 
