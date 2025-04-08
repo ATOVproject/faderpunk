@@ -133,7 +133,7 @@ pub async fn run(app: App<CHANNELS>) {
 
     let fut4 = async { //LED update
         loop {
-            let intencity = [50, 120, 200];
+            let intencity = [50, 100, 200];
             let colours = [
                 (243, 191, 78),
                 (188, 77, 216),
@@ -229,17 +229,22 @@ pub async fn run(app: App<CHANNELS>) {
                     }
                 }
                 //runing light on buttons
-                if (clockn % seq_length[page / 2] as usize) % 16 - (page % 2) * 8 < 8{
-                    led.set((clockn % seq_length[page / 2] as usize) % 16 - (page % 2) * 8,Led::Button,(255, 0, 0),100,);
-                    
-                    }
+                if (clockn % seq_length[page / 2] as usize) % 16 - (page % 2) * 8 < 8 {
+                        led.set((clockn % seq_length[page / 2] as usize) % 16 - (page % 2) * 8,Led::Button,(255, 0, 0),100,);
+                }
 
-                led.set(page, Led::Bottom, colour, 255);
+                led.set(page, Led::Bottom, colour, 255);                  
+                    
+                }
+
+
+                
+
+
 
                 led_flag_glob.set(false).await;
             }
-        }
-    };
+        };
 
     let fut5 = async { //sequencer functions
         loop {

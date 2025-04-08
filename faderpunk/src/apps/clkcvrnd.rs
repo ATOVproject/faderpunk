@@ -30,7 +30,7 @@ pub async fn run(mut app: App<CHANNELS>) {
 
     const LED_COLOR: (u8, u8, u8) = (188, 77, 216);
 
-    leds.set(0, Led::Button, LED_COLOR, 75);
+    leds.set(0, Led::Button, LED_COLOR, 100);
 
     let fut1 = async {
         loop {

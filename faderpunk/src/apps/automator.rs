@@ -86,7 +86,7 @@ pub async fn run(app: App<CHANNELS>) {
                 }
 
                 midi.send_cc(0, buffer[index]).await;
-                leds.set(0, Led::Button, (255, 0, 0), 75);
+                leds.set(0, Led::Button, (255, 0, 0), 100);
                 leds.set(0, Led::Top, (255, 0, 0), (buffer[index] / 32) as u8);
                 leds.set(
                     0,
@@ -112,7 +112,7 @@ pub async fn run(app: App<CHANNELS>) {
                     midi.send_cc(0, val).await;
                     last_midi = val;
                 }
-                leds.set(0, Led::Button, color, 75);
+                leds.set(0, Led::Button, color, 100);
                 leds.set(0, Led::Top, color, ((buffer[index] + offset) / 16) as u8);
                 leds.set(
                     0,

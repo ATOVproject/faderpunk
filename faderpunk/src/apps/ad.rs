@@ -43,8 +43,8 @@ let glob_curve = app.make_global([0, 0]);
     let color = [(243, 191, 78), (188, 77, 216), (78, 243, 243)];
 
     let curve = glob_curve.get().await;
-    leds.set(0, Led::Button , color[curve[0]as usize] , 75);
-    leds.set(1, Led::Button , color[curve[1]as usize] , 75);
+    leds.set(0, Led::Button , color[curve[0]as usize] , 100);
+    leds.set(1, Led::Button , color[curve[1]as usize] , 100);
 
     
 
