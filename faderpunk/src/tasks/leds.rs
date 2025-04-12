@@ -115,13 +115,13 @@ async fn run_leds_startup(ws: &mut Ws2812<Spi<'static, SPI1, Async>, Grb, { 12 *
     ws.write(final_data.iter().cloned()).await.ok();
 }
 
-pub async fn start_leds(spawner: &Spawner, spi1: Spi<'static, SPI1, Async>, x_rx: XRxReceiver) {
-    spawner.spawn(run_leds(spi1, x_rx)).unwrap();
+pub async fn start_leds(spawner: &Spawner, spi1: Spi<'static, SPI1, Async>) {
+    spawner.spawn(run_leds(spi1)).unwrap();
 }
 
 #[embassy_executor::task]
-// TODO: Implement effects (using x_rx)
-async fn run_leds(spi1: Spi<'static, SPI1, Async>, _x_rx: XRxReceiver) {
+// TODO: Implement effects (using a channel)
+async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
     let mut ws: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi1);
     let delta = 1000 / REFRESH_RATE;
 

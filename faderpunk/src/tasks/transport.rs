@@ -9,11 +9,10 @@ use embassy_usb::driver::Driver;
 use embassy_usb::{Builder, Config as UsbConfig};
 
 use embassy_rp::peripherals::{UART0, UART1};
-use embassy_rp::uart::{Async, BufferedUart, Uart, UartTx};
+use embassy_rp::uart::{Async, BufferedUart, UartTx};
 
 use super::configure::start_webusb_loop;
-// use super::configure::start_webusb_loop;
-use super::midi::{start_midi_loops, XRxReceiver};
+use super::midi::start_midi_loops;
 
 // This is a randomly generated GUID to allow clients on Windows to find our device
 const DEVICE_INTERFACE_GUIDS: &[&str] = &["{AFB9A6FB-30BA-44BC-9232-806CFC875321}"];
@@ -45,10 +44,9 @@ pub async fn start_transports(
     usb_driver: usb::Driver<'static, USB>,
     uart0: UartTx<'static, UART0, Async>,
     uart1: BufferedUart<'static, UART1>,
-    x_rx: XRxReceiver,
 ) {
     spawner
-        .spawn(run_transports(usb_driver, uart0, uart1, x_rx))
+        .spawn(run_transports(usb_driver, uart0, uart1))
         .unwrap();
 }
 
@@ -57,7 +55,6 @@ async fn run_transports(
     usb_driver: usb::Driver<'static, USB>,
     uart0: UartTx<'static, UART0, Async>,
     uart1: BufferedUart<'static, UART1>,
-    x_rx: XRxReceiver,
 ) {
     let mut usb_config = UsbConfig::new(0xf569, 0x1);
     usb_config.manufacturer = Some("ATOV");
@@ -111,7 +108,7 @@ async fn run_transports(
 
     // TODO: Can/should this be a task?
     // Maybe make all the other futs a task, then return midi_fut from here
-    let midi_fut = start_midi_loops(usb_midi, uart0, uart1, x_rx);
+    let midi_fut = start_midi_loops(usb_midi, uart0, uart1);
     let webusb_fut = start_webusb_loop(webusb);
 
     join4(usb.run(), log_fut, midi_fut, webusb_fut).await;

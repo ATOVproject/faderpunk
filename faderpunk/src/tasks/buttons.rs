@@ -1,5 +1,3 @@
-use crate::{XTxMsg, XTxSender};
-use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join_array;
 use embassy_rp::gpio::{Input, Pull};
@@ -9,6 +7,8 @@ use embassy_rp::peripherals::{
 };
 use embassy_time::Timer;
 use portable_atomic::{AtomicBool, Ordering};
+
+use crate::{HardwareEvent, EVENT_PUBSUB};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -35,16 +35,17 @@ type Buttons = (
 
 pub static BUTTON_PRESSED: [AtomicBool; 18] = [const { AtomicBool::new(false) }; 18];
 
-pub async fn start_buttons(spawner: &Spawner, buttons: Buttons, sender: XTxSender) {
-    spawner.spawn(run_buttons(buttons, sender)).unwrap();
+pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
+    spawner.spawn(run_buttons(buttons)).unwrap();
 }
 
-async fn process_button(i: usize, mut button: Input<'_>, sender: &XTxSender) {
+async fn process_button(i: usize, mut button: Input<'_>) {
+    let event_publisher = EVENT_PUBSUB.publisher().unwrap();
     loop {
         button.wait_for_falling_edge().await;
         if i <= 15 {
             // Only process the channel buttons here
-            sender.send((i, XTxMsg::ButtonDown)).await;
+            event_publisher.publish(HardwareEvent::ButtonDown(i)).await;
         } else {
             // TODO: Do we want to handle the special buttons somehow?
         }
@@ -52,6 +53,9 @@ async fn process_button(i: usize, mut button: Input<'_>, sender: &XTxSender) {
         // Debounce a bit (bounces are all in sub 1ms)
         Timer::after_millis(1).await;
         button.wait_for_rising_edge().await;
+        if i <= 15 {
+            event_publisher.publish(HardwareEvent::ButtonUp(i)).await;
+        }
         BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
         // Debounce a bit more (bounces are all in sub 1ms)
         Timer::after_millis(1).await;
@@ -59,27 +63,27 @@ async fn process_button(i: usize, mut button: Input<'_>, sender: &XTxSender) {
 }
 
 #[embassy_executor::task]
-async fn run_buttons(buttons: Buttons, sender: XTxSender) {
+async fn run_buttons(buttons: Buttons) {
     let button_futures = [
-        process_button(0, Input::new(buttons.0, Pull::Up), &sender),
-        process_button(1, Input::new(buttons.1, Pull::Up), &sender),
-        process_button(2, Input::new(buttons.2, Pull::Up), &sender),
-        process_button(3, Input::new(buttons.3, Pull::Up), &sender),
-        process_button(4, Input::new(buttons.4, Pull::Up), &sender),
-        process_button(5, Input::new(buttons.5, Pull::Up), &sender),
-        process_button(6, Input::new(buttons.6, Pull::Up), &sender),
-        process_button(7, Input::new(buttons.7, Pull::Up), &sender),
-        process_button(8, Input::new(buttons.8, Pull::Up), &sender),
-        process_button(9, Input::new(buttons.9, Pull::Up), &sender),
-        process_button(10, Input::new(buttons.10, Pull::Up), &sender),
-        process_button(11, Input::new(buttons.11, Pull::Up), &sender),
-        process_button(12, Input::new(buttons.12, Pull::Up), &sender),
-        process_button(13, Input::new(buttons.13, Pull::Up), &sender),
-        process_button(14, Input::new(buttons.14, Pull::Up), &sender),
-        process_button(15, Input::new(buttons.15, Pull::Up), &sender),
-        process_button(16, Input::new(buttons.16, Pull::Up), &sender),
+        process_button(0, Input::new(buttons.0, Pull::Up)),
+        process_button(1, Input::new(buttons.1, Pull::Up)),
+        process_button(2, Input::new(buttons.2, Pull::Up)),
+        process_button(3, Input::new(buttons.3, Pull::Up)),
+        process_button(4, Input::new(buttons.4, Pull::Up)),
+        process_button(5, Input::new(buttons.5, Pull::Up)),
+        process_button(6, Input::new(buttons.6, Pull::Up)),
+        process_button(7, Input::new(buttons.7, Pull::Up)),
+        process_button(8, Input::new(buttons.8, Pull::Up)),
+        process_button(9, Input::new(buttons.9, Pull::Up)),
+        process_button(10, Input::new(buttons.10, Pull::Up)),
+        process_button(11, Input::new(buttons.11, Pull::Up)),
+        process_button(12, Input::new(buttons.12, Pull::Up)),
+        process_button(13, Input::new(buttons.13, Pull::Up)),
+        process_button(14, Input::new(buttons.14, Pull::Up)),
+        process_button(15, Input::new(buttons.15, Pull::Up)),
+        process_button(16, Input::new(buttons.16, Pull::Up)),
         // Button 17 is pulled up in hardware
-        process_button(17, Input::new(buttons.17, Pull::None), &sender),
+        process_button(17, Input::new(buttons.17, Pull::None)),
     ];
 
     join_array(button_futures).await;
