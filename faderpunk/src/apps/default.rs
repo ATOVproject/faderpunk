@@ -1,7 +1,7 @@
 use config::{Config, Curve, Param};
 use embassy_futures::join::join3;
 
-use crate::app::{App, Led, Range, StorageSlot};
+use crate::app::{App, AppConfig, Led, Range, StorageSlot};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 3;
@@ -24,7 +24,8 @@ const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
 pub async fn run(app: App<CHANNELS>) {
-    let config = CONFIG.as_runtime_config().await;
+    // FIXME: This needs to be done in the macro
+    let config = AppConfig::from(&CONFIG);
     // TODO: Maybe rename: get_curve_from_param(idx)
     let curve = config.get_curve_at(0);
     let midi_channel = config.get_int_at(1) as u8;

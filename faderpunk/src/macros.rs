@@ -50,7 +50,7 @@ macro_rules! register_apps {
             match app_id {
                 $(
                     $id => {
-                        $app_mod::CONFIG.get_meta()
+                        $app_mod::CONFIG.get()
                     },
                 )*
                 _ => panic!("Unknown app ID: {}", app_id),

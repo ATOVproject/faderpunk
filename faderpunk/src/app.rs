@@ -18,7 +18,7 @@ use portable_atomic::Ordering;
 use postcard::{from_bytes, to_slice, to_vec};
 use rand::Rng;
 
-use config::Curve;
+use config::{Config, Curve, Value, Waveform};
 use libfp::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
     utils::scale_bits_12_7,
@@ -51,6 +51,67 @@ pub enum Led {
     Top,
     Bottom,
     Button,
+}
+
+pub struct AppConfig<const N: usize> {
+    values: [Value; N],
+}
+
+impl<const N: usize> AppConfig<N> {
+    pub fn from(config: &Config<N>) -> Self {
+        let values = config.get_default_values();
+        Self { values }
+    }
+
+    fn value(&self, index: usize) -> Option<&Value> {
+        if index < self.values.len() {
+            Some(&self.values[index])
+        } else {
+            None
+        }
+    }
+
+    pub fn get_int_at(&self, index: usize) -> i32 {
+        match self.value(index) {
+            Some(Value::Int(val)) => *val,
+            _ => 0,
+        }
+    }
+
+    pub fn get_float_at(&self, index: usize) -> f32 {
+        match self.value(index) {
+            Some(Value::Float(val)) => *val,
+            _ => 0.0,
+        }
+    }
+
+    pub fn get_bool_at(&self, index: usize) -> bool {
+        match self.value(index) {
+            Some(Value::Bool(val)) => *val,
+            _ => false,
+        }
+    }
+
+    pub fn get_enum_at(&self, index: usize) -> usize {
+        match self.value(index) {
+            Some(Value::Enum(val)) => *val,
+            _ => 0,
+        }
+    }
+
+    pub fn get_curve_at(&self, index: usize) -> Curve {
+        match self.value(index) {
+            Some(Value::Curve(val)) => *val,
+            _ => Curve::Linear,
+        }
+    }
+
+    pub fn get_waveform_at(&self, index: usize) -> Waveform {
+        match self.value(index) {
+            Some(Value::Waveform(val)) => *val,
+            _ => Waveform::Sine,
+        }
+    }
 }
 
 #[repr(u8)]
@@ -437,7 +498,7 @@ pub struct GlobalWithStorage<T: Sized + Copy + Default> {
     app_id: u8,
     inner: Global<T>,
     start_channel: u8,
-    storage_slot: StorageSlot,
+    storage_slot: u8,
     sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 }
 
@@ -453,7 +514,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
             app_id,
             start_channel,
             inner: Global::new(initial),
-            storage_slot,
+            storage_slot: storage_slot as u8,
             sender,
         }
     }
@@ -484,7 +545,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
         self.sender
             .send((
                 self.start_channel as usize,
-                XRxMsg::StorageMsg(StorageMsg::Store(self.app_id, self.storage_slot as u8, ser)),
+                XRxMsg::StorageMsg(StorageMsg::Store(self.app_id, self.storage_slot, ser)),
             ))
             .await;
     }
@@ -493,7 +554,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
         self.sender
             .send((
                 self.start_channel as usize,
-                XRxMsg::StorageMsg(StorageMsg::Request(self.app_id, self.storage_slot as u8)),
+                XRxMsg::StorageMsg(StorageMsg::Request(self.app_id, self.storage_slot)),
             ))
             .await;
         // Make this timeout roughly as long as the boot sequence ;)
@@ -503,7 +564,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
                 if let (_, XTxMsg::StorageMsg(StorageMsg::Read(app_id, storage_slot, res))) =
                     subscriber.next_message_pure().await
                 {
-                    if self.app_id == app_id && self.storage_slot as u8 == storage_slot {
+                    if self.app_id == app_id && self.storage_slot == storage_slot {
                         self.des(res.as_slice()).await;
                         return;
                     }

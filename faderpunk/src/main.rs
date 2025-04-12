@@ -190,11 +190,6 @@ impl Layout {
     }
 }
 
-// TODO: create config builder to create full 16 channel layout with various apps
-// The app at some point needs access to the MAX to configure it. Maybe this can happen via
-// CHANNEL?
-// Builder config needs to be serializable to store in eeprom
-
 // App slots
 #[embassy_executor::task(pool_size = 16)]
 async fn run_app(
@@ -216,6 +211,10 @@ async fn run_app(
     CORE1_TASKS[start_channel].store(false, Ordering::Relaxed);
     info!("App {} on channel {} stopped", number, start_channel)
 }
+
+// FIXME: Todo NEXT:
+// Create a spawn app function that combines the pubsub, the cancel, the global config change and
+// the app config change into one
 
 // Cross core comms
 #[embassy_executor::task]

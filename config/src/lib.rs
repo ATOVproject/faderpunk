@@ -174,41 +174,18 @@ impl<const N: usize> Config<N> {
         }
     }
 
-    pub fn get_meta(&self) -> (&str, &str, &[Param]) {
+    pub fn get(&self) -> (&str, &str, &[Param]) {
         (self.name, self.description, &self.params)
     }
 
-    // Create a function that returns a RuntimeConfig with values from EEPROM
-    pub async fn as_runtime_config(&self) -> RuntimeConfig<N> {
-        // TODO: Read stored values from EEPROM
-        let stored_values = [Value::None; 4];
-
-        // Create default values
-        let default_values = core::array::from_fn(|i| {
+    pub fn get_default_values(&self) -> [Value; N] {
+        core::array::from_fn(|i| {
             if i < self.len {
                 self.params[i].default()
             } else {
                 Value::None
             }
-        });
-
-        // Merge stored values with defaults
-        let values = core::array::from_fn(|i| {
-            if i < self.len {
-                match stored_values[i] {
-                    Value::None => default_values[i],
-                    _ => stored_values[i],
-                }
-            } else {
-                Value::None
-            }
-        });
-
-        RuntimeConfig {
-            len: self.len,
-            values,
-            default_values,
-        }
+        })
     }
 }
 
@@ -273,47 +250,6 @@ impl<const N: usize> RuntimeConfig<N> {
     }
 
     // Helper methods for common value types - return default values instead of Options
-    pub fn get_int_at(&self, index: usize) -> i32 {
-        match self.value(index) {
-            Some(Value::Int(val)) => *val,
-            _ => 0,
-        }
-    }
-
-    pub fn get_float_at(&self, index: usize) -> f32 {
-        match self.value(index) {
-            Some(Value::Float(val)) => *val,
-            _ => 0.0,
-        }
-    }
-
-    pub fn get_bool_at(&self, index: usize) -> bool {
-        match self.value(index) {
-            Some(Value::Bool(val)) => *val,
-            _ => false,
-        }
-    }
-
-    pub fn get_enum_at(&self, index: usize) -> usize {
-        match self.value(index) {
-            Some(Value::Enum(val)) => *val,
-            _ => 0,
-        }
-    }
-
-    pub fn get_curve_at(&self, index: usize) -> Curve {
-        match self.value(index) {
-            Some(Value::Curve(val)) => *val,
-            _ => Curve::Linear,
-        }
-    }
-
-    pub fn get_waveform_at(&self, index: usize) -> Waveform {
-        match self.value(index) {
-            Some(Value::Waveform(val)) => *val,
-            _ => Waveform::Sine,
-        }
-    }
 }
 
 // Helper function to check if two values are of the same type
