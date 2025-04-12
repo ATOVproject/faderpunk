@@ -1,4 +1,5 @@
 use config::{Config, Curve, Param};
+use defmt::info;
 use embassy_futures::join::join3;
 
 use crate::app::{App, AppConfig, Led, Range, StorageSlot};

@@ -2,30 +2,30 @@ use config::{ClockSrc, GlobalConfig};
 use defmt::info;
 use embassy_futures::join::{join, join4};
 use embassy_rp::peripherals::USB;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::channel::Receiver;
+use embassy_sync::blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex};
+use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{with_timeout, Duration, Instant, TimeoutError};
 use embassy_usb::class::midi::{MidiClass, Sender};
 use embedded_io_async::{Read, Write};
 
 use embassy_rp::peripherals::{UART0, UART1};
-use embassy_rp::uart::{Async, BufferedUart, BufferedUartTx, Error as UartError, Uart, UartTx};
+use embassy_rp::uart::{Async, BufferedUart, BufferedUartTx, Error as UartError, UartTx};
 use embassy_rp::usb::Driver;
 use midly::io::Cursor;
 use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
 use midly::stream::MidiStream;
 use midly::MidiMessage;
 
-use crate::{CLOCK_WATCH, WATCH_CONFIG_CHANGE};
+use crate::{CLOCK_WATCH, CONFIG_CHANGE_WATCH};
 
 midly::stack_buffer! {
     struct UartRxBuffer([u8; 3]);
 }
 
-pub type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, LiveEvent<'static>), 64>;
-
 const RUNNING_STATUS_DEBOUNCE: Duration = Duration::from_millis(200);
+
+pub static MIDI_CHANNEL: Channel<ThreadModeRawMutex, LiveEvent<'_>, 16> = Channel::new();
 
 #[derive(Copy, Clone)]
 enum CodeIndexNumber {
@@ -100,13 +100,12 @@ pub async fn start_midi_loops<'a>(
     usb_midi: MidiClass<'a, Driver<'a, USB>>,
     uart0: UartTx<'static, UART0, Async>,
     uart1: BufferedUart<'static, UART1>,
-    x_rx: XRxReceiver,
 ) {
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
     let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, UART0, Async>> = Mutex::new(uart0);
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
     let clock_sender = CLOCK_WATCH.sender();
-    let mut config_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
+    let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     let initial_config = config_receiver.get().await;
     let config: Mutex<NoopRawMutex, GlobalConfig> = Mutex::new(initial_config);
 
@@ -119,7 +118,7 @@ pub async fn start_midi_loops<'a>(
         let mut last_sent = Instant::now();
 
         loop {
-            let (_chan, midi_ev) = x_rx.receive().await;
+            let midi_ev = MIDI_CHANNEL.receive().await;
 
             let now = Instant::now();
             if now.saturating_duration_since(last_sent) >= RUNNING_STATUS_DEBOUNCE {

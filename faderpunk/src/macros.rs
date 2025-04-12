@@ -4,10 +4,8 @@ macro_rules! register_apps {
             mod $app_mod;
         )*
 
-        use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-        use embassy_sync::channel::Sender;
         use config::Param;
-        use crate::XRxMsg;
+        use crate::{CMD_CHANNEL, EVENT_PUBSUB};
 
         const _APP_COUNT: usize = {
             let mut count = 0;
@@ -24,12 +22,17 @@ macro_rules! register_apps {
         pub async fn run_app_by_id(
             app_id: usize,
             start_channel: usize,
-            sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
         ) {
             match app_id {
                 $(
                     $id => {
-                        let app = App::<{ $app_mod::CHANNELS }>::new(app_id, start_channel, sender);
+                        let sender = CMD_CHANNEL.sender();
+                        let app = App::<{ $app_mod::CHANNELS }>::new(
+                            app_id,
+                            start_channel,
+                            sender,
+                            &EVENT_PUBSUB
+                        );
                         $app_mod::run(app).await;
                     },
                 )*
