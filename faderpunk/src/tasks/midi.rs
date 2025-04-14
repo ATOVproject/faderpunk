@@ -1,4 +1,3 @@
-use config::{ClockSrc, GlobalConfig};
 use defmt::info;
 use embassy_futures::join::{join, join4};
 use embassy_rp::peripherals::USB;
@@ -17,7 +16,7 @@ use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
 use midly::stream::MidiStream;
 use midly::MidiMessage;
 
-use crate::{CLOCK_WATCH, CONFIG_CHANGE_WATCH};
+use crate::{ClockSrc, GlobalConfig, CLOCK_WATCH, CONFIG_CHANGE_WATCH};
 
 midly::stack_buffer! {
     struct UartRxBuffer([u8; 3]);

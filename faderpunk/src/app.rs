@@ -1,23 +1,18 @@
-use defmt::info;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
-    channel::Sender,
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
     mutex::Mutex,
     watch::Receiver,
 };
 use embassy_time::{with_timeout, Duration, Timer};
 use heapless::Vec;
-use max11300::{
-    config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES},
-    ConfigurePort,
-};
+use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
 use postcard::{from_bytes, to_slice};
 use rand::Rng;
 
-use config::{Config, Curve, Value, Waveform};
+use config::Curve;
 use libfp::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
     utils::scale_bits_12_7,
@@ -28,9 +23,9 @@ use serde::{
 };
 
 use crate::{
+    storage::{StorageCmd, StorageEvent, DATA_LENGTH},
     tasks::{
         buttons::BUTTON_PRESSED,
-        eeprom::{StorageCmd, StorageEvent, DATA_LENGTH},
         leds::LED_VALUES,
         max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
@@ -38,11 +33,11 @@ use crate::{
 };
 
 pub enum Range {
-    // 0 - 10V
+    /// 0 - 10V
     _0_10V,
-    // 0 - 5V
+    /// 0 - 5V
     _0_5V,
-    // -5 - 5V
+    /// -5 - 5V
     _Neg5_5V,
 }
 
@@ -52,79 +47,79 @@ pub enum Led {
     Button,
 }
 
-pub struct AppConfig<const N: usize> {
-    values: [Value; N],
-}
+// pub struct AppConfig<const N: usize> {
+//     values: [Value; N],
+// }
+//
+// impl<const N: usize> AppConfig<N> {
+//     pub fn from(config: &Config<N>) -> Self {
+//         let values = config.get_default_values();
+//         Self { values }
+//     }
+//
+//     fn value(&self, index: usize) -> Option<&Value> {
+//         if index < self.values.len() {
+//             Some(&self.values[index])
+//         } else {
+//             None
+//         }
+//     }
+//
+//     pub fn get_int_at(&self, index: usize) -> i32 {
+//         match self.value(index) {
+//             Some(Value::Int(val)) => *val,
+//             _ => 0,
+//         }
+//     }
+//
+//     pub fn get_float_at(&self, index: usize) -> f32 {
+//         match self.value(index) {
+//             Some(Value::Float(val)) => *val,
+//             _ => 0.0,
+//         }
+//     }
+//
+//     pub fn get_bool_at(&self, index: usize) -> bool {
+//         match self.value(index) {
+//             Some(Value::Bool(val)) => *val,
+//             _ => false,
+//         }
+//     }
+//
+//     pub fn get_enum_at(&self, index: usize) -> usize {
+//         match self.value(index) {
+//             Some(Value::Enum(val)) => *val,
+//             _ => 0,
+//         }
+//     }
+//
+//     pub fn get_curve_at(&self, index: usize) -> Curve {
+//         match self.value(index) {
+//             Some(Value::Curve(val)) => *val,
+//             _ => Curve::Linear,
+//         }
+//     }
+//
+//     pub fn get_waveform_at(&self, index: usize) -> Waveform {
+//         match self.value(index) {
+//             Some(Value::Waveform(val)) => *val,
+//             _ => Waveform::Sine,
+//         }
+//     }
+// }
 
-impl<const N: usize> AppConfig<N> {
-    pub fn from(config: &Config<N>) -> Self {
-        let values = config.get_default_values();
-        Self { values }
-    }
-
-    fn value(&self, index: usize) -> Option<&Value> {
-        if index < self.values.len() {
-            Some(&self.values[index])
-        } else {
-            None
-        }
-    }
-
-    pub fn get_int_at(&self, index: usize) -> i32 {
-        match self.value(index) {
-            Some(Value::Int(val)) => *val,
-            _ => 0,
-        }
-    }
-
-    pub fn get_float_at(&self, index: usize) -> f32 {
-        match self.value(index) {
-            Some(Value::Float(val)) => *val,
-            _ => 0.0,
-        }
-    }
-
-    pub fn get_bool_at(&self, index: usize) -> bool {
-        match self.value(index) {
-            Some(Value::Bool(val)) => *val,
-            _ => false,
-        }
-    }
-
-    pub fn get_enum_at(&self, index: usize) -> usize {
-        match self.value(index) {
-            Some(Value::Enum(val)) => *val,
-            _ => 0,
-        }
-    }
-
-    pub fn get_curve_at(&self, index: usize) -> Curve {
-        match self.value(index) {
-            Some(Value::Curve(val)) => *val,
-            _ => Curve::Linear,
-        }
-    }
-
-    pub fn get_waveform_at(&self, index: usize) -> Waveform {
-        match self.value(index) {
-            Some(Value::Waveform(val)) => *val,
-            _ => Waveform::Sine,
-        }
-    }
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy)]
-pub enum StorageSlot {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-}
+// #[repr(u8)]
+// #[derive(Clone, Copy)]
+// pub enum StorageSlot {
+//     A,
+//     B,
+//     C,
+//     D,
+//     E,
+//     F,
+//     G,
+//     H,
+// }
 
 #[derive(Clone, Copy)]
 pub struct Arr<T: Sized + Copy + Default, const N: usize>(pub [T; N]);
@@ -504,7 +499,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
         app_id: u8,
         initial: T,
         start_channel: usize,
-        storage_slot: StorageSlot,
+        storage_slot: u8,
         cmd_sender: CmdSender,
         event_pubsub: &'static EventPubSubChannel,
     ) -> Self {
@@ -548,6 +543,8 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
             ))
             .await;
     }
+
+    // FIXME: Add load_on_next_reset ??? How to change scene
 
     pub async fn load(&mut self) {
         self.cmd_sender
@@ -646,7 +643,7 @@ impl<const N: usize> App<N> {
     pub fn make_global_with_store<T: Sized + Copy + Default + Serialize + DeserializeOwned>(
         &self,
         initial: T,
-        storage_slot: StorageSlot,
+        storage_slot: u8,
     ) -> GlobalWithStorage<T> {
         GlobalWithStorage::new(
             self.app_id as u8,

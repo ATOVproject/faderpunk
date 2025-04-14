@@ -171,18 +171,20 @@ export default function IndexPage() {
     if (result.tag === "BatchMsgStart") {
       const results = await receiveBatchMessages(usbDevice, result.value);
 
-      const appConfigs = results
-        .filter(
-          (res): res is Extract<ConfigMsgOut, { tag: "AppConfig" }> =>
-            res.tag === "AppConfig",
-        )
-        .map(({ value }) => ({
-          name: value[0],
-          description: value[1],
-          params: value[2] as ValidParam[],
-        }));
+      console.log(results);
 
-      setApps(appConfigs);
+      // const appConfigs = results
+      //   .filter(
+      //     (res): res is Extract<ConfigMsgOut, { tag: "AppConfig" }> =>
+      //       res.tag === "AppConfig",
+      //   )
+      //   .map(({ value }) => ({
+      //     name: value[0],
+      //     description: value[1],
+      //     params: value[2] as ValidParam[],
+      //   }));
+      //
+      // setApps(appConfigs);
     }
   }, []);
 

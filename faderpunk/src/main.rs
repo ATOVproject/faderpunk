@@ -6,10 +6,13 @@ mod macros;
 
 mod app;
 mod apps;
+pub mod storage;
 mod tasks;
 
+use config::{Value, MAX_APP_PARAMS};
 use defmt::info;
 use embassy_executor::{Executor, Spawner};
+use embassy_futures::join::join;
 use embassy_futures::select::select;
 use embassy_rp::clocks::ClockConfig;
 use embassy_rp::config::Config;
@@ -23,8 +26,9 @@ use embassy_rp::{
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::{Channel, Sender};
+use embassy_sync::mutex::Mutex;
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_sync::watch::Watch;
 use embassy_time::{Delay, Timer};
@@ -32,7 +36,8 @@ use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
 use heapless::Vec;
-use tasks::eeprom::{StorageCmd, StorageEvent, EEPROM_CHANNEL};
+use storage::{StorageCmd, StorageEvent};
+use tasks::eeprom::EEPROM_CHANNEL;
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
@@ -42,7 +47,6 @@ use static_cell::StaticCell;
 use at24cx::{Address, At24Cx};
 
 use apps::{get_channels, run_app_by_id};
-use config::{ClockSrc, GlobalConfig};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -86,23 +90,58 @@ pub enum HardwareCmd {
     StorageCmd(usize, StorageCmd),
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum ClockSrc {
+    None,
+    Atom,
+    Meteor,
+    Cube,
+    Internal,
+    MidiIn,
+    MidiUsb,
+}
+
+#[derive(Clone, Copy)]
+pub struct GlobalConfig<'a> {
+    pub clock_src: ClockSrc,
+    pub reset_src: ClockSrc,
+    pub layout: &'a [usize],
+}
+
+impl Default for GlobalConfig<'_> {
+    fn default() -> Self {
+        Self {
+            clock_src: ClockSrc::Internal,
+            reset_src: ClockSrc::None,
+            layout: &[1; 16],
+        }
+    }
+}
+
 pub const CMD_CHANNEL_SIZE: usize = 16;
 pub const EVENT_PUBSUB_SIZE: usize = 64;
+// Buttons (18) + MAX (1) + EEPROM (1)
+pub const EVENT_PUBSUB_PUBLISHERS: usize = 20;
 
 // TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
 // mention all uses
 pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
-pub type EventPubSubChannel =
-    PubSubChannel<CriticalSectionRawMutex, HardwareEvent, EVENT_PUBSUB_SIZE, 32, 21>;
+pub type EventPubSubChannel = PubSubChannel<
+    CriticalSectionRawMutex,
+    HardwareEvent,
+    EVENT_PUBSUB_SIZE,
+    32,
+    EVENT_PUBSUB_PUBLISHERS,
+>;
 pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
 pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE> =
     Channel::new();
 pub type CmdSender = Sender<'static, CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE>;
 
-/// Tasks (apps) that are currently running (number 17 is the publisher task)
-static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
+/// Apps that are currently running
+static RUNNING_APPS: [AtomicBool; 16] = [const { AtomicBool::new(false) }; 16];
 
 /// MIDI buffers (RX and TX)
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
@@ -147,22 +186,28 @@ impl Layout {
     }
 }
 
+// FIXME: Rename
+async fn app_orchestrator() {}
+
 // App slots
 #[embassy_executor::task(pool_size = 16)]
 async fn run_app(number: usize, start_channel: usize) {
-    // INFO: This _should_ be properly dropped when task ends
-    let mut cancel_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
-    // TODO: Is the first value always new?
-    let _ = cancel_receiver.changed().await;
+    let mut global_config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
 
-    let run_app_fut = async {
-        CORE1_TASKS[start_channel].store(true, Ordering::Relaxed);
-        run_app_by_id(number, start_channel).await;
-    };
+    join(run_app_by_id(number, start_channel), app_orchestrator()).await;
 
-    select(run_app_fut, cancel_receiver.changed()).await;
-    CORE1_TASKS[start_channel].store(false, Ordering::Relaxed);
-    info!("App {} on channel {} stopped", number, start_channel)
+    // let mut cancel_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
+    // // TODO: Is the first value always new?
+    // let _ = cancel_receiver.changed().await;
+    //
+    // let run_app_fut = async {
+    //     RUNNING_APPS[start_channel].store(true, Ordering::Relaxed);
+    //     run_app_by_id(number, start_channel).await;
+    // };
+    //
+    // select(run_app_fut, cancel_receiver.changed()).await;
+    // RUNNING_APPS[start_channel].store(false, Ordering::Relaxed);
+    // info!("App {} on channel {} stopped", number, start_channel)
 }
 
 // FIXME: Todo NEXT:
@@ -178,7 +223,7 @@ async fn main_core1(spawner: Spawner) {
 
         // Check if all tasks are properly exited
         loop {
-            if CORE1_TASKS.iter().all(|val| !val.load(Ordering::Relaxed)) {
+            if RUNNING_APPS.iter().all(|val| !val.load(Ordering::Relaxed)) {
                 break;
             }
             // yield to give apps time to close

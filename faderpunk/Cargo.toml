@@ -43,6 +43,8 @@ heapless = "0.7"
 log = "0.4"
 max11300 = "0.4"
 midly = { version = "0.5", default-features = false }
+minicbor = "0.26.4"
+minicbor-serde = "0.4.1"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 pio = "0.3"
 portable-atomic = { version = "1.11", features = ["critical-section"] }

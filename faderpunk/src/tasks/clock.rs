@@ -11,8 +11,7 @@ use embassy_sync::{
 };
 use embassy_time::Ticker;
 
-use crate::{Spawner, CLOCK_WATCH, CONFIG_CHANGE_WATCH};
-use config::ClockSrc;
+use crate::{ClockSrc, Spawner, CLOCK_WATCH, CONFIG_CHANGE_WATCH};
 use libfp::utils::bpm_to_clock_duration;
 
 type AuxInputs = (PIN_1, PIN_2, PIN_3);

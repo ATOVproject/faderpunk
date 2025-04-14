@@ -6,38 +6,11 @@ use serde::{Deserialize, Serialize};
 use libfp::constants::{WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SINE, WAVEFORM_TRIANGLE};
 
 /// Maximum number of params per app
-pub const MAX_PARAMS: usize = 16;
+pub const MAX_APP_PARAMS: usize = 16;
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum ClockSrc {
-    None,
-    Atom,
-    Meteor,
-    Cube,
-    Internal,
-    MidiIn,
-    MidiUsb,
-}
-
-#[derive(Clone, Copy)]
-pub struct GlobalConfig<'a> {
-    pub clock_src: ClockSrc,
-    pub reset_src: ClockSrc,
-    pub layout: &'a [usize],
-}
-
-impl Default for GlobalConfig<'_> {
-    fn default() -> Self {
-        Self {
-            clock_src: ClockSrc::Internal,
-            reset_src: ClockSrc::None,
-            layout: &[1; 16],
-        }
-    }
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Default, Serialize, Deserialize, PostcardBindings)]
 pub enum Curve {
+    #[default]
     Linear,
     Exponential,
     Logarithmic,
@@ -77,47 +50,27 @@ pub enum Param {
     None,
     Int {
         name: &'static str,
-        default: i32,
         min: usize,
         max: usize,
     },
     Float {
         name: &'static str,
-        default: f32,
     },
     Bool {
         name: &'static str,
-        default: bool,
     },
     Enum {
         name: &'static str,
-        default: usize,
         variants: &'static [&'static str],
     },
     Curve {
         name: &'static str,
-        default: Curve,
         variants: &'static [Curve],
     },
     Waveform {
         name: &'static str,
-        default: Waveform,
         variants: &'static [Waveform],
     },
-}
-
-impl Param {
-    fn default(&self) -> Value {
-        match &self {
-            Param::None => Value::None,
-            Param::Int { default, .. } => Value::Int(*default),
-            Param::Float { default, .. } => Value::Float(*default),
-            Param::Bool { default, .. } => Value::Bool(*default),
-            Param::Curve { default, .. } => Value::Curve(*default),
-            Param::Waveform { default, .. } => Value::Waveform(*default),
-            Param::Enum { default, .. } => Value::Enum(*default),
-        }
-    }
 }
 
 #[derive(Clone, Copy, Deserialize, PostcardBindings)]
@@ -137,12 +90,12 @@ pub enum ConfigMsgIn {
     GetApps,
 }
 
-#[derive(Clone, Copy, Serialize, PostcardBindings)]
+#[derive(Clone, Serialize, PostcardBindings)]
 pub enum ConfigMsgOut<'a> {
     Pong,
     BatchMsgStart(usize),
     BatchMsgEnd,
-    AppConfig((&'a str, &'a str, &'a [Param])),
+    AppConfig((&'a str, &'a str, Option<&'a [Param]>, Option<&'a [u8]>)),
 }
 
 pub struct Config<const N: usize> {
@@ -154,7 +107,7 @@ pub struct Config<const N: usize> {
 
 impl<const N: usize> Config<N> {
     pub const fn new(name: &'static str, description: &'static str) -> Self {
-        assert!(N <= MAX_PARAMS, "Too many params");
+        assert!(N <= MAX_APP_PARAMS, "Too many params");
         Config {
             description,
             len: 0,
@@ -178,15 +131,15 @@ impl<const N: usize> Config<N> {
         (self.name, self.description, &self.params)
     }
 
-    pub fn get_default_values(&self) -> [Value; N] {
-        core::array::from_fn(|i| {
-            if i < self.len {
-                self.params[i].default()
-            } else {
-                Value::None
-            }
-        })
-    }
+    // pub fn get_default_values(&self) -> [Value; N] {
+    //     core::array::from_fn(|i| {
+    //         if i < self.len {
+    //             self.params[i].default()
+    //         } else {
+    //             Value::None
+    //         }
+    //     })
+    // }
 }
 
 pub struct RuntimeConfig<const N: usize> {

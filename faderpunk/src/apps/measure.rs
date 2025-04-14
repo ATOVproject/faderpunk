@@ -8,6 +8,8 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Measure", "Test app to measure port voltages");
 
+no_params!();
+
 pub async fn run(app: App<CHANNELS>) {
     let mut die = app.use_die();
     let fut1 = async {

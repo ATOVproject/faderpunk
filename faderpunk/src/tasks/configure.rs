@@ -1,4 +1,5 @@
 use cobs::{decode_in_place, try_encode};
+use defmt::info;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, Endpoint as UsbEndpoint, In, Out};
 use embassy_time::{with_timeout, Duration};
@@ -6,9 +7,9 @@ use embassy_usb::driver::{Endpoint, EndpointIn, EndpointOut};
 use heapless::Vec;
 use postcard::{from_bytes, to_vec};
 
-use config::{ConfigMsgIn, ConfigMsgOut};
+use config::{ConfigMsgIn, ConfigMsgOut, Value, MAX_APP_PARAMS};
 
-use crate::apps::{get_config, REGISTERED_APP_IDS};
+use crate::apps::{get_params, serialize_values, REGISTERED_APP_IDS};
 
 use super::transport::WebEndpoints;
 
@@ -32,8 +33,6 @@ pub enum ProtocolError {
     MessageTooLarge,
     DecodingError,
     EncodingError,
-    InvalidMessageType,
-    IncompleteMessage,
     TransmissionError,
     CorruptedMessage,
     Timeout,
@@ -43,9 +42,9 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
     let mut proto = ConfigProtocol::new(webusb);
     // TODO: think about sending apps individually to save on buffer size
     // Then add batching to messages (message x/y) to the header
-    let app_list = REGISTERED_APP_IDS.map(get_config);
 
     proto.wait_enabled().await;
+    // FIXME: Also get the current layout of all apps
     loop {
         // Test: send some app config to parse on the client side
         let msg = proto.read_msg().await.unwrap();
@@ -55,11 +54,29 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             }
             ConfigMsgIn::GetApps => {
                 proto
-                    .send_msg(ConfigMsgOut::BatchMsgStart(app_list.len()))
+                    .send_msg(ConfigMsgOut::BatchMsgStart(REGISTERED_APP_IDS.len()))
                     .await
                     .unwrap();
-                for app in app_list {
-                    proto.send_msg(ConfigMsgOut::AppConfig(app)).await.unwrap();
+
+                // TODO: Size
+                let mut values_buf: [u8; 256] = [0; 256];
+                info!("VALUES BUF SIZE: {}", values_buf.len());
+
+                for app_id in REGISTERED_APP_IDS {
+                    let name = "Test app";
+                    let description = "Test description";
+                    let params = get_params(app_id);
+                    let values = serialize_values(app_id, &mut values_buf).await;
+
+                    proto
+                        .send_msg(ConfigMsgOut::AppConfig((
+                            name,
+                            description,
+                            params.as_ref().map(|v| v.as_slice()),
+                            values,
+                        )))
+                        .await
+                        .unwrap();
                 }
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }

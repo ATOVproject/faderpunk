@@ -9,6 +9,8 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new("LFO", "Wooooosh");
 
+no_params!();
+
 pub async fn run(app: App<CHANNELS>) {
     let glob_wave = app.make_global(Waveform::Sine);
     let glob_lfo_speed = app.make_global(0.0682);

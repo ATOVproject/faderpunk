@@ -1,43 +1,115 @@
 use config::{Config, Curve, Param};
-use defmt::info;
 use embassy_futures::join::join3;
 
-use crate::app::{App, AppConfig, Led, Range, StorageSlot};
+use crate::app::{App, Led, Range};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 3;
 
 // TODO: How to add param for midi-cc base number that it just works as a default?
-pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
-    .add_param(Param::Curve {
+pub static CONFIG: Config<0> = Config::new("Default", "16n vibes plus mute buttons");
+
+config_params!(
+    PARAM_CURVE => (0, Curve, Param::Curve {
         name: "Curve",
-        default: Curve::Linear,
         variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-    })
-    .add_param(Param::Int {
+    }, Curve::Linear),
+    PARAM_MIDI_CHANNEL => (1, u8, Param::Int {
         name: "Midi channel",
-        default: 0,
         min: 0,
         max: 15,
-    });
+    }, 0),
+);
+//
+// static STORAGE_SLOT_0: StorageSlot<Curve> = StorageSlot::new(
+//     0,
+//     Param::Curve {
+//         name: "Curve",
+//         variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+//     },
+//     Curve::Linear,
+// );
+// static STORAGE_SLOT_1: StorageSlot<i32> = StorageSlot::new(
+//     1,
+//     Param::Int {
+//         name: "Midi channel",
+//         min: 0,
+//         max: 15,
+//     },
+//     0,
+// );
+//
+// // FIXME:
+// //
+// // Maybe have something like
+// // ```rust
+// // config_params!(
+// //   PARAM_CURVE => (Curve, Param::Curve { ... }, Curve::Linear)
+// // )
+// // ```
+//
+// pub async fn storage_listener(app_id: u8, start_channel: usize) {
+//     let mut subscriber = APP_STORAGE_WATCHES[start_channel].receiver().unwrap();
+//     loop {
+//         if let StorageEvent::Read(storage_app_id, storage_slot, res) = subscriber.changed().await {
+//             if app_id != storage_app_id {
+//                 continue;
+//             }
+//             match storage_slot {
+//                 0 => STORAGE_SLOT_0.des(&res).await,
+//                 1 => STORAGE_SLOT_1.des(&res).await,
+//                 _ => {}
+//             }
+//         }
+//     }
+// }
+//
+// pub fn get_params() -> Vec<Param, 8> {
+//     let mut params = Vec::new();
+//     params.push(STORAGE_SLOT_0.param);
+//     params.push(STORAGE_SLOT_1.param);
+//     params
+// }
+//
+// pub async fn get_all_storage_values() -> (Curve, i32) {
+//     (
+//         *STORAGE_SLOT_0.inner.lock().await,
+//         *STORAGE_SLOT_1.inner.lock().await,
+//     )
+// }
+//
+// pub async fn serialize_app_state_to_slice<'buf>(
+//     buffer: &'buf mut [u8],
+// ) -> Result<(), PostcardError> {
+//     let current_state_tuple = get_all_storage_values().await;
+//     to_slice(&current_state_tuple, buffer);
+//     Ok(())
+// }
+
+// FIXME: START HERE!!!!!
+// Start with implementing the get_app_storage_state and serialization functions for this case to
+// see if it works
+//
+// FIXME: Make sure we rename STORAGE_SLOTs to something PARAM_0 or something like that
+// FIXME: We can then do things like let curve = PARAM_0.as_global();
+
+// FIXME: We can then do things like
+// app.make_global_with_store(STORAGE_SLOT_0, false);
+// Actually we don't really need to specify the storage slots like that
+// Just make sure GlobalWithStorage uses StorageSlots internally
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
 pub async fn run(app: App<CHANNELS>) {
-    // FIXME: This needs to be done in the macro
-    let config = AppConfig::from(&CONFIG);
-    // TODO: Maybe rename: get_curve_from_param(idx)
-    let curve = config.get_curve_at(0);
-    let midi_channel = config.get_int_at(1) as u8;
+    let curve = Curve::Linear;
+    let midi_channel = 0;
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
     let midi = app.use_midi(midi_channel);
 
-    let mut glob_muted = app.make_global_with_store(false, StorageSlot::A);
-    glob_muted.load().await;
+    let glob_muted = app.make_global(false);
 
     let muted = glob_muted.get().await;
     leds.set(
@@ -74,7 +146,6 @@ pub async fn run(app: App<CHANNELS>) {
         loop {
             buttons.wait_for_down(0).await;
             let muted = glob_muted.toggle().await;
-            glob_muted.save().await;
             if muted {
                 leds.set(0, Led::Button, LED_COLOR, 0);
                 jack.set_value(0);

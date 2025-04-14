@@ -7,6 +7,8 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Trigger", "Test app to test the clock and GPOs");
 
+no_params!();
+
 pub async fn run(app: App<CHANNELS>) {
     let jack = app.make_gate_jack(0, 2048).await;
     let mut clock = app.use_clock();

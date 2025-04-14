@@ -695,6 +695,8 @@ dependencies = [
  "log",
  "max11300",
  "midly",
+ "minicbor",
+ "minicbor-serde",
  "panic-probe",
  "pio",
  "portable-atomic",
@@ -996,6 +998,22 @@ name = "midly"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "207d755f4cb882d20c4da58d707ca9130a0c9bc5061f657a4f299b8e36362b7a"
+
+[[package]]
+name = "minicbor"
+version = "0.26.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acb9d59e79ad66121ab441a0d1950890906a41e01ae14145ecf8401aa8894f50"
+
+[[package]]
+name = "minicbor-serde"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54e45e8beeefea1b8b6f52fa188a5b6ea3746c2885606af8d4d8bf31cee633fb"
+dependencies = [
+ "minicbor",
+ "serde",
+]
 
 [[package]]
 name = "nb"

@@ -7,6 +7,8 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Clock test", "Visualize clock tempo");
 
+no_params!();
+
 pub async fn run(app: App<CHANNELS>) {
     let mut clock = app.use_clock();
     let color = (243, 191, 78);
