@@ -6,6 +6,8 @@ use crate::app::{App, Led, Range, StorageSlot};
 
 use libfp::constants::{CURVE_LOG, CURVE_EXP};
 
+use super::slew;
+
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 3;
 
@@ -51,12 +53,14 @@ pub async fn run(app: App<CHANNELS>) {
     let _output = app.make_out_jack(1, Range::_Neg5_5V).await;
 
     let slew_glob = app.make_global(1);
-    let mut att_glob = app.make_global(0);
+    let slew_mult_glob= app.make_global(0);
+    let att_glob = app.make_global(0);
 
     //slew_glob.load().await;
     //att_glob.load().await;
 
     let mut buffer = [0; 2048];
+    let mut outval = 0;
 
 
     let fut1 = async {
@@ -65,8 +69,8 @@ pub async fn run(app: App<CHANNELS>) {
 
             app.delay_millis(1).await;
             let inval = _input.get_value();
-            buffer = shift_and_insert(buffer, inval);
-            let mut outval = average_values(&buffer, slew as usize);
+            buffer = shift_and_insert(buffer, inval, outval, slew);
+            outval = average_values(&buffer, slew as usize);
             let att = att_glob.get().await;
             outval = dynamic_scale(outval, att);         
             _output.set_value(outval);
@@ -79,8 +83,10 @@ pub async fn run(app: App<CHANNELS>) {
             let chan = faders.wait_for_any_change().await;
             let mut vals = faders.get_values();
             if chan == 0 {
+                let slew_mult = slew_mult_glob.get().await;
+
                 vals[chan] =  CURVE_LOG[vals[chan] as usize];
-                vals[chan] = (vals[chan] / 2 + 1);
+                vals[chan] = vals[chan] / (2 + (slew_mult * 2)) + 1;
                 slew_glob.set(vals[chan]).await;
             }
 
@@ -92,7 +98,13 @@ pub async fn run(app: App<CHANNELS>) {
 
     let fut3 = async {
         loop {
-            buttons.wait_for_any_down().await;
+            let chan = buttons.wait_for_any_down().await;
+            if chan == 0 {
+                // let mut slew_mult = slew_mult_glob.get().await;
+                // slew_mult += 1;
+                // slew_mult = slew_mult % 2;
+                // slew_mult_glob.set(slew_mult).await;
+            }
             
         }
     };
@@ -102,11 +114,14 @@ pub async fn run(app: App<CHANNELS>) {
 
 
 
-fn shift_and_insert(input: [u16; 2048], new_value: u16) -> [u16; 2048] {
+fn shift_and_insert(input: [u16; 2048], new_value: u16, avr: u16, slew: u16) -> [u16; 2048] {
     let mut output = [0; 2048];
     output[0] = new_value;
     for i in 1..2048{
         output[i] = input[i - 1];
+        if i > slew as usize {
+            output[i] = avr;
+        }
     }
     output
 }
