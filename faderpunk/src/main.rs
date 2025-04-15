@@ -2,10 +2,11 @@
 #![no_main]
 
 #[macro_use]
-mod macros;
+pub mod macros;
 
 mod app;
 mod apps;
+pub mod storage;
 mod tasks;
 
 use defmt::info;

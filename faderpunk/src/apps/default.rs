@@ -1,38 +1,56 @@
-use config::{Config, Curve, Param};
+use config::{Curve, Param};
 use embassy_futures::join::join3;
 
-use crate::app::{App, Led, Range, StorageSlot};
+use crate::{
+    app::{App, Led, Range, StorageSlot},
+    storage::ParamStore,
+};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 3;
 
-// TODO: How to add param for midi-cc base number that it just works as a default?
-pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
-    .add_param(Param::Curve {
-        name: "Curve",
-        default: Curve::Linear,
-        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-    })
-    .add_param(Param::Int {
-        name: "Midi channel",
-        default: 0,
-        min: 0,
-        max: 15,
-    });
+app_params! (
+    config("Default App", "Description");
+
+    params(
+        curve => (Curve, Curve::Linear, Param::Curve {
+            name: "Curve",
+            variants: &[Curve::Linear, Curve::Exponential],
+        }),
+        midi_channel => (i32, 0, Param::i32 {
+            name: "MIDI Channel",
+            min: 0,
+            max: 15,
+        }),
+    )
+);
+
+pub async fn msg_loop(vals: &ParamStore<PARAMS>) {}
+
+// IDEA:
+// The message loop could live in the register_apps macro
+
+// NEXT:
+// - Make AppParams or Mutex values storage slots somehow. We still need to be able to get the
+// Params out
+// - The message loop also needs to be generated in the macro
+
+// IDEA: !!! SCENES !!!
+// - For Scenes: storage slots manage scenes
+// - They need to be aware of the current scene (Just use an ATOMIC u8)
+// - SCENE will be stored in eeprom as well every time it changes, to recover it after reboot
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
-pub async fn run(app: App<CHANNELS>) {
-    let config = CONFIG.as_runtime_config().await;
-    // TODO: Maybe rename: get_curve_from_param(idx)
-    let curve = config.get_curve_at(0);
-    let midi_channel = config.get_int_at(1) as u8;
+pub async fn run(app: App<CHANNELS>, params: AppParams<'_>) {
+    let param_curve = params.curve();
+    let midi_channel = params.midi_channel().get().await;
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let midi = app.use_midi(midi_channel);
+
+    let midi = app.use_midi(midi_channel as u8);
 
     let mut glob_muted = app.make_global_with_store(false, StorageSlot::A);
     glob_muted.load().await;
@@ -50,6 +68,7 @@ pub async fn run(app: App<CHANNELS>) {
         loop {
             app.delay_millis(10).await;
             let muted = glob_muted.get().await;
+            let curve = param_curve.get().await;
             if !muted {
                 let vals = faders.get_values();
                 jack.set_value_with_curve(curve, vals[0]);
