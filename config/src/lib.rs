@@ -1,5 +1,6 @@
 #![no_std]
 
+use heapless::Vec;
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +22,7 @@ impl FromValue for i32 {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum ClockSrc {
     None,
     Atom,
@@ -32,24 +33,56 @@ pub enum ClockSrc {
     MidiUsb,
 }
 
-#[derive(Clone, Copy)]
-pub struct GlobalConfig<'a> {
+#[derive(Clone)]
+pub struct GlobalConfig {
     pub clock_src: ClockSrc,
     pub reset_src: ClockSrc,
-    pub layout: &'a [usize],
+    /// (app_id, start_channel)
+    pub layout: Vec<(usize, usize), 16>,
 }
 
-impl Default for GlobalConfig<'_> {
-    fn default() -> Self {
+impl GlobalConfig {
+    pub const fn new() -> Self {
         Self {
             clock_src: ClockSrc::Internal,
             reset_src: ClockSrc::None,
-            layout: &[1; 16],
+            layout: Vec::new(),
         }
     }
 }
 
-#[derive(Clone, Copy, Default, Serialize, Deserialize, PostcardBindings)]
+impl Default for GlobalConfig {
+    fn default() -> Self {
+        const DEFAULT_LAYOUT: [(usize, usize); 16] = [
+            (1, 0),
+            (1, 1),
+            (1, 2),
+            (1, 3),
+            (1, 4),
+            (1, 5),
+            (1, 6),
+            (1, 7),
+            (1, 8),
+            (1, 9),
+            (1, 10),
+            (1, 11),
+            (1, 12),
+            (1, 13),
+            (1, 14),
+            (1, 15),
+        ];
+
+        Self {
+            clock_src: ClockSrc::Internal,
+            reset_src: ClockSrc::None,
+            layout: Vec::from_slice(&DEFAULT_LAYOUT)
+                // OK here as slice is static length
+                .unwrap(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings)]
 pub enum Curve {
     #[default]
     Linear,
@@ -66,7 +99,7 @@ impl FromValue for Curve {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PostcardBindings)]
 pub enum Waveform {
     Sine,
     Triangle,
@@ -101,8 +134,8 @@ pub enum Param {
     None,
     i32 {
         name: &'static str,
-        min: usize,
-        max: usize,
+        min: i32,
+        max: i32,
     },
     Float {
         name: &'static str,
@@ -125,7 +158,7 @@ pub enum Param {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Clone, Copy, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PostcardBindings)]
 pub enum Value {
     None,
     i32(i32),
@@ -151,15 +184,18 @@ impl From<i32> for Value {
 #[derive(Clone, Copy, Deserialize, PostcardBindings)]
 pub enum ConfigMsgIn {
     Ping,
-    GetApps,
+    GetAllApps,
+    GetLayout,
 }
 
-#[derive(Clone, Copy, Serialize, PostcardBindings)]
+#[derive(Clone, Serialize, PostcardBindings)]
 pub enum ConfigMsgOut<'a> {
     Pong,
     BatchMsgStart(usize),
     BatchMsgEnd,
-    AppConfig((&'a str, &'a str, &'a [Param])),
+    GlobalConfig(ClockSrc, ClockSrc, &'a [(usize, usize)]),
+    AppConfig((usize, &'a str, &'a str, &'a [Param])),
+    AppState(&'a [Value]),
 }
 
 pub struct Config<const N: usize> {
@@ -191,7 +227,7 @@ impl<const N: usize> Config<N> {
         }
     }
 
-    pub fn get_meta(&self) -> (&str, &str, &[Param]) {
-        (self.name, self.description, &self.params)
+    pub fn get_meta(&self) -> (usize, &str, &str, &[Param]) {
+        (N, self.name, self.description, &self.params)
     }
 }

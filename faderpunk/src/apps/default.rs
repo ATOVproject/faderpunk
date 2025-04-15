@@ -1,14 +1,16 @@
 use config::{Curve, Param};
 use embassy_futures::join::join3;
+use heapless::Vec;
 
 use crate::{
     app::{App, Led, Range, StorageSlot},
     storage::ParamStore,
+    APP_PARAM_CMDS, APP_PARAM_EVENT,
 };
 
 pub const CHANNELS: usize = 1;
 
-app_params! (
+app_config! (
     config("Default App", "Description");
 
     params(
@@ -24,20 +26,25 @@ app_params! (
     )
 );
 
-pub async fn msg_loop(vals: &ParamStore<PARAMS>) {}
-
-// IDEA:
+// TODO:
 // The message loop could live in the register_apps macro
-
-// NEXT:
-// - Make AppParams or Mutex values storage slots somehow. We still need to be able to get the
-// Params out
-// - The message loop also needs to be generated in the macro
+// Or in the param macro
+pub async fn msg_loop(start_channel: usize, vals: &ParamStore<PARAMS>) {
+    let param_sender = APP_PARAM_EVENT.sender();
+    loop {
+        APP_PARAM_CMDS[start_channel].wait().await;
+        let values = vals.get_all().await;
+        let vec = Vec::from_slice(&values).unwrap();
+        param_sender.send(vec).await;
+    }
+}
 
 // IDEA: !!! SCENES !!!
 // - For Scenes: storage slots manage scenes
 // - They need to be aware of the current scene (Just use an ATOMIC u8)
 // - SCENE will be stored in eeprom as well every time it changes, to recover it after reboot
+// - For that we can keep track of the previous scene in the global and once it changes it stores
+// the current value
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
@@ -49,10 +56,9 @@ pub async fn run(app: App<CHANNELS>, params: AppParams<'_>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-
     let midi = app.use_midi(midi_channel as u8);
 
-    let mut glob_muted = app.make_global_with_store(false, StorageSlot::A);
+    let glob_muted = app.make_global_with_store(false, StorageSlot::A);
     glob_muted.load().await;
 
     let muted = glob_muted.get().await;
@@ -90,6 +96,7 @@ pub async fn run(app: App<CHANNELS>, params: AppParams<'_>) {
     let fut3 = async {
         loop {
             buttons.wait_for_down(0).await;
+            param_curve.set(Curve::Exponential).await;
             let muted = glob_muted.toggle().await;
             glob_muted.save().await;
             if muted {

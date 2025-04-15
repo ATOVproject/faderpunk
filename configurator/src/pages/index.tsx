@@ -111,11 +111,14 @@ const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
 };
 
 const receiveMessage = async (usbDevice: USBDevice): Promise<ConfigMsgOut> => {
-  const data = await usbDevice?.transferIn(1, 256);
+  console.log("Receiving");
+  const data = await usbDevice?.transferIn(1, 128);
 
   if (!data?.data?.buffer) {
     throw new Error("No data received");
   }
+
+  console.log(data);
 
   const dataBuf = new Uint8Array(data.data.buffer);
   const cobsDecoded = cobsDecode(dataBuf.slice(0, dataBuf.length - 1));
@@ -165,24 +168,28 @@ export default function IndexPage() {
     setUsbDevice(usbDevice);
 
     let result = await punkRequest(usbDevice, {
-      tag: "GetApps",
+      tag: "GetLayout",
     });
+
+    console.log(result);
 
     if (result.tag === "BatchMsgStart") {
       const results = await receiveBatchMessages(usbDevice, result.value);
 
-      const appConfigs = results
-        .filter(
-          (res): res is Extract<ConfigMsgOut, { tag: "AppConfig" }> =>
-            res.tag === "AppConfig",
-        )
-        .map(({ value }) => ({
-          name: value[0],
-          description: value[1],
-          params: value[2] as ValidParam[],
-        }));
+      console.log(results);
 
-      setApps(appConfigs);
+      // const appConfigs = results
+      //   .filter(
+      //     (res): res is Extract<ConfigMsgOut, { tag: "AppConfig" }> =>
+      //       res.tag === "AppConfig",
+      //   )
+      //   .map(({ value }) => ({
+      //     name: value[0],
+      //     description: value[1],
+      //     params: value[2] as ValidParam[],
+      //   }));
+      //
+      // setApps(appConfigs);
     }
   }, []);
 

@@ -37,6 +37,8 @@ use crate::{
     CmdSender, EventPubSubChannel, HardwareCmd, HardwareEvent, CLOCK_WATCH,
 };
 
+pub const APP_MAX_PARAMS: usize = 8;
+
 pub enum Range {
     // 0 - 10V
     _0_10V,
@@ -464,7 +466,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
         Vec::<u8, DATA_LENGTH>::from_slice(serialized).unwrap()
     }
 
-    async fn des(&mut self, data: &[u8]) {
+    async fn des(&self, data: &[u8]) {
         if let Ok(val) = from_bytes::<T>(data) {
             self.set(val).await;
         }
@@ -474,7 +476,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
         self.inner.get().await
     }
 
-    pub async fn set(&mut self, val: T) {
+    pub async fn set(&self, val: T) {
         self.inner.set(val).await
     }
 
@@ -488,7 +490,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
             .await;
     }
 
-    pub async fn load(&mut self) {
+    pub async fn load(&self) {
         self.cmd_sender
             .send(HardwareCmd::StorageCmd(
                 self.start_channel,

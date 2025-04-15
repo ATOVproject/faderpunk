@@ -6,9 +6,10 @@ use embassy_usb::driver::{Endpoint, EndpointIn, EndpointOut};
 use heapless::Vec;
 use postcard::{from_bytes, to_vec};
 
-use config::{ConfigMsgIn, ConfigMsgOut};
+use config::{ConfigMsgIn, ConfigMsgOut, Value};
 
 use crate::apps::{get_config, REGISTERED_APP_IDS};
+use crate::{APP_PARAM_CMDS, APP_PARAM_EVENT, CONFIG_CHANGE_WATCH};
 
 use super::transport::WebEndpoints;
 
@@ -43,7 +44,6 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
     let mut proto = ConfigProtocol::new(webusb);
     // TODO: think about sending apps individually to save on buffer size
     // Then add batching to messages (message x/y) to the header
-    let app_list = REGISTERED_APP_IDS.map(get_config);
 
     proto.wait_enabled().await;
     loop {
@@ -53,7 +53,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             ConfigMsgIn::Ping => {
                 proto.send_msg(ConfigMsgOut::Pong).await.unwrap();
             }
-            ConfigMsgIn::GetApps => {
+            ConfigMsgIn::GetAllApps => {
+                let app_list = REGISTERED_APP_IDS.map(get_config);
                 proto
                     .send_msg(ConfigMsgOut::BatchMsgStart(app_list.len()))
                     .await
@@ -61,6 +62,36 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 for app in app_list {
                     proto.send_msg(ConfigMsgOut::AppConfig(app)).await.unwrap();
                 }
+                proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
+            }
+            ConfigMsgIn::GetLayout => {
+                let global_config = CONFIG_CHANGE_WATCH.try_get().unwrap();
+                proto
+                    .send_msg(ConfigMsgOut::BatchMsgStart(global_config.layout.len() + 1))
+                    .await
+                    .unwrap();
+                proto
+                    .send_msg(ConfigMsgOut::GlobalConfig(
+                        global_config.clock_src,
+                        global_config.reset_src,
+                        global_config.layout.as_slice(),
+                    ))
+                    .await
+                    .unwrap();
+                // TODO: Here we need to wait for all apps
+                // We can also try to get them in parallel somehow
+                with_timeout(Duration::from_secs(2), async {
+                    for (_app_id, start_channel) in global_config.layout {
+                        APP_PARAM_CMDS[start_channel].signal(true);
+                        let values = APP_PARAM_EVENT.receive().await;
+                        proto
+                            .send_msg(ConfigMsgOut::AppState(&values))
+                            .await
+                            .unwrap();
+                    }
+                })
+                .await
+                .ok();
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
         }

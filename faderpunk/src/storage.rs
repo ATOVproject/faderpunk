@@ -13,9 +13,6 @@ use serde::{de::DeserializeOwned, Serialize};
 // TODO: Find a good number for this (allowed storage size is 64)
 pub const DATA_LENGTH: usize = 128;
 
-pub static APP_STORAGE_WATCHES: [Watch<CriticalSectionRawMutex, StorageEvent, 1>; 16] =
-    [const { Watch::new() }; 16];
-
 #[derive(Clone)]
 pub enum StorageEvent {
     Read(u8, u8, Vec<u8, DATA_LENGTH>),
@@ -62,6 +59,7 @@ impl<const N: usize> ParamStore<N> {
     pub async fn set(&self, index: usize, value: Value) {
         let mut val = self.inner.lock().await;
         val[index] = value;
+        drop(val);
         let sender = self.change_notifier.sender();
         sender.send(index);
     }
@@ -76,7 +74,6 @@ pub struct ParamSlot<'a, T, const N: usize>
 where
     T: FromValue + Into<Value> + Copy,
 {
-    // Use the specific Mutex type you have
     values: &'a ParamStore<N>,
     index: usize,
     _phantom: PhantomData<T>,

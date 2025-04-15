@@ -41,7 +41,7 @@ macro_rules! register_apps {
                         );
                         let values = ParamStore::new($app_mod::default_values());
                         let params = $app_mod::AppParams::new(&values);
-                        join($app_mod::run(app, params), $app_mod::msg_loop(&values)).await;
+                        join($app_mod::run(app, params), $app_mod::msg_loop(start_channel, &values)).await;
                     },
                 )*
                 _ => panic!("Unknown app ID: {}", app_id),
@@ -57,7 +57,7 @@ macro_rules! register_apps {
             }
         }
 
-        pub fn get_config(app_id: usize) -> (&'static str, &'static str, &'static [Param]) {
+        pub fn get_config(app_id: usize) -> (usize, &'static str, &'static str, &'static [Param]) {
             match app_id {
                 $(
                     $id => {
@@ -71,8 +71,7 @@ macro_rules! register_apps {
 }
 
 #[macro_export]
-macro_rules! app_params {
-    // --- Main Macro Entry Point ---
+macro_rules! app_config {
     (
         // App Metadata
         config($app_name:expr, $app_desc:expr);
@@ -119,7 +118,7 @@ macro_rules! app_params {
             }
 
             // Use helper to generate accessors, passing index and the slot type
-            app_params!(@generate_accessors 0, $($p_name => ($p_slot_type)),* );
+            app_config!(@generate_accessors 0, $($p_name => ($p_slot_type)),* );
         }
     };
 
@@ -132,6 +131,6 @@ macro_rules! app_params {
              $crate::storage::ParamSlot::<$p_slot_type, {PARAMS}>::new(self.values, $idx) // Use provided slot type
          }
         // Recurse
-        app_params!(@generate_accessors $idx + 1, $($($rest)*)?);
+        app_config!(@generate_accessors $idx + 1, $($($rest)*)?);
     };
 }

@@ -27,6 +27,7 @@ use embassy_rp::{
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::pubsub::PubSubChannel;
+use embassy_sync::signal::Signal;
 use embassy_sync::watch::Watch;
 use embassy_time::{Delay, Timer};
 use midly::live::LiveEvent;
@@ -42,8 +43,9 @@ use static_cell::StaticCell;
 
 use at24cx::{Address, At24Cx};
 
-use apps::{get_channels, run_app_by_id};
-use config::{ClockSrc, GlobalConfig};
+use app::APP_MAX_PARAMS;
+use apps::run_app_by_id;
+use config::{ClockSrc, GlobalConfig, Value};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -92,8 +94,14 @@ pub const EVENT_PUBSUB_SIZE: usize = 64;
 
 // TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
 // mention all uses
-pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
+pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> =
+    Watch::new_with(GlobalConfig::new());
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
+
+pub static APP_PARAM_CMDS: [Signal<CriticalSectionRawMutex, bool>; 16] =
+    [const { Signal::new() }; 16];
+pub static APP_PARAM_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
+    Channel::new();
 
 pub type EventPubSubChannel =
     PubSubChannel<CriticalSectionRawMutex, HardwareEvent, EVENT_PUBSUB_SIZE, 32, 21>;
@@ -108,45 +116,6 @@ static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 /// MIDI buffers (RX and TX)
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
 static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
-
-#[derive(Debug)]
-enum LayoutErr {
-    AppSize,
-    LayoutSize,
-}
-
-/// Layout creates a proper layout vec from just a slice of app ids
-/// The vec contains a tupel of app ids and their corresponding size of chans
-struct Layout {
-    apps: Vec<(usize, usize), 16>,
-}
-
-impl Layout {
-    fn try_from(app_ids: &[usize]) -> Result<Self, LayoutErr> {
-        if app_ids.len() > 16 {
-            return Err(LayoutErr::AppSize);
-        }
-        // Create vec of (app_id, size). Will remove invalid app ids
-        let apps: Vec<(usize, usize), 16> = app_ids
-            .iter()
-            .map(|&id| (id, get_channels(id)))
-            .collect::<Vec<(usize, usize), 16>>();
-        // Check if apps fit into the layout
-        let count = apps.iter().copied().fold(0, |acc, (_, size)| acc + size);
-        if count > 16 {
-            return Err(LayoutErr::LayoutSize);
-        }
-        Ok(Self { apps })
-    }
-
-    fn apps_iter(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
-        self.apps.iter().scan(0, |start_channel, &(app_id, size)| {
-            let result = Some((app_id, *start_channel));
-            *start_channel += size;
-            result
-        })
-    }
-}
 
 // TODO: create config builder to create full 16 channel layout with various apps
 // The app at some point needs access to the MAX to configure it. Maybe this can happen via
@@ -187,9 +156,7 @@ async fn main_core1(spawner: Spawner) {
             Timer::after_millis(5).await;
         }
 
-        let layout = Layout::try_from(config.layout).unwrap();
-        // let channel_map = layout.channel_map();
-        for (app_id, start_chan) in layout.apps_iter() {
+        for &(app_id, start_chan) in config.layout.iter() {
             spawner.spawn(run_app(app_id, start_chan)).unwrap();
             Timer::after_millis(20).await;
         }
@@ -317,6 +284,6 @@ async fn main(spawner: Spawner) {
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::MidiIn;
     config.reset_src = ClockSrc::MidiIn;
-    config.layout = &[1; 16];
+
     config_sender.send(config);
 }
