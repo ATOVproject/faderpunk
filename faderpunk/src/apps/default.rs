@@ -5,7 +5,7 @@ use heapless::Vec;
 use crate::{
     app::{App, Led, Range, StorageSlot},
     storage::ParamStore,
-    APP_PARAM_CMDS, APP_PARAM_EVENT,
+    ParamCmd, APP_PARAM_CMDS, APP_PARAM_EVENT,
 };
 
 pub const CHANNELS: usize = 1;
@@ -32,10 +32,16 @@ app_config! (
 pub async fn msg_loop(start_channel: usize, vals: &ParamStore<PARAMS>) {
     let param_sender = APP_PARAM_EVENT.sender();
     loop {
-        APP_PARAM_CMDS[start_channel].wait().await;
-        let values = vals.get_all().await;
-        let vec = Vec::from_slice(&values).unwrap();
-        param_sender.send(vec).await;
+        match APP_PARAM_CMDS[start_channel].wait().await {
+            ParamCmd::GetAllValues => {
+                let values = vals.get_all().await;
+                let vec = Vec::from_slice(&values).unwrap();
+                param_sender.send(vec).await;
+            }
+            ParamCmd::SetValueSlot(slot, value) => {
+                vals.set(slot, value).await;
+            }
+        }
     }
 }
 
@@ -96,7 +102,6 @@ pub async fn run(app: App<CHANNELS>, params: AppParams<'_>) {
     let fut3 = async {
         loop {
             buttons.wait_for_down(0).await;
-            param_curve.set(Curve::Exponential).await;
             let muted = glob_muted.toggle().await;
             glob_muted.save().await;
             if muted {

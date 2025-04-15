@@ -186,6 +186,8 @@ pub enum ConfigMsgIn {
     Ping,
     GetAllApps,
     GetLayout,
+    /// (start_channel, param_slot, Value)
+    SetAppParam(usize, usize, Value),
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]

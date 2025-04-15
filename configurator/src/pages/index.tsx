@@ -91,7 +91,7 @@ export function cobsDecode(data: Uint8Array): Uint8Array {
   return decoded.slice(0, writeIndex);
 }
 
-const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
+const punkOneShot = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
   const serialized = serialize("ConfigMsgIn", msg);
   const buf = new Uint8Array(serialized.length + 2);
 
@@ -105,20 +105,21 @@ const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
   cobsEncoded.set(cobsResult, 0);
   cobsEncoded[cobsEncoded.length] = FRAME_DELIMITER;
 
-  await usbDevice?.transferOut(1, cobsEncoded);
+  return usbDevice?.transferOut(1, cobsEncoded);
+};
+
+const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
+  await punkOneShot(usbDevice, msg);
 
   return receiveMessage(usbDevice);
 };
 
 const receiveMessage = async (usbDevice: USBDevice): Promise<ConfigMsgOut> => {
-  console.log("Receiving");
   const data = await usbDevice?.transferIn(1, 128);
 
   if (!data?.data?.buffer) {
     throw new Error("No data received");
   }
-
-  console.log(data);
 
   const dataBuf = new Uint8Array(data.data.buffer);
   const cobsDecoded = cobsDecode(dataBuf.slice(0, dataBuf.length - 1));
@@ -171,12 +172,19 @@ export default function IndexPage() {
       tag: "GetLayout",
     });
 
-    console.log(result);
-
     if (result.tag === "BatchMsgStart") {
       const results = await receiveBatchMessages(usbDevice, result.value);
 
       console.log(results);
+
+      await punkOneShot(usbDevice, {
+        tag: "SetAppParam",
+        value: [
+          BigInt(0),
+          BigInt(0),
+          { tag: "Curve", value: { tag: "Logarithmic" } },
+        ],
+      });
 
       // const appConfigs = results
       //   .filter(
@@ -245,9 +253,9 @@ export default function IndexPage() {
                 </ul>
               </div>
             )}
-            {/* <Button type="submit" variant="bordered"> */}
-            {/*   Submit */}
-            {/* </Button> */}
+            <Button type="button" variant="bordered">
+              DO THING
+            </Button>
           </Form>
         )}
       </section>

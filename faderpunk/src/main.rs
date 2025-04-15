@@ -89,6 +89,11 @@ pub enum HardwareCmd {
     StorageCmd(usize, StorageCmd),
 }
 
+pub enum ParamCmd {
+    GetAllValues,
+    SetValueSlot(usize, Value),
+}
+
 pub const CMD_CHANNEL_SIZE: usize = 16;
 pub const EVENT_PUBSUB_SIZE: usize = 64;
 
@@ -98,7 +103,7 @@ pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26>
     Watch::new_with(GlobalConfig::new());
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
-pub static APP_PARAM_CMDS: [Signal<CriticalSectionRawMutex, bool>; 16] =
+pub static APP_PARAM_CMDS: [Signal<CriticalSectionRawMutex, ParamCmd>; 16] =
     [const { Signal::new() }; 16];
 pub static APP_PARAM_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
     Channel::new();
