@@ -4,6 +4,7 @@ use config::{FromValue, Param, Value};
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     mutex::Mutex,
+    signal::Signal,
     watch::Watch,
 };
 use heapless::Vec;
@@ -24,6 +25,11 @@ pub enum StorageCmd {
     Store(u8, u8, Vec<u8, DATA_LENGTH>),
 }
 
+// NEXT:
+// -> Store params in eeprom
+// -> Add scenes
+// -> Layout changes
+
 // TODO: For scenes: this has to be adjusted for scenes (we need 4 bits for the scene)
 pub fn create_storage_key(app_id: u8, start_channel: u8, storage_slot: u8) -> u32 {
     ((app_id as u32) << 9) | ((storage_slot as u32) << 4) | (start_channel as u32)
@@ -31,18 +37,14 @@ pub fn create_storage_key(app_id: u8, start_channel: u8, storage_slot: u8) -> u3
 
 pub struct ParamStore<const N: usize> {
     inner: Mutex<NoopRawMutex, [Value; N]>,
-    change_notifier: Watch<NoopRawMutex, usize, N>,
+    signal: Signal<NoopRawMutex, usize>,
 }
 
 impl<const N: usize> ParamStore<N> {
-    /// Creates a new ParamStore, initializing values and the single watcher.
     pub fn new(initial_values: [Value; N]) -> Self {
-        // Watch doesn't strictly need an initial value if subscribers wait first.
-        // Initialize with a dummy value if preferred, e.g., (usize::MAX, Value::None).
-        let change_notifier = Watch::new();
         Self {
             inner: Mutex::new(initial_values),
-            change_notifier,
+            signal: Signal::new(),
         }
     }
 
@@ -57,16 +59,17 @@ impl<const N: usize> ParamStore<N> {
     }
 
     pub async fn set(&self, index: usize, value: Value) {
+        if index >= N {
+            return;
+        }
         let mut val = self.inner.lock().await;
         val[index] = value;
         drop(val);
-        let sender = self.change_notifier.sender();
-        sender.send(index);
+        self.signal.signal(index);
     }
 
     pub async fn wait_for_change(&self) -> usize {
-        let mut sub = self.change_notifier.receiver().unwrap();
-        sub.changed().await
+        self.signal.wait().await
     }
 }
 
@@ -74,8 +77,8 @@ pub struct ParamSlot<'a, T, const N: usize>
 where
     T: FromValue + Into<Value> + Copy,
 {
-    values: &'a ParamStore<N>,
     index: usize,
+    values: &'a ParamStore<N>,
     _phantom: PhantomData<T>,
 }
 
