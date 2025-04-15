@@ -314,8 +314,8 @@ async fn main(spawner: Spawner) {
 
     // TODO: Get this from eeprom
     let mut config = GlobalConfig::default();
-    config.clock_src = ClockSrc::MidiIn;
-    config.reset_src = ClockSrc::MidiIn;
-    config.layout = &[1; 16];
+    config.clock_src = ClockSrc::MidiUsb;
+    config.reset_src = ClockSrc::MidiUsb;
+    config.layout = &[6];
     config_sender.send(config);
 }
