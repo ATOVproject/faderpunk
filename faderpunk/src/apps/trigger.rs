@@ -1,13 +1,12 @@
-use config::Config;
-
-use crate::app::{App, Led};
+use crate::app::App;
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Trigger", "Test app to test the clock and GPOs");
+app_config! (
+    config("Trigger", "Test app to test the clock and GPOs");
+);
 
-pub async fn run(app: App<CHANNELS>) {
+pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {
     let jack = app.make_gate_jack(0, 2048).await;
     let mut clock = app.use_clock();
     // let color = (243, 191, 78);

@@ -37,8 +37,6 @@ use crate::{
     CmdSender, EventPubSubChannel, HardwareCmd, HardwareEvent, CLOCK_WATCH,
 };
 
-pub const APP_MAX_PARAMS: usize = 8;
-
 pub enum Range {
     // 0 - 10V
     _0_10V,

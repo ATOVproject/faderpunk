@@ -5,12 +5,11 @@ macro_rules! register_apps {
         )*
 
 
-        use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-        use embassy_sync::mutex::Mutex;
         use embassy_futures::join::join;
 
-        use config::{Param, Value};
+        use config::Param;
         use crate::{CMD_CHANNEL, EVENT_PUBSUB};
+        use crate::app::App;
         use crate::storage::ParamStore;
 
         const _APP_COUNT: usize = {
@@ -72,65 +71,87 @@ macro_rules! register_apps {
 
 #[macro_export]
 macro_rules! app_config {
+    // Branch 1: Config WITH Params
     (
-        // App Metadata
         config($app_name:expr, $app_desc:expr);
-
-        // Parameter Definitions Block
-        params( // Using parens here, could be braces
-            $( $p_name:ident => ($p_slot_type:ty, $p_default_value:expr, $p_config_param:expr) ),* // Capture tuple
-            $(,)?
-        )
+        params( $( $p_name:ident => ($p_slot_type:ty, $p_default_value:expr, $p_config_param:expr) ),* $(,)? )
     ) => {
-        // 1. Define PARAMS based on count
         pub const PARAMS: usize = { [ $( stringify!($p_name) ),* ].len() };
 
-        // 2. Define the static CONFIG
         pub static CONFIG: config::Config<PARAMS> = {
             let mut cfg = config::Config::new($app_name, $app_desc);
-            // Iterate through parameters and add the provided config::Param expression
-            $(
-                cfg = cfg.add_param($p_config_param); // Directly use the provided expression
-            )*
-            cfg // Return the fully built config
+            $( cfg = cfg.add_param($p_config_param); )*
+            cfg
         };
 
         pub fn default_values() -> [::config::Value; PARAMS] {
-            [
-                $(
-                    // Convert the provided default value expression into a config::Value
-                    ($p_default_value).into()
-                ),*
-            ]
+            [ $( ($p_default_value).into() ),* ]
         }
 
-        // 3. Define the AppParams struct
         pub struct AppParams<'a> {
             values: &'a $crate::storage::ParamStore<PARAMS>,
         }
 
-        // 4. Implement AppParams methods
         impl<'a> AppParams<'a> {
-            pub fn new(
-                values: &'a $crate::storage::ParamStore<PARAMS>,
-            ) -> Self {
+            pub fn new(values: &'a $crate::storage::ParamStore<PARAMS>) -> Self {
                 Self { values }
             }
-
-            // Use helper to generate accessors, passing index and the slot type
             app_config!(@generate_accessors 0, $($p_name => ($p_slot_type)),* );
+        }
+
+        pub async fn msg_loop(start_channel: usize, vals: &$crate::storage::ParamStore<PARAMS>) {
+            let param_sender = $crate::APP_PARAM_EVENT.sender();
+            loop {
+                match $crate::APP_PARAM_CMDS[start_channel].wait().await {
+                    $crate::ParamCmd::GetAllValues => {
+                        let values = vals.get_all().await;
+                        // Ensure Vec is in scope (e.g., use heapless::Vec)
+                        let vec = ::heapless::Vec::<_, { $crate::storage::APP_MAX_PARAMS }>::from_slice(&values)
+                            .expect("Failed to create Vec from param values"); // Use expect or unwrap
+                        param_sender.send(vec).await;
+                    }
+                    $crate::ParamCmd::SetValueSlot(slot, value) => {
+                        // Ensure slot is within bounds for this app's PARAMS
+                        if slot < PARAMS {
+                            vals.set(slot, value).await;
+                        }
+                    }
+                }
+            }
         }
     };
 
-    // Helper to iterate for accessor generation with index
-    (@generate_accessors $idx:expr, ) => {}; // Base case
+    // Branch 2: Config WITHOUT Params
+    (
+        config($app_name:expr, $app_desc:expr);
+    ) => {
+        pub static CONFIG: config::Config<0> = config::Config::new($app_name, $app_desc);
+
+        pub fn default_values() -> [::config::Value; 0] { [] }
+
+        pub struct AppParams<'a> {
+            #[allow(dead_code)]
+            values: &'a $crate::storage::ParamStore<0>,
+        }
+
+        impl<'a> AppParams<'a> {
+            pub fn new(values: &'a $crate::storage::ParamStore<0>) -> Self {
+                Self { values }
+            }
+        }
+
+        // Generate a placeholder msg_loop for apps without params
+        pub async fn msg_loop(_start_channel: usize, _vals: &$crate::storage::ParamStore<0>) {
+            // Just exit
+        }
+    };
+
+    // --- Helper Macro for Accessor Generation (Unchanged) ---
+    (@generate_accessors $idx:expr, ) => {};
     (@generate_accessors $idx:expr, $p_name:ident => ($p_slot_type:ty) $(, $($rest:tt)*)? ) => {
-        /// Accessor for '$p_name' parameter (index $idx).
-        #[allow(dead_code)]
-        pub fn $p_name(&self) -> $crate::storage::ParamSlot<'a, $p_slot_type, {PARAMS}> { // Use provided slot type
-             $crate::storage::ParamSlot::<$p_slot_type, {PARAMS}>::new(self.values, $idx) // Use provided slot type
+        pub fn $p_name(&self) -> $crate::storage::ParamSlot<'a, $p_slot_type, {PARAMS}> {
+             $crate::storage::ParamSlot::<$p_slot_type, {PARAMS}>::new(self.values, $idx)
          }
-        // Recurse
         app_config!(@generate_accessors $idx + 1, $($($rest)*)?);
     };
 }

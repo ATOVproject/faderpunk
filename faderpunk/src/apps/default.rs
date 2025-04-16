@@ -1,17 +1,12 @@
 use config::{Curve, Param};
 use embassy_futures::join::join3;
-use heapless::Vec;
 
-use crate::{
-    app::{App, Led, Range, StorageSlot},
-    storage::ParamStore,
-    ParamCmd, APP_PARAM_CMDS, APP_PARAM_EVENT,
-};
+use crate::app::{App, Led, Range, StorageSlot};
 
 pub const CHANNELS: usize = 1;
 
 app_config! (
-    config("Default App", "Description");
+    config("Default", "16n vibes plus mute buttons");
 
     params(
         curve => (Curve, Curve::Linear, Param::Curve {
@@ -25,25 +20,6 @@ app_config! (
         }),
     )
 );
-
-// TODO:
-// The message loop could live in the register_apps macro
-// Or in the param macro
-pub async fn msg_loop(start_channel: usize, vals: &ParamStore<PARAMS>) {
-    let param_sender = APP_PARAM_EVENT.sender();
-    loop {
-        match APP_PARAM_CMDS[start_channel].wait().await {
-            ParamCmd::GetAllValues => {
-                let values = vals.get_all().await;
-                let vec = Vec::from_slice(&values).unwrap();
-                param_sender.send(vec).await;
-            }
-            ParamCmd::SetValueSlot(slot, value) => {
-                vals.set(slot, value).await;
-            }
-        }
-    }
-}
 
 // IDEA: !!! SCENES !!!
 // - For Scenes: storage slots manage scenes

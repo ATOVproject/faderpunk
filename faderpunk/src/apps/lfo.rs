@@ -1,15 +1,16 @@
 use embassy_futures::join::join3;
 
 use crate::app::{App, Led, Range};
-use config::{Config, Waveform};
+use config::Waveform;
 use libfp::constants::CURVE_LOG;
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("LFO", "Wooooosh");
+app_config! (
+    config("LFO", "Wooooosh");
+);
 
-pub async fn run(app: App<CHANNELS>) {
+pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {
     let glob_wave = app.make_global(Waveform::Sine);
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);

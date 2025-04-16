@@ -43,9 +43,9 @@ use static_cell::StaticCell;
 
 use at24cx::{Address, At24Cx};
 
-use app::APP_MAX_PARAMS;
 use apps::run_app_by_id;
 use config::{ClockSrc, GlobalConfig, Value};
+use storage::APP_MAX_PARAMS;
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -289,6 +289,7 @@ async fn main(spawner: Spawner) {
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::MidiIn;
     config.reset_src = ClockSrc::MidiIn;
+    config.layout = Vec::from_slice(&[(3, 0), (3, 1)]).unwrap();
 
     config_sender.send(config);
 }

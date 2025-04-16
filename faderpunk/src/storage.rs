@@ -11,6 +11,8 @@ use heapless::Vec;
 use postcard::from_bytes;
 use serde::{de::DeserializeOwned, Serialize};
 
+pub const APP_MAX_PARAMS: usize = 8;
+
 // TODO: Find a good number for this (allowed storage size is 64)
 pub const DATA_LENGTH: usize = 128;
 
@@ -86,7 +88,6 @@ impl<'a, T, const N: usize> ParamSlot<'a, T, N>
 where
     T: FromValue + Into<Value> + Copy,
 {
-    // Crate-visible constructor, called by the macro
     pub fn new(values: &'a ParamStore<N>, index: usize) -> Self {
         assert!(index < N, "StorageSlot index out of bounds");
         Self {

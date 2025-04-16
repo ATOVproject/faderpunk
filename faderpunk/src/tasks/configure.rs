@@ -6,7 +6,7 @@ use embassy_usb::driver::{Endpoint, EndpointIn, EndpointOut};
 use heapless::Vec;
 use postcard::{from_bytes, to_vec};
 
-use config::{ConfigMsgIn, ConfigMsgOut, Value};
+use config::{ConfigMsgIn, ConfigMsgOut};
 
 use crate::apps::{get_config, REGISTERED_APP_IDS};
 use crate::{ParamCmd, APP_PARAM_CMDS, APP_PARAM_EVENT, CONFIG_CHANGE_WATCH};

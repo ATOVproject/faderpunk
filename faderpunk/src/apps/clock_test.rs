@@ -3,11 +3,12 @@ use config::Config;
 use crate::app::{App, Led};
 
 pub const CHANNELS: usize = 16;
-pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Clock test", "Visualize clock tempo");
+app_config! (
+    config("Clock test", "Visualize clock tempo");
+);
 
-pub async fn run(app: App<CHANNELS>) {
+pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {
     let mut clock = app.use_clock();
     let color = (243, 191, 78);
     let leds = app.use_leds();
