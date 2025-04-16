@@ -30,7 +30,6 @@ use serde::{
 use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
-        eeprom::{StorageCmd, StorageEvent, DATA_LENGTH},
         leds::LED_VALUES,
         max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
@@ -50,19 +49,6 @@ pub enum Led {
     Top,
     Bottom,
     Button,
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy)]
-pub enum StorageSlot {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
 }
 
 #[derive(Clone, Copy)]
@@ -429,112 +415,6 @@ impl Global<bool> {
     }
 }
 
-pub struct GlobalWithStorage<T: Sized + Copy + Default> {
-    app_id: u8,
-    inner: Global<T>,
-    start_channel: usize,
-    storage_slot: u8,
-    cmd_sender: CmdSender,
-    event_pubsub: &'static EventPubSubChannel,
-}
-
-impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage<T> {
-    pub fn new(
-        app_id: u8,
-        initial: T,
-        start_channel: usize,
-        storage_slot: StorageSlot,
-        cmd_sender: CmdSender,
-        event_pubsub: &'static EventPubSubChannel,
-    ) -> Self {
-        Self {
-            app_id,
-            start_channel,
-            inner: Global::new(initial),
-            storage_slot: storage_slot as u8,
-            cmd_sender,
-            event_pubsub,
-        }
-    }
-
-    async fn ser(&self) -> Vec<u8, DATA_LENGTH> {
-        let value = self.get().await;
-        let mut buf: [u8; DATA_LENGTH] = [0; DATA_LENGTH];
-        let serialized = to_slice(&value, &mut buf).unwrap();
-        Vec::<u8, DATA_LENGTH>::from_slice(serialized).unwrap()
-    }
-
-    async fn des(&self, data: &[u8]) {
-        if let Ok(val) = from_bytes::<T>(data) {
-            self.set(val).await;
-        }
-    }
-
-    pub async fn get(&self) -> T {
-        self.inner.get().await
-    }
-
-    pub async fn set(&self, val: T) {
-        self.inner.set(val).await
-    }
-
-    pub async fn save(&self) {
-        let ser = self.ser().await;
-        self.cmd_sender
-            .send(HardwareCmd::StorageCmd(
-                self.start_channel,
-                StorageCmd::Store(self.app_id, self.storage_slot, ser),
-            ))
-            .await;
-    }
-
-    pub async fn load(&self) {
-        self.cmd_sender
-            .send(HardwareCmd::StorageCmd(
-                self.start_channel,
-                StorageCmd::Request(self.app_id, self.storage_slot),
-            ))
-            .await;
-        // Make this timeout roughly as long as the boot sequence ;)
-        with_timeout(Duration::from_millis(2000), async {
-            let mut subscriber = self.event_pubsub.subscriber().unwrap();
-            loop {
-                if let HardwareEvent::StorageEvent(
-                    start_channel,
-                    StorageEvent::Read(app_id, storage_slot, res),
-                ) = subscriber.next_message_pure().await
-                {
-                    if self.app_id == app_id
-                        && self.storage_slot == storage_slot
-                        && self.start_channel == start_channel
-                    {
-                        self.des(res.as_slice()).await;
-                        return;
-                    }
-                }
-            }
-        })
-        .await
-        .ok();
-    }
-}
-
-impl GlobalWithStorage<bool> {
-    pub async fn toggle(&self) -> bool {
-        self.inner.toggle().await
-    }
-}
-
-impl<T: Sized + Copy + Default, const N: usize> GlobalWithStorage<Arr<T, N>> {
-    pub async fn set_array(&self, val: [T; N]) {
-        self.inner.set(Arr(val)).await
-    }
-
-    pub async fn get_array(&self) -> [T; N] {
-        self.inner.get().await.0
-    }
-}
-
 pub struct Die {
     rng: RoscRng,
 }
@@ -582,20 +462,20 @@ impl<const N: usize> App<N> {
         Global::new(initial)
     }
 
-    pub fn make_global_with_store<T: Sized + Copy + Default + Serialize + DeserializeOwned>(
-        &self,
-        initial: T,
-        storage_slot: StorageSlot,
-    ) -> GlobalWithStorage<T> {
-        GlobalWithStorage::new(
-            self.app_id as u8,
-            initial,
-            self.start_channel,
-            storage_slot,
-            self.cmd_sender,
-            self.event_pubsub,
-        )
-    }
+    // pub fn make_global_with_store<T: Sized + Copy + Default + Serialize + DeserializeOwned>(
+    //     &self,
+    //     initial: T,
+    //     storage_slot: StorageSlot,
+    // ) -> GlobalWithStorage<T> {
+    //     GlobalWithStorage::new(
+    //         self.app_id as u8,
+    //         initial,
+    //         self.start_channel,
+    //         storage_slot,
+    //         self.cmd_sender,
+    //         self.event_pubsub,
+    //     )
+    // }
 
     // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {

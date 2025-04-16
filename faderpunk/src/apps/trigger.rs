@@ -5,9 +5,10 @@ pub const CHANNELS: usize = 1;
 app_config! (
     config("Trigger", "Test app to test the clock and GPOs");
     params();
+    storage();
 );
 
-pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {
+pub async fn run(app: App<CHANNELS>, _ctx: &AppContext<'_>) {
     let jack = app.make_gate_jack(0, 2048).await;
     let mut clock = app.use_clock();
     // let color = (243, 191, 78);

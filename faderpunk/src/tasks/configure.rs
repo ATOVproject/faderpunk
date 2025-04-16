@@ -9,7 +9,7 @@ use postcard::{from_bytes, to_vec};
 use config::{ConfigMsgIn, ConfigMsgOut};
 
 use crate::apps::{get_config, REGISTERED_APP_IDS};
-use crate::{ParamCmd, APP_PARAM_CMDS, APP_PARAM_EVENT, CONFIG_CHANGE_WATCH};
+use crate::{AppStorageCmd, APP_STORAGE_CMDS, APP_STORAGE_EVENT, CONFIG_CHANGE_WATCH};
 
 use super::transport::WebEndpoints;
 
@@ -82,8 +82,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 // We can also try to get them in parallel somehow
                 with_timeout(Duration::from_secs(2), async {
                     for (_app_id, start_channel) in global_config.layout {
-                        APP_PARAM_CMDS[start_channel].signal(ParamCmd::GetAllValues);
-                        let values = APP_PARAM_EVENT.receive().await;
+                        APP_STORAGE_CMDS[start_channel].signal(AppStorageCmd::GetAllParams);
+                        let values = APP_STORAGE_EVENT.receive().await;
                         proto
                             .send_msg(ConfigMsgOut::AppState(&values))
                             .await
@@ -95,7 +95,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
             ConfigMsgIn::SetAppParam(start_channel, param_slot, value) => {
-                APP_PARAM_CMDS[start_channel].signal(ParamCmd::SetValueSlot(param_slot, value));
+                APP_STORAGE_CMDS[start_channel]
+                    .signal(AppStorageCmd::SetParamSlot(param_slot, value));
                 // TODO: This should answer to refresh UI
             }
         }

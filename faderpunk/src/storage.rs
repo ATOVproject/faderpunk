@@ -7,9 +7,12 @@ use embassy_sync::{
     signal::Signal,
     watch::Watch,
 };
+use embassy_time::{with_timeout, Duration};
 use heapless::Vec;
-use postcard::from_bytes;
+use postcard::{from_bytes, to_slice};
 use serde::{de::DeserializeOwned, Serialize};
+
+use crate::{CmdSender, EventPubSubChannel, HardwareCmd, HardwareEvent, CMD_CHANNEL, EVENT_PUBSUB};
 
 pub const APP_MAX_PARAMS: usize = 8;
 
@@ -27,7 +30,12 @@ pub enum StorageCmd {
     Store(u8, u8, Vec<u8, DATA_LENGTH>),
 }
 
+// TODO: PLAN:
+// - Create a new low level abstraction to store eeprom stuff.
+// - USE FOR StorageSlot only for now!!!
+
 // NEXT:
+// -> Make own storage channels for storage cmds
 // -> Store params in eeprom
 // -> Add scenes
 // -> Layout changes
@@ -37,16 +45,113 @@ pub fn create_storage_key(app_id: u8, start_channel: u8, storage_slot: u8) -> u3
     ((app_id as u32) << 9) | ((storage_slot as u32) << 4) | (start_channel as u32)
 }
 
+pub struct StorageSlot<T: Sized + Copy + Default> {
+    app_id: usize,
+    inner: Mutex<NoopRawMutex, T>,
+    start_channel: usize,
+    storage_slot: usize,
+    cmd_sender: CmdSender,
+    event_pubsub: &'static EventPubSubChannel,
+}
+
+impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> StorageSlot<T> {
+    pub fn new(initial: T, app_id: usize, start_channel: usize, storage_slot: usize) -> Self {
+        Self {
+            app_id,
+            inner: Mutex::new(initial),
+            start_channel,
+            storage_slot,
+            cmd_sender: CMD_CHANNEL.sender(),
+            event_pubsub: &EVENT_PUBSUB
+        }
+    }
+
+    pub fn save_scene(&self) {}
+
+    async fn ser(&self) -> Vec<u8, DATA_LENGTH> {
+        let value = self.get().await;
+        let mut buf: [u8; DATA_LENGTH] = [0; DATA_LENGTH];
+        let serialized = to_slice(&value, &mut buf).unwrap();
+        Vec::<u8, DATA_LENGTH>::from_slice(serialized).unwrap()
+    }
+
+    async fn des(&self, data: &[u8]) {
+        if let Ok(val) = from_bytes::<T>(data) {
+            self.set(val).await;
+        }
+    }
+
+    pub async fn get(&self) -> T {
+        let value = self.inner.lock().await;
+        *value
+    }
+
+    pub async fn set(&self, val: T) {
+        let mut value = self.inner.lock().await;
+        *value = val
+    }
+
+    pub async fn save(&self) {
+        let ser = self.ser().await;
+        self.cmd_sender
+            .send(HardwareCmd::StorageCmd(
+                self.start_channel,
+                StorageCmd::Store(self.app_id as u8, self.storage_slot as u8, ser),
+            ))
+            .await;
+    }
+
+    pub async fn load(&self) {
+        self.cmd_sender
+            .send(HardwareCmd::StorageCmd(
+                self.start_channel,
+                StorageCmd::Request(self.app_id as u8, self.storage_slot as u8),
+            ))
+            .await;
+        // Make this timeout roughly as long as the boot sequence ;)
+        with_timeout(Duration::from_millis(2000), async {
+            let mut subscriber = self.event_pubsub.subscriber().unwrap();
+            loop {
+                if let HardwareEvent::StorageEvent(
+                    start_channel,
+                    StorageEvent::Read(app_id, storage_slot, res),
+                ) = subscriber.next_message_pure().await
+                {
+                    if self.app_id as u8 == app_id
+                        && self.storage_slot as u8 == storage_slot
+                        && self.start_channel == start_channel
+                    {
+                        self.des(res.as_slice()).await;
+                        return;
+                    }
+                }
+            }
+        })
+        .await
+        .ok();
+    }
+}
+
+impl StorageSlot<bool> {
+    pub async fn toggle(&self) -> bool {
+        let mut value = self.inner.lock().await;
+        *value = !*value;
+        *value
+    }
+}
+
 pub struct ParamStore<const N: usize> {
+    app_id: usize,
     inner: Mutex<NoopRawMutex, [Value; N]>,
-    signal: Signal<NoopRawMutex, usize>,
+    start_channel: usize,
 }
 
 impl<const N: usize> ParamStore<N> {
-    pub fn new(initial_values: [Value; N]) -> Self {
+    pub fn new(initial: [Value; N], app_id: usize, start_channel: usize) -> Self {
         Self {
-            inner: Mutex::new(initial_values),
-            signal: Signal::new(),
+            app_id,
+            inner: Mutex::new(initial),
+            start_channel,
         }
     }
 
@@ -66,12 +171,6 @@ impl<const N: usize> ParamStore<N> {
         }
         let mut val = self.inner.lock().await;
         val[index] = value;
-        drop(val);
-        self.signal.signal(index);
-    }
-
-    pub async fn wait_for_change(&self) -> usize {
-        self.signal.wait().await
     }
 }
 
@@ -80,6 +179,7 @@ where
     T: FromValue + Into<Value> + Copy,
 {
     index: usize,
+    signal: Signal<NoopRawMutex, usize>,
     values: &'a ParamStore<N>,
     _phantom: PhantomData<T>,
 }
@@ -89,10 +189,11 @@ where
     T: FromValue + Into<Value> + Copy,
 {
     pub fn new(values: &'a ParamStore<N>, index: usize) -> Self {
-        assert!(index < N, "StorageSlot index out of bounds");
+        assert!(index < N, "ParamSlot index out of bounds");
         Self {
-            values,
             index,
+            signal: Signal::new(),
+            values,
             _phantom: PhantomData,
         }
     }
@@ -103,12 +204,13 @@ where
     }
 
     pub async fn set(&self, value: T) {
-        self.values.set(self.index, value.into()).await
+        self.values.set(self.index, value.into()).await;
+        self.signal.signal(self.index);
     }
 
     pub async fn wait_for_change(&self) -> T {
         loop {
-            let index = self.values.wait_for_change().await;
+            let index = self.signal.wait().await;
             if self.index == index {
                 return self.get().await;
             }

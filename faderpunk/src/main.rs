@@ -34,7 +34,7 @@ use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
 use heapless::Vec;
-use tasks::eeprom::{StorageCmd, StorageEvent, EEPROM_CHANNEL};
+use tasks::eeprom::EEPROM_CHANNEL;
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
@@ -45,7 +45,7 @@ use at24cx::{Address, At24Cx};
 
 use apps::run_app_by_id;
 use config::{ClockSrc, GlobalConfig, Value};
-use storage::APP_MAX_PARAMS;
+use storage::{StorageCmd, StorageEvent, APP_MAX_PARAMS};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -89,9 +89,10 @@ pub enum HardwareCmd {
     StorageCmd(usize, StorageCmd),
 }
 
-pub enum ParamCmd {
-    GetAllValues,
-    SetValueSlot(usize, Value),
+pub enum AppStorageCmd {
+    GetAllParams,
+    SetParamSlot(usize, Value),
+    SaveScene
 }
 
 pub const CMD_CHANNEL_SIZE: usize = 16;
@@ -103,9 +104,9 @@ pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26>
     Watch::new_with(GlobalConfig::new());
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
-pub static APP_PARAM_CMDS: [Signal<CriticalSectionRawMutex, ParamCmd>; 16] =
+pub static APP_STORAGE_CMDS: [Signal<CriticalSectionRawMutex, AppStorageCmd>; 16] =
     [const { Signal::new() }; 16];
-pub static APP_PARAM_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
+pub static APP_STORAGE_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
     Channel::new();
 
 pub type EventPubSubChannel =
@@ -289,7 +290,7 @@ async fn main(spawner: Spawner) {
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::MidiIn;
     config.reset_src = ClockSrc::MidiIn;
-    config.layout = Vec::from_slice(&[(3, 0), (3, 1)]).unwrap();
+    // config.layout = Vec::from_slice(&[(3, 0), (3, 1)]).unwrap();
 
     config_sender.send(config);
 }

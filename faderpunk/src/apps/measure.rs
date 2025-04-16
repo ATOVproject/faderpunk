@@ -7,9 +7,10 @@ pub const CHANNELS: usize = 1;
 app_config! (
     config("Measure", "Test app to measure port voltages");
     params();
+    storage();
 );
 
-pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {
+pub async fn run(app: App<CHANNELS>, _ctx: &AppContext<'_>) {
     let mut die = app.use_die();
     let fut1 = async {
         loop {

@@ -5,9 +5,10 @@ pub const CHANNELS: usize = 16;
 app_config! (
     config("Clock test", "Visualize clock tempo");
     params();
+    storage();
 );
 
-pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {
+pub async fn run(app: App<CHANNELS>, _ctx: &AppContext<'_>) {
     let mut clock = app.use_clock();
     let color = (243, 191, 78);
     let leds = app.use_leds();

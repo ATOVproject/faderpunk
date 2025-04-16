@@ -13,6 +13,7 @@ use sequential_storage::{
     map::{fetch_item, store_item},
 };
 
+use crate::storage::{create_storage_key, StorageCmd, StorageEvent};
 use crate::{HardwareEvent, EVENT_PUBSUB};
 
 pub static EEPROM_CHANNEL: Channel<ThreadModeRawMutex, (usize, StorageCmd), 16> = Channel::new();
@@ -21,23 +22,8 @@ pub static EEPROM_CHANNEL: Channel<ThreadModeRawMutex, (usize, StorageCmd), 16> 
 pub const DATA_LENGTH: usize = 128;
 const MAX_PENDING_SAVES: usize = 64;
 
-#[derive(Clone)]
-pub enum StorageEvent {
-    Read(u8, u8, Vec<u8, DATA_LENGTH>),
-}
-
-#[derive(Clone)]
-pub enum StorageCmd {
-    Request(u8, u8),
-    Store(u8, u8, Vec<u8, DATA_LENGTH>),
-}
-
 pub async fn start_eeprom(spawner: &Spawner, eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
     spawner.spawn(run_eeprom(eeprom)).unwrap();
-}
-
-fn create_storage_key(app_id: u8, start_channel: u8, storage_slot: u8) -> u32 {
-    ((app_id as u32) << 9) | ((storage_slot as u32) << 4) | (start_channel as u32)
 }
 
 // Helper struct to store pending save info

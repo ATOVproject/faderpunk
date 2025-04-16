@@ -1,7 +1,7 @@
 use config::{Curve, Param};
 use embassy_futures::join::join3;
 
-use crate::app::{App, Led, Range, StorageSlot};
+use crate::app::{App, Led, Range};
 
 pub const CHANNELS: usize = 1;
 
@@ -19,6 +19,10 @@ app_config! (
             max: 15,
         }),
     );
+
+    storage(
+        muted => (bool, false),
+    );
 );
 
 // IDEA: !!! SCENES !!!
@@ -31,19 +35,21 @@ app_config! (
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
-pub async fn run(app: App<CHANNELS>, params: AppParams<'_>) {
-    let param_curve = params.curve();
-    let midi_channel = params.midi_channel().get().await;
+pub async fn run(app: App<CHANNELS>, ctx: &AppContext<'_>) {
+    let param_curve = &ctx.params.curve;
+    let param_midi_channel = &ctx.params.midi_channel;
+    let stor_muted = &ctx.storage.muted;
+
+    stor_muted.load().await;
+
+    let midi_channel = param_midi_channel.get().await;
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
     let midi = app.use_midi(midi_channel as u8);
 
-    let glob_muted = app.make_global_with_store(false, StorageSlot::A);
-    glob_muted.load().await;
-
-    let muted = glob_muted.get().await;
+    let muted = stor_muted.get().await;
     leds.set(
         0,
         Led::Button,
@@ -55,7 +61,7 @@ pub async fn run(app: App<CHANNELS>, params: AppParams<'_>) {
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
-            let muted = glob_muted.get().await;
+            let muted = stor_muted.get().await;
             let curve = param_curve.get().await;
             if !muted {
                 let vals = faders.get_values();
@@ -67,7 +73,7 @@ pub async fn run(app: App<CHANNELS>, params: AppParams<'_>) {
     let fut2 = async {
         loop {
             faders.wait_for_change(0).await;
-            let muted = glob_muted.get().await;
+            let muted = stor_muted.get().await;
             if !muted {
                 let [fader] = faders.get_values();
                 midi.send_cc(32 + app.start_channel as u8, fader).await;
@@ -78,8 +84,8 @@ pub async fn run(app: App<CHANNELS>, params: AppParams<'_>) {
     let fut3 = async {
         loop {
             buttons.wait_for_down(0).await;
-            let muted = glob_muted.toggle().await;
-            glob_muted.save().await;
+            let muted = stor_muted.toggle().await;
+            stor_muted.save().await;
             if muted {
                 leds.set(0, Led::Button, LED_COLOR, 0);
                 jack.set_value(0);

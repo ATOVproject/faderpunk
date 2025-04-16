@@ -38,9 +38,10 @@ macro_rules! register_apps {
                             sender,
                             &EVENT_PUBSUB
                         );
-                        let values = ParamStore::new($app_mod::default_values(), app_id, start_channel);
-                        let params = $app_mod::AppParams::new(&values);
-                        join($app_mod::run(app, params), $app_mod::msg_loop(start_channel, &values)).await;
+                        let param_values = ParamStore::new($app_mod::default_params(), app_id, start_channel);
+                        let storage = $app_mod::get_storage(app_id, start_channel);
+                        let context = $app_mod::AppContext::new(&param_values, storage);
+                        join($app_mod::run(app, &context), $app_mod::msg_loop(start_channel, &context)).await;
                     },
                 )*
                 _ => panic!("Unknown app ID: {}", app_id),
@@ -72,9 +73,9 @@ macro_rules! register_apps {
 macro_rules! app_config {
     (
         config($app_name:expr, $app_desc:expr);
-        params( $( $p_name:ident => ($p_slot_type:ty, $p_default_value:expr, $p_config_param:expr) ),* $(,)? );
+        params( $( $p_name:ident => ($p_slot_type:ty, $p_default_param:expr, $p_config_param:expr) ),* $(,)? );
+        storage( $( $s_name:ident => ($s_slot_type:ty, $s_initial_value:expr) ),* $(,)? );
     ) => {
-        // Specify the type of the array elements ([&str])
         pub const PARAMS: usize = 0 $(+ { let _ = stringify!($p_name); 1 })*;
 
         pub static CONFIG: config::Config<PARAMS> = {
@@ -84,50 +85,99 @@ macro_rules! app_config {
             cfg
         };
 
-        pub fn default_values() -> [::config::Value; PARAMS] {
-            [ $( ($p_default_value).into() ),* ]
+        pub fn default_params() -> [config::Value; PARAMS] {
+            [ $( ($p_default_param).into() ),* ]
+        }
+
+        pub fn get_storage(app_id: usize, start_channel: usize) -> AppStorage {
+            AppStorage::new(app_id, start_channel)
         }
 
         pub struct AppParams<'a> {
-            #[allow(dead_code)]
+            $(
+                #[allow(dead_code)]
+                pub $p_name: $crate::storage::ParamSlot<'a, $p_slot_type, PARAMS>,
+            )*
             values: &'a $crate::storage::ParamStore<PARAMS>,
         }
 
         impl<'a> AppParams<'a> {
+            #[allow(unused)]
             pub fn new(values: &'a $crate::storage::ParamStore<PARAMS>) -> Self {
-                Self { values }
-            }
-            app_config!(@generate_accessors 0, $($p_name => ($p_slot_type)),* );
-        }
-
-        pub async fn msg_loop(start_channel: usize, vals: &$crate::storage::ParamStore<PARAMS>) {
-            let param_sender = $crate::APP_PARAM_EVENT.sender();
-            loop {
-                match $crate::APP_PARAM_CMDS[start_channel].wait().await {
-                    $crate::ParamCmd::GetAllValues => {
-                        // Explicitly type `values` as an array with known size PARAMS
-                        let values: [::config::Value; PARAMS] = vals.get_all().await;
-                        // Now use `&values` which is a slice `&[Value; PARAMS]`
-                        let vec = ::heapless::Vec::<_, { $crate::storage::APP_MAX_PARAMS }>::from_slice(&values)
-                            .expect("Failed to create Vec from param values");
-                        param_sender.send(vec).await;
-                    }
-                    $crate::ParamCmd::SetValueSlot(slot, value) => {
-                        if slot < PARAMS {
-                            vals.set(slot, value).await;
-                        }
-                    }
+                let mut idx = 0;
+                Self {
+                    $(
+                        $p_name: {
+                            let current_idx = idx;
+                            idx += 1;
+                            $crate::storage::ParamSlot::<$p_slot_type, PARAMS>::new(values, current_idx)
+                        },
+                    )*
+                    values,
                 }
             }
         }
-    };
 
-    // --- Helper Macro for Accessor Generation (Unchanged) ---
-    (@generate_accessors $idx:expr, ) => {};
-    (@generate_accessors $idx:expr, $p_name:ident => ($p_slot_type:ty) $(, $($rest:tt)*)? ) => {
-        pub fn $p_name(&self) -> $crate::storage::ParamSlot<'a, $p_slot_type, {PARAMS}> {
-             $crate::storage::ParamSlot::<$p_slot_type, {PARAMS}>::new(self.values, $idx)
-         }
-        app_config!(@generate_accessors $idx + 1, $($($rest)*)?);
+        pub struct AppStorage {
+            $(
+                #[allow(dead_code)]
+                pub $s_name: $crate::storage::StorageSlot<$s_slot_type>,
+            )*
+        }
+
+        impl AppStorage {
+            #[allow(unused)]
+            pub fn new(app_id: usize, start_channel: usize) -> Self {
+                let mut idx = 0;
+                Self {
+                    $(
+                        $s_name: {
+                            let current_idx = idx;
+                            idx += 1;
+                            $crate::storage::StorageSlot::<$s_slot_type>::new($s_initial_value, app_id, start_channel, idx)
+                        },
+                    )*
+                }
+            }
+        }
+
+        pub struct AppContext<'a> {
+            #[allow(dead_code)]
+            params: AppParams<'a>,
+            #[allow(dead_code)]
+            storage: AppStorage,
+        }
+
+        impl<'a> AppContext<'a> {
+            pub fn new(param_values: &'a $crate::storage::ParamStore<PARAMS>, storage: AppStorage) -> Self {
+                let params = AppParams::new(param_values);
+                Self {
+                    params,
+                    storage,
+                }
+            }
+        }
+
+        pub async fn msg_loop(start_channel: usize, ctx: &AppContext<'_>) {
+             let param_sender = $crate::APP_STORAGE_EVENT.sender();
+             loop {
+                 match $crate::APP_STORAGE_CMDS[start_channel].wait().await {
+                     $crate::AppStorageCmd::GetAllParams => {
+                         let values: [config::Value; PARAMS] = ctx.params.values.get_all().await;
+                         let vec = heapless::Vec::<_, { $crate::storage::APP_MAX_PARAMS }>::from_slice(&values)
+                             .expect("Failed to create Vec from param values");
+                         param_sender.send(vec).await;
+                     }
+                     $crate::AppStorageCmd::SetParamSlot(slot, value) => {
+                         if slot < PARAMS {
+                             ctx.params.values.set(slot, value).await;
+                         }
+                     }
+                     $crate::AppStorageCmd::SaveScene => {
+                        $( ctx.storage.$s_name.save_scene(); )*
+                     }
+                 }
+             }
+        }
     };
 }
