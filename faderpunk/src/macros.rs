@@ -38,7 +38,7 @@ macro_rules! register_apps {
                             sender,
                             &EVENT_PUBSUB
                         );
-                        let values = ParamStore::new($app_mod::default_values());
+                        let values = ParamStore::new($app_mod::default_values(), app_id, start_channel);
                         let params = $app_mod::AppParams::new(&values);
                         join($app_mod::run(app, params), $app_mod::msg_loop(start_channel, &values)).await;
                     },
@@ -69,16 +69,16 @@ macro_rules! register_apps {
     };
 }
 
-#[macro_export]
 macro_rules! app_config {
-    // Branch 1: Config WITH Params
     (
         config($app_name:expr, $app_desc:expr);
-        params( $( $p_name:ident => ($p_slot_type:ty, $p_default_value:expr, $p_config_param:expr) ),* $(,)? )
+        params( $( $p_name:ident => ($p_slot_type:ty, $p_default_value:expr, $p_config_param:expr) ),* $(,)? );
     ) => {
-        pub const PARAMS: usize = { [ $( stringify!($p_name) ),* ].len() };
+        // Specify the type of the array elements ([&str])
+        pub const PARAMS: usize = 0 $(+ { let _ = stringify!($p_name); 1 })*;
 
         pub static CONFIG: config::Config<PARAMS> = {
+            #[allow(unused_mut)]
             let mut cfg = config::Config::new($app_name, $app_desc);
             $( cfg = cfg.add_param($p_config_param); )*
             cfg
@@ -89,6 +89,7 @@ macro_rules! app_config {
         }
 
         pub struct AppParams<'a> {
+            #[allow(dead_code)]
             values: &'a $crate::storage::ParamStore<PARAMS>,
         }
 
@@ -104,45 +105,20 @@ macro_rules! app_config {
             loop {
                 match $crate::APP_PARAM_CMDS[start_channel].wait().await {
                     $crate::ParamCmd::GetAllValues => {
-                        let values = vals.get_all().await;
-                        // Ensure Vec is in scope (e.g., use heapless::Vec)
+                        // Explicitly type `values` as an array with known size PARAMS
+                        let values: [::config::Value; PARAMS] = vals.get_all().await;
+                        // Now use `&values` which is a slice `&[Value; PARAMS]`
                         let vec = ::heapless::Vec::<_, { $crate::storage::APP_MAX_PARAMS }>::from_slice(&values)
-                            .expect("Failed to create Vec from param values"); // Use expect or unwrap
+                            .expect("Failed to create Vec from param values");
                         param_sender.send(vec).await;
                     }
                     $crate::ParamCmd::SetValueSlot(slot, value) => {
-                        // Ensure slot is within bounds for this app's PARAMS
                         if slot < PARAMS {
                             vals.set(slot, value).await;
                         }
                     }
                 }
             }
-        }
-    };
-
-    // Branch 2: Config WITHOUT Params
-    (
-        config($app_name:expr, $app_desc:expr);
-    ) => {
-        pub static CONFIG: config::Config<0> = config::Config::new($app_name, $app_desc);
-
-        pub fn default_values() -> [::config::Value; 0] { [] }
-
-        pub struct AppParams<'a> {
-            #[allow(dead_code)]
-            values: &'a $crate::storage::ParamStore<0>,
-        }
-
-        impl<'a> AppParams<'a> {
-            pub fn new(values: &'a $crate::storage::ParamStore<0>) -> Self {
-                Self { values }
-            }
-        }
-
-        // Generate a placeholder msg_loop for apps without params
-        pub async fn msg_loop(_start_channel: usize, _vals: &$crate::storage::ParamStore<0>) {
-            // Just exit
         }
     };
 

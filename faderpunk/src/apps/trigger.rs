@@ -4,6 +4,7 @@ pub const CHANNELS: usize = 1;
 
 app_config! (
     config("Trigger", "Test app to test the clock and GPOs");
+    params();
 );
 
 pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {

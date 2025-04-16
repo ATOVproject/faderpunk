@@ -18,7 +18,7 @@ app_config! (
             min: 0,
             max: 15,
         }),
-    )
+    );
 );
 
 // IDEA: !!! SCENES !!!

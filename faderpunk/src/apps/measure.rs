@@ -1,4 +1,3 @@
-use config::Config;
 use defmt::info;
 
 use crate::app::App;
@@ -7,6 +6,7 @@ pub const CHANNELS: usize = 1;
 
 app_config! (
     config("Measure", "Test app to measure port voltages");
+    params();
 );
 
 pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {

@@ -1,11 +1,10 @@
-use config::Config;
-
 use crate::app::{App, Led};
 
 pub const CHANNELS: usize = 16;
 
 app_config! (
     config("Clock test", "Visualize clock tempo");
+    params();
 );
 
 pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {

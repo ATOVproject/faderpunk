@@ -8,6 +8,7 @@ pub const CHANNELS: usize = 1;
 
 app_config! (
     config("LFO", "Wooooosh");
+    params();
 );
 
 pub async fn run(app: App<CHANNELS>, _params: AppParams<'_>) {
