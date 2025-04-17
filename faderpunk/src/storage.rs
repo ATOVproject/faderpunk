@@ -98,42 +98,28 @@ pub enum StorageCmd {
 // -> Add scenes
 // -> Layout changes
 
-/// Creates a unique 32-bit storage key.
+/// Creates a unique 16‑bit storage key.
 ///
 /// Layout (LSB first):
-/// - bits 0-3:  start_channel (max 16 values)
-/// - bits 4-6:  storage_slot (max 8 values)
-/// - bits 7-10: scene (max 16 values) - Only relevant if is_scene_specific is true.
-/// - bit 11:    is_scene_specific flag (1 = scene-specific, 0 = not scene-specific)
-/// - bits 12+:  app_id
-///
-/// Input values (except app_id) are masked to fit their allocated bit ranges.
-pub fn create_storage_key(
-    app_id: u8,
-    storage_slot: u8,
-    start_channel: u8,
-    scene: Option<u8>,
-) -> u32 {
+/// - bits 0‑3 : start_channel (max 16 values)
+/// - bits 4‑7 : storage_slot  (max 16 values)
+/// - bits 8‑11: scene         (max 16 values) – only relevant if `scene` is `Some(_)`.
+/// - bit 12   : is_scene_specific flag (1 = scene‑specific, 0 = global)
+/// - bits 13‑15: reserved (0)
+pub fn create_storage_key(storage_slot: u8, start_channel: u8, scene: Option<u8>) -> u16 {
     const START_CHANNEL_MASK: u8 = 0b1111; // 4 bits
-    const STORAGE_SLOT_MASK: u8 = 0b111; // 3 bits
+    const STORAGE_SLOT_MASK: u8 = 0b1111; // 4 bits
     const SCENE_MASK: u8 = 0b1111; // 4 bits
 
     let masked_start_channel = start_channel & START_CHANNEL_MASK;
     let masked_storage_slot = storage_slot & STORAGE_SLOT_MASK;
-    // Mask scene even if not scene-specific to ensure those bits are clean if flag is 0
-    let masked_scene = if let Some(sc) = scene {
-        sc & SCENE_MASK
-    } else {
-        0
-    };
-    // true -> 1, false -> 0
-    let scene_flag = scene.is_some() as u32;
+    let masked_scene = scene.map_or(0, |sc| sc & SCENE_MASK);
+    let scene_flag = scene.is_some() as u16;
 
-    ((app_id as u32) << 12)
-        | (scene_flag << 11)
-        | ((masked_scene as u32) << 7)
-        | ((masked_storage_slot as u32) << 4)
-        | (masked_start_channel as u32)
+    (scene_flag << 12)
+        | ((masked_scene as u16) << 8)
+        | ((masked_storage_slot as u16) << 4)
+        | (masked_start_channel as u16)
 }
 
 pub struct StorageSlot<T: Sized + Copy + Default> {

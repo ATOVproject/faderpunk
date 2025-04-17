@@ -46,9 +46,9 @@ dependencies = [
 
 [[package]]
 name = "at24cx"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2c07cfaec97b193167de2ec5d4ad3b473e55f54e1eaadaa37ba56f536807e48"
+checksum = "3847692b9d9df1b3252074768854c41d1bf8bf26d2c750b179d26839bf7ee5ad"
 dependencies = [
  "embedded-hal-async",
  "embedded-storage-async",
@@ -699,6 +699,7 @@ dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "embedded-io-async",
+ "embedded-storage-async",
  "heapless 0.7.17",
  "libfp",
  "log",
