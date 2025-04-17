@@ -5,7 +5,6 @@ use embassy_rp::{
     i2c::{Async, I2c},
     peripherals::I2C1,
 };
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Channel};
 use embassy_time::{Delay, Duration, Instant, Timer};
 use heapless::{FnvIndexMap, Vec};
 use sequential_storage::{
@@ -13,10 +12,10 @@ use sequential_storage::{
     map::{fetch_item, store_item},
 };
 
-use crate::storage::{create_storage_key, StorageCmd, StorageEvent, DATA_LENGTH};
-use crate::{HardwareEvent, EVENT_PUBSUB};
-
-pub static EEPROM_CHANNEL: Channel<ThreadModeRawMutex, (usize, StorageCmd), 16> = Channel::new();
+use crate::storage::{
+    create_storage_key, StorageCmd, StorageEvent, DATA_LENGTH, STORAGE_CMD_CHANNEL,
+    STORAGE_EVENT_WATCH,
+};
 
 const MAX_PENDING_SAVES: usize = 16;
 
@@ -31,7 +30,7 @@ struct PendingSave {
 
 #[embassy_executor::task]
 async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
-    let event_publisher = EVENT_PUBSUB.publisher().unwrap();
+    let event_sender = STORAGE_EVENT_WATCH.sender();
 
     // These are the flash addresses in which the sequential_storage will operate.
     let flash_range = 0x8000..0x20000;
@@ -56,17 +55,15 @@ async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
         };
 
         // Wait for either a new message or the timer to expire
-        match select(EEPROM_CHANNEL.receive(), timer_future).await {
+        match select(STORAGE_CMD_CHANNEL.receive(), timer_future).await {
             Either::First(msg) => match msg {
-                (
-                    chan,
-                    StorageCmd::Request {
-                        app_id,
-                        storage_slot,
-                        scene,
-                    },
-                ) => {
-                    let key = create_storage_key(app_id, chan as u8, storage_slot, scene);
+                StorageCmd::Request {
+                    app_id,
+                    start_channel,
+                    storage_slot,
+                    scene,
+                } => {
+                    let key = create_storage_key(app_id, start_channel as u8, storage_slot, scene);
                     if let Ok(Some(item)) = fetch_item::<u32, &[u8], _>(
                         &mut eeprom,
                         flash_range.clone(),
@@ -77,30 +74,24 @@ async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
                     .await
                     {
                         if let Ok(vec) = Vec::<u8, DATA_LENGTH>::from_slice(item) {
-                            event_publisher
-                                .publish(HardwareEvent::StorageEvent(
-                                    chan,
-                                    StorageEvent::Read {
-                                        app_id,
-                                        storage_slot,
-                                        data: vec,
-                                        scene,
-                                    },
-                                ))
-                                .await;
+                            event_sender.send(StorageEvent::Read {
+                                app_id,
+                                start_channel,
+                                storage_slot,
+                                data: vec,
+                                scene,
+                            });
                         }
                     }
                 }
-                (
-                    chan,
-                    StorageCmd::Store {
-                        app_id,
-                        storage_slot,
-                        data,
-                        scene,
-                    },
-                ) => {
-                    let key = create_storage_key(app_id, chan as u8, storage_slot, scene);
+                StorageCmd::Store {
+                    app_id,
+                    start_channel,
+                    storage_slot,
+                    data,
+                    scene,
+                } => {
+                    let key = create_storage_key(app_id, start_channel as u8, storage_slot, scene);
                     let now = Instant::now();
                     let pending_save = PendingSave {
                         last_update: now,

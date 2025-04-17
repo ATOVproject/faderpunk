@@ -158,28 +158,38 @@ macro_rules! app_config {
             }
         }
 
-        pub async fn msg_loop(start_channel: usize, ctx: &AppContext<'_>) {
-             let param_sender = $crate::APP_STORAGE_EVENT.sender();
-             loop {
-                 match $crate::APP_STORAGE_CMDS[start_channel].wait().await {
-                     $crate::AppStorageCmd::GetAllParams => {
-                         let values: [config::Value; PARAMS] = ctx.params.values.get_all().await;
-                         let vec = heapless::Vec::<_, { $crate::storage::APP_MAX_PARAMS }>::from_slice(&values)
-                             .expect("Failed to create Vec from param values");
-                         param_sender.send(vec).await;
-                     }
-                     $crate::AppStorageCmd::SetParamSlot(slot, value) => {
-                         if slot < PARAMS {
-                             ctx.params.values.set(slot, value).await;
-                         }
-                     }
-                     $crate::AppStorageCmd::SaveScene => {
-                        #[allow(unused)]
-                        let scene = $crate::scene::get_global_scene();
-                        $( ctx.storage.$s_name.save_to_scene(scene).await; )*
-                     }
-                 }
-             }
+        pub async fn msg_loop(app_start_channel: usize, ctx: &AppContext<'_>) {
+            let param_sender = $crate::storage::APP_STORAGE_EVENT.sender();
+            let mut app_storage_receiver = $crate::storage::APP_STORAGE_CMD_PUBSUB.subscriber().unwrap();
+            loop {
+                match app_storage_receiver.next_message_pure().await {
+                    $crate::storage::AppStorageCmd::GetAllParams { start_channel } => {
+                        if app_start_channel != start_channel {
+                            continue;
+                        }
+                        let values: [config::Value; PARAMS] = ctx.params.values.get_all().await;
+                        let vec = heapless::Vec::<_, { $crate::storage::APP_MAX_PARAMS }>::from_slice(&values)
+                            .expect("Failed to create Vec from param values");
+                        param_sender.send(vec).await;
+                    }
+                    $crate::storage::AppStorageCmd::SetParamSlot{ start_channel, param_slot, value } => {
+                        if app_start_channel != start_channel {
+                            continue;
+                        }
+                        if param_slot < PARAMS {
+                            ctx.params.values.set(param_slot, value).await;
+                        }
+                    }
+                    #[allow(unused)]
+                    $crate::storage::AppStorageCmd::SaveScene { scene } => {
+                        $( ctx.storage.$s_name.save_to_scene(scene as u8).await; )*
+                    }
+                    #[allow(unused)]
+                    $crate::storage::AppStorageCmd::LoadScene { scene } => {
+                        $( ctx.storage.$s_name.load_from_scene(scene as u8).await; )*
+                    }
+                }
+            }
         }
     };
 }

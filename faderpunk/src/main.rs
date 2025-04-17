@@ -28,14 +28,11 @@ use embassy_rp::{
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::pubsub::PubSubChannel;
-use embassy_sync::signal::Signal;
 use embassy_sync::watch::Watch;
 use embassy_time::{Delay, Timer};
 use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
-use heapless::Vec;
-use tasks::eeprom::EEPROM_CHANNEL;
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
@@ -45,8 +42,7 @@ use static_cell::StaticCell;
 use at24cx::{Address, At24Cx};
 
 use apps::run_app_by_id;
-use config::{ClockSrc, GlobalConfig, Value};
-use storage::{StorageCmd, StorageEvent, APP_MAX_PARAMS};
+use config::{ClockSrc, GlobalConfig};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -80,20 +76,12 @@ pub enum HardwareEvent {
     ButtonUp(usize),
     FaderChange(usize),
     MidiMsg(LiveEvent<'static>),
-    StorageEvent(usize, StorageEvent),
 }
 
 /// Messages from core 1 to core 0
 pub enum HardwareCmd {
     MaxCmd(usize, MaxCmd),
     MidiCmd(LiveEvent<'static>),
-    StorageCmd(usize, StorageCmd),
-}
-
-pub enum AppStorageCmd {
-    GetAllParams,
-    SetParamSlot(usize, Value),
-    SaveScene,
 }
 
 pub const CMD_CHANNEL_SIZE: usize = 16;
@@ -104,11 +92,6 @@ pub const EVENT_PUBSUB_SIZE: usize = 64;
 pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> =
     Watch::new_with(GlobalConfig::new());
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
-
-pub static APP_STORAGE_CMDS: [Signal<CriticalSectionRawMutex, AppStorageCmd>; 16] =
-    [const { Signal::new() }; 16];
-pub static APP_STORAGE_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
-    Channel::new();
 
 pub type EventPubSubChannel =
     PubSubChannel<CriticalSectionRawMutex, HardwareEvent, EVENT_PUBSUB_SIZE, 32, 21>;
@@ -170,9 +153,6 @@ async fn hardware_cmd_router() {
     loop {
         match CMD_CHANNEL.receive().await {
             HardwareCmd::MaxCmd(channel, max_cmd) => MAX_CHANNEL.send((channel, max_cmd)).await,
-            HardwareCmd::StorageCmd(channel, storage_cmd) => {
-                EEPROM_CHANNEL.send((channel, storage_cmd)).await
-            }
             HardwareCmd::MidiCmd(live_event) => MIDI_CHANNEL.send(live_event).await,
         }
     }

@@ -9,7 +9,8 @@ use postcard::{from_bytes, to_vec};
 use config::{ConfigMsgIn, ConfigMsgOut};
 
 use crate::apps::{get_config, REGISTERED_APP_IDS};
-use crate::{AppStorageCmd, APP_STORAGE_CMDS, APP_STORAGE_EVENT, CONFIG_CHANGE_WATCH};
+use crate::storage::{AppStorageCmd, APP_STORAGE_CMD_PUBSUB, APP_STORAGE_EVENT};
+use crate::CONFIG_CHANGE_WATCH;
 
 use super::transport::WebEndpoints;
 
@@ -44,6 +45,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
     let mut proto = ConfigProtocol::new(webusb);
     // TODO: think about sending apps individually to save on buffer size
     // Then add batching to messages (message x/y) to the header
+
+    let app_storage_publisher = APP_STORAGE_CMD_PUBSUB.publisher().unwrap();
 
     proto.wait_enabled().await;
     loop {
@@ -82,7 +85,9 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 // We can also try to get them in parallel somehow
                 with_timeout(Duration::from_secs(2), async {
                     for (_app_id, start_channel) in global_config.layout {
-                        APP_STORAGE_CMDS[start_channel].signal(AppStorageCmd::GetAllParams);
+                        app_storage_publisher
+                            .publish(AppStorageCmd::GetAllParams { start_channel })
+                            .await;
                         let values = APP_STORAGE_EVENT.receive().await;
                         proto
                             .send_msg(ConfigMsgOut::AppState(&values))
@@ -95,8 +100,13 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
             ConfigMsgIn::SetAppParam(start_channel, param_slot, value) => {
-                APP_STORAGE_CMDS[start_channel]
-                    .signal(AppStorageCmd::SetParamSlot(param_slot, value));
+                app_storage_publisher
+                    .publish(AppStorageCmd::SetParamSlot {
+                        start_channel,
+                        param_slot,
+                        value,
+                    })
+                    .await;
                 // TODO: This should answer to refresh UI
             }
         }

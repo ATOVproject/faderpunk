@@ -1,23 +1,64 @@
 use core::marker::PhantomData;
 
 use config::{FromValue, Value};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use defmt::info;
+use embassy_sync::{
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    channel::{Channel, Sender},
+    mutex::Mutex,
+    pubsub::PubSubChannel,
+    signal::Signal,
+    watch::Watch,
+};
 use embassy_time::{with_timeout, Duration};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
 use serde::{de::DeserializeOwned, Serialize};
-
-use crate::{CmdSender, EventPubSubChannel, HardwareCmd, HardwareEvent, CMD_CHANNEL, EVENT_PUBSUB};
 
 pub const APP_MAX_PARAMS: usize = 8;
 
 // TODO: Find a good number for this (allowed storage size is 64)
 pub const DATA_LENGTH: usize = 128;
 
+pub static APP_STORAGE_CMD_PUBSUB: PubSubChannel<
+    CriticalSectionRawMutex,
+    AppStorageCmd,
+    16,
+    16,
+    2,
+> = PubSubChannel::new();
+pub static APP_STORAGE_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
+    Channel::new();
+
+// 8 StorageSlots for a maximum of 16 apps. Feels like a lot
+pub type StorageWatch = Watch<CriticalSectionRawMutex, StorageEvent, { 16 * 8 }>;
+pub static STORAGE_EVENT_WATCH: StorageWatch = Watch::new();
+pub static STORAGE_CMD_CHANNEL: Channel<CriticalSectionRawMutex, StorageCmd, 32> = Channel::new();
+pub type CmdSender = Sender<'static, CriticalSectionRawMutex, StorageCmd, 32>;
+
+#[derive(Clone)]
+pub enum AppStorageCmd {
+    GetAllParams {
+        start_channel: usize,
+    },
+    SetParamSlot {
+        start_channel: usize,
+        param_slot: usize,
+        value: Value,
+    },
+    SaveScene {
+        scene: usize,
+    },
+    LoadScene {
+        scene: usize,
+    },
+}
+
 #[derive(Clone)]
 pub enum StorageEvent {
     Read {
         app_id: u8,
+        start_channel: u8,
         storage_slot: u8,
         scene: Option<u8>,
         data: Vec<u8, DATA_LENGTH>,
@@ -28,11 +69,13 @@ pub enum StorageEvent {
 pub enum StorageCmd {
     Request {
         app_id: u8,
+        start_channel: u8,
         storage_slot: u8,
         scene: Option<u8>,
     },
     Store {
         app_id: u8,
+        start_channel: u8,
         storage_slot: u8,
         scene: Option<u8>,
         data: Vec<u8, DATA_LENGTH>,
@@ -90,7 +133,6 @@ pub fn create_storage_key(
 pub struct StorageSlot<T: Sized + Copy + Default> {
     app_id: usize,
     cmd_sender: CmdSender,
-    event_pubsub: &'static EventPubSubChannel,
     inner: Mutex<NoopRawMutex, T>,
     scene_values: Mutex<NoopRawMutex, [Option<T>; 16]>,
     start_channel: usize,
@@ -105,8 +147,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> StorageSlot<T> {
             inner: Mutex::new(initial),
             start_channel,
             storage_slot,
-            cmd_sender: CMD_CHANNEL.sender(),
-            event_pubsub: &EVENT_PUBSUB,
+            cmd_sender: STORAGE_CMD_CHANNEL.sender(),
         }
     }
 
@@ -138,46 +179,40 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> StorageSlot<T> {
     async fn save_impl(&self, scene: Option<u8>) {
         let ser = self.ser().await;
         self.cmd_sender
-            .send(HardwareCmd::StorageCmd(
-                self.start_channel,
-                StorageCmd::Store {
-                    app_id: self.app_id as u8,
-                    storage_slot: self.storage_slot as u8,
-                    scene,
-                    data: ser,
-                },
-            ))
+            .send(StorageCmd::Store {
+                app_id: self.app_id as u8,
+                start_channel: self.start_channel as u8,
+                storage_slot: self.storage_slot as u8,
+                scene,
+                data: ser,
+            })
             .await;
     }
 
     async fn load_impl(&self, scene: Option<u8>) -> Option<T> {
         self.cmd_sender
-            .send(HardwareCmd::StorageCmd(
-                self.start_channel,
-                StorageCmd::Request {
-                    app_id: self.app_id as u8,
-                    storage_slot: self.storage_slot as u8,
-                    scene,
-                },
-            ))
+            .send(StorageCmd::Request {
+                app_id: self.app_id as u8,
+                start_channel: self.start_channel as u8,
+                storage_slot: self.storage_slot as u8,
+                scene,
+            })
             .await;
         // Make this timeout roughly as long as the boot sequence ;)
         with_timeout(Duration::from_millis(2000), async {
-            let mut subscriber = self.event_pubsub.subscriber().unwrap();
+            let mut subscriber = STORAGE_EVENT_WATCH.receiver().unwrap();
             loop {
-                if let HardwareEvent::StorageEvent(
+                if let StorageEvent::Read {
+                    app_id,
                     start_channel,
-                    StorageEvent::Read {
-                        app_id,
-                        storage_slot,
-                        scene,
-                        data,
-                    },
-                ) = subscriber.next_message_pure().await
+                    storage_slot,
+                    scene,
+                    data,
+                } = subscriber.changed().await
                 {
                     if self.app_id as u8 == app_id
                         && self.storage_slot as u8 == storage_slot
-                        && self.start_channel == start_channel
+                        && self.start_channel as u8 == start_channel
                     {
                         return self.des(data.as_slice(), scene).await;
                     }
@@ -210,7 +245,8 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> StorageSlot<T> {
         let mut scene_values = self.scene_values.lock().await;
         scene_values[scene as usize] = Some(self.get().await);
         drop(scene_values);
-        self.save_impl(Some(scene)).await
+        self.save_impl(Some(scene)).await;
+        info!("SAVED SCENE {} in {}", scene, self.start_channel);
     }
 
     pub async fn load_from_scene(&self, scene: u8) {
@@ -222,6 +258,7 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> StorageSlot<T> {
         } else if let Some(val) = self.load_impl(Some(scene)).await {
             self.set(val).await;
         }
+        info!("LOADED SCENE {} in {}", scene, self.start_channel);
     }
 }
 
