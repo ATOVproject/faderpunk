@@ -6,6 +6,7 @@ pub mod macros;
 
 mod app;
 mod apps;
+pub mod scene;
 pub mod storage;
 mod tasks;
 
@@ -92,7 +93,7 @@ pub enum HardwareCmd {
 pub enum AppStorageCmd {
     GetAllParams,
     SetParamSlot(usize, Value),
-    SaveScene
+    SaveScene,
 }
 
 pub const CMD_CHANNEL_SIZE: usize = 16;
@@ -122,11 +123,6 @@ static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 /// MIDI buffers (RX and TX)
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
 static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
-
-// TODO: create config builder to create full 16 channel layout with various apps
-// The app at some point needs access to the MAX to configure it. Maybe this can happen via
-// CHANNEL?
-// Builder config needs to be serializable to store in eeprom
 
 // App slots
 #[embassy_executor::task(pool_size = 16)]

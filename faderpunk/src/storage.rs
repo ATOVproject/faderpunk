@@ -1,12 +1,7 @@
 use core::marker::PhantomData;
 
-use config::{FromValue, Param, Value};
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
-    mutex::Mutex,
-    signal::Signal,
-    watch::Watch,
-};
+use config::{FromValue, Value};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::{with_timeout, Duration};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
@@ -21,13 +16,27 @@ pub const DATA_LENGTH: usize = 128;
 
 #[derive(Clone)]
 pub enum StorageEvent {
-    Read(u8, u8, Vec<u8, DATA_LENGTH>),
+    Read {
+        app_id: u8,
+        storage_slot: u8,
+        scene: Option<u8>,
+        data: Vec<u8, DATA_LENGTH>,
+    },
 }
 
 #[derive(Clone)]
 pub enum StorageCmd {
-    Request(u8, u8),
-    Store(u8, u8, Vec<u8, DATA_LENGTH>),
+    Request {
+        app_id: u8,
+        storage_slot: u8,
+        scene: Option<u8>,
+    },
+    Store {
+        app_id: u8,
+        storage_slot: u8,
+        scene: Option<u8>,
+        data: Vec<u8, DATA_LENGTH>,
+    },
 }
 
 // TODO: PLAN:
@@ -40,33 +49,66 @@ pub enum StorageCmd {
 // -> Add scenes
 // -> Layout changes
 
-// TODO: For scenes: this has to be adjusted for scenes (we need 4 bits for the scene)
-pub fn create_storage_key(app_id: u8, start_channel: u8, storage_slot: u8) -> u32 {
-    ((app_id as u32) << 9) | ((storage_slot as u32) << 4) | (start_channel as u32)
+/// Creates a unique 32-bit storage key.
+///
+/// Layout (LSB first):
+/// - bits 0-3:  start_channel (max 16 values)
+/// - bits 4-6:  storage_slot (max 8 values)
+/// - bits 7-10: scene (max 16 values) - Only relevant if is_scene_specific is true.
+/// - bit 11:    is_scene_specific flag (1 = scene-specific, 0 = not scene-specific)
+/// - bits 12+:  app_id
+///
+/// Input values (except app_id) are masked to fit their allocated bit ranges.
+pub fn create_storage_key(
+    app_id: u8,
+    storage_slot: u8,
+    start_channel: u8,
+    scene: Option<u8>,
+) -> u32 {
+    const START_CHANNEL_MASK: u8 = 0b1111; // 4 bits
+    const STORAGE_SLOT_MASK: u8 = 0b111; // 3 bits
+    const SCENE_MASK: u8 = 0b1111; // 4 bits
+
+    let masked_start_channel = start_channel & START_CHANNEL_MASK;
+    let masked_storage_slot = storage_slot & STORAGE_SLOT_MASK;
+    // Mask scene even if not scene-specific to ensure those bits are clean if flag is 0
+    let masked_scene = if let Some(sc) = scene {
+        sc & SCENE_MASK
+    } else {
+        0
+    };
+    // true -> 1, false -> 0
+    let scene_flag = scene.is_some() as u32;
+
+    ((app_id as u32) << 12)
+        | (scene_flag << 11)
+        | ((masked_scene as u32) << 7)
+        | ((masked_storage_slot as u32) << 4)
+        | (masked_start_channel as u32)
 }
 
 pub struct StorageSlot<T: Sized + Copy + Default> {
     app_id: usize,
-    inner: Mutex<NoopRawMutex, T>,
-    start_channel: usize,
-    storage_slot: usize,
     cmd_sender: CmdSender,
     event_pubsub: &'static EventPubSubChannel,
+    inner: Mutex<NoopRawMutex, T>,
+    scene_values: Mutex<NoopRawMutex, [Option<T>; 16]>,
+    start_channel: usize,
+    storage_slot: usize,
 }
 
 impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> StorageSlot<T> {
     pub fn new(initial: T, app_id: usize, start_channel: usize, storage_slot: usize) -> Self {
         Self {
             app_id,
+            scene_values: Mutex::new([None; 16]),
             inner: Mutex::new(initial),
             start_channel,
             storage_slot,
             cmd_sender: CMD_CHANNEL.sender(),
-            event_pubsub: &EVENT_PUBSUB
+            event_pubsub: &EVENT_PUBSUB,
         }
     }
-
-    pub fn save_scene(&self) {}
 
     async fn ser(&self) -> Vec<u8, DATA_LENGTH> {
         let value = self.get().await;
@@ -75,37 +117,48 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> StorageSlot<T> {
         Vec::<u8, DATA_LENGTH>::from_slice(serialized).unwrap()
     }
 
-    async fn des(&self, data: &[u8]) {
+    async fn des(&self, data: &[u8], scene: Option<u8>) -> Option<T> {
         if let Ok(val) = from_bytes::<T>(data) {
-            self.set(val).await;
+            self.set_impl(val, scene).await;
+            return Some(val);
+        }
+        None
+    }
+
+    async fn set_impl(&self, val: T, scene: Option<u8>) {
+        if let Some(index) = scene {
+            let mut scene_values = self.scene_values.lock().await;
+            scene_values[index as usize] = Some(val);
+        } else {
+            let mut value = self.inner.lock().await;
+            *value = val
         }
     }
 
-    pub async fn get(&self) -> T {
-        let value = self.inner.lock().await;
-        *value
-    }
-
-    pub async fn set(&self, val: T) {
-        let mut value = self.inner.lock().await;
-        *value = val
-    }
-
-    pub async fn save(&self) {
+    async fn save_impl(&self, scene: Option<u8>) {
         let ser = self.ser().await;
         self.cmd_sender
             .send(HardwareCmd::StorageCmd(
                 self.start_channel,
-                StorageCmd::Store(self.app_id as u8, self.storage_slot as u8, ser),
+                StorageCmd::Store {
+                    app_id: self.app_id as u8,
+                    storage_slot: self.storage_slot as u8,
+                    scene,
+                    data: ser,
+                },
             ))
             .await;
     }
 
-    pub async fn load(&self) {
+    async fn load_impl(&self, scene: Option<u8>) -> Option<T> {
         self.cmd_sender
             .send(HardwareCmd::StorageCmd(
                 self.start_channel,
-                StorageCmd::Request(self.app_id as u8, self.storage_slot as u8),
+                StorageCmd::Request {
+                    app_id: self.app_id as u8,
+                    storage_slot: self.storage_slot as u8,
+                    scene,
+                },
             ))
             .await;
         // Make this timeout roughly as long as the boot sequence ;)
@@ -114,21 +167,61 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> StorageSlot<T> {
             loop {
                 if let HardwareEvent::StorageEvent(
                     start_channel,
-                    StorageEvent::Read(app_id, storage_slot, res),
+                    StorageEvent::Read {
+                        app_id,
+                        storage_slot,
+                        scene,
+                        data,
+                    },
                 ) = subscriber.next_message_pure().await
                 {
                     if self.app_id as u8 == app_id
                         && self.storage_slot as u8 == storage_slot
                         && self.start_channel == start_channel
                     {
-                        self.des(res.as_slice()).await;
-                        return;
+                        return self.des(data.as_slice(), scene).await;
                     }
                 }
             }
         })
         .await
         .ok();
+        None
+    }
+
+    pub async fn get(&self) -> T {
+        let value = self.inner.lock().await;
+        *value
+    }
+
+    pub async fn set(&self, val: T) {
+        self.set_impl(val, None).await
+    }
+
+    pub async fn save(&self) {
+        self.save_impl(None).await;
+    }
+
+    pub async fn load(&self) {
+        self.load_impl(None).await;
+    }
+
+    pub async fn save_to_scene(&self, scene: u8) {
+        let mut scene_values = self.scene_values.lock().await;
+        scene_values[scene as usize] = Some(self.get().await);
+        drop(scene_values);
+        self.save_impl(Some(scene)).await
+    }
+
+    pub async fn load_from_scene(&self, scene: u8) {
+        let scene_values = self.scene_values.lock().await;
+        let value = scene_values[scene as usize];
+        drop(scene_values);
+        if let Some(val) = value {
+            self.set(val).await
+        } else if let Some(val) = self.load_impl(Some(scene)).await {
+            self.set(val).await;
+        }
     }
 }
 

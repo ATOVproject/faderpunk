@@ -13,26 +13,20 @@ use sequential_storage::{
     map::{fetch_item, store_item},
 };
 
-use crate::storage::{create_storage_key, StorageCmd, StorageEvent};
+use crate::storage::{create_storage_key, StorageCmd, StorageEvent, DATA_LENGTH};
 use crate::{HardwareEvent, EVENT_PUBSUB};
 
 pub static EEPROM_CHANNEL: Channel<ThreadModeRawMutex, (usize, StorageCmd), 16> = Channel::new();
 
-// TODO: Find a good number for this (allowed storage size is 64)
-pub const DATA_LENGTH: usize = 128;
-const MAX_PENDING_SAVES: usize = 64;
+const MAX_PENDING_SAVES: usize = 16;
 
 pub async fn start_eeprom(spawner: &Spawner, eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
     spawner.spawn(run_eeprom(eeprom)).unwrap();
 }
 
-// Helper struct to store pending save info
 struct PendingSave {
     last_update: Instant,
     data: Vec<u8, DATA_LENGTH>,
-    app_id: u8,        // Keep for potential logging/debugging
-    storage_slot: u8,  // Keep for potential logging/debugging
-    start_channel: u8, // Keep for potential logging/debugging
 }
 
 #[embassy_executor::task]
@@ -41,7 +35,7 @@ async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
 
     // These are the flash addresses in which the sequential_storage will operate.
     let flash_range = 0x8000..0x20000;
-    let mut data_buffer = [0; 128];
+    let mut data_buffer = [0; DATA_LENGTH];
 
     // Map to store pending saves: key -> (timestamp, data)
     let mut pending_saves: FnvIndexMap<u32, PendingSave, MAX_PENDING_SAVES> = FnvIndexMap::new();
@@ -64,8 +58,15 @@ async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
         // Wait for either a new message or the timer to expire
         match select(EEPROM_CHANNEL.receive(), timer_future).await {
             Either::First(msg) => match msg {
-                (chan, StorageCmd::Request(app_id, storage_slot)) => {
-                    let key = create_storage_key(app_id, chan as u8, storage_slot);
+                (
+                    chan,
+                    StorageCmd::Request {
+                        app_id,
+                        storage_slot,
+                        scene,
+                    },
+                ) => {
+                    let key = create_storage_key(app_id, chan as u8, storage_slot, scene);
                     if let Ok(Some(item)) = fetch_item::<u32, &[u8], _>(
                         &mut eeprom,
                         flash_range.clone(),
@@ -79,21 +80,31 @@ async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
                             event_publisher
                                 .publish(HardwareEvent::StorageEvent(
                                     chan,
-                                    StorageEvent::Read(app_id, storage_slot, vec),
+                                    StorageEvent::Read {
+                                        app_id,
+                                        storage_slot,
+                                        data: vec,
+                                        scene,
+                                    },
                                 ))
                                 .await;
                         }
                     }
                 }
-                (chan, StorageCmd::Store(app_id, storage_slot, data)) => {
-                    let key = create_storage_key(app_id, chan as u8, storage_slot);
+                (
+                    chan,
+                    StorageCmd::Store {
+                        app_id,
+                        storage_slot,
+                        data,
+                        scene,
+                    },
+                ) => {
+                    let key = create_storage_key(app_id, chan as u8, storage_slot, scene);
                     let now = Instant::now();
                     let pending_save = PendingSave {
                         last_update: now,
                         data,
-                        app_id,
-                        storage_slot,
-                        start_channel: chan as u8,
                     };
                     pending_saves.insert(key, pending_save).ok();
                 }

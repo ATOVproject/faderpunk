@@ -174,7 +174,9 @@ macro_rules! app_config {
                          }
                      }
                      $crate::AppStorageCmd::SaveScene => {
-                        $( ctx.storage.$s_name.save_scene(); )*
+                        #[allow(unused)]
+                        let scene = $crate::scene::get_global_scene();
+                        $( ctx.storage.$s_name.save_to_scene(scene).await; )*
                      }
                  }
              }
