@@ -1,4 +1,5 @@
 use at24cx::At24Cx;
+use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_rp::{
@@ -14,7 +15,7 @@ use sequential_storage::{
 
 use crate::storage::{
     create_storage_key, StorageCmd, StorageEvent, DATA_LENGTH, STORAGE_CMD_CHANNEL,
-    STORAGE_EVENT_WATCH,
+    STORAGE_EVENT_PUBSUB,
 };
 
 const MAX_PENDING_SAVES: usize = 16;
@@ -30,7 +31,7 @@ struct PendingSave {
 
 #[embassy_executor::task]
 async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
-    let event_sender = STORAGE_EVENT_WATCH.sender();
+    let event_sender = STORAGE_EVENT_PUBSUB.publisher().unwrap();
 
     // These are the flash addresses in which the sequential_storage will operate.
     let flash_range = 0x8000..0x20000;
@@ -63,8 +64,9 @@ async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
                     storage_slot,
                     scene,
                 } => {
-                    let key = create_storage_key(app_id, start_channel as u8, storage_slot, scene);
-                    if let Ok(Some(item)) = fetch_item::<u32, &[u8], _>(
+                    let key = create_storage_key(app_id, start_channel, storage_slot, scene);
+                    let before = Instant::now();
+                    match fetch_item::<u32, &[u8], _>(
                         &mut eeprom,
                         flash_range.clone(),
                         &mut NoCache::new(),
@@ -73,14 +75,44 @@ async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
                     )
                     .await
                     {
-                        if let Ok(vec) = Vec::<u8, DATA_LENGTH>::from_slice(item) {
-                            event_sender.send(StorageEvent::Read {
-                                app_id,
-                                start_channel,
-                                storage_slot,
-                                data: vec,
-                                scene,
-                            });
+                        Ok(Some(item)) => match Vec::<u8, DATA_LENGTH>::from_slice(item) {
+                            Ok(vec) => {
+                                let duration = Instant::now() - before;
+                                info!("LOADED. Took {}ms", duration.as_millis());
+                                event_sender
+                                    .publish(StorageEvent::Read {
+                                        app_id,
+                                        start_channel,
+                                        storage_slot,
+                                        data: vec,
+                                        scene,
+                                    })
+                                    .await;
+                            }
+                            _ => {
+                                let duration = Instant::now() - before;
+                                info!("NOT FOUND. Took {}ms", duration.as_millis());
+                                event_sender
+                                    .publish(StorageEvent::NotFound {
+                                        app_id,
+                                        start_channel,
+                                        storage_slot,
+                                        scene,
+                                    })
+                                    .await;
+                            }
+                        },
+                        _ => {
+                            let duration = Instant::now() - before;
+                            info!("ERROR. Took {}ms", duration.as_millis());
+                            event_sender
+                                .publish(StorageEvent::NotFound {
+                                    app_id,
+                                    start_channel,
+                                    storage_slot,
+                                    scene,
+                                })
+                                .await;
                         }
                     }
                 }
@@ -91,7 +123,7 @@ async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
                     data,
                     scene,
                 } => {
-                    let key = create_storage_key(app_id, start_channel as u8, storage_slot, scene);
+                    let key = create_storage_key(app_id, start_channel, storage_slot, scene);
                     let now = Instant::now();
                     let pending_save = PendingSave {
                         last_update: now,

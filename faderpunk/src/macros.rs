@@ -41,7 +41,10 @@ macro_rules! register_apps {
                         let param_values = ParamStore::new($app_mod::default_params(), app_id, start_channel);
                         let storage = $app_mod::get_storage(app_id, start_channel);
                         let context = $app_mod::AppContext::new(&param_values, storage);
-                        join($app_mod::run(app, &context), $app_mod::msg_loop(start_channel, &context)).await;
+                        join(
+                            $app_mod::run(app, &context),
+                            $app_mod::msg_loop(start_channel, &context, EVENT_PUBSUB.publisher().unwrap()),
+                        ).await;
                     },
                 )*
                 _ => panic!("Unknown app ID: {}", app_id),
@@ -158,7 +161,7 @@ macro_rules! app_config {
             }
         }
 
-        pub async fn msg_loop(app_start_channel: usize, ctx: &AppContext<'_>) {
+        pub async fn msg_loop(app_start_channel: usize, ctx: &AppContext<'_>, publisher: $crate::EventPubSubPublisher) {
             let param_sender = $crate::storage::APP_STORAGE_EVENT.sender();
             let mut app_storage_receiver = $crate::storage::APP_STORAGE_CMD_PUBSUB.subscriber().unwrap();
             loop {
@@ -187,6 +190,7 @@ macro_rules! app_config {
                     #[allow(unused)]
                     $crate::storage::AppStorageCmd::LoadScene { scene } => {
                         $( ctx.storage.$s_name.load_from_scene(scene as u8).await; )*
+                        publisher.publish($crate::HardwareEvent::SceneChange(scene as u8)).await;
                     }
                 }
             }

@@ -462,21 +462,6 @@ impl<const N: usize> App<N> {
         Global::new(initial)
     }
 
-    // pub fn make_global_with_store<T: Sized + Copy + Default + Serialize + DeserializeOwned>(
-    //     &self,
-    //     initial: T,
-    //     storage_slot: StorageSlot,
-    // ) -> GlobalWithStorage<T> {
-    //     GlobalWithStorage::new(
-    //         self.app_id as u8,
-    //         initial,
-    //         self.start_channel,
-    //         storage_slot,
-    //         self.cmd_sender,
-    //         self.event_pubsub,
-    //     )
-    // }
-
     // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
         let chan = chan.clamp(0, N - 1);
@@ -534,6 +519,15 @@ impl<const N: usize> App<N> {
 
     pub async fn delay_secs(&self, secs: u64) {
         Timer::after_secs(secs).await
+    }
+
+    pub async fn wait_for_scene_change(&self) -> u8 {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+        loop {
+            if let HardwareEvent::SceneChange(scene) = subscriber.next_message_pure().await {
+                return scene;
+            }
+        }
     }
 
     pub fn use_buttons(&self) -> Buttons<N> {

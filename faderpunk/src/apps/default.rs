@@ -1,5 +1,10 @@
 use config::{Curve, Param};
-use embassy_futures::join::join3;
+use defmt::info;
+use embassy_futures::{
+    join::join3,
+    select::{select, Either},
+};
+use embassy_time::Instant;
 
 use crate::app::{App, Led, Range};
 
@@ -25,13 +30,6 @@ app_config! (
     );
 );
 
-// IDEA: !!! SCENES !!!
-// - For Scenes: storage slots manage scenes
-// - They need to be aware of the current scene (Just use an ATOMIC u8)
-// - SCENE will be stored in eeprom as well every time it changes, to recover it after reboot
-// - For that we can keep track of the previous scene in the global and once it changes it stores
-// the current value
-
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
@@ -40,7 +38,10 @@ pub async fn run(app: App<CHANNELS>, ctx: &AppContext<'_>) {
     let param_midi_channel = &ctx.params.midi_channel;
     let stor_muted = &ctx.storage.muted;
 
-    stor_muted.load().await;
+    let before = Instant::now();
+    stor_muted.load_all().await;
+    let duration = Instant::now() - before;
+    defmt::info!("DURATION: {}", duration.as_millis());
 
     let midi_channel = param_midi_channel.get().await;
 
@@ -83,9 +84,14 @@ pub async fn run(app: App<CHANNELS>, ctx: &AppContext<'_>) {
 
     let fut3 = async {
         loop {
-            buttons.wait_for_down(0).await;
-            let muted = stor_muted.toggle().await;
+            if let Either::First(_) =
+                select(buttons.wait_for_down(0), app.wait_for_scene_change()).await
+            {
+                info!("TOGGLING BUTTON");
+                stor_muted.toggle().await;
+            }
             stor_muted.save().await;
+            let muted = stor_muted.get().await;
             if muted {
                 leds.set(0, Led::Button, LED_COLOR, 0);
                 jack.set_value(0);

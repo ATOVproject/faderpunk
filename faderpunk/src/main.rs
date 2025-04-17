@@ -6,7 +6,6 @@ pub mod macros;
 
 mod app;
 mod apps;
-pub mod scene;
 pub mod storage;
 mod tasks;
 
@@ -27,9 +26,10 @@ use embassy_rp::{
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
-use embassy_sync::pubsub::PubSubChannel;
+use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::watch::Watch;
 use embassy_time::{Delay, Timer};
+use heapless::Vec;
 use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
@@ -76,6 +76,7 @@ pub enum HardwareEvent {
     ButtonUp(usize),
     FaderChange(usize),
     MidiMsg(LiveEvent<'static>),
+    SceneChange(u8),
 }
 
 /// Messages from core 1 to core 0
@@ -84,8 +85,10 @@ pub enum HardwareCmd {
     MidiCmd(LiveEvent<'static>),
 }
 
+// TODO: Move all the channels and signalling to own module
 pub const CMD_CHANNEL_SIZE: usize = 16;
 pub const EVENT_PUBSUB_SIZE: usize = 64;
+pub const EVENT_PUBSUB_SUBS: usize = 64;
 
 // TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
 // mention all uses
@@ -93,9 +96,19 @@ pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26>
     Watch::new_with(GlobalConfig::new());
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
+// 32 receivers (ephemeral)
+// 18 senders (16 apps for scenes, 1 buttons, 1 max)
 pub type EventPubSubChannel =
-    PubSubChannel<CriticalSectionRawMutex, HardwareEvent, EVENT_PUBSUB_SIZE, 32, 21>;
+    PubSubChannel<CriticalSectionRawMutex, HardwareEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 18>;
 pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
+pub type EventPubSubPublisher = Publisher<
+    'static,
+    CriticalSectionRawMutex,
+    HardwareEvent,
+    EVENT_PUBSUB_SIZE,
+    EVENT_PUBSUB_SUBS,
+    18,
+>;
 pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE> =
     Channel::new();
 pub type CmdSender = Sender<'static, CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE>;
@@ -266,7 +279,7 @@ async fn main(spawner: Spawner) {
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::MidiIn;
     config.reset_src = ClockSrc::MidiIn;
-    // config.layout = Vec::from_slice(&[(3, 0), (3, 1)]).unwrap();
+    config.layout = Vec::from_slice(&[(1, 0)]).unwrap();
 
     config_sender.send(config);
 }
