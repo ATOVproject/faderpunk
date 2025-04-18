@@ -65,9 +65,10 @@ pub async fn run(app: App<CHANNELS>) {
     let page_glob = app.make_global(0);
     let led_flag_glob = app.make_global(true);
     let lenght_flag = app.make_global(false);
+    let latched_glob = app.make_global([false; 8]);
+
     let div = app.make_global(1);
     let mut shif_old = false;
-
     let gate_flag_glob = app.make_global([false, false, false, false]);
 
     let fut1 = async {
@@ -77,40 +78,55 @@ pub async fn run(app: App<CHANNELS>) {
         }
     };
 
-    let fut2 = async { //Fader handling
+    let fut2 = async {
+        //Fader handling - Should be latching false when shift is pressed
         loop {
             let chan = faders.wait_for_any_change().await;
             let vals = faders.get_values();
             let page = page_glob.get().await;
             let mut seq = seq_glob.get_array().await;
             let _shift = buttons.is_shift_pressed();
+            let mut latched = latched_glob.get().await;
+            let mut seq_lenght = seq_length_glob.get_array().await;
+            if return_if_close(vals[chan], seq[chan + (page * 8)]) && !_shift {
+                latched[chan] = true;
+                latched_glob.set(latched).await;
+            }
 
-            if !_shift && chan < 8 {
-                seq[chan + (page * 8)] = vals[chan];
-                seq_glob.set_array(seq).await;
-                seq_glob.save().await;
+            if !_shift && chan < 8 && latched[chan] {
+                if latched[chan] {
+                    seq[chan + (page * 8)] = vals[chan];
+                    //info!("{}", seq[chan + (page * 8)]);
+                    seq_glob.set_array(seq).await;
+                    seq_glob.save().await;
+                }
+            }
+
+            if vals[0] / 256 + 1 == seq_lenght[page / 2] && _shift {
+                latched[0] = true;
+                latched_glob.set(latched).await;
+                info!("latching!");
             }
 
             if _shift {
-                if chan == 0 {
+                // add check for latching
+                if chan == 0 && latched[0] {
                     //fader 1 + shift
-                    let mut seq_lenght = seq_length_glob.get_array().await;
                     seq_lenght[(page / 2)] = ((vals[0]) / 256) + 1;
-                    info!("{}", seq_lenght[page / 2]);
+                    //info!("{}", seq_lenght[page / 2]);
                     seq_length_glob.set_array(seq_lenght).await;
                     seq_length_glob.save().await;
                     lenght_flag.set(true).await;
                 }
 
-                if chan % 2 == 1 {
-;
-                }
+                if chan % 2 == 1 {}
             }
             led_flag_glob.set(true).await;
         }
     };
 
-    let fut3 = async { //button handling
+    let fut3 = async {
+        //button handling
         //Short button presses
         loop {
             let chan = buttons.wait_for_any_down().await;
@@ -127,11 +143,13 @@ pub async fn run(app: App<CHANNELS>) {
             if _shift {
                 page_glob.set(chan).await;
                 led_flag_glob.set(true).await;
+                latched_glob.set([false; 8]).await
             }
         }
     };
 
-    let fut4 = async { //LED update
+    let fut4 = async {
+        //LED update
         loop {
             let intencity = [50, 100, 200];
             let colours = [
@@ -156,26 +174,21 @@ pub async fn run(app: App<CHANNELS>) {
                     led.set(n, Led::Button, colours[n / 2], bright);
                 }
                 for n in 0..=15 {
-                    if n < seq_length[ page / 2 ] {
+                    if n < seq_length[page / 2] {
                         bright = 100
                     }
-                    if n == clockn as u16 % seq_length[ page / 2 ] {
+                    if n == clockn as u16 % seq_length[page / 2] {
                         bright = 200
                     }
-                    if n >= seq_length[ page / 2 ]{
+                    if n >= seq_length[page / 2] {
                         bright = 0
                     }
                     if n < 8 {
                         led.set(n as usize, Led::Top, (255, 0, 0), bright)
+                    } else {
+                        led.set(n as usize - 8, Led::Bottom, (255, 0, 0), bright)
                     }
-                    else {
-                        led.set(n as usize - 8, Led::Bottom , (255, 0, 0), bright)
-
-                    }
-
                 }
-
-
             }
 
             let led_flag = led_flag_glob.get().await;
@@ -203,7 +216,7 @@ pub async fn run(app: App<CHANNELS>) {
 
                 for n in 0..=7 {
                     led.set(n, Led::Top, colour, (seq[n + (page * 8)] / 16) as u8 / 2);
-                    
+
                     if gateseq[n + (page * 8)] {
                         led.set(n, Led::Button, colour, intencity[1]);
 
@@ -223,30 +236,29 @@ pub async fn run(app: App<CHANNELS>) {
 
                     if (clockn % seq_length[n / 2] as usize) % 16 - (n % 2) * 8 < 8 {
                         led.set(n, Led::Bottom, (255, 0, 0), 100)
-                    }
-                    else{
+                    } else {
                         led.set(n, Led::Bottom, (255, 0, 0), 0)
                     }
                 }
                 //runing light on buttons
                 if (clockn % seq_length[page / 2] as usize) % 16 - (page % 2) * 8 < 8 {
-                        led.set((clockn % seq_length[page / 2] as usize) % 16 - (page % 2) * 8,Led::Button,(255, 0, 0),100,);
+                    led.set(
+                        (clockn % seq_length[page / 2] as usize) % 16 - (page % 2) * 8,
+                        Led::Button,
+                        (255, 0, 0),
+                        100,
+                    );
                 }
 
-                led.set(page, Led::Bottom, colour, 255);                  
-                    
-                }
-
-
-                
-
-
-
-                led_flag_glob.set(false).await;
+                led.set(page, Led::Bottom, colour, 255);
             }
-        };
 
-    let fut5 = async { //sequencer functions
+            led_flag_glob.set(false).await;
+        }
+    };
+
+    let fut5 = async {
+        //sequencer functions
         loop {
             let gateseq = gateseq_glob.get_array().await;
             let seq_length = seq_length_glob.get_array().await;
@@ -265,7 +277,7 @@ pub async fn run(app: App<CHANNELS>) {
                 let seq = seq_glob.get_array().await;
                 for n in 0..=3 {
                     let clkindex = ((clockn % seq_length[n] as usize) + (n * 16));
-                    
+
                     if gateseq[clkindex] {
                         gate_out[n].set_high().await;
                         cv_out[n].set_value(seq[clkindex] / 4); //only update CV out on active step
@@ -277,7 +289,8 @@ pub async fn run(app: App<CHANNELS>) {
 
                         //app.delay_millis(gatet).await;
                         //gate_out[n].set_low().await;
-                    } else { // note that are not triggered
+                    } else {
+                        // note that are not triggered
                         gate_out[n].set_low().await;
 
                         //midi[n].send_note_off((seq[clkindex] / 170) as u8 + 60).await
@@ -308,4 +321,12 @@ pub async fn run(app: App<CHANNELS>) {
     };
 
     join5(fut1, fut2, fut3, fut4, fut5).await;
+}
+
+fn return_if_close(a: u16, b: u16) -> bool {
+    if a.abs_diff(b) < 100 {
+        true
+    } else {
+        false
+    }
 }

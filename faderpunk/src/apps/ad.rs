@@ -88,6 +88,8 @@ let glob_curve = app.make_global([0, 0]);
                         leds.set(0, Led::Top, (0, 0, 0), 0);
                         leds.set(0, Led::Bottom, (0, 0, 0), 0);
                     }
+                    leds.set(1, Led::Top, (0, 0, 0), 0);
+                    leds.set(1, Led::Bottom, (0, 0, 0), 0);
                 }
 
                 if env_state == 2{
