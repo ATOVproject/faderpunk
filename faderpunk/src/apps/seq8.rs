@@ -70,11 +70,23 @@ pub async fn run(app: App<CHANNELS>) {
     let div = app.make_global(1);
     let mut shif_old = false;
     let gate_flag_glob = app.make_global([false, false, false, false]);
+    let mut shift_old = false;
 
     let fut1 = async {
         loop {
             // do the slides here
             app.delay_millis(1).await;
+            if !shift_old && buttons.is_shift_pressed() {
+                latched_glob.set([false; 8]).await;
+                shift_old = true;
+                info!("unlatch everything")
+            }
+            if shift_old && !buttons.is_shift_pressed() {
+                latched_glob.set([false; 8]).await;
+                shift_old = false;
+                info!("unlatch everything again")
+            }
+
         }
     };
 
@@ -105,7 +117,7 @@ pub async fn run(app: App<CHANNELS>) {
             if vals[0] / 256 + 1 == seq_lenght[page / 2] && _shift {
                 latched[0] = true;
                 latched_glob.set(latched).await;
-                info!("latching!");
+                //info!("latching!");
             }
 
             if _shift {
@@ -159,6 +171,8 @@ pub async fn run(app: App<CHANNELS>) {
                 (250, 250, 250),
             ];
             app.delay_millis(10).await;
+
+
             //if buttons.is_shift_pressed().await;
             if buttons.is_shift_pressed() {
                 let clockn = clockn_glob.get().await;
