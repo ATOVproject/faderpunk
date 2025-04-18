@@ -25,8 +25,10 @@ pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute 
         max: 15,
     });
 
-const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
+
 const BUTTON_BRIGHTNESS: u8 = 75;
+
+
 
 pub async fn run(app: App<CHANNELS>) {
     let config = CONFIG.as_runtime_config().await;
@@ -43,10 +45,17 @@ pub async fn run(app: App<CHANNELS>) {
     glob_muted.load().await;
 
     let muted = glob_muted.get().await;
+    let color = (188, 77, 216);
     leds.set(
         0,
         Led::Button,
-        LED_COLOR,
+        color,
+        if muted { 0 } else { BUTTON_BRIGHTNESS },
+    );
+    leds.set(
+        1,
+        Led::Button,
+        color,
         if muted { 0 } else { BUTTON_BRIGHTNESS },
     );
     let _input = app.make_in_jack(0, Range::_Neg5_5V).await;
@@ -61,6 +70,7 @@ pub async fn run(app: App<CHANNELS>) {
 
     let mut buffer = [0; 2048];
     let mut outval = 0;
+    let color = (188, 77, 216);
 
 
     let fut1 = async {
@@ -71,8 +81,14 @@ pub async fn run(app: App<CHANNELS>) {
             let inval = _input.get_value();
             buffer = shift_and_insert(buffer, inval, outval, slew);
             outval = average_values(&buffer, slew as usize);
+            leds.set(0, Led::Top, color, ((outval/ 16) / 2) as u8);
+            leds.set(0, Led::Bottom, color, ((255 - (outval) / 16) / 2) as u8);
+
+
             let att = att_glob.get().await;
-            outval = dynamic_scale(outval, att);         
+            outval = dynamic_scale(outval, att);     
+            leds.set(1, Led::Top, color, ((outval/ 16) / 2) as u8);
+            leds.set(1, Led::Bottom, color, ((255 - (outval) / 16) / 2) as u8);    
             _output.set_value(outval);
             //info!("in = {}, out = {}", inval, outval)
         }
@@ -84,7 +100,6 @@ pub async fn run(app: App<CHANNELS>) {
             let mut vals = faders.get_values();
             if chan == 0 {
                 let slew_mult = slew_mult_glob.get().await;
-
                 vals[chan] =  CURVE_LOG[vals[chan] as usize];
                 vals[chan] = vals[chan] / (2 + (slew_mult * 2)) + 1;
                 slew_glob.set(vals[chan]).await;
