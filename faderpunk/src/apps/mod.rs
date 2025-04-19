@@ -1,5 +1,3 @@
-mod Slew;
-
 use crate::app::App;
 
 register_apps!(
@@ -8,5 +6,6 @@ register_apps!(
     3 => lfo,
     4 => trigger,
     5 => clock_test,
-    6 => slew
+    6 => slew,
+    7 => follower
 );

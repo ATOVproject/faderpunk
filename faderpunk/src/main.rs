@@ -452,7 +452,7 @@ async fn main(spawner: Spawner) {
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::MidiIn;
     config.reset_src = ClockSrc::MidiIn;
-    config.layout = &[3, 6];
+    config.layout = &[3, 7];
     config_sender.send(config);
 
     join(fut, fut2).await;
