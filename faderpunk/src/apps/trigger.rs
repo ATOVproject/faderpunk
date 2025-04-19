@@ -8,7 +8,7 @@ app_config! (
     storage();
 );
 
-pub async fn run(app: App<CHANNELS>, _ctx: &AppContext<'_>) {
+pub async fn run(app: App<'_, CHANNELS>, _ctx: &AppContext<'_>) {
     let jack = app.make_gate_jack(0, 2048).await;
     let mut clock = app.use_clock();
     // let color = (243, 191, 78);

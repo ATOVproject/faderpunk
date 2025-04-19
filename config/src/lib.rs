@@ -33,12 +33,14 @@ pub enum ClockSrc {
     MidiUsb,
 }
 
+/// (app_id, start_channel)
+pub type Layout = Vec<(u8, usize), 16>;
+
 #[derive(Clone)]
 pub struct GlobalConfig {
     pub clock_src: ClockSrc,
     pub reset_src: ClockSrc,
-    /// (app_id, start_channel)
-    pub layout: Vec<(usize, usize), 16>,
+    pub layout: Layout,
 }
 
 impl GlobalConfig {
@@ -53,7 +55,7 @@ impl GlobalConfig {
 
 impl Default for GlobalConfig {
     fn default() -> Self {
-        const DEFAULT_LAYOUT: [(usize, usize); 16] = [
+        const DEFAULT_LAYOUT: [(u8, usize); 16] = [
             (1, 0),
             (1, 1),
             (1, 2),
@@ -195,7 +197,7 @@ pub enum ConfigMsgOut<'a> {
     Pong,
     BatchMsgStart(usize),
     BatchMsgEnd,
-    GlobalConfig(ClockSrc, ClockSrc, &'a [(usize, usize)]),
+    GlobalConfig(ClockSrc, ClockSrc, &'a [(u8, usize)]),
     AppConfig((usize, &'a str, &'a str, &'a [Param])),
     AppState(&'a [Value]),
 }

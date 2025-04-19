@@ -4,6 +4,7 @@ use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
     mutex::Mutex,
+    signal::Signal,
     watch::Receiver,
 };
 use embassy_time::{with_timeout, Duration, Timer};
@@ -28,6 +29,7 @@ use serde::{
 };
 
 use crate::{
+    scene::get_scene,
     tasks::{
         buttons::BUTTON_PRESSED,
         leds::LED_VALUES,
@@ -380,7 +382,7 @@ impl<const N: usize> Midi<N> {
     }
 
     pub async fn send_msg(&self, msg: LiveEvent<'static>) {
-        self.cmd_sender.send(HardwareCmd::MidiCmd(msg)).await;
+        self.cmd_sender.send(HardwareCmd::MidiMsg(msg)).await;
     }
 }
 
@@ -426,20 +428,22 @@ impl Die {
     }
 }
 
-pub struct App<const N: usize> {
-    app_id: usize,
+pub struct App<'a, const N: usize> {
+    app_id: u8,
     pub start_channel: usize,
     channel_count: usize,
     cmd_sender: CmdSender,
     event_pubsub: &'static EventPubSubChannel,
+    scene_signal: &'a Signal<NoopRawMutex, u8>,
 }
 
-impl<const N: usize> App<N> {
+impl<'a, const N: usize> App<'a, N> {
     pub fn new(
-        app_id: usize,
+        app_id: u8,
         start_channel: usize,
         cmd_sender: CmdSender,
         event_pubsub: &'static EventPubSubChannel,
+        scene_signal: &'a Signal<NoopRawMutex, u8>,
     ) -> Self {
         Self {
             app_id,
@@ -447,6 +451,7 @@ impl<const N: usize> App<N> {
             channel_count: N,
             cmd_sender,
             event_pubsub,
+            scene_signal,
         }
     }
 
@@ -522,12 +527,7 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn wait_for_scene_change(&self) -> u8 {
-        let mut subscriber = self.event_pubsub.subscriber().unwrap();
-        loop {
-            if let HardwareEvent::SceneChange(scene) = subscriber.next_message_pure().await {
-                return scene;
-            }
-        }
+        return self.scene_signal.wait().await;
     }
 
     pub fn use_buttons(&self) -> Buttons<N> {

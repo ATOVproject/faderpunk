@@ -10,7 +10,7 @@ app_config! (
     storage();
 );
 
-pub async fn run(app: App<CHANNELS>, _ctx: &AppContext<'_>) {
+pub async fn run(app: App<'_, CHANNELS>, _ctx: &AppContext<'_>) {
     let mut die = app.use_die();
     let fut1 = async {
         loop {

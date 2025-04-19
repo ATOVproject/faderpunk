@@ -8,7 +8,7 @@ app_config! (
     storage();
 );
 
-pub async fn run(app: App<CHANNELS>, _ctx: &AppContext<'_>) {
+pub async fn run(app: App<'_, CHANNELS>, _ctx: &AppContext<'_>) {
     let mut clock = app.use_clock();
     let color = (243, 191, 78);
     let leds = app.use_leds();

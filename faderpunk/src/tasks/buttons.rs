@@ -5,12 +5,11 @@ use embassy_rp::peripherals::{
     PIN_23, PIN_24, PIN_25, PIN_28, PIN_29, PIN_30, PIN_31, PIN_32, PIN_33, PIN_34, PIN_35, PIN_36,
     PIN_37, PIN_38, PIN_4, PIN_5, PIN_6, PIN_7,
 };
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::pubsub::Publisher;
 use embassy_time::{with_timeout, Duration, Timer};
 use portable_atomic::{AtomicBool, Ordering};
 
-use crate::storage::{AppStorageCmd, APP_STORAGE_CMD_PUBSUB};
+use crate::scene::{get_scene, set_scene};
+use crate::storage::{AppStorageCmd, AppStoragePublisher, APP_STORAGE_CMD_PUBSUB};
 use crate::{EventPubSubPublisher, HardwareEvent, EVENT_PUBSUB};
 
 use {defmt_rtt as _, panic_probe as _};
@@ -45,7 +44,7 @@ pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
 async fn process_button(
     i: usize,
     mut button: Input<'_>,
-    app_storage_publisher: &Publisher<'_, CriticalSectionRawMutex, AppStorageCmd, 16, 16, 2>,
+    app_storage_publisher: &AppStoragePublisher,
     event_publisher: &EventPubSubPublisher,
 ) {
     loop {
@@ -57,12 +56,16 @@ async fn process_button(
                 .await
                 .is_ok()
             {
-                app_storage_publisher
-                    .publish(AppStorageCmd::LoadScene { scene: i })
-                    .await;
+                let current_scene = get_scene();
+                if (i as u8) != current_scene {
+                    set_scene(i as u8);
+                    app_storage_publisher
+                        .publish(AppStorageCmd::LoadScene)
+                        .await;
+                }
             } else {
                 app_storage_publisher
-                    .publish(AppStorageCmd::SaveScene { scene: i })
+                    .publish(AppStorageCmd::SaveScene { scene: i as u8 })
                     .await;
                 button.wait_for_rising_edge().await;
             }

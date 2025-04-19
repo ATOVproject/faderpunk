@@ -9,7 +9,7 @@ use postcard::{from_bytes, to_vec};
 use config::{ConfigMsgIn, ConfigMsgOut};
 
 use crate::apps::{get_config, REGISTERED_APP_IDS};
-use crate::storage::{AppStorageCmd, APP_STORAGE_CMD_PUBSUB, APP_STORAGE_EVENT};
+use crate::storage::{AppStorageCmd, APP_CONFIGURE_EVENT, APP_STORAGE_CMD_PUBSUB};
 use crate::CONFIG_CHANGE_WATCH;
 
 use super::transport::WebEndpoints;
@@ -86,9 +86,11 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 with_timeout(Duration::from_secs(2), async {
                     for (_app_id, start_channel) in global_config.layout {
                         app_storage_publisher
-                            .publish(AppStorageCmd::GetAllParams { start_channel })
+                            .publish(AppStorageCmd::GetAllParams {
+                                start_channel: start_channel as u8,
+                            })
                             .await;
-                        let values = APP_STORAGE_EVENT.receive().await;
+                        let values = APP_CONFIGURE_EVENT.receive().await;
                         proto
                             .send_msg(ConfigMsgOut::AppState(&values))
                             .await
@@ -102,8 +104,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             ConfigMsgIn::SetAppParam(start_channel, param_slot, value) => {
                 app_storage_publisher
                     .publish(AppStorageCmd::SetParamSlot {
-                        start_channel,
-                        param_slot,
+                        start_channel: start_channel as u8,
+                        param_slot: param_slot as u8,
                         value,
                     })
                     .await;

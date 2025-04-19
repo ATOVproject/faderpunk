@@ -4,7 +4,6 @@ use embassy_futures::{
     join::join3,
     select::{select, Either},
 };
-use embassy_time::Instant;
 
 use crate::app::{App, Led, Range};
 
@@ -33,15 +32,10 @@ app_config! (
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
-pub async fn run(app: App<CHANNELS>, ctx: &AppContext<'_>) {
+pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
     let param_curve = &ctx.params.curve;
     let param_midi_channel = &ctx.params.midi_channel;
     let stor_muted = &ctx.storage.muted;
-
-    let before = Instant::now();
-    stor_muted.load_all().await;
-    let duration = Instant::now() - before;
-    defmt::info!("DURATION: {}", duration.as_millis());
 
     let midi_channel = param_midi_channel.get().await;
 
@@ -62,12 +56,12 @@ pub async fn run(app: App<CHANNELS>, ctx: &AppContext<'_>) {
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
-            let muted = stor_muted.get().await;
-            let curve = param_curve.get().await;
-            if !muted {
-                let vals = faders.get_values();
-                jack.set_value_with_curve(curve, vals[0]);
-            }
+            // let muted = stor_muted.get().await;
+            // let curve = param_curve.get().await;
+            // if !muted {
+            //     let vals = faders.get_values();
+            //     jack.set_value_with_curve(curve, vals[0]);
+            // }
         }
     };
 
@@ -87,10 +81,9 @@ pub async fn run(app: App<CHANNELS>, ctx: &AppContext<'_>) {
             if let Either::First(_) =
                 select(buttons.wait_for_down(0), app.wait_for_scene_change()).await
             {
-                info!("TOGGLING BUTTON");
                 stor_muted.toggle().await;
+                stor_muted.save().await;
             }
-            stor_muted.save().await;
             let muted = stor_muted.get().await;
             if muted {
                 leds.set(0, Led::Button, LED_COLOR, 0);

@@ -6,6 +6,7 @@ pub mod macros;
 
 mod app;
 mod apps;
+pub mod scene;
 pub mod storage;
 mod tasks;
 
@@ -33,6 +34,7 @@ use heapless::Vec;
 use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
+use tasks::eeprom::{AppStorageKey, EepromData, EEPROM_CHANNEL};
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
@@ -76,13 +78,14 @@ pub enum HardwareEvent {
     ButtonUp(usize),
     FaderChange(usize),
     MidiMsg(LiveEvent<'static>),
-    SceneChange(u8),
+    EepromRefresh,
 }
 
 /// Messages from core 1 to core 0
 pub enum HardwareCmd {
     MaxCmd(usize, MaxCmd),
-    MidiCmd(LiveEvent<'static>),
+    MidiMsg(LiveEvent<'static>),
+    EepromStore(AppStorageKey, EepromData),
 }
 
 // TODO: Move all the channels and signalling to own module
@@ -122,7 +125,7 @@ static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 
 // App slots
 #[embassy_executor::task(pool_size = 16)]
-async fn run_app(number: usize, start_channel: usize) {
+async fn run_app(number: u8, start_channel: usize) {
     // INFO: This _should_ be properly dropped when task ends
     let mut cancel_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     // TODO: Is the first value always new?
@@ -156,7 +159,6 @@ async fn main_core1(spawner: Spawner) {
 
         for &(app_id, start_chan) in config.layout.iter() {
             spawner.spawn(run_app(app_id, start_chan)).unwrap();
-            Timer::after_millis(20).await;
         }
     }
 }
@@ -166,7 +168,8 @@ async fn hardware_cmd_router() {
     loop {
         match CMD_CHANNEL.receive().await {
             HardwareCmd::MaxCmd(channel, max_cmd) => MAX_CHANNEL.send((channel, max_cmd)).await,
-            HardwareCmd::MidiCmd(live_event) => MIDI_CHANNEL.send(live_event).await,
+            HardwareCmd::MidiMsg(live_event) => MIDI_CHANNEL.send(live_event).await,
+            HardwareCmd::EepromStore(key, data) => EEPROM_CHANNEL.send((key, data)).await,
         }
     }
 }
@@ -279,7 +282,7 @@ async fn main(spawner: Spawner) {
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::MidiIn;
     config.reset_src = ClockSrc::MidiIn;
-    config.layout = Vec::from_slice(&[(1, 0)]).unwrap();
+    // config.layout = Vec::from_slice(&[(1, 0)]).unwrap();
 
     config_sender.send(config);
 }

@@ -46,9 +46,9 @@ dependencies = [
 
 [[package]]
 name = "at24cx"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3847692b9d9df1b3252074768854c41d1bf8bf26d2c750b179d26839bf7ee5ad"
+checksum = "2b30372b9c4b521adb94a12b2124c70c05355dc79682cebda538cb8e0cbacd7e"
 dependencies = [
  "embedded-hal-async",
  "embedded-storage-async",
