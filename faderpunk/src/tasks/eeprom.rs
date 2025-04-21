@@ -17,7 +17,7 @@ use embedded_storage_async::nor_flash::{
 use heapless::{FnvIndexMap, Vec};
 use sequential_storage::{
     cache::NoCache,
-    map::{fetch_all_items, store_item},
+    map::{fetch_all_items, fetch_item, store_item},
 };
 
 use crate::{
@@ -301,6 +301,23 @@ impl Storage {
 
     pub async fn store(&mut self, key: KeyType, value: &[u8]) -> Result<(), StorageError> {
         let mut buf = [0; PAGE_SIZE];
+
+        // Fetch item before storing it, do not store if it's already there
+        if let Ok(Some(item)) = fetch_item::<u16, &[u8], _>(
+            &mut self.eeprom,
+            self.range.clone(),
+            &mut NoCache::new(),
+            &mut buf,
+            &key,
+        )
+        .await
+        {
+            if item == value {
+                return Ok(());
+            }
+        }
+
+        info!("STORING AN ITEM");
 
         store_item(
             &mut self.eeprom,
