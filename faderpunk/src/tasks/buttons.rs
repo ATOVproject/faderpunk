@@ -1,3 +1,4 @@
+use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::join::{join, join_array};
 use embassy_rp::gpio::{Input, Pull};
@@ -63,11 +64,14 @@ async fn process_button(
                         .publish(AppStorageCmd::LoadScene)
                         .await;
                 }
-            } else {
+            } else if with_timeout(Duration::from_secs(3), button.wait_for_rising_edge())
+                .await
+                .is_ok()
+            {
+                info!("SAVING SCENE");
                 app_storage_publisher
                     .publish(AppStorageCmd::SaveScene { scene: i as u8 })
                     .await;
-                button.wait_for_rising_edge().await;
             }
         } else {
             event_publisher.publish(HardwareEvent::ButtonDown(i)).await;
