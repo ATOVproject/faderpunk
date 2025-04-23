@@ -221,7 +221,8 @@ macro_rules! app_config {
                     #[allow(unused)]
                     $crate::storage::AppStorageCmd::ReadAppStorageSlot { key, data } => {
                         let key_raw: u16 = key.into();
-                        $( ctx.storage.$s_name.load(key, data).await; )*
+                        // TODO: Use match for the storage key to prevent cloning
+                        $( ctx.storage.$s_name.load(key, data.clone()).await; )*
                     }
                 }
             }

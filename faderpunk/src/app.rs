@@ -53,6 +53,7 @@ pub enum Led {
     Button,
 }
 
+// TODO: Move to storage
 #[derive(Clone, Copy)]
 pub struct Arr<T: Sized + Copy + Default, const N: usize>(pub [T; N]);
 
@@ -93,6 +94,12 @@ where
         let mut arr = [T::default(); N];
         arr.copy_from_slice(vec.as_slice()); // Safe due to length check above
         Ok(Arr(arr))
+    }
+}
+
+impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
     }
 }
 

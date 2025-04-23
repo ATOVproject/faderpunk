@@ -1,5 +1,4 @@
 use config::{Curve, Param};
-use defmt::info;
 use embassy_futures::{
     join::join3,
     select::{select, Either},
