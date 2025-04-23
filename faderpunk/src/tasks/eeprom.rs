@@ -36,8 +36,8 @@ const FLASH_RANGE: Range<u32> = 0x0000..(0x20_000 - RESERVED_BYTES as u32);
 
 const MAX_PENDING_SAVES: usize = 16;
 
-// TODO: Find a good number for this (allowed storage size is 64)
-pub const DATA_LENGTH: usize = 128;
+// TODO: Find a good number for this
+pub const DATA_LENGTH: usize = 392;
 
 pub type EepromData = Vec<u8, DATA_LENGTH>;
 
