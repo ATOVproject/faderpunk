@@ -6,4 +6,5 @@ register_apps!(
     3 => lfo,
     4 => trigger,
     5 => clock_test,
+    6 => turing,
 );

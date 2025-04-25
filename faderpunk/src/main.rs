@@ -302,7 +302,7 @@ async fn main(spawner: Spawner) {
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| {
+            executor1.run(|spawner| { 
                 spawner.spawn(main_core1(spawner)).unwrap();
             });
         },
@@ -314,8 +314,8 @@ async fn main(spawner: Spawner) {
 
     // TODO: Get this from eeprom
     let mut config = GlobalConfig::default();
-    config.clock_src = ClockSrc::MidiIn;
-    config.reset_src = ClockSrc::MidiIn;
-    config.layout = &[1; 16];
+    config.clock_src = ClockSrc::MidiUsb;
+    config.reset_src = ClockSrc::MidiUsb;
+    config.layout = &[6];
     config_sender.send(config);
 }
