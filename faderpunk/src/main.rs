@@ -2,10 +2,12 @@
 #![no_main]
 
 #[macro_use]
-mod macros;
+pub mod macros;
 
 mod app;
 mod apps;
+pub mod scene;
+pub mod storage;
 mod tasks;
 
 use defmt::info;
@@ -25,14 +27,14 @@ use embassy_rp::{
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
-use embassy_sync::pubsub::PubSubChannel;
+use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::watch::Watch;
 use embassy_time::{Delay, Timer};
+use heapless::Vec;
 use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
-use heapless::Vec;
-use tasks::eeprom::{StorageCmd, StorageEvent, EEPROM_CHANNEL};
+use tasks::eeprom::{AppStorageKey, EepromData, EEPROM_CHANNEL};
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
@@ -41,7 +43,7 @@ use static_cell::StaticCell;
 
 use at24cx::{Address, At24Cx};
 
-use apps::{get_channels, run_app_by_id};
+use apps::run_app_by_id;
 use config::{ClockSrc, GlobalConfig};
 
 // Program metadata for `picotool info`.
@@ -76,27 +78,40 @@ pub enum HardwareEvent {
     ButtonUp(usize),
     FaderChange(usize),
     MidiMsg(LiveEvent<'static>),
-    StorageEvent(usize, StorageEvent),
+    EepromRefresh,
 }
 
 /// Messages from core 1 to core 0
 pub enum HardwareCmd {
     MaxCmd(usize, MaxCmd),
-    MidiCmd(LiveEvent<'static>),
-    StorageCmd(usize, StorageCmd),
+    MidiMsg(LiveEvent<'static>),
+    EepromStore(AppStorageKey, EepromData),
 }
 
+// TODO: Move all the channels and signalling to own module
 pub const CMD_CHANNEL_SIZE: usize = 16;
 pub const EVENT_PUBSUB_SIZE: usize = 64;
+pub const EVENT_PUBSUB_SUBS: usize = 64;
 
 // TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
 // mention all uses
-pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
+pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> =
+    Watch::new_with(GlobalConfig::new());
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
+// 32 receivers (ephemeral)
+// 18 senders (16 apps for scenes, 1 buttons, 1 max)
 pub type EventPubSubChannel =
-    PubSubChannel<CriticalSectionRawMutex, HardwareEvent, EVENT_PUBSUB_SIZE, 32, 21>;
+    PubSubChannel<CriticalSectionRawMutex, HardwareEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 18>;
 pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
+pub type EventPubSubPublisher = Publisher<
+    'static,
+    CriticalSectionRawMutex,
+    HardwareEvent,
+    EVENT_PUBSUB_SIZE,
+    EVENT_PUBSUB_SUBS,
+    18,
+>;
 pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE> =
     Channel::new();
 pub type CmdSender = Sender<'static, CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE>;
@@ -108,53 +123,9 @@ static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
 static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 
-#[derive(Debug)]
-enum LayoutErr {
-    AppSize,
-    LayoutSize,
-}
-
-/// Layout creates a proper layout vec from just a slice of app ids
-/// The vec contains a tupel of app ids and their corresponding size of chans
-struct Layout {
-    apps: Vec<(usize, usize), 16>,
-}
-
-impl Layout {
-    fn try_from(app_ids: &[usize]) -> Result<Self, LayoutErr> {
-        if app_ids.len() > 16 {
-            return Err(LayoutErr::AppSize);
-        }
-        // Create vec of (app_id, size). Will remove invalid app ids
-        let apps: Vec<(usize, usize), 16> = app_ids
-            .iter()
-            .map(|&id| (id, get_channels(id)))
-            .collect::<Vec<(usize, usize), 16>>();
-        // Check if apps fit into the layout
-        let count = apps.iter().copied().fold(0, |acc, (_, size)| acc + size);
-        if count > 16 {
-            return Err(LayoutErr::LayoutSize);
-        }
-        Ok(Self { apps })
-    }
-
-    fn apps_iter(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
-        self.apps.iter().scan(0, |start_channel, &(app_id, size)| {
-            let result = Some((app_id, *start_channel));
-            *start_channel += size;
-            result
-        })
-    }
-}
-
-// TODO: create config builder to create full 16 channel layout with various apps
-// The app at some point needs access to the MAX to configure it. Maybe this can happen via
-// CHANNEL?
-// Builder config needs to be serializable to store in eeprom
-
 // App slots
 #[embassy_executor::task(pool_size = 16)]
-async fn run_app(number: usize, start_channel: usize) {
+async fn run_app(number: u8, start_channel: usize) {
     // INFO: This _should_ be properly dropped when task ends
     let mut cancel_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     // TODO: Is the first value always new?
@@ -186,11 +157,8 @@ async fn main_core1(spawner: Spawner) {
             Timer::after_millis(5).await;
         }
 
-        let layout = Layout::try_from(config.layout).unwrap();
-        // let channel_map = layout.channel_map();
-        for (app_id, start_chan) in layout.apps_iter() {
+        for &(app_id, start_chan) in config.layout.iter() {
             spawner.spawn(run_app(app_id, start_chan)).unwrap();
-            Timer::after_millis(20).await;
         }
     }
 }
@@ -200,10 +168,8 @@ async fn hardware_cmd_router() {
     loop {
         match CMD_CHANNEL.receive().await {
             HardwareCmd::MaxCmd(channel, max_cmd) => MAX_CHANNEL.send((channel, max_cmd)).await,
-            HardwareCmd::StorageCmd(channel, storage_cmd) => {
-                EEPROM_CHANNEL.send((channel, storage_cmd)).await
-            }
-            HardwareCmd::MidiCmd(live_event) => MIDI_CHANNEL.send(live_event).await,
+            HardwareCmd::MidiMsg(live_event) => MIDI_CHANNEL.send(live_event).await,
+            HardwareCmd::EepromStore(key, data) => EEPROM_CHANNEL.send((key, data)).await,
         }
     }
 }
@@ -316,6 +282,7 @@ async fn main(spawner: Spawner) {
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::MidiIn;
     config.reset_src = ClockSrc::MidiIn;
-    config.layout = &[6, 3, 7, 8, 8, 1, 9];
+    // config.layout = Vec::from_slice(&[(1, 0)]).unwrap();
+
     config_sender.send(config);
 }

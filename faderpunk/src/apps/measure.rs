@@ -1,24 +1,22 @@
-use config::Config;
 use defmt::info;
 
 use crate::app::App;
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Measure", "Test app to measure port voltages");
+app_config! (
+    config("Measure", "Test app to measure port voltages");
+    params();
+    storage();
+);
 
-pub async fn run(app: App<CHANNELS>) {
-    let input = app.make_out_jack(0, crate::app::Range::_0_10V).await;
+pub async fn run(app: App<'_, CHANNELS>, _ctx: &AppContext<'_>) {
     let mut die = app.use_die();
-    let mut value = 0;
     let fut1 = async {
         loop {
-            input.set_value(4095);
-            value += 1024;
-            value = value % 4096;
+            let value = die.roll();
             info!("VALUE, {:?}", value);
-            app.delay_millis(6000).await;
+            app.delay_millis(2000).await;
         }
     };
 

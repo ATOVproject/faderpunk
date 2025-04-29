@@ -18,7 +18,9 @@ fn main() {
             config::ConfigMsgOut,
             config::Param,
             config::Curve,
-            config::Waveform
+            config::Waveform,
+            config::ClockSrc,
+            config::Value
         ),
     )
     .unwrap();
