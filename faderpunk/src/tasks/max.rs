@@ -5,7 +5,11 @@ use embassy_rp::{
     pio::{Config as PioConfig, Direction as PioDirection, Pio},
     spi::{self, Async, Spi},
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
+    channel::{Channel, Receiver},
+    mutex::Mutex,
+};
 use embassy_time::Timer;
 use max11300::{
     config::{
@@ -17,20 +21,21 @@ use max11300::{
 use portable_atomic::{AtomicU16, Ordering};
 use static_cell::StaticCell;
 
-use crate::{Irqs, XTxMsg, XTxSender};
+use crate::{HardwareEvent, Irqs, EVENT_PUBSUB};
+
+// MaxCmd(usize, MaxCmd),
 
 type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
+type MuxPins = (PIN_12, PIN_13, PIN_14, PIN_15);
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
 pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-
-type MuxPins = (PIN_12, PIN_13, PIN_14, PIN_15);
-type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, MaxMessage), 64>;
+pub static MAX_CHANNEL: Channel<ThreadModeRawMutex, (usize, MaxCmd), 16> = Channel::new();
 
 #[derive(Clone, Copy)]
-pub enum MaxMessage {
+pub enum MaxCmd {
     ConfigurePort(MaxConfig),
     GpoSetHigh,
     GpoSetLow,
@@ -50,8 +55,6 @@ pub async fn start_max(
     pio0: PIO0,
     mux_pins: MuxPins,
     cs: PIN_17,
-    x_tx: XTxSender,
-    x_rx: XRxReceiver,
 ) {
     let device_config = DeviceConfig {
         thshdn: THSHDN::Enabled,
@@ -88,12 +91,12 @@ pub async fn start_max(
 
     // TODO: Make individual port
     spawner
-        .spawn(read_fader(pio0, mux_pins, ports.port16, x_tx))
+        .spawn(read_fader(pio0, mux_pins, ports.port16))
         .unwrap();
 
     spawner.spawn(process_channel_values(max)).unwrap();
 
-    spawner.spawn(message_loop(max, x_rx)).unwrap();
+    spawner.spawn(message_loop(max)).unwrap();
 }
 
 #[embassy_executor::task]
@@ -101,8 +104,9 @@ async fn read_fader(
     pio0: PIO0,
     mux_pins: MuxPins,
     max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, NoopRawMutex>,
-    x_tx: XTxSender,
 ) {
+    let event_publisher = EVENT_PUBSUB.publisher().unwrap();
+
     let fader_port = max_port
         .into_configured_port(ConfigMode7(
             AVR::InternalRef,
@@ -155,8 +159,9 @@ async fn read_fader(
         prev_values[channel] = val;
 
         if diff >= 4 {
-            x_tx.send((channel, XTxMsg::FaderChange)).await;
-            // MAX_CHANGED_FADER[15 - chan].store(true, Ordering::Relaxed);
+            event_publisher
+                .publish(HardwareEvent::FaderChange(channel))
+                .await;
         }
 
         MAX_VALUES_FADER[channel].store(val, Ordering::Relaxed);
@@ -191,15 +196,15 @@ async fn process_channel_values(max_driver: &'static SharedMax) {
 }
 
 #[embassy_executor::task]
-async fn message_loop(max_driver: &'static SharedMax, x_rx: XRxReceiver) {
+async fn message_loop(max_driver: &'static SharedMax) {
     // TODO: Put ports 17-19 in hi-impedance mode when using the internal GPIO interrupts
     loop {
-        let (chan, msg) = x_rx.receive().await;
+        let (chan, msg) = MAX_CHANNEL.receive().await;
         let port = Port::try_from(chan).unwrap();
         let mut max = max_driver.lock().await;
 
         match msg {
-            MaxMessage::ConfigurePort(config) => match config {
+            MaxCmd::ConfigurePort(config) => match config {
                 MaxConfig::Mode0 => {
                     max.configure_port(port, ConfigMode0).await.unwrap();
                 }
@@ -214,10 +219,10 @@ async fn message_loop(max_driver: &'static SharedMax, x_rx: XRxReceiver) {
                     max.configure_port(port, config).await.unwrap();
                 }
             },
-            MaxMessage::GpoSetHigh => {
+            MaxCmd::GpoSetHigh => {
                 max.gpo_set_high(port).await.unwrap();
             }
-            MaxMessage::GpoSetLow => {
+            MaxCmd::GpoSetLow => {
                 max.gpo_set_low(port).await.unwrap();
             }
         }

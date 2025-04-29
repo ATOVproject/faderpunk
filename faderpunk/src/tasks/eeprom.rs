@@ -5,7 +5,7 @@ use embassy_rp::{
     i2c::{Async, I2c},
     peripherals::I2C1,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Channel};
 use embassy_time::{Delay, Duration, Instant, Timer};
 use heapless::{FnvIndexMap, Vec};
 use sequential_storage::{
@@ -13,28 +13,27 @@ use sequential_storage::{
     map::{fetch_item, store_item},
 };
 
-use crate::{XTxMsg, XTxSender};
+use crate::{HardwareEvent, EVENT_PUBSUB};
 
-pub type XRxReceiver = Receiver<'static, NoopRawMutex, (usize, StorageMsg), 64>;
+pub static EEPROM_CHANNEL: Channel<ThreadModeRawMutex, (usize, StorageCmd), 16> = Channel::new();
 
 // TODO: Find a good number for this (allowed storage size is 64)
 pub const DATA_LENGTH: usize = 128;
 const MAX_PENDING_SAVES: usize = 64;
 
 #[derive(Clone)]
-pub enum StorageMsg {
+pub enum StorageEvent {
     Read(u8, u8, Vec<u8, DATA_LENGTH>),
+}
+
+#[derive(Clone)]
+pub enum StorageCmd {
     Request(u8, u8),
     Store(u8, u8, Vec<u8, DATA_LENGTH>),
 }
 
-pub async fn start_eeprom(
-    spawner: &Spawner,
-    eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>,
-    sender: XTxSender,
-    receiver: XRxReceiver,
-) {
-    spawner.spawn(run_eeprom(eeprom, sender, receiver)).unwrap();
+pub async fn start_eeprom(spawner: &Spawner, eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
+    spawner.spawn(run_eeprom(eeprom)).unwrap();
 }
 
 fn create_storage_key(app_id: u8, start_channel: u8, storage_slot: u8) -> u32 {
@@ -51,21 +50,11 @@ struct PendingSave {
 }
 
 #[embassy_executor::task]
-async fn run_eeprom(
-    mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>,
-    sender: XTxSender,
-    receiver: XRxReceiver,
-) {
-    // These are the flash addresses in which the crate will operate.
-    // The crate will not read, write or erase outside of this range.
-    // Total EEPROM size: 128KB (0x20000 bytes)
-    // Reserved space: 32KB (0x8000 bytes)
-    // Usable range: 0x8000 to 0x20000
+async fn run_eeprom(mut eeprom: At24Cx<I2c<'static, I2C1, Async>, Delay>) {
+    let event_publisher = EVENT_PUBSUB.publisher().unwrap();
+
+    // These are the flash addresses in which the sequential_storage will operate.
     let flash_range = 0x8000..0x20000;
-    // We need to give the crate a buffer to work with.
-    // It must be big enough to serialize the biggest value of your storage type in,
-    // rounded up to to word alignment of the flash. Some kinds of internal flash may require
-    // this buffer to be aligned in RAM as well.
     let mut data_buffer = [0; 128];
 
     // Map to store pending saves: key -> (timestamp, data)
@@ -87,9 +76,9 @@ async fn run_eeprom(
         };
 
         // Wait for either a new message or the timer to expire
-        match select(receiver.receive(), timer_future).await {
+        match select(EEPROM_CHANNEL.receive(), timer_future).await {
             Either::First(msg) => match msg {
-                (chan, StorageMsg::Request(app_id, storage_slot)) => {
+                (chan, StorageCmd::Request(app_id, storage_slot)) => {
                     let key = create_storage_key(app_id, chan as u8, storage_slot);
                     if let Ok(Some(item)) = fetch_item::<u32, &[u8], _>(
                         &mut eeprom,
@@ -101,16 +90,16 @@ async fn run_eeprom(
                     .await
                     {
                         if let Ok(vec) = Vec::<u8, DATA_LENGTH>::from_slice(item) {
-                            sender
-                                .send((
+                            event_publisher
+                                .publish(HardwareEvent::StorageEvent(
                                     chan,
-                                    XTxMsg::StorageMsg(StorageMsg::Read(app_id, storage_slot, vec)),
+                                    StorageEvent::Read(app_id, storage_slot, vec),
                                 ))
                                 .await;
                         }
                     }
                 }
-                (chan, StorageMsg::Store(app_id, storage_slot, data)) => {
+                (chan, StorageCmd::Store(app_id, storage_slot, data)) => {
                     let key = create_storage_key(app_id, chan as u8, storage_slot);
                     let now = Instant::now();
                     let pending_save = PendingSave {
@@ -122,7 +111,6 @@ async fn run_eeprom(
                     };
                     pending_saves.insert(key, pending_save).ok();
                 }
-                _ => {}
             },
 
             Either::Second(_) => {

@@ -1,21 +1,20 @@
+use defmt::info;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
     mutex::Mutex,
-    pubsub::{PubSubChannel, Subscriber},
     watch::Receiver,
 };
-use embassy_time::{with_timeout, Duration, Instant, TimeoutError, Timer};
+use embassy_time::{with_timeout, Duration, Timer};
 use heapless::Vec;
-use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
-use midly::{
-    live::LiveEvent,
-    num::{u4, u7},
-    MidiMessage,
+use max11300::{
+    config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES},
+    ConfigurePort,
 };
+use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
-use postcard::{from_bytes, to_slice, to_vec};
+use postcard::{from_bytes, to_slice};
 use rand::Rng;
 
 use config::Curve;
@@ -31,11 +30,11 @@ use serde::{
 use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
-        eeprom::{StorageMsg, DATA_LENGTH},
-        leds::{LedsAction, LED_VALUES},
-        max::{MaxConfig, MaxMessage, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
+        eeprom::{StorageCmd, StorageEvent, DATA_LENGTH},
+        leds::LED_VALUES,
+        max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
-    XRxMsg, XTxMsg, CHANS_X, CLOCK_WATCH,
+    CmdSender, EventPubSubChannel, HardwareCmd, HardwareEvent, CLOCK_WATCH,
 };
 
 pub enum Range {
@@ -154,23 +153,26 @@ impl InJack {
 
 pub struct GateJack {
     channel: usize,
-    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    cmd_sender: CmdSender,
 }
 
 impl GateJack {
-    fn new(channel: usize, sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>) -> Self {
-        Self { channel, sender }
+    fn new(channel: usize, cmd_sender: CmdSender) -> Self {
+        Self {
+            channel,
+            cmd_sender,
+        }
     }
 
     pub async fn set_high(&self) {
-        self.sender
-            .send((self.channel, XRxMsg::MaxMessage(MaxMessage::GpoSetHigh)))
+        self.cmd_sender
+            .send(HardwareCmd::MaxCmd(self.channel, MaxCmd::GpoSetHigh))
             .await;
     }
 
     pub async fn set_low(&self) {
-        self.sender
-            .send((self.channel, XRxMsg::MaxMessage(MaxMessage::GpoSetLow)))
+        self.cmd_sender
+            .send(HardwareCmd::MaxCmd(self.channel, MaxCmd::GpoSetLow))
             .await;
     }
 }
@@ -204,22 +206,27 @@ impl OutJack {
 }
 
 pub struct Buttons<const N: usize> {
+    event_pubsub: &'static EventPubSubChannel,
     start_channel: usize,
 }
 
 impl<const N: usize> Buttons<N> {
-    pub fn new(start_channel: usize) -> Self {
-        Self { start_channel }
+    pub fn new(start_channel: usize, event_pubsub: &'static EventPubSubChannel) -> Self {
+        Self {
+            event_pubsub,
+            start_channel,
+        }
     }
 
     /// Returns the number of the button that was pressed
     pub async fn wait_for_any_down(&self) -> usize {
-        // Subscribers only listen on the start channel of an app
-        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
 
         loop {
-            if let (channel, XTxMsg::ButtonDown) = subscriber.next_message_pure().await {
-                return channel;
+            if let HardwareEvent::ButtonDown(channel) = subscriber.next_message_pure().await {
+                if (self.start_channel..self.start_channel + N).contains(&channel) {
+                    return channel - self.start_channel;
+                }
             }
         }
     }
@@ -266,12 +273,29 @@ impl<const N: usize> Buttons<N> {
 }
 
 pub struct Faders<const N: usize> {
+    event_pubsub: &'static EventPubSubChannel,
     start_channel: usize,
 }
 
 impl<const N: usize> Faders<N> {
-    pub fn new(start_channel: usize) -> Self {
-        Self { start_channel }
+    pub fn new(start_channel: usize, event_pubsub: &'static EventPubSubChannel) -> Self {
+        Self {
+            event_pubsub,
+            start_channel,
+        }
+    }
+
+    /// Returns the number of the fader than was changed
+    pub async fn wait_for_any_change(&self) -> usize {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+
+        loop {
+            if let HardwareEvent::FaderChange(channel) = subscriber.next_message_pure().await {
+                if (self.start_channel..self.start_channel + N).contains(&channel) {
+                    return channel - self.start_channel;
+                }
+            }
+        }
     }
 
     pub async fn wait_for_change(&self, chan: usize) {
@@ -280,17 +304,6 @@ impl<const N: usize> Faders<N> {
             let channel = self.wait_for_any_change().await;
             if chan == channel {
                 return;
-            }
-        }
-    }
-
-    /// Returns the number of the fader than was changed
-    pub async fn wait_for_any_change(&self) -> usize {
-        // Subscribers only listen on the start channel of an app
-        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
-        loop {
-            if let (channel, XTxMsg::FaderChange) = subscriber.next_message_pure().await {
-                return channel;
             }
         }
     }
@@ -306,13 +319,12 @@ impl<const N: usize> Faders<N> {
 
 pub struct Clock {
     receiver: Receiver<'static, CriticalSectionRawMutex, bool, 16>,
-    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 }
 
 impl Clock {
-    pub fn new(sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>) -> Self {
+    pub fn new() -> Self {
         let receiver = CLOCK_WATCH.receiver().unwrap();
-        Self { receiver, sender }
+        Self { receiver }
     }
 
     // TODO: division needs to be an enum
@@ -332,34 +344,21 @@ impl Clock {
             }
         }
     }
-
-    //TODO: Check if app is CLOCK app and if not, do not implement this
-    //HINT: Can we use struct markers? Or how to do it?
-    pub async fn set_bpm(&self, bpm: f32) {
-        self.sender.send((16, XRxMsg::SetBpm(bpm))).await;
-    }
 }
 
 pub struct Midi<const N: usize> {
+    cmd_sender: CmdSender,
     midi_channel: u4,
-    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
-    start_channel: usize,
 }
 
 impl<const N: usize> Midi<N> {
-    pub fn new(
-        start_channel: usize,
-        midi_channel: u4,
-        sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
-    ) -> Self {
+    pub fn new(midi_channel: u4, cmd_sender: CmdSender) -> Self {
         Self {
+            cmd_sender,
             midi_channel,
-            sender,
-            start_channel,
         }
     }
-    // TODO: This is a short-hand function that should also send the msg via TRS
-    // Create and use a function called midi_send_both and use it here
+
     pub async fn send_cc(&self, cc: u8, val: u16) {
         let msg = LiveEvent::Midi {
             channel: self.midi_channel,
@@ -394,11 +393,8 @@ impl<const N: usize> Midi<N> {
         self.send_msg(msg).await;
     }
 
-    // TODO: Check if making midi an own struct with a listener would make sense
     pub async fn send_msg(&self, msg: LiveEvent<'static>) {
-        self.sender
-            .send((self.start_channel, XRxMsg::MidiMessage(msg)))
-            .await;
+        self.cmd_sender.send(HardwareCmd::MidiCmd(msg)).await;
     }
 }
 
@@ -436,25 +432,28 @@ impl Global<bool> {
 pub struct GlobalWithStorage<T: Sized + Copy + Default> {
     app_id: u8,
     inner: Global<T>,
-    start_channel: u8,
-    storage_slot: StorageSlot,
-    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    start_channel: usize,
+    storage_slot: u8,
+    cmd_sender: CmdSender,
+    event_pubsub: &'static EventPubSubChannel,
 }
 
 impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage<T> {
     pub fn new(
         app_id: u8,
         initial: T,
-        start_channel: u8,
+        start_channel: usize,
         storage_slot: StorageSlot,
-        sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+        cmd_sender: CmdSender,
+        event_pubsub: &'static EventPubSubChannel,
     ) -> Self {
         Self {
             app_id,
             start_channel,
             inner: Global::new(initial),
-            storage_slot,
-            sender,
+            storage_slot: storage_slot as u8,
+            cmd_sender,
+            event_pubsub,
         }
     }
 
@@ -481,29 +480,34 @@ impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage
 
     pub async fn save(&self) {
         let ser = self.ser().await;
-        self.sender
-            .send((
-                self.start_channel as usize,
-                XRxMsg::StorageMsg(StorageMsg::Store(self.app_id, self.storage_slot as u8, ser)),
+        self.cmd_sender
+            .send(HardwareCmd::StorageCmd(
+                self.start_channel,
+                StorageCmd::Store(self.app_id, self.storage_slot, ser),
             ))
             .await;
     }
 
     pub async fn load(&mut self) {
-        self.sender
-            .send((
-                self.start_channel as usize,
-                XRxMsg::StorageMsg(StorageMsg::Request(self.app_id, self.storage_slot as u8)),
+        self.cmd_sender
+            .send(HardwareCmd::StorageCmd(
+                self.start_channel,
+                StorageCmd::Request(self.app_id, self.storage_slot),
             ))
             .await;
         // Make this timeout roughly as long as the boot sequence ;)
         with_timeout(Duration::from_millis(2000), async {
-            let mut subscriber = CHANS_X[self.start_channel as usize].subscriber().unwrap();
+            let mut subscriber = self.event_pubsub.subscriber().unwrap();
             loop {
-                if let (_, XTxMsg::StorageMsg(StorageMsg::Read(app_id, storage_slot, res))) =
-                    subscriber.next_message_pure().await
+                if let HardwareEvent::StorageEvent(
+                    start_channel,
+                    StorageEvent::Read(app_id, storage_slot, res),
+                ) = subscriber.next_message_pure().await
                 {
-                    if self.app_id == app_id && self.storage_slot as u8 == storage_slot {
+                    if self.app_id == app_id
+                        && self.storage_slot == storage_slot
+                        && self.start_channel == start_channel
+                    {
                         self.des(res.as_slice()).await;
                         return;
                     }
@@ -546,32 +550,32 @@ pub struct App<const N: usize> {
     app_id: usize,
     pub start_channel: usize,
     channel_count: usize,
-    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    cmd_sender: CmdSender,
+    event_pubsub: &'static EventPubSubChannel,
 }
 
 impl<const N: usize> App<N> {
     pub fn new(
         app_id: usize,
         start_channel: usize,
-        sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+        cmd_sender: CmdSender,
+        event_pubsub: &'static EventPubSubChannel,
     ) -> Self {
         Self {
             app_id,
             start_channel,
             channel_count: N,
-            sender,
+            cmd_sender,
+            event_pubsub,
         }
     }
 
     // TODO: We should also probably make sure that people do not reconfigure the jacks within the
     // app (throw error or something)
     async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
-        self.sender
-            .send((
-                channel,
-                XRxMsg::MaxMessage(MaxMessage::ConfigurePort(config)),
-            ))
-            .await
+        self.cmd_sender
+            .send(HardwareCmd::MaxCmd(channel, MaxCmd::ConfigurePort(config)))
+            .await;
     }
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
@@ -586,9 +590,10 @@ impl<const N: usize> App<N> {
         GlobalWithStorage::new(
             self.app_id as u8,
             initial,
-            self.start_channel as u8,
+            self.start_channel,
             storage_slot,
-            self.sender,
+            self.cmd_sender,
+            self.event_pubsub,
         )
     }
 
@@ -636,7 +641,7 @@ impl<const N: usize> App<N> {
         )
         .await;
 
-        GateJack::new(self.start_channel + chan, self.sender)
+        GateJack::new(self.start_channel + chan, self.cmd_sender)
     }
 
     pub async fn delay_micros(&self, micros: u64) {
@@ -652,11 +657,11 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_buttons(&self) -> Buttons<N> {
-        Buttons::new(self.start_channel)
+        Buttons::new(self.start_channel, self.event_pubsub)
     }
 
     pub fn use_faders(&self) -> Faders<N> {
-        Faders::new(self.start_channel)
+        Faders::new(self.start_channel, self.event_pubsub)
     }
 
     pub fn use_leds(&self) -> Leds<N> {
@@ -668,10 +673,10 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_clock(&self) -> Clock {
-        Clock::new(self.sender)
+        Clock::new()
     }
 
     pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
-        Midi::new(self.start_channel, midi_channel.into(), self.sender)
+        Midi::new(midi_channel.into(), self.cmd_sender)
     }
 }
