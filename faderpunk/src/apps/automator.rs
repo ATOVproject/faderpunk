@@ -1,7 +1,13 @@
+//Todo:
+//Fader read applies value always
+// optional : lock array to the grid for recall.
+
+
+
+
 use config::{Config, Curve, Param};
 use defmt::info;
 use embassy_futures::join::join3;
-//use midi2::ux::u4;
 
 use crate::app::{App, Led, Range};
 
@@ -142,6 +148,7 @@ pub async fn run(app: App<CHANNELS>) {
             faders.wait_for_change(0).await;
             let val = faders.get_values();
             offset_glob.set(val[0]).await;
+
         }
     };
 

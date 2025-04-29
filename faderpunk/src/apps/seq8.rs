@@ -66,16 +66,26 @@ pub async fn run(app: App<CHANNELS>) {
     let led_flag_glob = app.make_global(true);
     let lenght_flag = app.make_global(false);
     let latched_glob = app.make_global([false; 8]);
+    let save_flag = app.make_global(false);
 
     let div = app.make_global(1);
     let mut shif_old = false;
     let gate_flag_glob = app.make_global([false, false, false, false]);
     let mut shift_old = false;
 
+    let mut count = 0;
     let fut1 = async {
         loop {
             // do the slides here
             app.delay_millis(1).await;
+            count += 1;
+            if count == 20000 && save_flag.get().await {
+                count = 0;
+                seq_glob.save().await;
+                seq_length_glob.save().await;
+                gateseq_glob.save().await;
+                save_flag.set(false).await
+            }
             if !shift_old && buttons.is_shift_pressed() {
                 latched_glob.set([false; 8]).await;
                 shift_old = true;
@@ -110,7 +120,8 @@ pub async fn run(app: App<CHANNELS>) {
                     seq[chan + (page * 8)] = vals[chan];
                     //info!("{}", seq[chan + (page * 8)]);
                     seq_glob.set_array(seq).await;
-                    seq_glob.save().await;
+                    save_flag.set(true).await;
+                    //seq_glob.save().await;
                 }
             }
 
@@ -127,7 +138,8 @@ pub async fn run(app: App<CHANNELS>) {
                     seq_lenght[(page / 2)] = ((vals[0]) / 256) + 1;
                     //info!("{}", seq_lenght[page / 2]);
                     seq_length_glob.set_array(seq_lenght).await;
-                    seq_length_glob.save().await;
+                    save_flag.set(true).await;
+                    //seq_length_glob.save().await;
                     lenght_flag.set(true).await;
                 }
 
@@ -148,7 +160,8 @@ pub async fn run(app: App<CHANNELS>) {
             if !_shift {
                 gateseq[chan + (page * 8)] = !gateseq[chan + (page * 8)];
                 gateseq_glob.set_array(gateseq).await;
-                gateseq_glob.save().await;
+                //gateseq_glob.save().await;
+                save_flag.set(true).await;
                 led_flag_glob.set(true).await;
             }
 
@@ -283,6 +296,7 @@ pub async fn run(app: App<CHANNELS>) {
             if reset {
                 clockn = 0;
                 clockn_glob.set(clockn).await;
+                info!("reset")
             }
             if !reset {
                 clockn_glob.set(clockn).await;
