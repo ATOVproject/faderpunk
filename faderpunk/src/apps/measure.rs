@@ -1,14 +1,16 @@
-use config::Config;
 use defmt::info;
 
 use crate::app::App;
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Measure", "Test app to measure port voltages");
+app_config! (
+    config("Measure", "Test app to measure port voltages");
+    params();
+    storage();
+);
 
-pub async fn run(app: App<CHANNELS>) {
+pub async fn run(app: App<'_, CHANNELS>, _ctx: &AppContext<'_>) {
     let mut die = app.use_die();
     let fut1 = async {
         loop {

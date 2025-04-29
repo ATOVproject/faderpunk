@@ -1,5 +1,3 @@
-use crate::app::App;
-
 register_apps!(
     1 => default,
     2 => measure,

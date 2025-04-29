@@ -4,6 +4,7 @@ use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
     mutex::Mutex,
+    signal::Signal,
     watch::Receiver,
 };
 use embassy_time::{with_timeout, Duration, Timer};
@@ -28,9 +29,9 @@ use serde::{
 };
 
 use crate::{
+    scene::get_scene,
     tasks::{
         buttons::BUTTON_PRESSED,
-        eeprom::{StorageCmd, StorageEvent, DATA_LENGTH},
         leds::LED_VALUES,
         max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
@@ -52,19 +53,7 @@ pub enum Led {
     Button,
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy)]
-pub enum StorageSlot {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-}
-
+// TODO: Move to storage
 #[derive(Clone, Copy)]
 pub struct Arr<T: Sized + Copy + Default, const N: usize>(pub [T; N]);
 
@@ -105,6 +94,12 @@ where
         let mut arr = [T::default(); N];
         arr.copy_from_slice(vec.as_slice()); // Safe due to length check above
         Ok(Arr(arr))
+    }
+}
+
+impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
     }
 }
 
@@ -394,7 +389,7 @@ impl<const N: usize> Midi<N> {
     }
 
     pub async fn send_msg(&self, msg: LiveEvent<'static>) {
-        self.cmd_sender.send(HardwareCmd::MidiCmd(msg)).await;
+        self.cmd_sender.send(HardwareCmd::MidiMsg(msg)).await;
     }
 }
 
@@ -429,112 +424,6 @@ impl Global<bool> {
     }
 }
 
-pub struct GlobalWithStorage<T: Sized + Copy + Default> {
-    app_id: u8,
-    inner: Global<T>,
-    start_channel: usize,
-    storage_slot: u8,
-    cmd_sender: CmdSender,
-    event_pubsub: &'static EventPubSubChannel,
-}
-
-impl<T: Sized + Copy + Default + Serialize + DeserializeOwned> GlobalWithStorage<T> {
-    pub fn new(
-        app_id: u8,
-        initial: T,
-        start_channel: usize,
-        storage_slot: StorageSlot,
-        cmd_sender: CmdSender,
-        event_pubsub: &'static EventPubSubChannel,
-    ) -> Self {
-        Self {
-            app_id,
-            start_channel,
-            inner: Global::new(initial),
-            storage_slot: storage_slot as u8,
-            cmd_sender,
-            event_pubsub,
-        }
-    }
-
-    async fn ser(&self) -> Vec<u8, DATA_LENGTH> {
-        let value = self.get().await;
-        let mut buf: [u8; DATA_LENGTH] = [0; DATA_LENGTH];
-        let serialized = to_slice(&value, &mut buf).unwrap();
-        Vec::<u8, DATA_LENGTH>::from_slice(serialized).unwrap()
-    }
-
-    async fn des(&mut self, data: &[u8]) {
-        if let Ok(val) = from_bytes::<T>(data) {
-            self.set(val).await;
-        }
-    }
-
-    pub async fn get(&self) -> T {
-        self.inner.get().await
-    }
-
-    pub async fn set(&mut self, val: T) {
-        self.inner.set(val).await
-    }
-
-    pub async fn save(&self) {
-        let ser = self.ser().await;
-        self.cmd_sender
-            .send(HardwareCmd::StorageCmd(
-                self.start_channel,
-                StorageCmd::Store(self.app_id, self.storage_slot, ser),
-            ))
-            .await;
-    }
-
-    pub async fn load(&mut self) {
-        self.cmd_sender
-            .send(HardwareCmd::StorageCmd(
-                self.start_channel,
-                StorageCmd::Request(self.app_id, self.storage_slot),
-            ))
-            .await;
-        // Make this timeout roughly as long as the boot sequence ;)
-        with_timeout(Duration::from_millis(2000), async {
-            let mut subscriber = self.event_pubsub.subscriber().unwrap();
-            loop {
-                if let HardwareEvent::StorageEvent(
-                    start_channel,
-                    StorageEvent::Read(app_id, storage_slot, res),
-                ) = subscriber.next_message_pure().await
-                {
-                    if self.app_id == app_id
-                        && self.storage_slot == storage_slot
-                        && self.start_channel == start_channel
-                    {
-                        self.des(res.as_slice()).await;
-                        return;
-                    }
-                }
-            }
-        })
-        .await
-        .ok();
-    }
-}
-
-impl GlobalWithStorage<bool> {
-    pub async fn toggle(&self) -> bool {
-        self.inner.toggle().await
-    }
-}
-
-impl<T: Sized + Copy + Default, const N: usize> GlobalWithStorage<Arr<T, N>> {
-    pub async fn set_array(&self, val: [T; N]) {
-        self.inner.set(Arr(val)).await
-    }
-
-    pub async fn get_array(&self) -> [T; N] {
-        self.inner.get().await.0
-    }
-}
-
 pub struct Die {
     rng: RoscRng,
 }
@@ -546,20 +435,22 @@ impl Die {
     }
 }
 
-pub struct App<const N: usize> {
-    app_id: usize,
+pub struct App<'a, const N: usize> {
+    app_id: u8,
     pub start_channel: usize,
     channel_count: usize,
     cmd_sender: CmdSender,
     event_pubsub: &'static EventPubSubChannel,
+    scene_signal: &'a Signal<NoopRawMutex, u8>,
 }
 
-impl<const N: usize> App<N> {
+impl<'a, const N: usize> App<'a, N> {
     pub fn new(
-        app_id: usize,
+        app_id: u8,
         start_channel: usize,
         cmd_sender: CmdSender,
         event_pubsub: &'static EventPubSubChannel,
+        scene_signal: &'a Signal<NoopRawMutex, u8>,
     ) -> Self {
         Self {
             app_id,
@@ -567,6 +458,7 @@ impl<const N: usize> App<N> {
             channel_count: N,
             cmd_sender,
             event_pubsub,
+            scene_signal,
         }
     }
 
@@ -580,21 +472,6 @@ impl<const N: usize> App<N> {
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
         Global::new(initial)
-    }
-
-    pub fn make_global_with_store<T: Sized + Copy + Default + Serialize + DeserializeOwned>(
-        &self,
-        initial: T,
-        storage_slot: StorageSlot,
-    ) -> GlobalWithStorage<T> {
-        GlobalWithStorage::new(
-            self.app_id as u8,
-            initial,
-            self.start_channel,
-            storage_slot,
-            self.cmd_sender,
-            self.event_pubsub,
-        )
     }
 
     // TODO: How can we prevent people from doing this multiple times?
@@ -654,6 +531,10 @@ impl<const N: usize> App<N> {
 
     pub async fn delay_secs(&self, secs: u64) {
         Timer::after_secs(secs).await
+    }
+
+    pub async fn wait_for_scene_change(&self) -> u8 {
+        return self.scene_signal.wait().await;
     }
 
     pub fn use_buttons(&self) -> Buttons<N> {

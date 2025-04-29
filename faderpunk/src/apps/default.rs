@@ -1,43 +1,49 @@
-use config::{Config, Curve, Param};
-use embassy_futures::join::join3;
+use config::{Curve, Param};
+use embassy_futures::{
+    join::join3,
+    select::{select, Either},
+};
 
-use crate::app::{App, Led, Range, StorageSlot};
+use crate::app::{App, Led, Range};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 3;
 
-// TODO: How to add param for midi-cc base number that it just works as a default?
-pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
-    .add_param(Param::Curve {
-        name: "Curve",
-        default: Curve::Linear,
-        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-    })
-    .add_param(Param::Int {
-        name: "Midi channel",
-        default: 0,
-        min: 0,
-        max: 15,
-    });
+app_config! (
+    config("Default", "16n vibes plus mute buttons");
+
+    params(
+        curve => (Curve, Curve::Linear, Param::Curve {
+            name: "Curve",
+            variants: &[Curve::Linear, Curve::Exponential],
+        }),
+        midi_channel => (i32, 0, Param::i32 {
+            name: "MIDI Channel",
+            min: 0,
+            max: 15,
+        }),
+    );
+
+    storage(
+        muted => (bool, false),
+    );
+);
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
-pub async fn run(app: App<CHANNELS>) {
-    let config = CONFIG.as_runtime_config().await;
-    // TODO: Maybe rename: get_curve_from_param(idx)
-    let curve = config.get_curve_at(0);
-    let midi_channel = config.get_int_at(1) as u8;
+pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
+    let param_curve = &ctx.params.curve;
+    let param_midi_channel = &ctx.params.midi_channel;
+    let stor_muted = &ctx.storage.muted;
+
+    let midi_channel = param_midi_channel.get().await;
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let midi = app.use_midi(midi_channel);
+    let midi = app.use_midi(midi_channel as u8);
 
-    let mut glob_muted = app.make_global_with_store(false, StorageSlot::A);
-    glob_muted.load().await;
-
-    let muted = glob_muted.get().await;
+    let muted = stor_muted.get().await;
     leds.set(
         0,
         Led::Button,
@@ -49,18 +55,19 @@ pub async fn run(app: App<CHANNELS>) {
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
-            let muted = glob_muted.get().await;
-            if !muted {
-                let vals = faders.get_values();
-                jack.set_value_with_curve(curve, vals[0]);
-            }
+            // let muted = stor_muted.get().await;
+            // let curve = param_curve.get().await;
+            // if !muted {
+            //     let vals = faders.get_values();
+            //     jack.set_value_with_curve(curve, vals[0]);
+            // }
         }
     };
 
     let fut2 = async {
         loop {
             faders.wait_for_change(0).await;
-            let muted = glob_muted.get().await;
+            let muted = stor_muted.get().await;
             if !muted {
                 let [fader] = faders.get_values();
                 midi.send_cc(32 + app.start_channel as u8, fader).await;
@@ -70,9 +77,13 @@ pub async fn run(app: App<CHANNELS>) {
 
     let fut3 = async {
         loop {
-            buttons.wait_for_down(0).await;
-            let muted = glob_muted.toggle().await;
-            glob_muted.save().await;
+            if let Either::First(_) =
+                select(buttons.wait_for_down(0), app.wait_for_scene_change()).await
+            {
+                stor_muted.toggle().await;
+                stor_muted.save().await;
+            }
+            let muted = stor_muted.get().await;
             if muted {
                 leds.set(0, Led::Button, LED_COLOR, 0);
                 jack.set_value(0);
