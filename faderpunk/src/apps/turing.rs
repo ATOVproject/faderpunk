@@ -8,17 +8,29 @@ pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 3;
 
 // TODO: How to add param for midi-cc base number that it just works as a default?
-pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
-    .add_param(Param::Curve {
-        name: "Curve",
+pub static CONFIG: Config<PARAMS> = Config::new("Turing", "Classic turing machine, synched to internal clock")
+    .add_param(Param::Curve { //I want to be abl to choose between none, CC and note
+        name: "MIDI",
         default: Curve::Linear,
         variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
     })
-    .add_param(Param::Int {
+    .add_param(Param::Int { //is it possible to have this apear only if CC or note are selected
         name: "Midi channel",
         default: 0,
         min: 0,
         max: 15,
+    })
+    .add_param(Param::Int { //is it possible to have this apear only if CC
+        name: "CC Number",
+        default: 0,
+        min: 0,
+        max: 127,
+    })
+    .add_param(Param::Int { //is it possible to have this apear only if CC
+        name: "Scale",
+        default: 0,
+        min: 0,
+        max: 127,
     });
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
