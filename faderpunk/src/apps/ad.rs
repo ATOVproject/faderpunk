@@ -13,12 +13,17 @@ use libfp::constants::{CURVE_LOG, CURVE_EXP};
 // - app.wait_for_midi_on_channel
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("AD", "Goes up and then down");
+app_config!(
+    config("Automator", "Fader movement recording");
 
+    params(
+    );
+    storage(
+    );
+);
 
-pub async fn run(app: App<CHANNELS>) {
+pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
 
 
 let buttons = app.use_buttons();

@@ -8,23 +8,32 @@
 use config::{Config, Curve, Param};
 use defmt::info;
 use embassy_futures::join::join5;
-use smart_leds::brightness;
 
-use crate::app::{App, Arr, Led, Range, StorageSlot};
+use crate::app::{App, Arr, Led, Range};
 
 pub const CHANNELS: usize = 8;
-pub const PARAMS: usize = 1;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Sequencer", "16n vibes plus mute buttons")
-    .add_param(Param::Curve {
-        name: "Curve",
-        default: Curve::Linear,
-        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-    });
+app_config!(
+    config("Sequencer", "4 x 16 step CV/Gate sequencer");
 
-pub async fn run(app: App<CHANNELS>) {
-    let config = CONFIG.as_runtime_config().await;
+    params(
+        
+);
 
+    storage(
+        seq_glob => ([u16; 64], [0; 64]),
+        gateseq_glob => ([bool; 64], [true; 64]),
+        seq_length_glob => ([u16; 4], [15; 4]),
+    );
+);
+
+pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
+
+    let stor_seq = &ctx.storage.seq_glob;
+    let stor_gate = &ctx.storage.gateseq_glob;
+    let stor_length = &ctx.storage.seq_length_glob;
+
+    
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let mut clk = app.use_clock();
@@ -53,12 +62,10 @@ pub async fn run(app: App<CHANNELS>) {
         app.make_gate_jack(7, 4095).await,
     ];
 
-    let mut seq_glob = app.make_global_with_store(Arr([0; 64]), StorageSlot::A);
-    seq_glob.load().await;
-    let mut gateseq_glob = app.make_global_with_store(Arr([true; 64]), StorageSlot::B);
-    gateseq_glob.load().await;
-    let mut seq_length_glob = app.make_global_with_store(Arr([16; 4]), StorageSlot::C);
-    seq_length_glob.load().await;
+    
+    let seq_glob = stor_seq.get().await;
+    let gateseq_glob = stor_gate.get().await;
+    let seq_length_glob = stor_length.get().await;
 
     //let mut latched_glob = app.make_global([true, true, true, true, true, true, true, true]);
 
@@ -96,7 +103,6 @@ pub async fn run(app: App<CHANNELS>) {
                 shift_old = false;
                 info!("unlatch everything again")
             }
-
         }
     };
 
@@ -184,7 +190,6 @@ pub async fn run(app: App<CHANNELS>) {
                 (250, 250, 250),
             ];
             app.delay_millis(10).await;
-
 
             //if buttons.is_shift_pressed().await;
             if buttons.is_shift_pressed() {

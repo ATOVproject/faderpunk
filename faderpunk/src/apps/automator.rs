@@ -12,26 +12,21 @@ use embassy_futures::join::join3;
 use crate::app::{App, Led, Range};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 2;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
-    .add_param(Param::Curve {
-        name: "Curve",
-        default: Curve::Linear,
-        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-    })
-    .add_param(Param::Int {
-        name: "Midi channel",
-        default: 0,
-        min: 0,
-        max: 15,
-    });
+
+app_config!(
+    config("Automator", "Fader movement recording");
+
+    params(
+    );
+    storage(
+    );
+);
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 
-pub async fn run(app: App<CHANNELS>) {
-    let config = CONFIG.as_runtime_config().await;
-    let curve = config.get_curve_at(0);
+pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
+
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();

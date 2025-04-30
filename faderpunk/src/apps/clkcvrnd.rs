@@ -7,11 +7,17 @@ use config::Config;
 use embassy_futures::join::{self, join3};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Clock test", "Visualize clock tempo");
+app_config!(
+    config("Random CV", "clocked random CV");
 
-pub async fn run(mut app: App<CHANNELS>) {
+    params(
+    );
+    storage(
+    );
+);
+
+pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
     
     let mut clock = app.use_clock();
     let mut rnd = app.use_die();
