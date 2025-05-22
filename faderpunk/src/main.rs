@@ -123,21 +123,25 @@ static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
 static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 
+/// FRAM write buffer
+// TODO: Find a good value here
+static BUF_FRAM_WRITE: StaticCell<[u8; DATA_LENGTH]> = StaticCell::new();
+
 // App slots
 #[embassy_executor::task(pool_size = 16)]
-async fn run_app(number: u8, start_channel: usize) {
+async fn run_app(number: u8, start_channel: u8) {
     // INFO: This _should_ be properly dropped when task ends
     let mut cancel_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     // TODO: Is the first value always new?
     let _ = cancel_receiver.changed().await;
 
     let run_app_fut = async {
-        CORE1_TASKS[start_channel].store(true, Ordering::Relaxed);
+        CORE1_TASKS[start_channel as usize].store(true, Ordering::Relaxed);
         run_app_by_id(number, start_channel).await;
     };
 
     select(run_app_fut, cancel_receiver.changed()).await;
-    CORE1_TASKS[start_channel].store(false, Ordering::Relaxed);
+    CORE1_TASKS[start_channel as usize].store(false, Ordering::Relaxed);
     info!("App {} on channel {} stopped", number, start_channel)
 }
 
