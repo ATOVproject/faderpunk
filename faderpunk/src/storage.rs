@@ -188,19 +188,48 @@ impl StorageSlot<bool> {
     }
 }
 
-pub struct ParamStore<const N: usize> {
+pub struct Store<const N: usize> {
     app_id: u8,
     inner: Mutex<NoopRawMutex, [Value; N]>,
+    // FIXME: Needs to take a storage address instead (for FRAM)
     start_channel: usize,
 }
 
-impl<const N: usize> ParamStore<N> {
+impl<const N: usize> Store<N>
+where
+    [Value; N]: Serialize,
+    [Value; N]: DeserializeOwned,
+{
     pub fn new(initial: [Value; N], app_id: u8, start_channel: usize) -> Self {
         Self {
             app_id,
             inner: Mutex::new(initial),
             start_channel,
         }
+    }
+
+    async fn ser(&self) -> EepromData {
+        let data = self.inner.lock().await;
+        let mut buf: [u8; DATA_LENGTH] = [0; DATA_LENGTH];
+
+        // Prepend the app id to the serialized data for easy filtering
+        buf[0] = self.app_id;
+
+        // TODO: unwrap
+        let len = to_slice(&*data, &mut buf[1..]).unwrap().len();
+
+        Vec::<u8, DATA_LENGTH>::from_slice(&buf[..len + 1]).unwrap()
+    }
+
+    async fn des(&self, data: &[u8]) -> Option<[Value; N]> {
+        // First byte is app id
+        if let Ok(val) = from_bytes::<[Value; N]>(&data[1..]) {
+            if data[0] != self.app_id {
+                return None;
+            }
+            return Some(val);
+        }
+        None
     }
 
     pub async fn get(&self, index: usize) -> Value {
@@ -228,15 +257,17 @@ where
 {
     index: usize,
     signal: Signal<NoopRawMutex, usize>,
-    values: &'a ParamStore<N>,
+    values: &'a Store<N>,
     _phantom: PhantomData<T>,
 }
 
 impl<'a, T, const N: usize> ParamSlot<'a, T, N>
 where
     T: FromValue + Into<Value> + Copy,
+    [Value; N]: Serialize,
+    [Value; N]: DeserializeOwned,
 {
-    pub fn new(values: &'a ParamStore<N>, index: usize) -> Self {
+    pub fn new(values: &'a Store<N>, index: usize) -> Self {
         assert!(index < N, "ParamSlot index out of bounds");
         Self {
             index,

@@ -15,7 +15,7 @@ macro_rules! register_apps {
         use config::Param;
         use crate::{CMD_CHANNEL, EVENT_PUBSUB, HardwareEvent};
         use crate::app::App;
-        use crate::storage::ParamStore;
+        use crate::storage::Store;
 
         const _APP_COUNT: usize = {
             let mut count = 0;
@@ -47,7 +47,7 @@ macro_rules! register_apps {
             match app_id {
                 $(
                     $id => {
-                        let param_values = ParamStore::new($app_mod::default_params(), app_id, start_channel);
+                        let param_values = Store::new($app_mod::default_params(), app_id, start_channel);
                         let storage = $app_mod::get_storage(app_id, start_channel);
                         let context = $app_mod::AppContext::new(&param_values, storage);
                         let scene_signal: Signal<NoopRawMutex, u8> = Signal::new();
@@ -126,12 +126,12 @@ macro_rules! app_config {
                 #[allow(dead_code)]
                 pub $p_name: $crate::storage::ParamSlot<'a, $p_slot_type, PARAMS>,
             )*
-            values: &'a $crate::storage::ParamStore<PARAMS>,
+            values: &'a $crate::storage::Store<PARAMS>,
         }
 
         impl<'a> AppParams<'a> {
             #[allow(unused)]
-            pub fn new(values: &'a $crate::storage::ParamStore<PARAMS>) -> Self {
+            pub fn new(values: &'a $crate::storage::Store<PARAMS>) -> Self {
                 let mut idx = 0;
                 Self {
                     $(
@@ -177,7 +177,7 @@ macro_rules! app_config {
         }
 
         impl<'a> AppContext<'a> {
-            pub fn new(param_values: &'a $crate::storage::ParamStore<PARAMS>, storage: AppStorage) -> Self {
+            pub fn new(param_values: &'a $crate::storage::Store<PARAMS>, storage: AppStorage) -> Self {
                 let params = AppParams::new(param_values);
                 Self {
                     params,
