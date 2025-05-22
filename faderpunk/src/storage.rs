@@ -13,11 +13,16 @@ use postcard::{from_bytes, to_slice};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
-    tasks::eeprom::{AppStorageKey, EepromData, StorageSlotType, DATA_LENGTH},
+    tasks::fram::{
+        request_data, write_data, FramData, ReadOperation, StorageSlotType, WriteOperation,
+        DATA_LENGTH,
+    },
     CmdSender, HardwareCmd, CMD_CHANNEL,
 };
 
 pub const APP_MAX_PARAMS: usize = 8;
+const BYTES_PER_VALUE_SET: u32 = 400;
+const SCENES_PER_APP: u32 = 3; // Current value + 2 scenes
 
 pub static APP_STORAGE_CMD_PUBSUB: PubSubChannel<
     CriticalSectionRawMutex,
@@ -32,6 +37,57 @@ pub type AppStoragePublisher =
 pub static APP_CONFIGURE_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
     Channel::new();
 
+#[derive(Clone, Copy)]
+// TODO: Allocator should alloate a certain part of the fram to app storage
+pub struct AppStorageAddress {
+    pub start_channel: u8,
+    pub scene: Option<u8>,
+}
+
+impl From<AppStorageAddress> for u32 {
+    fn from(key: AppStorageAddress) -> Self {
+        let scene_index = key.scene.unwrap_or(0) as u32;
+        let app_base_offset = (key.start_channel as u32) * SCENES_PER_APP * BYTES_PER_VALUE_SET;
+        let scene_offset_in_app = scene_index * BYTES_PER_VALUE_SET;
+        app_base_offset + scene_offset_in_app
+    }
+}
+
+impl From<u32> for AppStorageAddress {
+    // Changed to take u32
+    fn from(address: u32) -> Self {
+        let bytes_per_app_block: u32 = SCENES_PER_APP * BYTES_PER_VALUE_SET;
+
+        let start_channel_raw = address / bytes_per_app_block;
+        let start_channel = start_channel_raw as u8;
+
+        let offset_within_app_block = address % bytes_per_app_block;
+        let scene_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
+
+        let scene_index = scene_index_raw as u8;
+
+        let scene = if scene_index == 0 {
+            None
+        } else {
+            Some(scene_index)
+        };
+
+        Self {
+            start_channel,
+            scene,
+        }
+    }
+}
+
+impl AppStorageAddress {
+    pub fn new(start_channel: u8, scene: Option<u8>) -> Self {
+        Self {
+            start_channel,
+            scene,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum AppStorageCmd {
     GetAllParams {
@@ -42,10 +98,6 @@ pub enum AppStorageCmd {
         param_slot: u8,
         value: Value,
     },
-    ReadAppStorageSlot {
-        key: AppStorageKey,
-        data: EepromData,
-    },
     SaveScene {
         scene: u8,
     },
@@ -54,7 +106,6 @@ pub enum AppStorageCmd {
 
 pub struct Store<const N: usize> {
     app_id: u8,
-    cmd_sender: CmdSender,
     inner: Mutex<NoopRawMutex, [Value; N]>,
     start_channel: u8,
 }
@@ -67,13 +118,12 @@ where
     pub fn new(initial: [Value; N], app_id: u8, start_channel: u8) -> Self {
         Self {
             app_id,
-            cmd_sender: CMD_CHANNEL.sender(),
             inner: Mutex::new(initial),
             start_channel,
         }
     }
 
-    async fn ser(&self) -> EepromData {
+    async fn ser(&self) -> FramData {
         let data = self.inner.lock().await;
         let mut buf: [u8; DATA_LENGTH] = [0; DATA_LENGTH];
 
@@ -98,16 +148,19 @@ where
     }
 
     async fn save(&self, scene: Option<u8>) {
-        let ser = self.ser().await;
-        let key = AppStorageKey::new(self.start_channel, scene);
-        self.cmd_sender
-            .send(HardwareCmd::EepromStore(key, ser))
-            .await;
+        let data = self.ser().await;
+        let address = AppStorageAddress::new(self.start_channel, scene);
+        let op = WriteOperation::new(address.into(), data);
+        write_data(op).await.unwrap();
     }
 
-    pub async fn load(&self, key: AppStorageKey, data: EepromData) {
-        // TODO: This will be solved by the RPC
-        if key.start_channel == self.start_channel {
+    pub async fn load(&self, scene: Option<u8>) {
+        let address = AppStorageAddress::new(self.start_channel, scene);
+        let op = ReadOperation::new(address.into());
+        if let Ok(data) = request_data(op).await {
+            if data.is_empty() {
+                return;
+            }
             if let Some(val) = self.des(data.as_slice()).await {
                 let mut inner_val = self.inner.lock().await;
                 *inner_val = val;
@@ -166,8 +219,9 @@ where
         self.values.set(self.index, value.into()).await;
     }
 
-    // TODO: This should only save the current value, not everything
     pub async fn save(&self) {
+        // TODO: Use a different storage technique for individual storage slots
+        // Make sure we can store them individually
         self.values.save(None).await;
     }
 
@@ -176,8 +230,12 @@ where
         self.values.save(Some(scene)).await;
     }
 
-    pub async fn load(&self, key: AppStorageKey, data: EepromData) {
-        self.values.load(key, data).await;
+    pub async fn load(&self) {
+        self.values.load(None).await;
+    }
+
+    pub async fn load_from_scene(&self, scene: u8) {
+        self.values.load(Some(scene)).await;
     }
 }
 
