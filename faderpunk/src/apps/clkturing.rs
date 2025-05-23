@@ -2,36 +2,42 @@ use config::{Config, Curve, Param};
 use defmt::info;
 use embassy_futures::join::{join3, join4};
 
-use crate::app::{App, Led, Range, StorageSlot};
+use crate::app::{App, Led, Range, InJack};
 
-pub const CHANNELS: usize = 1;
+pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 3;
 
-// TODO: How to add param for midi-cc base number that it just works as a default?
-pub static CONFIG: Config<PARAMS> = Config::new("Turing", "Classic turing machine, synched to internal clock")
-    .add_param(Param::Curve { //I want to be abl to choose between none, CC and note
-        name: "MIDI",
-        default: Curve::Linear,
-        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-    })
-    .add_param(Param::Int { //is it possible to have this apear only if CC or note are selected
-        name: "Midi channel",
-        default: 0,
-        min: 0,
-        max: 15,
-    })
-    .add_param(Param::Int { //is it possible to have this apear only if CC
-        name: "CC Number",
-        default: 0,
-        min: 0,
-        max: 127,
-    })
-    .add_param(Param::Int { //is it possible to have this apear only if CC
-        name: "Scale",
-        default: 0,
-        min: 0,
-        max: 127,
-    });
+//TODO:
+// Set fader function
+// Add trig input
+
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "Turing",
+    "Classic turing machine, synched to internal clock",
+);
+//     .add_param(Param::Curve { //I want to be abl to choose between none, CC and note
+//         name: "MIDI",
+//         default: Curve::Linear,
+//         variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+//     })
+//     .add_param(Param::Int { //is it possible to have this apear only if CC or note are selected
+//         name: "Midi channel",
+//         default: 0,
+//         min: 0,
+//         max: 15,
+//     })
+//     .add_param(Param::Int { //is it possible to have this apear only if CC?
+//         name: "CC Number",
+//         default: 0,
+//         min: 0,
+//         max: 127,
+//     })
+//     .add_param(Param::Int { //Scale
+//         name: "Scale",
+//         default: 0,
+//         min: 0,
+//         max: 127,
+//     });
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
@@ -49,7 +55,6 @@ pub async fn run(app: App<CHANNELS>) {
     let mut clock = app.use_clock();
     let mut die = app.use_die();
 
-
     // let mut prob_glob = app.make_global_with_store(0, StorageSlot::A);
     // let mut length_glob = app.make_global_with_store(15, StorageSlot::B);
     // let mut amp_glob = app.make_global_with_store(4095, StorageSlot::C);
@@ -62,79 +67,85 @@ pub async fn run(app: App<CHANNELS>) {
 
     let latched_glob = app.make_global(true);
 
-
-
     let mut register = die.roll();
+    let mut oldinputval = 0;
+    let mut tick= false;
 
-    leds.set(
-        0,
-        Led::Button,
-        LED_COLOR,
-        100,
-    );
+    leds.set(0, Led::Button, LED_COLOR, 100);
 
-    let jack = app.make_out_jack(0, Range::_0_10V).await;
+    let input = app.make_in_jack(0, Range::_0_10V).await;
+    let jack = app.make_out_jack(1, Range::_0_10V).await;
     let fut1 = async {
         loop {
-            clock.wait_for_tick(6).await;
-            let prob = prob_glob.get().await;
-            let mut rand = die.roll();
-            rand = (rand as u32 * 4000 / 4095 + 40) as u16;
-            let length = length_glob.get().await;
-            let rotation = rotate_select_bit(register, prob, rand, length);
-            register = rotation.0;
-            //info!("{:016b}, flip {}, rnd {}", register, rotation.1, rand); 
-            let register_scalled = scale_to_12bit(register, length as u8);
-            let att_reg = register_scalled as u32 *  amp_glob.get().await / 4095;
-            jack.set_value(att_reg as u16);
-            
+            //clock.wait_for_tick(6).await;
+            app.delay_millis(1).await;
+
+            let inputval = input.get_value();
+            if inputval >= 406 && oldinputval < 406 {
+                //detect passing the threshold
+                tick = true;
+                oldinputval = inputval;
+            } else {
+                oldinputval = inputval;
+            }
+
+            if tick {
+                let prob = prob_glob.get().await;
+                let mut rand = die.roll();
+                rand = (rand as u32 * 4000 / 4095 + 40) as u16;
+                let length = length_glob.get().await;
+                let rotation = rotate_select_bit(register, prob, rand, length);
+                register = rotation.0;
+                //info!("{:016b}, flip {}, rnd {}", register, rotation.1, rand);
+                let register_scalled = scale_to_12bit(register, length as u8);
+                let att_reg = register_scalled as u32 * amp_glob.get().await / 4095;
+                jack.set_value(att_reg as u16);
+            }
         }
     };
 
     let fut2 = async {
         loop {
-            faders.wait_for_change(0).await;
+            let chan = faders.wait_for_any_change().await;
             let vals = faders.get_values();
             let length = length_glob.get().await;
             let amp = amp_glob.get().await;
             let prob = prob_glob.get().await;
 
-
-            if buttons.is_shift_pressed() {
+            if buttons.is_shift_pressed() && chan == 1{
                 let val = return_if_close(length, vals[0] / 273 + 1);
                 if val.1 {
                     latched_glob.set(true).await;
                 }
                 if latched_glob.get().await {
                     length_glob.set(val.0).await;
-                    info!{"{}", val.0}   
-                }       
+                    info! {"{}", val.0}
+                }
             }
-            if buttons.is_button_pressed(0) {
+            if !buttons.is_shift_pressed() && chan == 1 {
                 let val = return_if_close(amp as u16, vals[0]);
-                if val.1{
+                if val.1 {
                     latched_glob.set(true).await;
                 }
 
-                if latched_glob.get().await {   
+                if latched_glob.get().await {
                     amp_glob.set(val.0 as u32).await;
-                    info!{"{}", val.0}
+                    info! {"{}", val.0}
                 }
-            }
-            else {
+            } 
+            if chan == 0 {
                 let val = return_if_close(prob, vals[0]);
 
-                if val.1{
+                if val.1 {
                     latched_glob.set(true).await;
                     info!("latched")
                 }
 
                 if latched_glob.get().await {
                     prob_glob.set(val.0).await;
-                    info!{"{}", val.0}
+                    info! {"{}", val.0}
                 }
             }
-
         }
     };
 
@@ -145,10 +156,8 @@ pub async fn run(app: App<CHANNELS>) {
         }
     };
 
-
     let fut4 = async {
         loop {
-            // do the slides here
             app.delay_millis(1).await;
             if !shift_old && buttons.is_shift_pressed() {
                 latched_glob.set(false).await;
@@ -160,14 +169,11 @@ pub async fn run(app: App<CHANNELS>) {
                 shift_old = false;
                 info!("unlatch everything again")
             }
-
         }
     };
 
     join4(fut1, fut2, fut3, fut4).await;
 }
-
-
 
 fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
     if bit_index > 15 {
@@ -192,7 +198,7 @@ fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
     // Return the new value and whether the bit was flipped
     let flipped = bit != original_bit;
     (result, flipped)
-} 
+}
 
 fn scale_to_12bit(input: u16, x: u8) -> u16 {
     assert!(x > 0 && x <= 16, "x must be between 1 and 16");
