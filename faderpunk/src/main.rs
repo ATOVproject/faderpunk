@@ -29,19 +29,18 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::watch::Watch;
-use embassy_time::{Delay, Timer};
+use embassy_time::Timer;
+use fm24v10::{Address, Fm24v10};
 use heapless::Vec;
 use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
-use tasks::eeprom::{AppStorageKey, EepromData, EEPROM_CHANNEL};
+use tasks::fram::DATA_LENGTH;
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
-
-use at24cx::{Address, At24Cx};
 
 use apps::run_app_by_id;
 use config::{ClockSrc, GlobalConfig};
@@ -85,7 +84,6 @@ pub enum HardwareEvent {
 pub enum HardwareCmd {
     MaxCmd(usize, MaxCmd),
     MidiMsg(LiveEvent<'static>),
-    EepromStore(AppStorageKey, EepromData),
 }
 
 // TODO: Move all the channels and signalling to own module
@@ -123,21 +121,25 @@ static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
 static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 
+/// FRAM write buffer
+// TODO: Find a good value here
+static BUF_FRAM_WRITE: StaticCell<[u8; DATA_LENGTH]> = StaticCell::new();
+
 // App slots
 #[embassy_executor::task(pool_size = 16)]
-async fn run_app(number: u8, start_channel: usize) {
+async fn run_app(number: u8, start_channel: u8) {
     // INFO: This _should_ be properly dropped when task ends
     let mut cancel_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     // TODO: Is the first value always new?
     let _ = cancel_receiver.changed().await;
 
     let run_app_fut = async {
-        CORE1_TASKS[start_channel].store(true, Ordering::Relaxed);
+        CORE1_TASKS[start_channel as usize].store(true, Ordering::Relaxed);
         run_app_by_id(number, start_channel).await;
     };
 
     select(run_app_fut, cancel_receiver.changed()).await;
-    CORE1_TASKS[start_channel].store(false, Ordering::Relaxed);
+    CORE1_TASKS[start_channel as usize].store(false, Ordering::Relaxed);
     info!("App {} on channel {} stopped", number, start_channel)
 }
 
@@ -169,7 +171,6 @@ async fn hardware_cmd_router() {
         match CMD_CHANNEL.receive().await {
             HardwareCmd::MaxCmd(channel, max_cmd) => MAX_CHANNEL.send((channel, max_cmd)).await,
             HardwareCmd::MidiMsg(live_event) => MIDI_CHANNEL.send(live_event).await,
-            HardwareCmd::EepromStore(key, data) => EEPROM_CHANNEL.send((key, data)).await,
         }
     }
 }
@@ -244,7 +245,8 @@ async fn main(spawner: Spawner) {
     );
 
     // EEPROM
-    let eeprom = At24Cx::new(i2c1, Address(0, 0), 17, Delay);
+    let write_buf = BUF_FRAM_WRITE.init([0; DATA_LENGTH]);
+    let eeprom = Fm24v10::new(i2c1, Address(0, 0), write_buf);
 
     // AUX inputs
     let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
@@ -259,7 +261,7 @@ async fn main(spawner: Spawner) {
 
     tasks::clock::start_clock(&spawner, aux_inputs).await;
 
-    tasks::eeprom::start_eeprom(&spawner, eeprom).await;
+    tasks::fram::start_fram(&spawner, eeprom).await;
 
     spawner.spawn(hardware_cmd_router()).unwrap();
 

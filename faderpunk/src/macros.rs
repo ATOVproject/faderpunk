@@ -6,16 +6,15 @@ macro_rules! register_apps {
 
 
         use embassy_futures::join::join;
-        use embassy_time::Timer;
         use embassy_sync::{
             blocking_mutex::raw::{NoopRawMutex},
             signal::Signal,
         };
 
         use config::Param;
-        use crate::{CMD_CHANNEL, EVENT_PUBSUB, HardwareEvent};
+        use crate::{CMD_CHANNEL, EVENT_PUBSUB};
         use crate::app::App;
-        use crate::storage::ParamStore;
+        use crate::storage::Store;
 
         const _APP_COUNT: usize = {
             let mut count = 0;
@@ -29,27 +28,22 @@ macro_rules! register_apps {
 
         pub const REGISTERED_APP_IDS: [usize; _APP_COUNT] = [$($id),*];
 
-        async fn wait_for_eeprom_refresh() {
-            loop {
-                let mut subscriber = EVENT_PUBSUB.subscriber().unwrap();
-                if let HardwareEvent::EepromRefresh = subscriber.next_message_pure().await {
-                    // Wait a bit for all serialization to be done
-                    Timer::after_millis(10).await;
-                    return;
-                }
-            }
-        }
-
         pub async fn run_app_by_id(
             app_id: u8,
-            start_channel: usize,
+            start_channel: u8,
         ) {
             match app_id {
                 $(
                     $id => {
-                        let param_values = ParamStore::new($app_mod::default_params(), app_id, start_channel);
-                        let storage = $app_mod::get_storage(app_id, start_channel);
-                        let context = $app_mod::AppContext::new(&param_values, storage);
+                        let param_values = Store::new($app_mod::default_params(), app_id, start_channel);
+                        let storage_values = Store::new($app_mod::initial_storage(), app_id, start_channel);
+
+                        // TODO: We might want to replace this with something better
+                        storage_values.load(None).await;
+
+                        let params = $app_mod::AppParams::new(&param_values);
+                        let storage = $app_mod::AppStorage::new(&storage_values);
+                        let context = $app_mod::AppContext::new(params, storage);
                         let scene_signal: Signal<NoopRawMutex, u8> = Signal::new();
 
                         let sender = CMD_CHANNEL.sender();
@@ -61,13 +55,11 @@ macro_rules! register_apps {
                             &scene_signal,
                         );
 
-                        let app_start_fut = async {
-                            wait_for_eeprom_refresh().await;
-                            $app_mod::run(app, &context).await;
-                        };
-
                         join(
-                            app_start_fut,
+                            $app_mod::run(app, &context),
+                            // TODO: We could just pass in the param_values and storage_values here
+                            // (instead of context) so that we can pass the unborrowed context into
+                            // the app start which makes for a nicer API
                             $app_mod::msg_loop(start_channel, &context, &scene_signal),
                         ).await;
                     },
@@ -105,6 +97,7 @@ macro_rules! app_config {
         storage( $( $s_name:ident => ($s_slot_type:ty, $s_initial_value:expr) ),* $(,)? );
     ) => {
         pub const PARAMS: usize = 0 $(+ { let _ = stringify!($p_name); 1 })*;
+        pub const STORAGE: usize = 0 $(+ { let _ = stringify!($s_name); 1 })*;
 
         pub static CONFIG: config::Config<PARAMS> = {
             #[allow(unused_mut)]
@@ -117,8 +110,8 @@ macro_rules! app_config {
             [ $( ($p_default_param).into() ),* ]
         }
 
-        pub fn get_storage(app_id: u8, start_channel: usize) -> AppStorage {
-            AppStorage::new(app_id, start_channel)
+        pub fn initial_storage() -> [config::Value; STORAGE] {
+            [ $( ($s_initial_value).into() ),* ]
         }
 
         pub struct AppParams<'a> {
@@ -126,12 +119,12 @@ macro_rules! app_config {
                 #[allow(dead_code)]
                 pub $p_name: $crate::storage::ParamSlot<'a, $p_slot_type, PARAMS>,
             )*
-            values: &'a $crate::storage::ParamStore<PARAMS>,
+            values: &'a $crate::storage::Store<PARAMS>,
         }
 
         impl<'a> AppParams<'a> {
             #[allow(unused)]
-            pub fn new(values: &'a $crate::storage::ParamStore<PARAMS>) -> Self {
+            pub fn new(values: &'a $crate::storage::Store<PARAMS>) -> Self {
                 let mut idx = 0;
                 Self {
                     $(
@@ -146,39 +139,38 @@ macro_rules! app_config {
             }
         }
 
-        pub struct AppStorage {
+        pub struct AppStorage<'a> {
             $(
                 #[allow(dead_code)]
-                pub $s_name: $crate::storage::StorageSlot<$s_slot_type>,
+                pub $s_name: $crate::storage::StorageSlot<'a, $s_slot_type, STORAGE>,
             )*
         }
 
-        impl AppStorage {
+        impl<'a> AppStorage<'a> {
             #[allow(unused)]
-            pub fn new(app_id: u8, start_channel: usize) -> Self {
+            pub fn new(values: &'a $crate::storage::Store<STORAGE>) -> Self {
                 let mut idx = 0;
                 Self {
                     $(
                         $s_name: {
                             let current_idx = idx;
                             idx += 1;
-                            $crate::storage::StorageSlot::<$s_slot_type>::new($s_initial_value, app_id, start_channel as u8, current_idx)
+                            $crate::storage::StorageSlot::<$s_slot_type, STORAGE>::new(values, current_idx)
                         },
                     )*
                 }
             }
         }
 
-        pub struct AppContext<'a> {
+        pub struct AppContext<'a>{
             #[allow(dead_code)]
             params: AppParams<'a>,
             #[allow(dead_code)]
-            storage: AppStorage,
+            storage: AppStorage<'a>,
         }
 
         impl<'a> AppContext<'a> {
-            pub fn new(param_values: &'a $crate::storage::ParamStore<PARAMS>, storage: AppStorage) -> Self {
-                let params = AppParams::new(param_values);
+            pub fn new(params: AppParams<'a>, storage: AppStorage<'a>) -> Self {
                 Self {
                     params,
                     storage,
@@ -186,13 +178,13 @@ macro_rules! app_config {
             }
         }
 
-        pub async fn msg_loop(app_start_channel: usize, ctx: &AppContext<'_>, scene_signal: &embassy_sync::signal::Signal<embassy_sync::blocking_mutex::raw::NoopRawMutex, u8>) {
+        pub async fn msg_loop(app_start_channel: u8, ctx: &AppContext<'_>, scene_signal: &embassy_sync::signal::Signal<embassy_sync::blocking_mutex::raw::NoopRawMutex, u8>) {
             let param_sender = $crate::storage::APP_CONFIGURE_EVENT.sender();
             let mut app_storage_receiver = $crate::storage::APP_STORAGE_CMD_PUBSUB.subscriber().unwrap();
             loop {
                 match app_storage_receiver.next_message_pure().await {
                     $crate::storage::AppStorageCmd::GetAllParams { start_channel } => {
-                        if app_start_channel != start_channel as usize {
+                        if app_start_channel != start_channel {
                             continue;
                         }
                         let values: [config::Value; PARAMS] = ctx.params.values.get_all().await;
@@ -201,7 +193,7 @@ macro_rules! app_config {
                         param_sender.send(vec).await;
                     }
                     $crate::storage::AppStorageCmd::SetParamSlot{ start_channel, param_slot, value } => {
-                        if app_start_channel != start_channel as usize {
+                        if app_start_channel != start_channel {
                             continue;
                         }
                         if (param_slot as usize) < PARAMS {
@@ -217,12 +209,6 @@ macro_rules! app_config {
                         let scene = $crate::scene::get_scene();
                         $( ctx.storage.$s_name.load_from_scene(scene).await; )*
                         scene_signal.signal(scene);
-                    }
-                    #[allow(unused)]
-                    $crate::storage::AppStorageCmd::ReadAppStorageSlot { key, data } => {
-                        let key_raw: u16 = key.into();
-                        // TODO: Use match for the storage key to prevent cloning
-                        $( ctx.storage.$s_name.load(key, data.clone()).await; )*
                     }
                 }
             }
