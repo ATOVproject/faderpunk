@@ -15,7 +15,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::{
     tasks::fram::{
         request_data, write_data, FramData, ReadOperation, StorageSlotType, WriteOperation,
-        DATA_LENGTH,
+        MAX_DATA_LEN,
     },
     CmdSender, HardwareCmd, CMD_CHANNEL,
 };
@@ -125,7 +125,7 @@ where
 
     async fn ser(&self) -> FramData {
         let data = self.inner.lock().await;
-        let mut buf: [u8; DATA_LENGTH] = [0; DATA_LENGTH];
+        let mut buf: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
 
         // Prepend the app id to the serialized data for easy filtering
         buf[0] = self.app_id;
@@ -133,7 +133,7 @@ where
         // TODO: unwrap
         let len = to_slice(&*data, &mut buf[1..]).unwrap().len();
 
-        Vec::<u8, DATA_LENGTH>::from_slice(&buf[..len + 1]).unwrap()
+        Vec::<u8, MAX_DATA_LEN>::from_slice(&buf[..len + 1]).unwrap()
     }
 
     async fn des(&self, data: &[u8]) -> Option<[Value; N]> {

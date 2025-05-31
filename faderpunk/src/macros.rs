@@ -52,7 +52,6 @@ macro_rules! register_apps {
                             start_channel as usize,
                             sender,
                             &EVENT_PUBSUB,
-                            &scene_signal,
                         );
 
                         join(
