@@ -110,12 +110,13 @@ impl FromValue for Curve {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings)]
 pub enum Waveform {
-    Sine,
+    #[default]
     Triangle,
     Saw,
     Rect,
+    Sine,
 }
 
 impl Waveform {
@@ -214,7 +215,7 @@ pub enum ConfigMsgOut<'a> {
     BatchMsgEnd,
     GlobalConfig(ClockSrc, ClockSrc, &'a [(u8, u8)]),
     AppConfig((usize, &'a str, &'a str, &'a [Param])),
-    AppState(&'a [Value]),
+    AppState(usize, &'a [Value]),
 }
 
 pub struct Config<const N: usize> {

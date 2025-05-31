@@ -1,49 +1,113 @@
-use config::{Curve, Param};
+use config::{Config, Curve, Param, Value, Waveform};
 use embassy_futures::{
-    join::join3,
-    select::{select, Either},
+    join::{join, join4},
+    select::select,
+};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use heapless::Vec;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    app::{App, Led, Range, SceneEvent},
+    storage::{ParamSlot, Store},
+    tasks::configure::{AppParamCmd, APP_MAX_PARAMS, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
 };
 
-use crate::app::{App, Led, Range};
-
 pub const CHANNELS: usize = 1;
+pub const PARAMS: usize = 2;
 
-app_config! (
-    config("Default", "16n vibes plus mute buttons");
-
-    params(
-        curve => (Curve, Curve::Linear, Param::Curve {
-            name: "Curve",
-            variants: &[Curve::Linear, Curve::Exponential],
-        }),
-        midi_channel => (i32, 0, Param::i32 {
-            name: "MIDI Channel",
-            min: 0,
-            max: 15,
-        }),
-    );
-
-    storage(
-        muted => (bool, false),
-    );
-);
+pub static CONFIG: config::Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
+    .add_param(Param::Curve {
+        name: "Curve",
+        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+    })
+    .add_param(Param::i32 {
+        name: "MIDI Channel",
+        min: 0,
+        max: 15,
+    });
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
-pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
-    let param_curve = &ctx.params.curve;
-    let param_midi_channel = &ctx.params.midi_channel;
-    let stor_muted = &ctx.storage.muted;
+// FIXME: Make a macro to generate this. (Also create a "new" function)
+#[derive(Serialize, Deserialize, Default)]
+pub struct Storage {
+    muted: bool,
+    foo: Waveform,
+}
 
-    let midi_channel = param_midi_channel.get().await;
+// FIXME: Make a macro to generate this.
+pub struct Params<'a> {
+    curve: ParamSlot<'a, Curve, PARAMS>,
+    midi_channel: ParamSlot<'a, i32, PARAMS>,
+}
 
+async fn param_handler(start_channel: usize, param_store: &Store<PARAMS>) {
+    loop {
+        match APP_PARAM_SIGNALS[start_channel].wait().await {
+            AppParamCmd::SetParamSlot { index, value } => {
+                param_store.set(index, value).await;
+            }
+            AppParamCmd::RequestParamValues => {
+                let params = param_store.get_all().await;
+                let values: Vec<Value, APP_MAX_PARAMS> = Vec::from_slice(&params).unwrap();
+                APP_PARAM_CHANNEL.send((start_channel, values)).await;
+            }
+        }
+    }
+}
+
+#[embassy_executor::task(pool_size = 16/CHANNELS)]
+pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+    // IDEA: We _could_ do some storage stuff in here.
+
+    // FIXME: Make a macro to generate this.
+    // FIXME: Move Signal (when changed) to store so that we can do params.wait_for_change maybe
+    // FIXME: Generate this from the static params defined above
+    let param_store = Store::new(
+        [Value::Curve(Curve::Linear), Value::i32(1)],
+        app.app_id,
+        app.start_channel as u8,
+    );
+
+    // IDEA: If we always allocate ALL param slots for each app, we can share way more code.
+    // Is this saving RAM as opposed to having to create a custom handler for each app?
+    let params = Params {
+        curve: ParamSlot::new(&param_store, 0),
+        midi_channel: ParamSlot::new(&param_store, 1),
+    };
+
+    select(
+        join(
+            run(&app, &params),
+            param_handler(app.start_channel, &param_store),
+        ),
+        exit_signal.wait(),
+    )
+    .await;
+}
+
+// IDEA: Add Storage as the second generic in App?
+pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let midi = app.use_midi(midi_channel as u8);
 
-    let muted = stor_muted.get().await;
+    let midi_chan = params.midi_channel.get().await;
+    let midi = app.use_midi(midi_chan as u8);
+
+    // FIXME: Maybe create a macro to generate this? We actually need to be able to supply default
+    // values. Then move to wrapper, I think that would make sense
+    // We could also put the storage as the second argument of run
+    let storage: Mutex<NoopRawMutex, Storage> =
+        Mutex::new(app.load(None).await.unwrap_or(Storage::default()));
+
+    // FIXME: Definitely improve this API
+    let stor = storage.lock().await;
+    let muted = stor.muted;
+    drop(stor);
+
     leds.set(
         0,
         Led::Button,
@@ -52,22 +116,45 @@ pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
     );
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
+
+    let update_outputs = async |muted: bool| {
+        if muted {
+            leds.set(0, Led::Button, LED_COLOR, 0);
+            jack.set_value(0);
+            midi.send_cc(32 + app.start_channel as u8, 0).await;
+            leds.set(0, Led::Top, LED_COLOR, 0);
+            leds.set(0, Led::Bottom, LED_COLOR, 0);
+        } else {
+            leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
+            let vals = faders.get_values();
+            midi.send_cc(32 + app.start_channel as u8, vals[0]).await
+        }
+    };
+
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
-            // let muted = stor_muted.get().await;
-            // let curve = param_curve.get().await;
-            // if !muted {
-            //     let vals = faders.get_values();
-            //     jack.set_value_with_curve(curve, vals[0]);
-            // }
+            // FIXME: Definitely improve this API
+            let muted = {
+                let stor = storage.lock().await;
+                stor.muted
+            };
+            let curve = params.curve.get().await;
+            if !muted {
+                let vals = faders.get_values();
+                jack.set_value_with_curve(curve, vals[0]);
+            }
         }
     };
 
     let fut2 = async {
         loop {
             faders.wait_for_change(0).await;
-            let muted = stor_muted.get().await;
+            // FIXME: Definitely improve this API
+            let muted = {
+                let stor = storage.lock().await;
+                stor.muted
+            };
             if !muted {
                 let [fader] = faders.get_values();
                 midi.send_cc(32 + app.start_channel as u8, fader).await;
@@ -77,26 +164,33 @@ pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
 
     let fut3 = async {
         loop {
-            if let Either::First(_) =
-                select(buttons.wait_for_down(0), app.wait_for_scene_change()).await
-            {
-                stor_muted.toggle().await;
-                stor_muted.save().await;
-            }
-            let muted = stor_muted.get().await;
-            if muted {
-                leds.set(0, Led::Button, LED_COLOR, 0);
-                jack.set_value(0);
-                midi.send_cc(32 + app.start_channel as u8, 0).await;
-                leds.set(0, Led::Top, LED_COLOR, 0);
-                leds.set(0, Led::Bottom, LED_COLOR, 0);
-            } else {
-                leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
-                let vals = faders.get_values();
-                midi.send_cc(32 + app.start_channel as u8, vals[0]).await
+            buttons.wait_for_down(0).await;
+            // FIXME: Definitely improve this API (maybe closure?)
+            let mut stor = storage.lock().await;
+            stor.muted = !stor.muted;
+            app.save(&*stor, None).await;
+            update_outputs(stor.muted).await;
+        }
+    };
+
+    let scene_handler = async {
+        loop {
+            match app.wait_for_scene_event().await {
+                SceneEvent::LoadSscene(scene) => {
+                    defmt::info!("LOADING SCENE {}", scene);
+                    let mut stor = storage.lock().await;
+                    let scene_stor = app.load(Some(scene)).await.unwrap_or(Storage::default());
+                    *stor = scene_stor;
+                    update_outputs(stor.muted).await;
+                }
+                SceneEvent::SaveScene(scene) => {
+                    defmt::info!("SAVING SCENE {}", scene);
+                    let stor = storage.lock().await;
+                    app.save(&*stor, Some(scene)).await;
+                }
             }
         }
     };
 
-    join3(fut1, fut2, fut3).await;
+    join4(fut1, fut2, fut3, scene_handler).await;
 }

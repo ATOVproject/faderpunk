@@ -1,41 +1,18 @@
+// FIXME: Clean up this file
 use core::marker::PhantomData;
 
 use config::{FromValue, Value};
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
-    channel::Channel,
-    mutex::Mutex,
-    pubsub::{PubSubChannel, Publisher},
-    signal::Signal,
-};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{
-    tasks::fram::{
-        request_data, write_data, FramData, ReadOperation, StorageSlotType, WriteOperation,
-        DATA_LENGTH,
-    },
-    CmdSender, HardwareCmd, CMD_CHANNEL,
+use crate::tasks::fram::{
+    request_data, write_data, FramData, ReadOperation, WriteOperation, MAX_DATA_LEN,
 };
 
-pub const APP_MAX_PARAMS: usize = 8;
 const BYTES_PER_VALUE_SET: u32 = 400;
 const SCENES_PER_APP: u32 = 3; // Current value + 2 scenes
-
-pub static APP_STORAGE_CMD_PUBSUB: PubSubChannel<
-    CriticalSectionRawMutex,
-    AppStorageCmd,
-    16,
-    16,
-    3,
-> = PubSubChannel::new();
-pub type AppStoragePublisher =
-    Publisher<'static, CriticalSectionRawMutex, AppStorageCmd, 16, 16, 3>;
-
-pub static APP_CONFIGURE_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
-    Channel::new();
 
 #[derive(Clone, Copy)]
 // TODO: Allocator should alloate a certain part of the fram to app storage
@@ -88,22 +65,6 @@ impl AppStorageAddress {
     }
 }
 
-#[derive(Clone)]
-pub enum AppStorageCmd {
-    GetAllParams {
-        start_channel: u8,
-    },
-    SetParamSlot {
-        start_channel: u8,
-        param_slot: u8,
-        value: Value,
-    },
-    SaveScene {
-        scene: u8,
-    },
-    LoadScene,
-}
-
 pub struct Store<const N: usize> {
     app_id: u8,
     inner: Mutex<NoopRawMutex, [Value; N]>,
@@ -125,7 +86,7 @@ where
 
     async fn ser(&self) -> FramData {
         let data = self.inner.lock().await;
-        let mut buf: [u8; DATA_LENGTH] = [0; DATA_LENGTH];
+        let mut buf: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
 
         // Prepend the app id to the serialized data for easy filtering
         buf[0] = self.app_id;
@@ -133,7 +94,7 @@ where
         // TODO: unwrap
         let len = to_slice(&*data, &mut buf[1..]).unwrap().len();
 
-        Vec::<u8, DATA_LENGTH>::from_slice(&buf[..len + 1]).unwrap()
+        Vec::<u8, MAX_DATA_LEN>::from_slice(&buf[..len + 1]).unwrap()
     }
 
     async fn des(&self, data: &[u8]) -> Option<[Value; N]> {

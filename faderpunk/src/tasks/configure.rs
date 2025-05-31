@@ -1,16 +1,20 @@
 use cobs::{decode_in_place, try_encode};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, Endpoint as UsbEndpoint, In, Out};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::Channel;
+use embassy_sync::signal::Signal;
 use embassy_time::{with_timeout, Duration};
 use embassy_usb::driver::{Endpoint, EndpointIn, EndpointOut};
 use heapless::Vec;
 use postcard::{from_bytes, to_vec};
 
-use config::{ConfigMsgIn, ConfigMsgOut};
+use config::{ConfigMsgIn, ConfigMsgOut, Value};
 
 use crate::apps::{get_config, REGISTERED_APP_IDS};
-use crate::storage::{AppStorageCmd, APP_CONFIGURE_EVENT, APP_STORAGE_CMD_PUBSUB};
-use crate::CONFIG_CHANGE_WATCH;
+// use crate::apps::{get_config, REGISTERED_APP_IDS};
+// use crate::storage::{AppStorageCmd, APP_CONFIGURE_EVENT, APP_STORAGE_CMD_PUBSUB};
+use crate::{CONFIG_CHANGE_WATCH, GLOBAL_CHANNELS};
 
 use super::transport::WebEndpoints;
 
@@ -27,6 +31,23 @@ const PROTOCOL_BYTES: usize = 2;
 const FRAME_DELIMITER: u8 = 0;
 /// Multi-packet message timeout in ms
 const MULTI_PACKET_TIMEOUT_MS: u64 = 100;
+
+pub enum AppParamCmd {
+    SetParamSlot { index: usize, value: Value },
+    RequestParamValues,
+}
+
+// NEXT: Test browser configuration, especially getting current params
+pub static APP_PARAM_SIGNALS: [Signal<CriticalSectionRawMutex, AppParamCmd>; GLOBAL_CHANNELS] =
+    [const { Signal::new() }; GLOBAL_CHANNELS];
+
+pub const APP_MAX_PARAMS: usize = 8;
+
+pub static APP_PARAM_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    (usize, Vec<Value, APP_MAX_PARAMS>),
+    GLOBAL_CHANNELS,
+> = Channel::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProtocolError {
@@ -45,9 +66,6 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
     let mut proto = ConfigProtocol::new(webusb);
     // TODO: think about sending apps individually to save on buffer size
     // Then add batching to messages (message x/y) to the header
-
-    let app_storage_publisher = APP_STORAGE_CMD_PUBSUB.publisher().unwrap();
-
     proto.wait_enabled().await;
     loop {
         // Test: send some app config to parse on the client side
@@ -81,18 +99,13 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                     ))
                     .await
                     .unwrap();
-                // TODO: Here we need to wait for all apps
-                // We can also try to get them in parallel somehow
                 with_timeout(Duration::from_secs(2), async {
                     for (_app_id, start_channel) in global_config.layout {
-                        app_storage_publisher
-                            .publish(AppStorageCmd::GetAllParams {
-                                start_channel: start_channel as u8,
-                            })
-                            .await;
-                        let values = APP_CONFIGURE_EVENT.receive().await;
+                        APP_PARAM_SIGNALS[start_channel as usize]
+                            .signal(AppParamCmd::RequestParamValues);
+                        let (start_channel, values) = APP_PARAM_CHANNEL.receive().await;
                         proto
-                            .send_msg(ConfigMsgOut::AppState(&values))
+                            .send_msg(ConfigMsgOut::AppState(start_channel, &values))
                             .await
                             .unwrap();
                     }
@@ -101,14 +114,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 .ok();
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
-            ConfigMsgIn::SetAppParam(start_channel, param_slot, value) => {
-                app_storage_publisher
-                    .publish(AppStorageCmd::SetParamSlot {
-                        start_channel: start_channel as u8,
-                        param_slot: param_slot as u8,
-                        value,
-                    })
-                    .await;
+            ConfigMsgIn::SetAppParam(start_channel, index, value) => {
+                APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::SetParamSlot { index, value });
                 // TODO: This should answer to refresh UI
             }
         }
