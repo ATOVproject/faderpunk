@@ -1,3 +1,5 @@
+use core::ptr::from_mut;
+
 use defmt::info;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
@@ -24,14 +26,17 @@ use libfp::{
     utils::scale_bits_12_7,
 };
 use serde::{
-    de::{DeserializeOwned, Error},
-    Deserialize, Serialize,
+    de::{DeserializeOwned, Error as DeError},
+    ser::Error as SerError,
+    Deserialize, Deserializer, Serialize, Serializer,
 };
 
 use crate::{
     scene::get_scene,
+    storage::AppStorageAddress,
     tasks::{
         buttons::BUTTON_PRESSED,
+        fram::{request_data, write_data, ReadOperation, WriteOperation, MAX_DATA_LEN},
         leds::LED_VALUES,
         max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
@@ -69,7 +74,7 @@ where
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
         let vec = Vec::<T, N>::from_slice(&self.0).unwrap();
         vec.serialize(serializer)
@@ -82,7 +87,7 @@ where
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
         let vec = Vec::<T, N>::deserialize(deserializer)?;
         if vec.len() != N {
@@ -393,7 +398,7 @@ impl<const N: usize> Midi<N> {
     }
 }
 
-pub struct Global<T: Sized + Copy> {
+pub struct Global<T: Sized> {
     inner: Mutex<NoopRawMutex, T>,
 }
 
@@ -424,6 +429,56 @@ impl Global<bool> {
     }
 }
 
+impl<T: Sized + Copy + Default> Default for Global<T> {
+    fn default() -> Self {
+        Global {
+            inner: Mutex::new(T::default()),
+        }
+    }
+}
+
+impl<T> Serialize for Global<T>
+where
+    T: Sized + Copy + Serialize, // T must also be Serialize
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self.inner.try_lock() {
+            Ok(guard) => {
+                // Dereference the guard to get &T and serialize it.
+                // The Copy trait on T means *guard would yield T by value,
+                // but &*guard or simply guard (if it derefs to &T) is what serialize expects.
+                // (*guard) also works as serialize takes &self.
+                (*guard).serialize(serializer)
+            }
+            Err(_e) => {
+                // _e is typically embassy_sync::mutex::TryLockError
+                // If the lock can't be acquired synchronously, serialization fails.
+                Err(S::Error::custom("could not lock mutex for serialization"))
+            }
+        }
+    }
+}
+
+impl<'de, T> Deserialize<'de> for Global<T>
+where
+    T: Sized + Copy + Deserialize<'de>, // T must also be Deserialize
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Deserialize T directly.
+        let value = T::deserialize(deserializer)?;
+        // Create a new Mutex holding the deserialized T.
+        Ok(Global {
+            inner: Mutex::new(value),
+        })
+    }
+}
+
 pub struct Die {
     rng: RoscRng,
 }
@@ -435,22 +490,24 @@ impl Die {
     }
 }
 
-pub struct App<'a, const N: usize> {
+pub enum AppError {
+    DeserializeFailed,
+}
+
+pub struct App<const N: usize> {
     app_id: u8,
     pub start_channel: usize,
     channel_count: usize,
     cmd_sender: CmdSender,
     event_pubsub: &'static EventPubSubChannel,
-    scene_signal: &'a Signal<NoopRawMutex, u8>,
 }
 
-impl<'a, const N: usize> App<'a, N> {
+impl<const N: usize> App<N> {
     pub fn new(
         app_id: u8,
         start_channel: usize,
         cmd_sender: CmdSender,
         event_pubsub: &'static EventPubSubChannel,
-        scene_signal: &'a Signal<NoopRawMutex, u8>,
     ) -> Self {
         Self {
             app_id,
@@ -458,7 +515,6 @@ impl<'a, const N: usize> App<'a, N> {
             channel_count: N,
             cmd_sender,
             event_pubsub,
-            scene_signal,
         }
     }
 
@@ -472,6 +528,37 @@ impl<'a, const N: usize> App<'a, N> {
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
         Global::new(initial)
+    }
+
+    pub async fn load<T: DeserializeOwned>(&self) -> Result<T, AppError> {
+        let address = AppStorageAddress::new(self.start_channel as u8, None);
+        let op = ReadOperation::new(address.into());
+        if let Ok(data) = request_data(op).await {
+            if data.is_empty() {
+                return Err(AppError::DeserializeFailed);
+            }
+            if let Ok(val) = from_bytes::<T>(&data[1..]) {
+                if data[0] != self.app_id {
+                    return Err(AppError::DeserializeFailed);
+                }
+                return Ok(val);
+            }
+        }
+        Err(AppError::DeserializeFailed)
+    }
+
+    pub async fn save<T: Serialize>(&self, storage: &T) {
+        let mut data = Vec::<u8, MAX_DATA_LEN>::new();
+        data.resize_default(MAX_DATA_LEN)
+            .expect("Failed to resize data Vec");
+
+        data[0] = self.app_id;
+        let len = to_slice(&storage, &mut data[1..]).unwrap().len();
+        data.truncate(1 + len);
+
+        let address = AppStorageAddress::new(self.start_channel as u8, None);
+        let op = WriteOperation::new(address.into(), data);
+        write_data(op).await.unwrap();
     }
 
     // TODO: How can we prevent people from doing this multiple times?
@@ -533,12 +620,14 @@ impl<'a, const N: usize> App<'a, N> {
         Timer::after_secs(secs).await
     }
 
-    pub async fn wait_for_scene_change(&self) -> u8 {
-        return self.scene_signal.wait().await;
-    }
-
     pub fn use_buttons(&self) -> Buttons<N> {
         Buttons::new(self.start_channel, self.event_pubsub)
+    }
+
+    pub async fn wait_for_scene_change(&self) -> u8 {
+        // FIXME: Implement me!
+        Timer::after_secs(3600 * 10).await;
+        0
     }
 
     pub fn use_faders(&self) -> Faders<N> {

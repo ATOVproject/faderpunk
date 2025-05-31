@@ -6,13 +6,14 @@ use libfp::constants::CURVE_LOG;
 
 pub const CHANNELS: usize = 1;
 
-app_config! (
-    config("LFO", "Wooooosh");
-    params();
-    storage();
-);
+// app_config! (
+//     config("LFO", "Wooooosh");
+//     params();
+//     storage();
+// );
 
-pub async fn run(app: App<'_, CHANNELS>, _ctx: &AppContext<'_>) {
+#[embassy_executor::task(pool_size = 16)]
+pub async fn run(app: App<CHANNELS>) {
     let glob_wave = app.make_global(Waveform::Sine);
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);

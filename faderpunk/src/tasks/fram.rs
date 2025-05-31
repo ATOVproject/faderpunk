@@ -17,14 +17,14 @@ use crate::storage::{AppStorageCmd, AppStoragePublisher, APP_STORAGE_CMD_PUBSUB}
 // Address is technically a u17
 type Address = u32;
 type Fram = Fm24v10<'static, I2c<'static, I2C1, Async>>;
-pub type FramData = Vec<u8, DATA_LENGTH>;
+pub type FramData = Vec<u8, MAX_DATA_LEN>;
 const MAX_CONCURRENT_REQUESTS: usize = 16;
 const TIMEOUT_MS: u64 = 200;
 
 const WRITES_CAPACITY: usize = 16;
 
 // TODO: Find a good number for this
-pub const DATA_LENGTH: usize = 400;
+pub const MAX_DATA_LEN: usize = 1024;
 
 pub struct WriteOperation {
     address: Address,
@@ -160,7 +160,7 @@ pub struct Storage {
     /// Comms for app storage slots
     app_publisher: AppStoragePublisher,
     /// Write buffer
-    write_buf: Vec<u8, { DATA_LENGTH + 2 }>,
+    write_buf: Vec<u8, { MAX_DATA_LEN + 2 }>,
 }
 
 impl Storage {
@@ -173,7 +173,7 @@ impl Storage {
     }
 
     pub async fn store(&mut self, address: u32, data: &[u8]) -> Result<(), FramError> {
-        if data.len() > DATA_LENGTH {
+        if data.len() > MAX_DATA_LEN {
             return Err(FramError::BufferOverflow);
         }
         self.write_buf.clear();

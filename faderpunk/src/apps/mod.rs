@@ -1,7 +1,10 @@
-register_apps!(
-    1 => default,
-    // 2 => measure,
-    // 3 => lfo,
-    // 4 => trigger,
-    // 5 => clock_test,
-);
+pub mod default;
+pub mod lfo;
+
+// register_apps!(
+//     1 => default,
+//     // 2 => measure,
+//     // 3 => lfo,
+//     // 4 => trigger,
+//     // 5 => clock_test,
+// );

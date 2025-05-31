@@ -8,7 +8,7 @@ use postcard::{from_bytes, to_vec};
 
 use config::{ConfigMsgIn, ConfigMsgOut};
 
-use crate::apps::{get_config, REGISTERED_APP_IDS};
+// use crate::apps::{get_config, REGISTERED_APP_IDS};
 use crate::storage::{AppStorageCmd, APP_CONFIGURE_EVENT, APP_STORAGE_CMD_PUBSUB};
 use crate::CONFIG_CHANGE_WATCH;
 
@@ -57,15 +57,16 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 proto.send_msg(ConfigMsgOut::Pong).await.unwrap();
             }
             ConfigMsgIn::GetAllApps => {
-                let app_list = REGISTERED_APP_IDS.map(get_config);
-                proto
-                    .send_msg(ConfigMsgOut::BatchMsgStart(app_list.len()))
-                    .await
-                    .unwrap();
-                for app in app_list {
-                    proto.send_msg(ConfigMsgOut::AppConfig(app)).await.unwrap();
-                }
-                proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
+                todo!("Implement");
+                // let app_list = REGISTERED_APP_IDS.map(get_config);
+                // proto
+                //     .send_msg(ConfigMsgOut::BatchMsgStart(app_list.len()))
+                //     .await
+                //     .unwrap();
+                // for app in app_list {
+                //     proto.send_msg(ConfigMsgOut::AppConfig(app)).await.unwrap();
+                // }
+                // proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
             ConfigMsgIn::GetLayout => {
                 let global_config = CONFIG_CHANGE_WATCH.try_get().unwrap();

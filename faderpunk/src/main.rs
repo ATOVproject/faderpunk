@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-#[macro_use]
-pub mod macros;
+// #[macro_use]
+// pub mod macros;
 
 mod app;
 mod apps;
@@ -10,6 +10,7 @@ pub mod scene;
 pub mod storage;
 mod tasks;
 
+use app::App;
 use defmt::info;
 use embassy_executor::{Executor, Spawner};
 use embassy_futures::select::select;
@@ -35,14 +36,15 @@ use heapless::Vec;
 use midly::live::LiveEvent;
 use portable_atomic::{AtomicBool, Ordering};
 
-use tasks::fram::DATA_LENGTH;
+use storage::{StorageSlot, Store};
+use tasks::fram::MAX_DATA_LEN;
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
 
-use apps::run_app_by_id;
+// use apps::run_app_by_id;
 use config::{ClockSrc, GlobalConfig};
 
 // Program metadata for `picotool info`.
@@ -123,10 +125,10 @@ static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 
 /// FRAM write buffer
 // TODO: Find a good value here
-static BUF_FRAM_WRITE: StaticCell<[u8; DATA_LENGTH]> = StaticCell::new();
+static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 
 // App slots
-#[embassy_executor::task(pool_size = 16)]
+#[embassy_executor::task]
 async fn run_app(number: u8, start_channel: u8) {
     // INFO: This _should_ be properly dropped when task ends
     let mut cancel_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
@@ -135,7 +137,8 @@ async fn run_app(number: u8, start_channel: u8) {
 
     let run_app_fut = async {
         CORE1_TASKS[start_channel as usize].store(true, Ordering::Relaxed);
-        run_app_by_id(number, start_channel).await;
+        // FIXME: Implement
+        // run_app_by_id(number, start_channel).await;
     };
 
     select(run_app_fut, cancel_receiver.changed()).await;
@@ -145,24 +148,22 @@ async fn run_app(number: u8, start_channel: u8) {
 
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
-    let mut receiver_config = CONFIG_CHANGE_WATCH.receiver().unwrap();
+    // loop {
 
-    loop {
-        let config = receiver_config.changed().await;
-
-        // Check if all tasks are properly exited
-        loop {
-            if CORE1_TASKS.iter().all(|val| !val.load(Ordering::Relaxed)) {
-                break;
-            }
-            // yield to give apps time to close
-            Timer::after_millis(5).await;
-        }
-
-        for &(app_id, start_chan) in config.layout.iter() {
-            spawner.spawn(run_app(app_id, start_chan)).unwrap();
+    let layout: [u8; 16] = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
+    for (start_channel, &app_id) in layout.iter().enumerate() {
+        let storage_values = Store::new([true.into()], app_id, start_channel as u8);
+        let app = App::new(app_id, start_channel, CMD_CHANNEL.sender(), &EVENT_PUBSUB);
+        // FIXME: storage_slot can't be passed into the task
+        // We have to create a sub-routine in the app loop to handle messages
+        let storage_slot = StorageSlot::<'_, bool, 1>::new(&storage_values, 0);
+        match app_id {
+            1 => spawner.spawn(apps::default::run(app)).unwrap(),
+            2 => spawner.spawn(apps::lfo::run(app)).unwrap(),
+            _ => {},
         }
     }
+    // }
 }
 
 #[embassy_executor::task]
@@ -245,7 +246,7 @@ async fn main(spawner: Spawner) {
     );
 
     // EEPROM
-    let write_buf = BUF_FRAM_WRITE.init([0; DATA_LENGTH]);
+    let write_buf = BUF_FRAM_WRITE.init([0; MAX_DATA_LEN]);
     let eeprom = Fm24v10::new(i2c1, Address(0, 0), write_buf);
 
     // AUX inputs

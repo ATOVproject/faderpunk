@@ -3,47 +3,55 @@ use embassy_futures::{
     join::join3,
     select::{select, Either},
 };
+use serde::{Deserialize, Serialize};
 
-use crate::app::{App, Led, Range};
+use crate::app::{App, Global, Led, Range};
 
 pub const CHANNELS: usize = 1;
 
-app_config! (
-    config("Default", "16n vibes plus mute buttons");
-
-    params(
-        curve => (Curve, Curve::Linear, Param::Curve {
-            name: "Curve",
-            variants: &[Curve::Linear, Curve::Exponential],
-        }),
-        midi_channel => (i32, 0, Param::i32 {
-            name: "MIDI Channel",
-            min: 0,
-            max: 15,
-        }),
-    );
-
-    storage(
-        muted => (bool, false),
-    );
-);
+// app_config! (
+//     config("Default", "16n vibes plus mute buttons");
+//
+//     params(
+//         curve => (Curve, Curve::Linear, Param::Curve {
+//             name: "Curve",
+//             variants: &[Curve::Linear, Curve::Exponential],
+//         }),
+//         midi_channel => (i32, 0, Param::i32 {
+//             name: "MIDI Channel",
+//             min: 0,
+//             max: 15,
+//         }),
+//     );
+//
+//     storage(
+//         muted => (bool, false),
+//     );
+// );
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
-pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
-    let param_curve = &ctx.params.curve;
-    let param_midi_channel = &ctx.params.midi_channel;
-    let stor_muted = &ctx.storage.muted;
+// FIXME: Make a macro to generate this. (Also create a "new" function)
+#[derive(Serialize, Deserialize, Default)]
+struct Storage {
+    muted: Global<bool>,
+}
 
-    let midi_channel = param_midi_channel.get().await;
-
+#[embassy_executor::task(pool_size = 16)]
+pub async fn run(app: App<CHANNELS>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let midi = app.use_midi(midi_channel as u8);
+    // FIXME: Make param
+    let midi = app.use_midi(1);
 
-    let muted = stor_muted.get().await;
+    // FIXME: Maybe create a macro to generate this? We actually need to be able to supply default
+    // values
+    let storage = app.load::<Storage>().await.unwrap_or(Storage::default());
+
+    let muted = storage.muted.get().await;
+
     leds.set(
         0,
         Led::Button,
@@ -67,7 +75,7 @@ pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
     let fut2 = async {
         loop {
             faders.wait_for_change(0).await;
-            let muted = stor_muted.get().await;
+            let muted = storage.muted.get().await;
             if !muted {
                 let [fader] = faders.get_values();
                 midi.send_cc(32 + app.start_channel as u8, fader).await;
@@ -80,10 +88,12 @@ pub async fn run(app: App<'_, CHANNELS>, ctx: &AppContext<'_>) {
             if let Either::First(_) =
                 select(buttons.wait_for_down(0), app.wait_for_scene_change()).await
             {
-                stor_muted.toggle().await;
-                stor_muted.save().await;
+                storage.muted.toggle().await;
+                app.save(&storage).await;
             }
-            let muted = stor_muted.get().await;
+
+            let muted = storage.muted.get().await;
+
             if muted {
                 leds.set(0, Led::Button, LED_COLOR, 0);
                 jack.set_value(0);
