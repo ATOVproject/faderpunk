@@ -13,6 +13,15 @@ pub trait FromValue: Sized + Default + Copy {
     fn from_value(value: Value) -> Self;
 }
 
+impl FromValue for bool {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::bool(i) => i,
+            _ => Self::default(),
+        }
+    }
+}
+
 impl FromValue for i32 {
     fn from_value(value: Value) -> Self {
         match value {
@@ -34,7 +43,7 @@ pub enum ClockSrc {
 }
 
 /// (app_id, start_channel)
-pub type Layout = Vec<(u8, usize), 16>;
+pub type Layout = Vec<(u8, u8), 16>;
 
 #[derive(Clone)]
 pub struct GlobalConfig {
@@ -55,7 +64,7 @@ impl GlobalConfig {
 
 impl Default for GlobalConfig {
     fn default() -> Self {
-        const DEFAULT_LAYOUT: [(u8, usize); 16] = [
+        const DEFAULT_LAYOUT: [(u8, u8); 16] = [
             (1, 0),
             (1, 1),
             (1, 2),
@@ -164,8 +173,8 @@ pub enum Param {
 pub enum Value {
     None,
     i32(i32),
-    Float(f32),
-    Bool(bool),
+    f32(f32),
+    bool(bool),
     Enum(usize),
     Curve(Curve),
     Waveform(Waveform),
@@ -183,6 +192,12 @@ impl From<i32> for Value {
     }
 }
 
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Value::bool(value)
+    }
+}
+
 #[derive(Clone, Copy, Deserialize, PostcardBindings)]
 pub enum ConfigMsgIn {
     Ping,
@@ -197,7 +212,7 @@ pub enum ConfigMsgOut<'a> {
     Pong,
     BatchMsgStart(usize),
     BatchMsgEnd,
-    GlobalConfig(ClockSrc, ClockSrc, &'a [(u8, usize)]),
+    GlobalConfig(ClockSrc, ClockSrc, &'a [(u8, u8)]),
     AppConfig((usize, &'a str, &'a str, &'a [Param])),
     AppState(&'a [Value]),
 }

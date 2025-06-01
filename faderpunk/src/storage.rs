@@ -1,7 +1,6 @@
 use core::marker::PhantomData;
 
 use config::{FromValue, Value};
-use defmt::info;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
     channel::Channel,
@@ -14,11 +13,16 @@ use postcard::{from_bytes, to_slice};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
-    tasks::eeprom::{AppStorageKey, EepromData, StorageSlotType, DATA_LENGTH},
+    tasks::fram::{
+        request_data, write_data, FramData, ReadOperation, StorageSlotType, WriteOperation,
+        DATA_LENGTH,
+    },
     CmdSender, HardwareCmd, CMD_CHANNEL,
 };
 
 pub const APP_MAX_PARAMS: usize = 8;
+const BYTES_PER_VALUE_SET: u32 = 400;
+const SCENES_PER_APP: u32 = 3; // Current value + 2 scenes
 
 pub static APP_STORAGE_CMD_PUBSUB: PubSubChannel<
     CriticalSectionRawMutex,
@@ -33,6 +37,57 @@ pub type AppStoragePublisher =
 pub static APP_CONFIGURE_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
     Channel::new();
 
+#[derive(Clone, Copy)]
+// TODO: Allocator should alloate a certain part of the fram to app storage
+pub struct AppStorageAddress {
+    pub start_channel: u8,
+    pub scene: Option<u8>,
+}
+
+impl From<AppStorageAddress> for u32 {
+    fn from(key: AppStorageAddress) -> Self {
+        let scene_index = key.scene.unwrap_or(0) as u32;
+        let app_base_offset = (key.start_channel as u32) * SCENES_PER_APP * BYTES_PER_VALUE_SET;
+        let scene_offset_in_app = scene_index * BYTES_PER_VALUE_SET;
+        app_base_offset + scene_offset_in_app
+    }
+}
+
+impl From<u32> for AppStorageAddress {
+    // Changed to take u32
+    fn from(address: u32) -> Self {
+        let bytes_per_app_block: u32 = SCENES_PER_APP * BYTES_PER_VALUE_SET;
+
+        let start_channel_raw = address / bytes_per_app_block;
+        let start_channel = start_channel_raw as u8;
+
+        let offset_within_app_block = address % bytes_per_app_block;
+        let scene_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
+
+        let scene_index = scene_index_raw as u8;
+
+        let scene = if scene_index == 0 {
+            None
+        } else {
+            Some(scene_index)
+        };
+
+        Self {
+            start_channel,
+            scene,
+        }
+    }
+}
+
+impl AppStorageAddress {
+    pub fn new(start_channel: u8, scene: Option<u8>) -> Self {
+        Self {
+            start_channel,
+            scene,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum AppStorageCmd {
     GetAllParams {
@@ -43,163 +98,73 @@ pub enum AppStorageCmd {
         param_slot: u8,
         value: Value,
     },
-    ReadAppStorageSlot {
-        key: AppStorageKey,
-        data: EepromData,
-    },
     SaveScene {
         scene: u8,
     },
     LoadScene,
 }
 
-// NEXT:
-// -> Make own storage channels for storage cmds
-// -> Store params in eeprom
-// -> Add scenes
-// -> Layout changes
-
-pub struct StorageSlot<T: Sized + Copy + Default> {
+pub struct Store<const N: usize> {
     app_id: u8,
-    cmd_sender: CmdSender,
-    inner: Mutex<NoopRawMutex, T>,
-    scene_values: Mutex<NoopRawMutex, [Option<T>; 16]>,
+    inner: Mutex<NoopRawMutex, [Value; N]>,
     start_channel: u8,
-    storage_slot: u8,
 }
 
-impl<T: Sized + Copy + Default + PartialEq + Serialize + DeserializeOwned> StorageSlot<T> {
-    pub fn new(initial: T, app_id: u8, start_channel: u8, storage_slot: u8) -> Self {
+impl<const N: usize> Store<N>
+where
+    [Value; N]: Serialize,
+    [Value; N]: DeserializeOwned,
+{
+    pub fn new(initial: [Value; N], app_id: u8, start_channel: u8) -> Self {
         Self {
             app_id,
-            scene_values: Mutex::new([None; 16]),
             inner: Mutex::new(initial),
             start_channel,
-            storage_slot,
-            cmd_sender: CMD_CHANNEL.sender(),
         }
     }
 
-    async fn ser(&self) -> EepromData {
-        let value = self.get().await;
+    async fn ser(&self) -> FramData {
+        let data = self.inner.lock().await;
         let mut buf: [u8; DATA_LENGTH] = [0; DATA_LENGTH];
 
         // Prepend the app id to the serialized data for easy filtering
         buf[0] = self.app_id;
 
         // TODO: unwrap
-        let len = to_slice(&value, &mut buf[1..]).unwrap().len();
+        let len = to_slice(&*data, &mut buf[1..]).unwrap().len();
 
-        // Store
         Vec::<u8, DATA_LENGTH>::from_slice(&buf[..len + 1]).unwrap()
     }
 
-    async fn des(&self, data: &[u8], scene: Option<u8>) -> Option<T> {
+    async fn des(&self, data: &[u8]) -> Option<[Value; N]> {
         // First byte is app id
-        if let Ok(val) = from_bytes::<T>(&data[1..]) {
+        if let Ok(val) = from_bytes::<[Value; N]>(&data[1..]) {
             if data[0] != self.app_id {
                 return None;
             }
-            self.set_impl(val, scene).await;
             return Some(val);
         }
         None
     }
 
-    async fn set_impl(&self, val: T, scene: Option<u8>) {
-        if let Some(index) = scene {
-            let mut scene_values = self.scene_values.lock().await;
-            scene_values[index as usize] = Some(val);
-        } else {
-            let mut value = self.inner.lock().await;
-            *value = val
-        }
+    async fn save(&self, scene: Option<u8>) {
+        let data = self.ser().await;
+        let address = AppStorageAddress::new(self.start_channel, scene);
+        let op = WriteOperation::new(address.into(), data);
+        write_data(op).await.unwrap();
     }
 
-    async fn save_impl(&self, scene: Option<u8>) {
-        let ser = self.ser().await;
-        let key = AppStorageKey::new(
-            self.start_channel,
-            self.storage_slot,
-            scene,
-            StorageSlotType::Storage,
-        );
-        self.cmd_sender
-            .send(HardwareCmd::EepromStore(key, ser))
-            .await;
-    }
-
-    pub async fn get(&self) -> T {
-        let value = self.inner.lock().await;
-        *value
-    }
-
-    pub async fn set(&self, val: T) {
-        self.set_impl(val, None).await
-    }
-
-    pub async fn save(&self) {
-        self.save_impl(None).await;
-    }
-
-    pub async fn load(&self, key: AppStorageKey, val: EepromData) {
-        if key.start_channel == self.start_channel
-            && key.storage_slot == self.storage_slot
-            && key.slot_type == StorageSlotType::Storage
-        {
-            self.des(val.as_slice(), key.scene).await;
-        }
-    }
-
-    pub async fn save_to_scene(&self, scene: u8) {
-        let val = self.get().await;
-        let mut scene_values = self.scene_values.lock().await;
-        if Some(val) == scene_values[scene as usize] {
-            // Don't save scene if value is already there
-            return;
-        }
-        scene_values[scene as usize] = Some(self.get().await);
-        drop(scene_values);
-        info!("SAVED TO SCENE");
-        self.save_impl(Some(scene)).await;
-    }
-
-    pub async fn load_from_scene(&self, scene: u8) {
-        let val = self.get().await;
-        let scene_values = self.scene_values.lock().await;
-        let value = scene_values[scene as usize];
-        if Some(val) == scene_values[scene as usize] {
-            // Don't load from scene if value is already there
-            return;
-        }
-        drop(scene_values);
-        if let Some(val) = value {
-            self.set(val).await;
-            self.save().await;
-        }
-    }
-}
-
-impl StorageSlot<bool> {
-    pub async fn toggle(&self) -> bool {
-        let mut value = self.inner.lock().await;
-        *value = !*value;
-        *value
-    }
-}
-
-pub struct ParamStore<const N: usize> {
-    app_id: u8,
-    inner: Mutex<NoopRawMutex, [Value; N]>,
-    start_channel: usize,
-}
-
-impl<const N: usize> ParamStore<N> {
-    pub fn new(initial: [Value; N], app_id: u8, start_channel: usize) -> Self {
-        Self {
-            app_id,
-            inner: Mutex::new(initial),
-            start_channel,
+    pub async fn load(&self, scene: Option<u8>) {
+        let address = AppStorageAddress::new(self.start_channel, scene);
+        let op = ReadOperation::new(address.into());
+        if let Ok(data) = request_data(op).await {
+            if data.is_empty() {
+                return;
+            }
+            if let Some(val) = self.des(data.as_slice()).await {
+                let mut inner_val = self.inner.lock().await;
+                *inner_val = val;
+            }
         }
     }
 
@@ -222,21 +187,87 @@ impl<const N: usize> ParamStore<N> {
     }
 }
 
+pub struct StorageSlot<'a, T, const N: usize>
+where
+    T: FromValue + Into<Value> + Copy,
+{
+    index: usize,
+    values: &'a Store<N>,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, T, const N: usize> StorageSlot<'a, T, N>
+where
+    T: FromValue + Into<Value> + Copy,
+    [Value; N]: Serialize,
+    [Value; N]: DeserializeOwned,
+{
+    pub fn new(values: &'a Store<N>, index: usize) -> Self {
+        Self {
+            index,
+            values,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub async fn get(&self) -> T {
+        let value = self.values.get(self.index).await;
+        T::from_value(value)
+    }
+
+    pub async fn set(&self, value: T) {
+        self.values.set(self.index, value.into()).await;
+    }
+
+    pub async fn save(&self) {
+        // TODO: Use a different storage technique for individual storage slots
+        // Make sure we can store them individually
+        self.values.save(None).await;
+    }
+
+    // TODO: This should be on the Store only (as it saves all of it)
+    pub async fn save_to_scene(&self, scene: u8) {
+        self.values.save(Some(scene)).await;
+    }
+
+    pub async fn load(&self) {
+        self.values.load(None).await;
+    }
+
+    pub async fn load_from_scene(&self, scene: u8) {
+        self.values.load(Some(scene)).await;
+    }
+}
+
+impl<const N: usize> StorageSlot<'_, bool, N>
+where
+    [Value; N]: Serialize,
+    [Value; N]: DeserializeOwned,
+{
+    pub async fn toggle(&self) -> bool {
+        let value = self.get().await;
+        self.set(!value).await;
+        !value
+    }
+}
+
 pub struct ParamSlot<'a, T, const N: usize>
 where
     T: FromValue + Into<Value> + Copy,
 {
     index: usize,
     signal: Signal<NoopRawMutex, usize>,
-    values: &'a ParamStore<N>,
+    values: &'a Store<N>,
     _phantom: PhantomData<T>,
 }
 
 impl<'a, T, const N: usize> ParamSlot<'a, T, N>
 where
     T: FromValue + Into<Value> + Copy,
+    [Value; N]: Serialize,
+    [Value; N]: DeserializeOwned,
 {
-    pub fn new(values: &'a ParamStore<N>, index: usize) -> Self {
+    pub fn new(values: &'a Store<N>, index: usize) -> Self {
         assert!(index < N, "ParamSlot index out of bounds");
         Self {
             index,
