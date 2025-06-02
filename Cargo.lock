@@ -725,9 +725,9 @@ checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
 name = "fm24v10"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b30bddb5c8944b6d5de5966f4e4119e3296d86ccd5a892227ffa20a24b373398"
+checksum = "49abb831ba7c3dbdc33f94704e9548b168039f11d207d5a288424c87465d5d67"
 dependencies = [
  "embedded-hal-async",
  "embedded-storage-async",
