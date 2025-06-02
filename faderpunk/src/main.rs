@@ -1,19 +1,12 @@
 #![no_std]
 #![no_main]
 
-// #[macro_use]
-// pub mod macros;
-
 mod app;
 mod apps;
-pub mod scene;
-pub mod storage;
 mod tasks;
 
 use app::App;
-use defmt::info;
 use embassy_executor::{Executor, Spawner};
-use embassy_futures::select::select;
 use embassy_rp::clocks::ClockConfig;
 use embassy_rp::config::Config;
 use embassy_rp::multicore::{spawn_core1, Stack};
@@ -32,11 +25,8 @@ use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::watch::Watch;
 use embassy_time::Timer;
 use fm24v10::{Address, Fm24v10};
-use heapless::Vec;
 use midly::live::LiveEvent;
-use portable_atomic::{AtomicBool, Ordering};
 
-use storage::{StorageSlot, Store};
 use tasks::fram::MAX_DATA_LEN;
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
@@ -44,7 +34,6 @@ use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
 
-// use apps::run_app_by_id;
 use config::{ClockSrc, GlobalConfig};
 
 // Program metadata for `picotool info`.
@@ -74,12 +63,13 @@ static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 // TODO: Move all of the message stuff to own file
 /// Messages from core 0 to core 1
 #[derive(Clone)]
-pub enum HardwareEvent {
+pub enum InputEvent {
     ButtonDown(usize),
     ButtonUp(usize),
     FaderChange(usize),
     MidiMsg(LiveEvent<'static>),
-    EepromRefresh,
+    LoadScene(u8),
+    SaveScene(u8),
 }
 
 /// Messages from core 1 to core 0
@@ -102,12 +92,12 @@ pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 // 32 receivers (ephemeral)
 // 18 senders (16 apps for scenes, 1 buttons, 1 max)
 pub type EventPubSubChannel =
-    PubSubChannel<CriticalSectionRawMutex, HardwareEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 18>;
+    PubSubChannel<CriticalSectionRawMutex, InputEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 18>;
 pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
 pub type EventPubSubPublisher = Publisher<
     'static,
     CriticalSectionRawMutex,
-    HardwareEvent,
+    InputEvent,
     EVENT_PUBSUB_SIZE,
     EVENT_PUBSUB_SUBS,
     18,
@@ -115,9 +105,6 @@ pub type EventPubSubPublisher = Publisher<
 pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE> =
     Channel::new();
 pub type CmdSender = Sender<'static, CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE>;
-
-/// Tasks (apps) that are currently running (number 17 is the publisher task)
-static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
 
 /// MIDI buffers (RX and TX)
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
@@ -127,43 +114,18 @@ static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 // TODO: Find a good value here
 static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 
-// App slots
-#[embassy_executor::task]
-async fn run_app(number: u8, start_channel: u8) {
-    // INFO: This _should_ be properly dropped when task ends
-    let mut cancel_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
-    // TODO: Is the first value always new?
-    let _ = cancel_receiver.changed().await;
-
-    let run_app_fut = async {
-        CORE1_TASKS[start_channel as usize].store(true, Ordering::Relaxed);
-        // FIXME: Implement
-        // run_app_by_id(number, start_channel).await;
-    };
-
-    select(run_app_fut, cancel_receiver.changed()).await;
-    CORE1_TASKS[start_channel as usize].store(false, Ordering::Relaxed);
-    info!("App {} on channel {} stopped", number, start_channel)
-}
-
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
-    // loop {
-
-    let layout: [u8; 16] = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
+    // let layout: [u8; 16] = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
+    let layout: [u8; 16] = [1; 16];
     for (start_channel, &app_id) in layout.iter().enumerate() {
-        let storage_values = Store::new([true.into()], app_id, start_channel as u8);
         let app = App::new(app_id, start_channel, CMD_CHANNEL.sender(), &EVENT_PUBSUB);
-        // FIXME: storage_slot can't be passed into the task
-        // We have to create a sub-routine in the app loop to handle messages
-        let storage_slot = StorageSlot::<'_, bool, 1>::new(&storage_values, 0);
         match app_id {
             1 => spawner.spawn(apps::default::run(app)).unwrap(),
             2 => spawner.spawn(apps::lfo::run(app)).unwrap(),
-            _ => {},
+            _ => {}
         }
     }
-    // }
 }
 
 #[embassy_executor::task]
@@ -281,7 +243,7 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    // TODO: Get this from eeprom
+    // TODO: Get this from fram
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::MidiIn;
     config.reset_src = ClockSrc::MidiIn;

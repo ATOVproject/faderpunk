@@ -12,8 +12,6 @@ use embassy_time::{with_timeout, Duration};
 use fm24v10::Fm24v10;
 use heapless::Vec; // For timeouts
 
-use crate::storage::{AppStorageCmd, AppStoragePublisher, APP_STORAGE_CMD_PUBSUB};
-
 // Address is technically a u17
 type Address = u32;
 type Fram = Fm24v10<'static, I2c<'static, I2C1, Async>>;
@@ -157,17 +155,14 @@ pub enum StorageSlotType {
 pub struct Storage {
     /// Fram driver
     fram: Fram,
-    /// Comms for app storage slots
-    app_publisher: AppStoragePublisher,
     /// Write buffer
     write_buf: Vec<u8, { MAX_DATA_LEN + 2 }>,
 }
 
 impl Storage {
-    pub fn new(fram: Fram, app_publisher: AppStoragePublisher) -> Self {
+    pub fn new(fram: Fram) -> Self {
         Self {
             fram,
-            app_publisher,
             write_buf: Vec::new(),
         }
     }
@@ -219,7 +214,6 @@ pub async fn start_fram(spawner: &Spawner, fram: Fram) {
 
 #[embassy_executor::task]
 async fn run_fram(fram: Fram) {
-    let app_publisher = APP_STORAGE_CMD_PUBSUB.publisher().unwrap();
     let write_receiver = FRAM_WRITE_CHANNEL.receiver();
     let read_receiver = FRAM_REQUEST_CHANNEL.receiver();
 
@@ -236,7 +230,7 @@ async fn run_fram(fram: Fram) {
     // TODO: Add debounced writes (collect write ops and only save at a certain interval)
     // let ticker = Ticker::every(Duration::from_secs(1));
 
-    let mut storage = Storage::new(fram, app_publisher);
+    let mut storage = Storage::new(fram);
 
     loop {
         match select(read_receiver.receive(), write_receiver.receive()).await {

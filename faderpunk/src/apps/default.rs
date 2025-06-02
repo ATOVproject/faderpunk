@@ -1,11 +1,9 @@
 use config::{Curve, Param};
-use embassy_futures::{
-    join::join3,
-    select::{select, Either},
-};
+use embassy_futures::join::{join, join3, join4};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use serde::{Deserialize, Serialize};
 
-use crate::app::{App, Global, Led, Range};
+use crate::app::{App, Arr, Led, Range, SceneEvent};
 
 pub const CHANNELS: usize = 1;
 
@@ -34,8 +32,8 @@ const BUTTON_BRIGHTNESS: u8 = 75;
 
 // FIXME: Make a macro to generate this. (Also create a "new" function)
 #[derive(Serialize, Deserialize, Default)]
-struct Storage {
-    muted: Global<bool>,
+pub struct Storage {
+    muted: bool,
 }
 
 #[embassy_executor::task(pool_size = 16)]
@@ -48,9 +46,17 @@ pub async fn run(app: App<CHANNELS>) {
 
     // FIXME: Maybe create a macro to generate this? We actually need to be able to supply default
     // values
-    let storage = app.load::<Storage>().await.unwrap_or(Storage::default());
+    let storage: Mutex<NoopRawMutex, Storage> = Mutex::new(
+        app.load::<Storage>(None)
+            .await
+            .unwrap_or(Storage::default()),
+    );
 
-    let muted = storage.muted.get().await;
+    // FIXME: Definitely improve this API
+    let muted = {
+        let stor = storage.lock().await;
+        stor.muted
+    };
 
     leds.set(
         0,
@@ -60,22 +66,44 @@ pub async fn run(app: App<CHANNELS>) {
     );
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
+
+    let update_outputs = async |muted: bool| {
+        if muted {
+            leds.set(0, Led::Button, LED_COLOR, 0);
+            jack.set_value(0);
+            midi.send_cc(32 + app.start_channel as u8, 0).await;
+            leds.set(0, Led::Top, LED_COLOR, 0);
+            leds.set(0, Led::Bottom, LED_COLOR, 0);
+        } else {
+            leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
+            let vals = faders.get_values();
+            midi.send_cc(32 + app.start_channel as u8, vals[0]).await
+        }
+    };
+
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
-            // let muted = stor_muted.get().await;
+            let muted = {
+                let stor = storage.lock().await;
+                stor.muted
+            };
             // let curve = param_curve.get().await;
-            // if !muted {
-            //     let vals = faders.get_values();
-            //     jack.set_value_with_curve(curve, vals[0]);
-            // }
+            if !muted {
+                let vals = faders.get_values();
+                jack.set_value_with_curve(Curve::Linear, vals[0]);
+            }
         }
     };
 
     let fut2 = async {
         loop {
             faders.wait_for_change(0).await;
-            let muted = storage.muted.get().await;
+            // FIXME: Definitely improve this API
+            let muted = {
+                let stor = storage.lock().await;
+                stor.muted
+            };
             if !muted {
                 let [fader] = faders.get_values();
                 midi.send_cc(32 + app.start_channel as u8, fader).await;
@@ -85,28 +113,36 @@ pub async fn run(app: App<CHANNELS>) {
 
     let fut3 = async {
         loop {
-            if let Either::First(_) =
-                select(buttons.wait_for_down(0), app.wait_for_scene_change()).await
-            {
-                storage.muted.toggle().await;
-                app.save(&storage).await;
-            }
+            buttons.wait_for_down(0).await;
+            // FIXME: Definitely improve this API (maybe closure?)
+            let mut stor = storage.lock().await;
+            stor.muted = !stor.muted;
+            app.save(&*stor, None).await;
+            update_outputs(stor.muted).await;
+        }
+    };
 
-            let muted = storage.muted.get().await;
-
-            if muted {
-                leds.set(0, Led::Button, LED_COLOR, 0);
-                jack.set_value(0);
-                midi.send_cc(32 + app.start_channel as u8, 0).await;
-                leds.set(0, Led::Top, LED_COLOR, 0);
-                leds.set(0, Led::Bottom, LED_COLOR, 0);
-            } else {
-                leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
-                let vals = faders.get_values();
-                midi.send_cc(32 + app.start_channel as u8, vals[0]).await
+    let scene_handler = async {
+        loop {
+            match app.wait_for_scene_event().await {
+                SceneEvent::LoadSscene(scene) => {
+                    defmt::info!("LOADING SCENE {}", scene);
+                    let mut stor = storage.lock().await;
+                    let scene_stor = app
+                        .load::<Storage>(Some(scene))
+                        .await
+                        .unwrap_or(Storage::default());
+                    *stor = scene_stor;
+                    update_outputs(stor.muted).await;
+                }
+                SceneEvent::SaveScene(scene) => {
+                    defmt::info!("SAVING SCENE {}", scene);
+                    let stor = storage.lock().await;
+                    app.save(&*stor, Some(scene)).await;
+                }
             }
         }
     };
 
-    join3(fut1, fut2, fut3).await;
+    join4(fut1, fut2, fut3, scene_handler).await;
 }

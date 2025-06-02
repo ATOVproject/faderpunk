@@ -32,16 +32,19 @@ use serde::{
 };
 
 use crate::{
-    scene::get_scene,
-    storage::AppStorageAddress,
     tasks::{
         buttons::BUTTON_PRESSED,
         fram::{request_data, write_data, ReadOperation, WriteOperation, MAX_DATA_LEN},
         leds::LED_VALUES,
         max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
-    CmdSender, EventPubSubChannel, HardwareCmd, HardwareEvent, CLOCK_WATCH,
+    CmdSender, EventPubSubChannel, HardwareCmd, InputEvent, CLOCK_WATCH,
 };
+
+// TODO: This will be refactored using an allocator
+const BYTES_PER_VALUE_SET: u32 = 1000;
+// Current value + 2 scenes
+const SCENES_PER_APP: u32 = 3;
 
 pub enum Range {
     // 0 - 10V
@@ -108,6 +111,69 @@ impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T,
     }
 }
 
+#[derive(Clone, Copy)]
+// TODO: Allocator should alloate a certain part of the fram to app storage
+pub struct AppStorageAddress {
+    pub start_channel: u8,
+    pub scene: Option<u8>,
+}
+
+impl From<AppStorageAddress> for u32 {
+    fn from(key: AppStorageAddress) -> Self {
+        let scene_storage_slot_index = match key.scene {
+            // Slot 0 for None
+            None => 0,
+            // Slots 1 and onwards for Some(s)
+            Some(s) => (s as u32) + 1,
+        };
+
+        // Assuming SCENES_PER_APP is the number of scenes like Some(0), Some(1)...
+        // The total number of "slots" per app channel is SCENES_PER_APP + 1 (for the None case)
+        let total_slots_per_app = SCENES_PER_APP + 1; // Placeholder for actual constant arithmetic if needed
+
+        let app_base_offset =
+            (key.start_channel as u32) * total_slots_per_app * BYTES_PER_VALUE_SET;
+        let scene_offset_in_app = scene_storage_slot_index * BYTES_PER_VALUE_SET;
+        app_base_offset + scene_offset_in_app
+    }
+}
+
+impl From<u32> for AppStorageAddress {
+    fn from(address: u32) -> Self {
+        // The total number of "slots" per app channel is SCENES_PER_APP + 1
+        let total_slots_per_app = SCENES_PER_APP + 1; // Placeholder for actual constant arithmetic if needed
+        let bytes_per_app_block: u32 = total_slots_per_app * BYTES_PER_VALUE_SET;
+
+        let start_channel_raw = address / bytes_per_app_block;
+        let start_channel = start_channel_raw as u8;
+
+        let offset_within_app_block = address % bytes_per_app_block;
+        let scene_storage_slot_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
+
+        let scene = if scene_storage_slot_index_raw == 0 {
+            None // Slot 0 maps back to None
+        } else {
+            // Slots 1 and onwards map back to Some(s-1)
+            Some((scene_storage_slot_index_raw - 1) as u8)
+        };
+
+        Self {
+            start_channel,
+            scene,
+        }
+    }
+}
+
+impl AppStorageAddress {
+    pub fn new(start_channel: u8, scene: Option<u8>) -> Self {
+        Self {
+            start_channel,
+            scene,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct Leds<const N: usize> {
     start_channel: usize,
 }
@@ -205,6 +271,7 @@ impl OutJack {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Buttons<const N: usize> {
     event_pubsub: &'static EventPubSubChannel,
     start_channel: usize,
@@ -223,7 +290,7 @@ impl<const N: usize> Buttons<N> {
         let mut subscriber = self.event_pubsub.subscriber().unwrap();
 
         loop {
-            if let HardwareEvent::ButtonDown(channel) = subscriber.next_message_pure().await {
+            if let InputEvent::ButtonDown(channel) = subscriber.next_message_pure().await {
                 if (self.start_channel..self.start_channel + N).contains(&channel) {
                     return channel - self.start_channel;
                 }
@@ -272,6 +339,7 @@ impl<const N: usize> Buttons<N> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Faders<const N: usize> {
     event_pubsub: &'static EventPubSubChannel,
     start_channel: usize,
@@ -290,7 +358,7 @@ impl<const N: usize> Faders<N> {
         let mut subscriber = self.event_pubsub.subscriber().unwrap();
 
         loop {
-            if let HardwareEvent::FaderChange(channel) = subscriber.next_message_pure().await {
+            if let InputEvent::FaderChange(channel) = subscriber.next_message_pure().await {
                 if (self.start_channel..self.start_channel + N).contains(&channel) {
                     return channel - self.start_channel;
                 }
@@ -346,6 +414,12 @@ impl Clock {
     }
 }
 
+pub enum SceneEvent {
+    LoadSscene(u8),
+    SaveScene(u8),
+}
+
+#[derive(Clone, Copy)]
 pub struct Midi<const N: usize> {
     cmd_sender: CmdSender,
     midi_channel: u4,
@@ -490,10 +564,12 @@ impl Die {
     }
 }
 
+#[derive(Debug)]
 pub enum AppError {
     DeserializeFailed,
 }
 
+#[derive(Clone, Copy)]
 pub struct App<const N: usize> {
     app_id: u8,
     pub start_channel: usize,
@@ -530,8 +606,8 @@ impl<const N: usize> App<N> {
         Global::new(initial)
     }
 
-    pub async fn load<T: DeserializeOwned>(&self) -> Result<T, AppError> {
-        let address = AppStorageAddress::new(self.start_channel as u8, None);
+    pub async fn load<T: DeserializeOwned>(&self, scene: Option<u8>) -> Result<T, AppError> {
+        let address = AppStorageAddress::new(self.start_channel as u8, scene);
         let op = ReadOperation::new(address.into());
         if let Ok(data) = request_data(op).await {
             if data.is_empty() {
@@ -547,7 +623,7 @@ impl<const N: usize> App<N> {
         Err(AppError::DeserializeFailed)
     }
 
-    pub async fn save<T: Serialize>(&self, storage: &T) {
+    pub async fn save<T: Serialize>(&self, storage: &T, scene: Option<u8>) {
         let mut data = Vec::<u8, MAX_DATA_LEN>::new();
         data.resize_default(MAX_DATA_LEN)
             .expect("Failed to resize data Vec");
@@ -556,7 +632,7 @@ impl<const N: usize> App<N> {
         let len = to_slice(&storage, &mut data[1..]).unwrap().len();
         data.truncate(1 + len);
 
-        let address = AppStorageAddress::new(self.start_channel as u8, None);
+        let address = AppStorageAddress::new(self.start_channel as u8, scene);
         let op = WriteOperation::new(address.into(), data);
         write_data(op).await.unwrap();
     }
@@ -624,12 +700,6 @@ impl<const N: usize> App<N> {
         Buttons::new(self.start_channel, self.event_pubsub)
     }
 
-    pub async fn wait_for_scene_change(&self) -> u8 {
-        // FIXME: Implement me!
-        Timer::after_secs(3600 * 10).await;
-        0
-    }
-
     pub fn use_faders(&self) -> Faders<N> {
         Faders::new(self.start_channel, self.event_pubsub)
     }
@@ -648,5 +718,21 @@ impl<const N: usize> App<N> {
 
     pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
         Midi::new(midi_channel.into(), self.cmd_sender)
+    }
+
+    pub async fn wait_for_scene_event(&self) -> SceneEvent {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+
+        loop {
+            match subscriber.next_message_pure().await {
+                InputEvent::LoadScene(scene) => {
+                    return SceneEvent::LoadSscene(scene);
+                }
+                InputEvent::SaveScene(scene) => {
+                    return SceneEvent::SaveScene(scene);
+                }
+                _ => {}
+            }
+        }
     }
 }
