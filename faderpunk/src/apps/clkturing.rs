@@ -66,8 +66,8 @@ pub async fn run(app: App<CHANNELS>) {
     let mut shift_old = false;
 
     let latched_glob = app.make_global(true);
-
-    let mut register = die.roll();
+    let register_glob = app.make_global(0);
+    register_glob.set(die.roll()).await;
     let mut oldinputval = 0;
     let mut tick= false;
 
@@ -79,6 +79,7 @@ pub async fn run(app: App<CHANNELS>) {
         loop {
             //clock.wait_for_tick(6).await;
             app.delay_millis(1).await;
+            let mut register = register_glob.get().await;
 
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
@@ -90,6 +91,7 @@ pub async fn run(app: App<CHANNELS>) {
             }
 
             if tick {
+                //info!("tick!");
                 let prob = prob_glob.get().await;
                 let mut rand = die.roll();
                 rand = (rand as u32 * 4000 / 4095 + 40) as u16;
@@ -100,6 +102,8 @@ pub async fn run(app: App<CHANNELS>) {
                 let register_scalled = scale_to_12bit(register, length as u8);
                 let att_reg = register_scalled as u32 * amp_glob.get().await / 4095;
                 jack.set_value(att_reg as u16);
+                tick = false;
+                register_glob.set(register).await;
             }
         }
     };
@@ -112,38 +116,32 @@ pub async fn run(app: App<CHANNELS>) {
             let amp = amp_glob.get().await;
             let prob = prob_glob.get().await;
 
-            if buttons.is_shift_pressed() && chan == 1{
-                let val = return_if_close(length, vals[0] / 273 + 1);
-                if val.1 {
+            if buttons.is_shift_pressed() && chan == 0{
+                let val = vals[0] / 273 + 1;
+                if val == length {
                     latched_glob.set(true).await;
+
                 }
                 if latched_glob.get().await {
-                    length_glob.set(val.0).await;
-                    info! {"{}", val.0}
+                    length_glob.set(val).await;
+                    info! {" length {}", val}
                 }
             }
-            if !buttons.is_shift_pressed() && chan == 1 {
-                let val = return_if_close(amp as u16, vals[0]);
-                if val.1 {
-                    latched_glob.set(true).await;
-                }
+            if chan == 1 {
 
-                if latched_glob.get().await {
-                    amp_glob.set(val.0 as u32).await;
-                    info! {"{}", val.0}
-                }
+                    amp_glob.set(vals[1] as u32).await;
+
             } 
-            if chan == 0 {
+            if chan == 0 && !buttons.is_shift_pressed() {
                 let val = return_if_close(prob, vals[0]);
 
                 if val.1 {
                     latched_glob.set(true).await;
-                    info!("latched")
                 }
 
                 if latched_glob.get().await {
                     prob_glob.set(val.0).await;
-                    info! {"{}", val.0}
+                    info! {"prob {}", val.0}
                 }
             }
         }
@@ -152,7 +150,8 @@ pub async fn run(app: App<CHANNELS>) {
     let fut3 = async {
         loop {
             buttons.wait_for_down(0).await;
-            latched_glob.set(false).await;
+            let mut die2 = app.use_die();
+            register_glob.set(die2.roll()).await;
         }
     };
 
