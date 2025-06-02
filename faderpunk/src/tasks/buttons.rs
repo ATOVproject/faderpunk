@@ -9,9 +9,7 @@ use embassy_rp::peripherals::{
 use embassy_time::{with_timeout, Duration, Timer};
 use portable_atomic::{AtomicBool, Ordering};
 
-use crate::scene::{get_scene, set_scene};
-use crate::storage::{AppStorageCmd, AppStoragePublisher, APP_STORAGE_CMD_PUBSUB};
-use crate::{EventPubSubPublisher, HardwareEvent, EVENT_PUBSUB};
+use crate::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -42,12 +40,7 @@ pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
     spawner.spawn(run_buttons(buttons)).unwrap();
 }
 
-async fn process_button(
-    i: usize,
-    mut button: Input<'_>,
-    app_storage_publisher: &AppStoragePublisher,
-    event_publisher: &EventPubSubPublisher,
-) {
+async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &EventPubSubPublisher) {
     loop {
         button.wait_for_falling_edge().await;
         if BUTTON_PRESSED[16].load(Ordering::Relaxed) {
@@ -57,29 +50,24 @@ async fn process_button(
                 .await
                 .is_ok()
             {
-                let current_scene = get_scene();
-                if (i as u8) != current_scene {
-                    set_scene(i as u8);
-                    app_storage_publisher
-                        .publish(AppStorageCmd::LoadScene)
-                        .await;
-                }
+                event_publisher
+                    .publish(InputEvent::LoadScene(i as u8))
+                    .await;
             } else if with_timeout(Duration::from_secs(3), button.wait_for_rising_edge())
                 .await
                 .is_ok()
             {
-                info!("SAVING SCENE");
-                app_storage_publisher
-                    .publish(AppStorageCmd::SaveScene { scene: i as u8 })
+                event_publisher
+                    .publish(InputEvent::SaveScene(i as u8))
                     .await;
             }
         } else {
-            event_publisher.publish(HardwareEvent::ButtonDown(i)).await;
+            event_publisher.publish(InputEvent::ButtonDown(i)).await;
             BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
             // Debounce a bit (bounces are all in sub 1ms)
             Timer::after_millis(1).await;
             button.wait_for_rising_edge().await;
-            event_publisher.publish(HardwareEvent::ButtonUp(i)).await;
+            event_publisher.publish(InputEvent::ButtonUp(i)).await;
             BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
             // Debounce a bit more (bounces are all in sub 1ms)
             Timer::after_millis(1).await;
@@ -101,104 +89,23 @@ async fn process_modifier_button(i: usize, mut button: Input<'_>) {
 #[embassy_executor::task]
 async fn run_buttons(buttons: Buttons) {
     let event_publisher = EVENT_PUBSUB.publisher().unwrap();
-    let app_storage_publisher = APP_STORAGE_CMD_PUBSUB.publisher().unwrap();
     let button_futs = [
-        process_button(
-            0,
-            Input::new(buttons.0, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            1,
-            Input::new(buttons.1, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            2,
-            Input::new(buttons.2, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            3,
-            Input::new(buttons.3, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            4,
-            Input::new(buttons.4, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            5,
-            Input::new(buttons.5, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            6,
-            Input::new(buttons.6, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            7,
-            Input::new(buttons.7, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            8,
-            Input::new(buttons.8, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            9,
-            Input::new(buttons.9, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            10,
-            Input::new(buttons.10, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            11,
-            Input::new(buttons.11, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            12,
-            Input::new(buttons.12, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            13,
-            Input::new(buttons.13, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            14,
-            Input::new(buttons.14, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
-        process_button(
-            15,
-            Input::new(buttons.15, Pull::Up),
-            &app_storage_publisher,
-            &event_publisher,
-        ),
+        process_button(0, Input::new(buttons.0, Pull::Up), &event_publisher),
+        process_button(1, Input::new(buttons.1, Pull::Up), &event_publisher),
+        process_button(2, Input::new(buttons.2, Pull::Up), &event_publisher),
+        process_button(3, Input::new(buttons.3, Pull::Up), &event_publisher),
+        process_button(4, Input::new(buttons.4, Pull::Up), &event_publisher),
+        process_button(5, Input::new(buttons.5, Pull::Up), &event_publisher),
+        process_button(6, Input::new(buttons.6, Pull::Up), &event_publisher),
+        process_button(7, Input::new(buttons.7, Pull::Up), &event_publisher),
+        process_button(8, Input::new(buttons.8, Pull::Up), &event_publisher),
+        process_button(9, Input::new(buttons.9, Pull::Up), &event_publisher),
+        process_button(10, Input::new(buttons.10, Pull::Up), &event_publisher),
+        process_button(11, Input::new(buttons.11, Pull::Up), &event_publisher),
+        process_button(12, Input::new(buttons.12, Pull::Up), &event_publisher),
+        process_button(13, Input::new(buttons.13, Pull::Up), &event_publisher),
+        process_button(14, Input::new(buttons.14, Pull::Up), &event_publisher),
+        process_button(15, Input::new(buttons.15, Pull::Up), &event_publisher),
     ];
 
     let modifier_futs = [

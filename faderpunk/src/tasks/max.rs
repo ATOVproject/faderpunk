@@ -21,7 +21,7 @@ use max11300::{
 use portable_atomic::{AtomicU16, Ordering};
 use static_cell::StaticCell;
 
-use crate::{HardwareEvent, Irqs, EVENT_PUBSUB};
+use crate::{InputEvent, Irqs, EVENT_PUBSUB};
 
 // MaxCmd(usize, MaxCmd),
 
@@ -160,7 +160,7 @@ async fn read_fader(
 
         if diff >= 4 {
             event_publisher
-                .publish(HardwareEvent::FaderChange(channel))
+                .publish(InputEvent::FaderChange(channel))
                 .await;
         }
 
