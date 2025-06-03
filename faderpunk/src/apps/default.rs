@@ -1,31 +1,23 @@
-use config::{Curve, Param};
-use embassy_futures::join::{join, join3, join4};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
+use config::{Config, Curve, Param, Waveform};
+use embassy_futures::{join::join4, select::select};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{App, Led, Range, SceneEvent};
 
 pub const CHANNELS: usize = 1;
+pub const PARAMS: usize = 2;
 
-// app_config! (
-//     config("Default", "16n vibes plus mute buttons");
-//
-//     params(
-//         curve => (Curve, Curve::Linear, Param::Curve {
-//             name: "Curve",
-//             variants: &[Curve::Linear, Curve::Exponential],
-//         }),
-//         midi_channel => (i32, 0, Param::i32 {
-//             name: "MIDI Channel",
-//             min: 0,
-//             max: 15,
-//         }),
-//     );
-//
-//     storage(
-//         muted => (bool, false),
-//     );
-// );
+pub static CONFIG: config::Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
+    .add_param(Param::Curve {
+        name: "Curve",
+        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+    })
+    .add_param(Param::i32 {
+        name: "MIDI Channel",
+        min: 0,
+        max: 15,
+    });
 
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
@@ -34,10 +26,18 @@ const BUTTON_BRIGHTNESS: u8 = 75;
 #[derive(Serialize, Deserialize, Default)]
 pub struct Storage {
     muted: bool,
+    foo: Waveform,
 }
 
-#[embassy_executor::task(pool_size = 16)]
-pub async fn run(app: App<CHANNELS>) {
+#[embassy_executor::task(pool_size = 16/CHANNELS)]
+pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+    // TODO: Do PARAM loop here
+    // TODO: We _could_ do some storage stuff in here.
+    // FIXME: It COULD be that the signal.wait() immediately resolves for some reason
+    select(run(&app), exit_signal.wait()).await;
+}
+
+pub async fn run(app: &App<CHANNELS>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();

@@ -1,19 +1,22 @@
-use embassy_futures::join::join3;
+use embassy_futures::{join::join3, select::select};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
 use crate::app::{App, Led, Range};
-use config::Waveform;
+use config::{Config, Waveform};
 use libfp::constants::CURVE_LOG;
 
 pub const CHANNELS: usize = 1;
+pub const PARAMS: usize = 0;
 
-// app_config! (
-//     config("LFO", "Wooooosh");
-//     params();
-//     storage();
-// );
+pub static CONFIG: config::Config<PARAMS> = Config::new("LFO", "Wooooosh");
 
-#[embassy_executor::task(pool_size =  16/CHANNELS )]
-pub async fn run(app: App<CHANNELS>) {
+#[embassy_executor::task(pool_size = 16/CHANNELS)]
+pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+    // FIXME: It COULD be that the signal.wait() immediately resolves for some reason
+    select(run(&app), exit_signal.wait()).await;
+}
+
+pub async fn run(app: &App<CHANNELS>) {
     let glob_wave = app.make_global(Waveform::Sine);
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);

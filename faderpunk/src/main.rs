@@ -1,11 +1,15 @@
 #![no_std]
 #![no_main]
 
+#[macro_use]
+pub mod macros;
+
 mod app;
 mod apps;
 mod tasks;
 
 use app::App;
+use apps::spawn_app_by_id;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::ClockConfig;
 use embassy_rp::config::Config;
@@ -19,9 +23,10 @@ use embassy_rp::{
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::pubsub::{PubSubChannel, Publisher};
+use embassy_sync::signal::Signal;
 use embassy_sync::watch::Watch;
 use embassy_time::Timer;
 use fm24v10::{Address, Fm24v10};
@@ -114,17 +119,19 @@ static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 // TODO: Find a good value here
 static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 
+static APP_EXIT_SIGNALS: StaticCell<[Signal<NoopRawMutex, bool>; 16]> = StaticCell::new();
+
+// NEXT: Create AppManager that orchestrates the exiting and spawning of apps depending on the
+// changed layout
+
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
     // let layout: [u8; 16] = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
     let layout: [u8; 16] = [1; 16];
+    // TODO: We can now signal "true" to any of the exit signals to kill an app
+    let exit_signals = APP_EXIT_SIGNALS.init([const { Signal::new() }; 16]);
     for (start_channel, &app_id) in layout.iter().enumerate() {
-        let app = App::new(app_id, start_channel, CMD_CHANNEL.sender(), &EVENT_PUBSUB);
-        match app_id {
-            1 => spawner.spawn(apps::default::run(app)).unwrap(),
-            2 => spawner.spawn(apps::lfo::run(app)).unwrap(),
-            _ => {}
-        }
+        spawn_app_by_id(app_id, start_channel, spawner, exit_signals).await;
     }
 }
 
