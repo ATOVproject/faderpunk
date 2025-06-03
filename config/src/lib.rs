@@ -110,12 +110,13 @@ impl FromValue for Curve {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings)]
 pub enum Waveform {
-    Sine,
+    #[default]
     Triangle,
     Saw,
     Rect,
+    Sine,
 }
 
 impl Waveform {
