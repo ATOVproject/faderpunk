@@ -1,5 +1,8 @@
+// pub mod clock_test;
 pub mod default;
 pub mod lfo;
+// pub mod measure;
+// pub mod trigger;
 
 // register_apps!(
 //     1 => default,
