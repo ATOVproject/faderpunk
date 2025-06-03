@@ -3,7 +3,7 @@ use embassy_futures::join::{join, join3, join4};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use serde::{Deserialize, Serialize};
 
-use crate::app::{App, Arr, Led, Range, SceneEvent};
+use crate::app::{App, Led, Range, SceneEvent};
 
 pub const CHANNELS: usize = 1;
 
@@ -46,17 +46,13 @@ pub async fn run(app: App<CHANNELS>) {
 
     // FIXME: Maybe create a macro to generate this? We actually need to be able to supply default
     // values
-    let storage: Mutex<NoopRawMutex, Storage> = Mutex::new(
-        app.load::<Storage>(None)
-            .await
-            .unwrap_or(Storage::default()),
-    );
+    let storage: Mutex<NoopRawMutex, Storage> =
+        Mutex::new(app.load(None).await.unwrap_or(Storage::default()));
 
     // FIXME: Definitely improve this API
-    let muted = {
-        let stor = storage.lock().await;
-        stor.muted
-    };
+    let stor = storage.lock().await;
+    let muted = stor.muted;
+    drop(stor);
 
     leds.set(
         0,
@@ -84,6 +80,7 @@ pub async fn run(app: App<CHANNELS>) {
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
+            // FIXME: Definitely improve this API
             let muted = {
                 let stor = storage.lock().await;
                 stor.muted
@@ -128,10 +125,7 @@ pub async fn run(app: App<CHANNELS>) {
                 SceneEvent::LoadSscene(scene) => {
                     defmt::info!("LOADING SCENE {}", scene);
                     let mut stor = storage.lock().await;
-                    let scene_stor = app
-                        .load::<Storage>(Some(scene))
-                        .await
-                        .unwrap_or(Storage::default());
+                    let scene_stor = app.load(Some(scene)).await.unwrap_or(Storage::default());
                     *stor = scene_stor;
                     update_outputs(stor.muted).await;
                 }

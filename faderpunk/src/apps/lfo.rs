@@ -12,7 +12,7 @@ pub const CHANNELS: usize = 1;
 //     storage();
 // );
 
-#[embassy_executor::task(pool_size = 16)]
+#[embassy_executor::task(pool_size =  16/CHANNELS )]
 pub async fn run(app: App<CHANNELS>) {
     let glob_wave = app.make_global(Waveform::Sine);
     let glob_lfo_speed = app.make_global(0.0682);

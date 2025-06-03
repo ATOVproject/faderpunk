@@ -43,7 +43,6 @@ use crate::{
 
 // TODO: This will be refactored using an allocator
 const BYTES_PER_VALUE_SET: u32 = 1000;
-// Current value + 2 scenes
 const SCENES_PER_APP: u32 = 3;
 
 pub enum Range {
