@@ -1,9 +1,14 @@
 use config::{Config, Curve, Param, Waveform};
-use embassy_futures::{join::join4, select::select};
+use embassy_futures::{
+    join::{join, join4},
+    select::select,
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{App, Led, Range, SceneEvent};
+
+use super::temp_param_loop;
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
@@ -31,10 +36,11 @@ pub struct Storage {
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+    // FIXME: Do most of the wrapper stuff in a function that is shared
     // TODO: Do PARAM loop here
     // TODO: We _could_ do some storage stuff in here.
     // FIXME: It COULD be that the signal.wait() immediately resolves for some reason
-    select(run(&app), exit_signal.wait()).await;
+    select(join(run(&app), temp_param_loop()), exit_signal.wait()).await;
 }
 
 // IDEA: Add Storage as the second generic in App?

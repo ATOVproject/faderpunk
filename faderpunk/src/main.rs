@@ -2,11 +2,12 @@
 #![no_main]
 
 #[macro_use]
-pub mod macros;
+mod macros;
 
 mod app;
 mod apps;
 mod tasks;
+pub mod storage;
 
 use apps::spawn_app_by_id;
 use embassy_executor::{Executor, Spawner};
