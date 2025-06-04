@@ -8,6 +8,8 @@ register_apps!(
     3 => measure,
     4 => trigger,
     5 => clock_test,
+    6 => ad,
+    7 => seq8,
 );
 
 pub async fn temp_param_loop() {
