@@ -11,11 +11,11 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use serde::{Deserialize, Serialize};
+use smart_leds::brightness;
 
-use crate::{
-    app::{App, Arr, Led, Range, SceneEvent},
-    storage::Store,
-};
+use crate::app::{App, Arr, Led, Range, SceneEvent};
+
+use super::temp_param_loop;
 
 pub const CHANNELS: usize = 8;
 pub const PARAMS: usize = 0;
@@ -39,21 +39,15 @@ impl Default for Storage {
     }
 }
 
-pub struct Params {}
-
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = Store::new([], app.app_id, app.start_channel);
-    let params = Params {};
-
-    select(
-        join(run(&app, &params), param_store.param_handler()),
-        app.exit_handler(exit_signal),
-    )
-    .await;
+    // TODO: Do PARAM loop here
+    // TODO: We _could_ do some storage stuff in here.
+    // FIXME: It COULD be that the signal.wait() immediately resolves for some reason
+    select(join(run(&app), temp_param_loop()), exit_signal.wait()).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, _params: &Params) {
+pub async fn run(app: &App<CHANNELS>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let mut clk = app.use_clock();

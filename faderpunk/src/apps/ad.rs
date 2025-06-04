@@ -1,36 +1,27 @@
+use defmt::info;
 use embassy_futures::{
-    join::{join, join3},
+    join::{join, join3, join4, join5},
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
-use crate::{
-    app::{App, Led, Range},
-    storage::Store,
-};
-use config::{Config, Curve};
-use libfp::constants::CURVE_LOG;
+use crate::app::{App, Global, Led, Range};
+use config::{Config, Curve, Param};
+use libfp::constants::{CURVE_EXP, CURVE_LOG};
+
+use super::temp_param_loop;
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;
 
 pub static CONFIG: config::Config<PARAMS> = Config::new("AD Envelope", "FIXME");
 
-pub struct Params {}
-
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = Store::new([], app.app_id, app.start_channel);
-    let params = Params {};
-
-    select(
-        join(run(&app, &params), param_store.param_handler()),
-        app.exit_handler(exit_signal),
-    )
-    .await;
+    select(join(run(&app), temp_param_loop()), exit_signal.wait()).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, _params: &Params) {
+pub async fn run(app: &App<CHANNELS>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
