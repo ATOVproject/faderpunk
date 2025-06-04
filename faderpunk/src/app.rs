@@ -1,37 +1,41 @@
-use core::array;
-
-use embassy_futures::{join::join, select::select};
+use defmt::info;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
     mutex::Mutex,
-    pubsub::Subscriber,
+    signal::Signal,
     watch::Receiver,
 };
 use embassy_time::{with_timeout, Duration, Timer};
-use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
-use midi2::{
-    channel_voice1::{ChannelVoice1, ControlChange, NoteOff, NoteOn},
-    ux::{u4, u7},
-    Channeled,
+use heapless::Vec;
+use max11300::{
+    config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES},
+    ConfigurePort,
 };
+use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
+use postcard::{from_bytes, to_slice};
 use rand::Rng;
 
 use config::Curve;
 use libfp::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
-    utils::u16_to_u7,
+    utils::scale_bits_12_7,
+};
+use serde::{
+    de::{DeserializeOwned, Error},
+    Deserialize, Serialize,
 };
 
 use crate::{
+    scene::get_scene,
     tasks::{
         buttons::BUTTON_PRESSED,
-        leds::{LedsAction, LED_VALUES},
-        max::{MaxConfig, MaxMessage, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
+        leds::LED_VALUES,
+        max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
-    XRxMsg, XTxMsg, CHANS_X, CLOCK_WATCH,
+    CmdSender, EventPubSubChannel, HardwareCmd, HardwareEvent, CLOCK_WATCH,
 };
 
 pub enum Range {
@@ -47,6 +51,56 @@ pub enum Led {
     Top,
     Bottom,
     Button,
+}
+
+// TODO: Move to storage
+#[derive(Clone, Copy)]
+pub struct Arr<T: Sized + Copy + Default, const N: usize>(pub [T; N]);
+
+impl<T: Sized + Copy + Default, const N: usize> Default for Arr<T, N> {
+    fn default() -> Self {
+        Self([T::default(); N])
+    }
+}
+
+impl<T, const N: usize> Serialize for Arr<T, N>
+where
+    T: Serialize + Sized + Copy + Default,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let vec = Vec::<T, N>::from_slice(&self.0).unwrap();
+        vec.serialize(serializer)
+    }
+}
+
+impl<'de, T, const N: usize> Deserialize<'de> for Arr<T, N>
+where
+    T: Deserialize<'de> + Sized + Copy + Default,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let vec = Vec::<T, N>::deserialize(deserializer)?;
+        if vec.len() != N {
+            return Err(D::Error::invalid_length(
+                vec.len(),
+                &"an array of exact length N",
+            ));
+        }
+        let mut arr = [T::default(); N];
+        arr.copy_from_slice(vec.as_slice()); // Safe due to length check above
+        Ok(Arr(arr))
+    }
+}
+
+impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
 }
 
 pub struct Leds<const N: usize> {
@@ -94,23 +148,26 @@ impl InJack {
 
 pub struct GateJack {
     channel: usize,
-    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    cmd_sender: CmdSender,
 }
 
 impl GateJack {
-    fn new(channel: usize, sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>) -> Self {
-        Self { channel, sender }
+    fn new(channel: usize, cmd_sender: CmdSender) -> Self {
+        Self {
+            channel,
+            cmd_sender,
+        }
     }
 
     pub async fn set_high(&self) {
-        self.sender
-            .send((self.channel, XRxMsg::MaxMessage(MaxMessage::GpoSetHigh)))
+        self.cmd_sender
+            .send(HardwareCmd::MaxCmd(self.channel, MaxCmd::GpoSetHigh))
             .await;
     }
 
     pub async fn set_low(&self) {
-        self.sender
-            .send((self.channel, XRxMsg::MaxMessage(MaxMessage::GpoSetLow)))
+        self.cmd_sender
+            .send(HardwareCmd::MaxCmd(self.channel, MaxCmd::GpoSetLow))
             .await;
     }
 }
@@ -144,22 +201,27 @@ impl OutJack {
 }
 
 pub struct Buttons<const N: usize> {
+    event_pubsub: &'static EventPubSubChannel,
     start_channel: usize,
 }
 
 impl<const N: usize> Buttons<N> {
-    pub fn new(start_channel: usize) -> Self {
-        Self { start_channel }
+    pub fn new(start_channel: usize, event_pubsub: &'static EventPubSubChannel) -> Self {
+        Self {
+            event_pubsub,
+            start_channel,
+        }
     }
 
     /// Returns the number of the button that was pressed
     pub async fn wait_for_any_down(&self) -> usize {
-        // Subscribers only listen on the start channel of an app
-        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
 
         loop {
-            if let (channel, XTxMsg::ButtonDown) = subscriber.next_message_pure().await {
-                return channel;
+            if let HardwareEvent::ButtonDown(channel) = subscriber.next_message_pure().await {
+                if (self.start_channel..self.start_channel + N).contains(&channel) {
+                    return channel - self.start_channel;
+                }
             }
         }
     }
@@ -206,12 +268,29 @@ impl<const N: usize> Buttons<N> {
 }
 
 pub struct Faders<const N: usize> {
+    event_pubsub: &'static EventPubSubChannel,
     start_channel: usize,
 }
 
 impl<const N: usize> Faders<N> {
-    pub fn new(start_channel: usize) -> Self {
-        Self { start_channel }
+    pub fn new(start_channel: usize, event_pubsub: &'static EventPubSubChannel) -> Self {
+        Self {
+            event_pubsub,
+            start_channel,
+        }
+    }
+
+    /// Returns the number of the fader than was changed
+    pub async fn wait_for_any_change(&self) -> usize {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+
+        loop {
+            if let HardwareEvent::FaderChange(channel) = subscriber.next_message_pure().await {
+                if (self.start_channel..self.start_channel + N).contains(&channel) {
+                    return channel - self.start_channel;
+                }
+            }
+        }
     }
 
     pub async fn wait_for_change(&self, chan: usize) {
@@ -220,17 +299,6 @@ impl<const N: usize> Faders<N> {
             let channel = self.wait_for_any_change().await;
             if chan == channel {
                 return;
-            }
-        }
-    }
-
-    /// Returns the number of the fader than was changed
-    pub async fn wait_for_any_change(&self) -> usize {
-        // Subscribers only listen on the start channel of an app
-        let mut subscriber = CHANS_X[self.start_channel].subscriber().unwrap();
-        loop {
-            if let (channel, XTxMsg::FaderChange) = subscriber.next_message_pure().await {
-                return channel;
             }
         }
     }
@@ -246,22 +314,22 @@ impl<const N: usize> Faders<N> {
 
 pub struct Clock {
     receiver: Receiver<'static, CriticalSectionRawMutex, bool, 16>,
-    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
 }
 
 impl Clock {
-    pub fn new(sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>) -> Self {
+    pub fn new() -> Self {
         let receiver = CLOCK_WATCH.receiver().unwrap();
-        Self { receiver, sender }
+        Self { receiver }
     }
 
+    // TODO: division needs to be an enum
     pub async fn wait_for_tick(&mut self, division: usize) -> bool {
         let mut i: usize = 0;
 
         loop {
-            // We'll ignore reset here
+            // Reset always gets through
             if self.receiver.changed().await {
-                continue;
+                return true;
             }
             i += 1;
             // TODO: Maybe we can make this more efficient by just having subscribers to
@@ -271,96 +339,86 @@ impl Clock {
             }
         }
     }
-
-    //TODO: Check if app is CLOCK app and if not, do not implement this
-    //HINT: Can we use struct markers? Or how to do it?
-    pub async fn set_bpm(&self, bpm: f32) {
-        self.sender.send((16, XRxMsg::SetBpm(bpm))).await;
-    }
 }
 
 pub struct Midi<const N: usize> {
+    cmd_sender: CmdSender,
     midi_channel: u4,
-    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
-    start_channel: usize,
 }
 
 impl<const N: usize> Midi<N> {
-    pub fn new(
-        start_channel: usize,
-        midi_channel: u4,
-        sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
-    ) -> Self {
+    pub fn new(midi_channel: u4, cmd_sender: CmdSender) -> Self {
         Self {
+            cmd_sender,
             midi_channel,
-            sender,
-            start_channel,
         }
     }
-    // TODO: This is a short-hand function that should also send the msg via TRS
-    // Create and use a function called midi_send_both and use it here
-    pub async fn send_cc(&self, chan: usize, val: u16) {
-        let chan = chan.clamp(0, N - 1);
-        let midi_channel = self.midi_channel;
-        let mut cc = ControlChange::<[u8; 3]>::new();
-        // TODO: Make 32 a global config option
-        cc.set_control(u7::new(32 + (self.start_channel + chan) as u8));
-        cc.set_control_data(u16_to_u7(val));
-        cc.set_channel(midi_channel);
-        self.send_msg(ChannelVoice1::ControlChange(cc)).await;
+
+    pub async fn send_cc(&self, cc: u8, val: u16) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::Controller {
+                controller: cc.into(),
+                value: scale_bits_12_7(val),
+            },
+        };
+        self.send_msg(msg).await;
     }
 
-    pub async fn send_note_on(&self, note_number: u7, velocity: u16) {
-        let midi_channel = self.midi_channel;
-        let mut note_on = NoteOn::<[u8; 3]>::new();
-        note_on.set_channel(midi_channel);
-        note_on.set_note_number(note_number);
-        note_on.set_velocity(u16_to_u7(velocity));
-        self.send_msg(ChannelVoice1::NoteOn(note_on)).await;
+    pub async fn send_note_on(&self, note_number: u8, velocity: u16) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::NoteOn {
+                key: note_number.into(),
+
+                vel: scale_bits_12_7(velocity),
+            },
+        };
+        self.send_msg(msg).await;
     }
 
-    pub async fn send_note_off(&self, note_number: u7) {
-        let midi_channel = self.midi_channel;
-        let mut note_off = NoteOff::<[u8; 3]>::new();
-        note_off.set_channel(midi_channel);
-        note_off.set_note_number(note_number);
-        self.send_msg(ChannelVoice1::NoteOff(note_off)).await;
+    pub async fn send_note_off(&self, note_number: u8) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::NoteOff {
+                key: note_number.into(),
+                vel: 0.into(),
+            },
+        };
+        self.send_msg(msg).await;
     }
 
-    // TODO: Check if making midi an own struct with a listener would make sense
-    pub async fn send_msg(&self, msg: ChannelVoice1<[u8; 3]>) {
-        self.sender
-            .send((self.start_channel, XRxMsg::MidiMessage(msg)))
-            .await;
+    pub async fn send_msg(&self, msg: LiveEvent<'static>) {
+        self.cmd_sender.send(HardwareCmd::MidiMsg(msg)).await;
     }
 }
 
 pub struct Global<T: Sized + Copy> {
-    mutex: Mutex<NoopRawMutex, T>,
+    inner: Mutex<NoopRawMutex, T>,
 }
 
 impl<T: Sized + Copy> Global<T> {
     pub fn new(initial: T) -> Self {
         Self {
-            mutex: Mutex::new(initial),
+            inner: Mutex::new(initial),
         }
     }
 
     // TODO: implement something like replace (using a closure)
     pub async fn get(&self) -> T {
-        let value = self.mutex.lock().await;
+        let value = self.inner.lock().await;
         *value
     }
 
     pub async fn set(&self, val: T) {
-        let mut value = self.mutex.lock().await;
+        let mut value = self.inner.lock().await;
         *value = val
     }
 }
 
 impl Global<bool> {
     pub async fn toggle(&self) -> bool {
-        let mut value = self.mutex.lock().await;
+        let mut value = self.inner.lock().await;
         *value = !*value;
         *value
     }
@@ -377,36 +435,39 @@ impl Die {
     }
 }
 
-pub struct App<const N: usize> {
-    app_id: usize,
-    start_channel: usize,
+pub struct App<'a, const N: usize> {
+    app_id: u8,
+    pub start_channel: usize,
     channel_count: usize,
-    sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+    cmd_sender: CmdSender,
+    event_pubsub: &'static EventPubSubChannel,
+    scene_signal: &'a Signal<NoopRawMutex, u8>,
 }
 
-impl<const N: usize> App<N> {
+impl<'a, const N: usize> App<'a, N> {
     pub fn new(
-        app_id: usize,
+        app_id: u8,
         start_channel: usize,
-        sender: Sender<'static, NoopRawMutex, (usize, XRxMsg), 128>,
+        cmd_sender: CmdSender,
+        event_pubsub: &'static EventPubSubChannel,
+        scene_signal: &'a Signal<NoopRawMutex, u8>,
     ) -> Self {
         Self {
             app_id,
             start_channel,
             channel_count: N,
-            sender,
+            cmd_sender,
+            event_pubsub,
+            scene_signal,
         }
     }
 
     // TODO: We should also probably make sure that people do not reconfigure the jacks within the
     // app (throw error or something)
     async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
-        self.sender
-            .send((
-                channel,
-                XRxMsg::MaxMessage(MaxMessage::ConfigurePort(config)),
-            ))
-            .await
+        self.cmd_sender
+            .send(HardwareCmd::MaxCmd(channel, MaxCmd::ConfigurePort(config)))
+            .await;
     }
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
@@ -457,7 +518,7 @@ impl<const N: usize> App<N> {
         )
         .await;
 
-        GateJack::new(self.start_channel + chan, self.sender)
+        GateJack::new(self.start_channel + chan, self.cmd_sender)
     }
 
     pub async fn delay_micros(&self, micros: u64) {
@@ -472,12 +533,16 @@ impl<const N: usize> App<N> {
         Timer::after_secs(secs).await
     }
 
+    pub async fn wait_for_scene_change(&self) -> u8 {
+        return self.scene_signal.wait().await;
+    }
+
     pub fn use_buttons(&self) -> Buttons<N> {
-        Buttons::new(self.start_channel)
+        Buttons::new(self.start_channel, self.event_pubsub)
     }
 
     pub fn use_faders(&self) -> Faders<N> {
-        Faders::new(self.start_channel)
+        Faders::new(self.start_channel, self.event_pubsub)
     }
 
     pub fn use_leds(&self) -> Leds<N> {
@@ -489,10 +554,10 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_clock(&self) -> Clock {
-        Clock::new(self.sender)
+        Clock::new()
     }
 
-    pub fn use_midi(&self, midi_channel: u4) -> Midi<N> {
-        Midi::new(self.start_channel, midi_channel, self.sender)
+    pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
+        Midi::new(midi_channel.into(), self.cmd_sender)
     }
 }

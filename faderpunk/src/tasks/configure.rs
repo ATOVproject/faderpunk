@@ -9,6 +9,8 @@ use postcard::{from_bytes, to_vec};
 use config::{ConfigMsgIn, ConfigMsgOut};
 
 use crate::apps::{get_config, REGISTERED_APP_IDS};
+use crate::storage::{AppStorageCmd, APP_CONFIGURE_EVENT, APP_STORAGE_CMD_PUBSUB};
+use crate::CONFIG_CHANGE_WATCH;
 
 use super::transport::WebEndpoints;
 
@@ -43,7 +45,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
     let mut proto = ConfigProtocol::new(webusb);
     // TODO: think about sending apps individually to save on buffer size
     // Then add batching to messages (message x/y) to the header
-    let app_list = REGISTERED_APP_IDS.map(get_config);
+
+    let app_storage_publisher = APP_STORAGE_CMD_PUBSUB.publisher().unwrap();
 
     proto.wait_enabled().await;
     loop {
@@ -53,7 +56,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             ConfigMsgIn::Ping => {
                 proto.send_msg(ConfigMsgOut::Pong).await.unwrap();
             }
-            ConfigMsgIn::GetApps => {
+            ConfigMsgIn::GetAllApps => {
+                let app_list = REGISTERED_APP_IDS.map(get_config);
                 proto
                     .send_msg(ConfigMsgOut::BatchMsgStart(app_list.len()))
                     .await
@@ -62,6 +66,50 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                     proto.send_msg(ConfigMsgOut::AppConfig(app)).await.unwrap();
                 }
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
+            }
+            ConfigMsgIn::GetLayout => {
+                let global_config = CONFIG_CHANGE_WATCH.try_get().unwrap();
+                proto
+                    .send_msg(ConfigMsgOut::BatchMsgStart(global_config.layout.len() + 1))
+                    .await
+                    .unwrap();
+                proto
+                    .send_msg(ConfigMsgOut::GlobalConfig(
+                        global_config.clock_src,
+                        global_config.reset_src,
+                        global_config.layout.as_slice(),
+                    ))
+                    .await
+                    .unwrap();
+                // TODO: Here we need to wait for all apps
+                // We can also try to get them in parallel somehow
+                with_timeout(Duration::from_secs(2), async {
+                    for (_app_id, start_channel) in global_config.layout {
+                        app_storage_publisher
+                            .publish(AppStorageCmd::GetAllParams {
+                                start_channel: start_channel as u8,
+                            })
+                            .await;
+                        let values = APP_CONFIGURE_EVENT.receive().await;
+                        proto
+                            .send_msg(ConfigMsgOut::AppState(&values))
+                            .await
+                            .unwrap();
+                    }
+                })
+                .await
+                .ok();
+                proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
+            }
+            ConfigMsgIn::SetAppParam(start_channel, param_slot, value) => {
+                app_storage_publisher
+                    .publish(AppStorageCmd::SetParamSlot {
+                        start_channel: start_channel as u8,
+                        param_slot: param_slot as u8,
+                        value,
+                    })
+                    .await;
+                // TODO: This should answer to refresh UI
             }
         }
     }

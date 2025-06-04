@@ -91,7 +91,7 @@ export function cobsDecode(data: Uint8Array): Uint8Array {
   return decoded.slice(0, writeIndex);
 }
 
-const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
+const punkOneShot = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
   const serialized = serialize("ConfigMsgIn", msg);
   const buf = new Uint8Array(serialized.length + 2);
 
@@ -105,13 +105,17 @@ const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
   cobsEncoded.set(cobsResult, 0);
   cobsEncoded[cobsEncoded.length] = FRAME_DELIMITER;
 
-  await usbDevice?.transferOut(1, cobsEncoded);
+  return usbDevice?.transferOut(1, cobsEncoded);
+};
+
+const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
+  await punkOneShot(usbDevice, msg);
 
   return receiveMessage(usbDevice);
 };
 
 const receiveMessage = async (usbDevice: USBDevice): Promise<ConfigMsgOut> => {
-  const data = await usbDevice?.transferIn(1, 256);
+  const data = await usbDevice?.transferIn(1, 128);
 
   if (!data?.data?.buffer) {
     throw new Error("No data received");
@@ -165,24 +169,35 @@ export default function IndexPage() {
     setUsbDevice(usbDevice);
 
     let result = await punkRequest(usbDevice, {
-      tag: "GetApps",
+      tag: "GetLayout",
     });
 
     if (result.tag === "BatchMsgStart") {
       const results = await receiveBatchMessages(usbDevice, result.value);
 
-      const appConfigs = results
-        .filter(
-          (res): res is Extract<ConfigMsgOut, { tag: "AppConfig" }> =>
-            res.tag === "AppConfig",
-        )
-        .map(({ value }) => ({
-          name: value[0],
-          description: value[1],
-          params: value[2] as ValidParam[],
-        }));
+      console.log(results);
 
-      setApps(appConfigs);
+      await punkOneShot(usbDevice, {
+        tag: "SetAppParam",
+        value: [
+          BigInt(0),
+          BigInt(0),
+          { tag: "Curve", value: { tag: "Logarithmic" } },
+        ],
+      });
+
+      // const appConfigs = results
+      //   .filter(
+      //     (res): res is Extract<ConfigMsgOut, { tag: "AppConfig" }> =>
+      //       res.tag === "AppConfig",
+      //   )
+      //   .map(({ value }) => ({
+      //     name: value[0],
+      //     description: value[1],
+      //     params: value[2] as ValidParam[],
+      //   }));
+      //
+      // setApps(appConfigs);
     }
   }, []);
 
@@ -238,9 +253,9 @@ export default function IndexPage() {
                 </ul>
               </div>
             )}
-            {/* <Button type="submit" variant="bordered"> */}
-            {/*   Submit */}
-            {/* </Button> */}
+            <Button type="button" variant="bordered">
+              DO THING
+            </Button>
           </Form>
         )}
       </section>

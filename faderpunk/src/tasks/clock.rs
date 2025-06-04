@@ -4,25 +4,28 @@ use embassy_rp::{
     peripherals::{PIN_1, PIN_2, PIN_3},
 };
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
-    channel::Receiver,
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
+    channel::Channel,
     mutex::Mutex,
     watch::Sender,
 };
 use embassy_time::Ticker;
 
-use crate::{Spawner, CLOCK_WATCH, WATCH_CONFIG_CHANGE};
+use crate::{Spawner, CLOCK_WATCH, CONFIG_CHANGE_WATCH};
 use config::ClockSrc;
 use libfp::utils::bpm_to_clock_duration;
 
 type AuxInputs = (PIN_1, PIN_2, PIN_3);
 
-pub async fn start_clock(
-    spawner: &Spawner,
-    aux_inputs: AuxInputs,
-    receiver: Receiver<'static, NoopRawMutex, f32, 64>,
-) {
-    spawner.spawn(run_clock(aux_inputs, receiver)).unwrap();
+pub static CLOCK_CHANNEL: Channel<ThreadModeRawMutex, ClockCmd, 16> = Channel::new();
+
+#[derive(Clone, Copy)]
+pub enum ClockCmd {
+    SetBpm(f64),
+}
+
+pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
+    spawner.spawn(run_clock(aux_inputs)).unwrap();
 }
 
 async fn make_ext_clock_loop(
@@ -30,7 +33,7 @@ async fn make_ext_clock_loop(
     clock_src: ClockSrc,
     clock_sender: Sender<'static, CriticalSectionRawMutex, bool, 16>,
 ) {
-    let mut config_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
+    let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     let mut current_config = config_receiver.get().await;
 
     loop {
@@ -58,7 +61,7 @@ async fn make_ext_clock_loop(
 
 // TODO: read config from eeprom and pass in config object
 #[embassy_executor::task]
-async fn run_clock(aux_inputs: AuxInputs, receiver: Receiver<'static, NoopRawMutex, f32, 64>) {
+async fn run_clock(aux_inputs: AuxInputs) {
     let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
     let atom = Input::new(atom_pin, Pull::Up);
     let meteor = Input::new(meteor_pin, Pull::Up);
@@ -72,7 +75,7 @@ async fn run_clock(aux_inputs: AuxInputs, receiver: Receiver<'static, NoopRawMut
         Mutex::new(Ticker::every(bpm_to_clock_duration(120.0, PPQN)));
 
     let internal_fut = async {
-        let mut config_receiver = WATCH_CONFIG_CHANGE.receiver().unwrap();
+        let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
         let mut current_config = config_receiver.get().await;
 
         loop {
@@ -104,7 +107,7 @@ async fn run_clock(aux_inputs: AuxInputs, receiver: Receiver<'static, NoopRawMut
 
     let msg_fut = async {
         loop {
-            let bpm = receiver.receive().await;
+            let ClockCmd::SetBpm(bpm) = CLOCK_CHANNEL.receive().await;
             let mut clock = internal_clock.lock().await;
             *clock = Ticker::every(bpm_to_clock_duration(bpm, PPQN));
         }
