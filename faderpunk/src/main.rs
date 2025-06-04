@@ -9,6 +9,7 @@ mod apps;
 mod layout;
 mod storage;
 mod tasks;
+pub mod storage;
 
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::ClockConfig;
