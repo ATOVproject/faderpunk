@@ -117,12 +117,13 @@ static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
     // let layout: [u8; 16] = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
-    let layout: [u8; 16] = [1; 16];
+    let layout: [u8; 16] = [2; 16];
     for (start_channel, &app_id) in layout.iter().enumerate() {
         let app = App::new(app_id, start_channel, CMD_CHANNEL.sender(), &EVENT_PUBSUB);
         match app_id {
             1 => spawner.spawn(apps::default::run(app)).unwrap(),
             2 => spawner.spawn(apps::lfo::run(app)).unwrap(),
+            //3 => spawner.spawn(apps::seq8::run(app)).unwrap(),
             _ => {}
         }
     }

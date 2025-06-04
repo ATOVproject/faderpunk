@@ -3,3 +3,4 @@
 /gen-bindings/target
 /libfp/target
 /target
+faderpunk/src/apps/seq8.rs
