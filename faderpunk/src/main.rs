@@ -8,7 +8,6 @@ mod app;
 mod apps;
 mod tasks;
 
-use app::App;
 use apps::spawn_app_by_id;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::ClockConfig;

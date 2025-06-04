@@ -26,6 +26,7 @@ macro_rules! register_apps {
 
         pub const REGISTERED_APP_IDS: [usize; _APP_COUNT] = [$($id),*];
 
+        // IDEA: Currently this doesn't need to be async
         pub async fn spawn_app_by_id(
             app_id: u8,
             start_channel: usize,

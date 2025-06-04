@@ -37,6 +37,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     select(run(&app), exit_signal.wait()).await;
 }
 
+// IDEA: Add Storage as the second generic in App?
 pub async fn run(app: &App<CHANNELS>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
@@ -45,7 +46,7 @@ pub async fn run(app: &App<CHANNELS>) {
     let midi = app.use_midi(1);
 
     // FIXME: Maybe create a macro to generate this? We actually need to be able to supply default
-    // values
+    // values. Then move to wrapper, I think that would make sense
     let storage: Mutex<NoopRawMutex, Storage> =
         Mutex::new(app.load(None).await.unwrap_or(Storage::default()));
 
