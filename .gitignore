@@ -4,3 +4,4 @@
 /libfp/target
 /target
 faderpunk/src/apps/seq8.rs
+faderpunk/src/apps/seq8_copy.rs
