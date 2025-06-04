@@ -1,4 +1,6 @@
+use defmt::info;
 use embassy_futures::join::{join3, join4};
+use embassy_rp::rom_data::validate_ns_buffer;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use crate::app::{App, Led, Range, SceneEvent};
 use config::Waveform;
@@ -45,6 +47,8 @@ pub async fn run(app: App<CHANNELS>) {
         stor.glob_wave
     };
 
+    let latched_glob = app.make_global(false);
+
     
 
     let fut1 = async {
@@ -90,13 +94,29 @@ pub async fn run(app: App<CHANNELS>) {
     };
 
     let fut2 = async {
-        loop {
+        loop { //add latching here
             faders.wait_for_change(0).await;
             let [fader] = faders.get_values();
 
-            let mut stor = storage.lock().await;
-            stor.glob_lfo_speed = CURVE_LOG[fader as usize] as f32 * 0.015 + 0.0682;
-            app.save(&*stor, None).await;
+            let glob_lfo_speed = {
+                let stor = storage.lock().await;
+                stor.glob_lfo_speed
+            };
+
+
+            
+            let mut val: (f32, bool) = (CURVE_LOG[fader as usize] as f32 * 0.015 + 0.0682, false);
+            val = return_if_close(glob_lfo_speed, val.0);
+            if val.1 {
+                latched_glob.set(true).await;
+            }
+
+            if latched_glob.get().await {
+                let mut stor = storage.lock().await;
+                stor.glob_lfo_speed = val.0;
+                app.save(&*stor, None).await;
+                info!("{}", val.0);
+            }  
         }
     };
 
@@ -126,6 +146,7 @@ pub async fn run(app: App<CHANNELS>) {
                         .await
                         .unwrap_or(Storage::default());
                     *stor = scene_stor;
+                    latched_glob.set(false).await;
                     
                     //update_outputs(stor.glob_lfo_speed).await;
                 }
@@ -139,4 +160,14 @@ pub async fn run(app: App<CHANNELS>) {
     };
 
     join4(fut1, fut2, fut3, scene_handler).await;
+}
+
+
+fn return_if_close(a: f32, b: f32) -> (f32, bool) {
+    let dif = a - b;
+    if dif.abs() < 1. {//adjust this {
+        (b, true)
+    } else {
+        (b, false)
+    }
 }
