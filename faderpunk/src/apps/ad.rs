@@ -1,11 +1,11 @@
-use defmt::info;
 use embassy_futures::{
     join::{join, join3, join4, join5},
     select::select,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use serde::{Deserialize, Serialize};
 
-use crate::app::{App, Global, Led, Range};
+use crate::app::{App, Arr, Global, Led, Range, SceneEvent};
 use config::{Config, Curve, Param};
 use libfp::constants::{CURVE_EXP, CURVE_LOG};
 
@@ -15,6 +15,12 @@ pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;
 
 pub static CONFIG: config::Config<PARAMS> = Config::new("AD Envelope", "FIXME");
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct Storage {
+    fader_saved: Arr<u16, 2>,
+    curve_saved: Arr<u8, 2>,
+}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
@@ -39,11 +45,24 @@ pub async fn run(app: &App<CHANNELS>) {
     let mut oldinputval = 0;
     let mut env_state = 0;
 
-    let color = [(243, 191, 78), (188, 77, 216), (78, 243, 243)];
+    let latched_glob = app.make_global([false; 2]);
 
-    let curve = glob_curve.get().await;
-    leds.set(0, Led::Button, color[curve[0] as usize], 100);
-    leds.set(1, Led::Button, color[curve[1] as usize], 100);
+    let storage: Mutex<NoopRawMutex, Storage> =
+    Mutex::new(app.load(None).await.unwrap_or(Storage::default()));
+
+    // FIXME: Definitely improve this API
+    // let stor = storage.lock().await;
+    // let muted = stor.fader_saved;
+    // drop(stor);
+
+    let color = [(243, 191, 78), (188, 77, 216), (78, 243, 243)];
+    let stor = storage.lock().await;
+    let curve_setting = stor.curve_saved;
+    drop(stor);
+
+
+    leds.set(0, Led::Button, color[curve_setting.0[0] as usize], 100);
+    leds.set(1, Led::Button, color[curve_setting.0[1] as usize], 100);
 
     let fut1 = async {
         loop {
@@ -51,7 +70,11 @@ pub async fn run(app: &App<CHANNELS>) {
 
             app.delay_millis(1).await;
             let times = times_glob.get().await;
-            let curve_setting = glob_curve.get().await;
+
+            let stor = storage.lock().await;
+            let curve_setting = stor.curve_saved;
+            drop(stor);
+            //let curve_setting = glob_curve.get().await;
 
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
@@ -68,14 +91,13 @@ pub async fn run(app: &App<CHANNELS>) {
                 }
 
                 vals = vals + (4095.0 / times[0]);
-                //info!("value = {}, speed = {}", vals, times[0]);
                 if vals > 4094.0 {
                     env_state = 2;
                     vals = 4094.0;
                 }
                 let curve: [Curve; 3] = [Curve::Linear, Curve::Exponential, Curve::Logarithmic];
 
-                output.set_value_with_curve(curve[curve_setting[0]], vals as u16);
+                output.set_value_with_curve(curve[curve_setting.0[0]as usize], vals as u16);
                 leds.set(0, Led::Bottom, color, (255.0 - (vals as f32) / 32.0) as u8);
                 leds.set(0, Led::Top, color, (vals as f32 / 32.0) as u8);
                 if vals == 4094.0 {
@@ -93,9 +115,10 @@ pub async fn run(app: &App<CHANNELS>) {
                     vals = 0.0;
                 }
                 let curve: [Curve; 3] = [Curve::Linear, Curve::Exponential, Curve::Logarithmic];
-                output.set_value_with_curve(curve[curve_setting[1]], vals as u16);
+                output.set_value_with_curve(curve[curve_setting.0[1] as usize], vals as u16);
                 leds.set(1, Led::Top, color, (vals as f32 / 32.0) as u8);
                 leds.set(1, Led::Bottom, color, (255.0 - (vals as f32) / 32.0) as u8);
+                
 
                 if vals == 0.0 {
                     leds.set(1, Led::Bottom, (0, 0, 0), 0);
@@ -107,26 +130,92 @@ pub async fn run(app: &App<CHANNELS>) {
     let fut2 = async {
         loop {
             let chan = faders.wait_for_any_change().await;
-            let mut times = times_glob.get().await;
+            
+
             if chan < 2 {
                 let vals = faders.get_values();
-                times[chan] = CURVE_LOG[vals[chan] as usize] as f32 + minispeed;
-                // (4096.0 - CURVE_EXP[vals[chan] as usize] as f32) * fadstep + minispeed;
-                times_glob.set(times).await;
+                let mut times = times_glob.get().await;
+
+                let mut stor = storage.lock().await;
+                let mut stored_faders = stor.fader_saved;
+                let mut latched =latched_glob.get().await;
+
+                if return_if_close(vals[chan], stored_faders.0[chan]) {
+                latched[chan] = true;
+                latched_glob.set(latched).await;
+                }
+                
+                if latched[chan] {
+                    stored_faders.0[chan] = vals[chan];
+                    stor.fader_saved = stored_faders;
+                    app.save(&*stor, None).await;
+                
+                    times[chan] = CURVE_LOG[vals[chan] as usize] as f32 + minispeed;
+                    // (4096.0 - CURVE_EXP[vals[chan] as usize] as f32) * fadstep + minispeed;
+                    times_glob.set(times).await;
+                }
             }
+            
         }
     };
 
     let fut3 = async {
         loop {
             let chan = buttons.wait_for_any_down().await;
+            let stor = storage.lock().await;
+            let mut curve_setting = stor.curve_saved;
+            drop(stor);
 
-            let mut curve_setting = glob_curve.get().await;
-            curve_setting[chan] = (curve_setting[chan] + 1) % 3;
-            glob_curve.set(curve_setting).await;
-            leds.set(chan, Led::Button, color[curve_setting[chan] as usize], 75);
+            
+            curve_setting.0[chan] = (curve_setting.0[chan] + 1) % 3;
+            leds.set(chan, Led::Button, color[curve_setting.0[chan] as usize], 75);
+
+            
+            let mut stor = storage.lock().await;
+            stor.curve_saved = curve_setting;
+            app.save(&*stor, None).await;
         }
     };
 
-    join3(fut1, fut2, fut3).await;
+    let scene_handler = async {
+        loop {
+            match app.wait_for_scene_event().await {
+                SceneEvent::LoadSscene(scene) => {
+                    let mut stor = storage.lock().await;
+                    let scene_stor = app.load(Some(scene)).await.unwrap_or(Storage::default());
+                    *stor = scene_stor;
+
+                    //recall fader state and do the math
+                    let stored_faders = stor.fader_saved;
+
+                    let mut times: [f32; 2] = times_glob.get().await;
+
+                    for chan in 0..=1 {
+                        times[chan]= CURVE_LOG[stored_faders.0[chan] as usize] as f32 + minispeed;
+                    }
+                    latched_glob.set([false, false]).await;
+                    times_glob.set(times).await;
+                    let curve_setting = stor.curve_saved;
+                    leds.set(0, Led::Button, color[curve_setting.0[0] as usize], 100);
+                    leds.set(1, Led::Button, color[curve_setting.0[1] as usize], 100);
+                    
+                }
+                SceneEvent::SaveScene(scene) => {
+                    let stor = storage.lock().await;
+                    app.save(&*stor, Some(scene)).await;
+                }
+            }
+        }
+    };
+
+    join4(fut1, fut2, fut3, scene_handler).await;
+}
+
+
+fn return_if_close(a: u16, b: u16) -> bool {
+    if a.abs_diff(b) < 100 {
+        true
+    } else {
+        false
+    }
 }

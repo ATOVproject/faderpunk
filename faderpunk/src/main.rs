@@ -127,7 +127,7 @@ static APP_EXIT_SIGNALS: StaticCell<[Signal<NoopRawMutex, bool>; 16]> = StaticCe
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
     // let layout: [u8; 16] = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
-    let layout: [u8; 16] = [1; 16];
+    let layout= [2, 6];
     // TODO: We can now signal "true" to any of the exit signals to kill an app
     let exit_signals = APP_EXIT_SIGNALS.init([const { Signal::new() }; 16]);
     for (start_channel, &app_id) in layout.iter().enumerate() {
