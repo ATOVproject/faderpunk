@@ -115,7 +115,7 @@ const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
 };
 
 const receiveMessage = async (usbDevice: USBDevice): Promise<ConfigMsgOut> => {
-  const data = await usbDevice?.transferIn(1, 128);
+  const data = await usbDevice?.transferIn(1, 512);
 
   if (!data?.data?.buffer) {
     throw new Error("No data received");
@@ -124,7 +124,7 @@ const receiveMessage = async (usbDevice: USBDevice): Promise<ConfigMsgOut> => {
   const dataBuf = new Uint8Array(data.data.buffer);
   const cobsDecoded = cobsDecode(dataBuf.slice(0, dataBuf.length - 1));
 
-  const len = (cobsDecoded[0] << 8) | cobsDecoded[1];
+  // const len = (cobsDecoded[0] << 8) | cobsDecoded[1];
 
   let res = deserialize("ConfigMsgOut", cobsDecoded.slice(2));
 
@@ -150,7 +150,7 @@ const receiveBatchMessages = async (usbDevice: USBDevice, count: bigint) => {
 // TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
   const [usbDevice, setUsbDevice] = useState<USBDevice | null>(null);
-  const [apps, setApps] = useState<
+  const [apps /* ,setApps */] = useState<
     {
       name: string;
       description: string;
@@ -177,14 +177,14 @@ export default function IndexPage() {
 
       console.log(results);
 
-      await punkOneShot(usbDevice, {
-        tag: "SetAppParam",
-        value: [
-          BigInt(0),
-          BigInt(0),
-          { tag: "Curve", value: { tag: "Logarithmic" } },
-        ],
-      });
+      // await punkOneShot(usbDevice, {
+      //   tag: "SetAppParam",
+      //   value: [
+      //     BigInt(0),
+      //     BigInt(0),
+      //     { tag: "Curve", value: { tag: "Logarithmic" } },
+      //   ],
+      // });
 
       // const appConfigs = results
       //   .filter(
@@ -200,6 +200,28 @@ export default function IndexPage() {
       // setApps(appConfigs);
     }
   }, []);
+
+  const setLayoutAllDefault = useCallback(async () => {
+    if (!usbDevice) {
+      return;
+    }
+    console.log("Setting layout to default");
+    await punkOneShot(usbDevice, {
+      tag: "SetLayout",
+      value: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    });
+  }, [usbDevice]);
+
+  const setLayoutMixed = useCallback(async () => {
+    if (!usbDevice) {
+      return;
+    }
+    console.log("Setting layout to mixed");
+    await punkOneShot(usbDevice, {
+      tag: "SetLayout",
+      value: [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2],
+    });
+  }, [usbDevice]);
 
   const deviceName = `${usbDevice?.manufacturerName} ${usbDevice?.productName} v${usbDevice?.deviceVersionMajor}.${usbDevice?.deviceVersionMinor}.${usbDevice?.deviceVersionSubminor}`;
 
@@ -253,8 +275,15 @@ export default function IndexPage() {
                 </ul>
               </div>
             )}
-            <Button type="button" variant="bordered">
-              DO THING
+            <Button
+              type="button"
+              variant="bordered"
+              onPress={setLayoutAllDefault}
+            >
+              Set Layout all default
+            </Button>
+            <Button type="button" variant="bordered" onPress={setLayoutMixed}>
+              Set Layout mixed
             </Button>
           </Form>
         )}

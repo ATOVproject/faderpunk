@@ -1,4 +1,4 @@
-use config::{Config, Curve, Param, Value, Waveform};
+use config::{Config, Curve, Param, Value, Waveform, APP_MAX_PARAMS};
 use embassy_futures::{
     join::{join, join4},
     select::select,
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     app::{App, Led, Range, SceneEvent},
     storage::{ParamSlot, Store},
-    tasks::configure::{AppParamCmd, APP_MAX_PARAMS, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
+    tasks::configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
 };
 
 pub const CHANNELS: usize = 1;
@@ -43,11 +43,13 @@ pub struct Params<'a> {
     midi_channel: ParamSlot<'a, i32, PARAMS>,
 }
 
+// FIXME: CRITICAL! Apps have to clean up after themselves (maybe use Drop? But it might be async??)
 async fn param_handler(start_channel: usize, param_store: &Store<PARAMS>) {
+    APP_PARAM_SIGNALS[start_channel].reset();
     loop {
         match APP_PARAM_SIGNALS[start_channel].wait().await {
-            AppParamCmd::SetParamSlot { index, value } => {
-                param_store.set(index, value).await;
+            AppParamCmd::SetParamSlot { param_slot, value } => {
+                param_store.set(param_slot, value).await;
             }
             AppParamCmd::RequestParamValues => {
                 let params = param_store.get_all().await;

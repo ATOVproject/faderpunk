@@ -9,7 +9,8 @@ macro_rules! register_apps {
             signal::Signal,
         };
 
-        use config::Param;
+        use config::{Layout, Param};
+        use libfp::constants::GLOBAL_CHANNELS;
         use crate::{CMD_CHANNEL, EVENT_PUBSUB};
         use crate::app::App;
         use embassy_executor::Spawner;
@@ -76,7 +77,26 @@ macro_rules! register_apps {
             }
         }
 
-        pub fn get_channels(app_id: usize) -> usize {
+        pub fn get_layout_from_slice(slice: &[u8]) -> Layout {
+            if slice.len() > GLOBAL_CHANNELS {
+                panic!("Layout is too big");
+            }
+            let mut start_channel = 0;
+            let mut layout: Layout = Layout::new();
+            for &app_id in slice {
+                let channels = get_channels(app_id);
+                let last = start_channel + channels;
+                if last > GLOBAL_CHANNELS {
+                    break;
+                }
+                layout.push((app_id, start_channel, channels));
+                start_channel += channels;
+            }
+            layout.set_last(start_channel);
+            layout
+        }
+
+        fn get_channels(app_id: u8) -> usize {
             match app_id {
                 $(
                     $id => $app_mod::CHANNELS,
