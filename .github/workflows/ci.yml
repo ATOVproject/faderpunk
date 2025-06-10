@@ -2,6 +2,10 @@ name: Check, build (and release) firmware
 on: [push, pull_request]
 env:
   CARGO_TERM_COLOR: always
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 jobs:
   picotool:
     runs-on: ubuntu-latest
@@ -76,8 +80,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
@@ -86,6 +88,15 @@ jobs:
       - run: cargo fmt -- --check
       # - run: cargo clippy -- -D warnings
       - run: cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf
+  check-bindings:
+    name: Try to generate the postcard bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - run: ./gen-bindings.sh
   build:
     name: Build
     needs: [lint]
@@ -136,3 +147,46 @@ jobs:
             target/faderpunk.elf
             target/faderpunk.uf2
           prerelease: true
+  build-configurator:
+    name: Build new configurator version
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: latest
+      - name: Setup rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: ./configurator
+      - name: Generate postcard bindings
+        run: ./gen-bindings.sh
+      - name: Build
+        run: pnpm run build
+        working-directory: ./configurator
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'configurator/dist'
+  deploy-configurator:
+    name: Deploy configurator to Github pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build-configurator
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
