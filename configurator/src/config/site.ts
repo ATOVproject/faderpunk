@@ -5,5 +5,7 @@ export const siteConfig = {
   description: "Make beautiful websites regardless of your design experience.",
   navItems: [],
   navMenuItems: [],
-  links: {},
+  links: {
+    github: "https://github.com/ATOVproject/faderpunk",
+  },
 };

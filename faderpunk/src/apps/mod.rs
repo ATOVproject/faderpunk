@@ -1,7 +1,9 @@
 register_apps!(
     1 => default,
-    // 2 => measure,
-    // 3 => lfo,
-    // 4 => trigger,
-    // 5 => clock_test,
+    2 => lfo,
+    3 => clock_test,
+    4 => ad,
+    5 => seq8,
+    6 => automator,
+    7 => clkcvrnd,
 );

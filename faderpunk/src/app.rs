@@ -1,3 +1,5 @@
+use core::ptr::from_mut;
+
 use defmt::info;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
@@ -24,19 +26,24 @@ use libfp::{
     utils::scale_bits_12_7,
 };
 use serde::{
-    de::{DeserializeOwned, Error},
-    Deserialize, Serialize,
+    de::{DeserializeOwned, Error as DeError},
+    ser::Error as SerError,
+    Deserialize, Deserializer, Serialize, Serializer,
 };
 
 use crate::{
-    scene::get_scene,
     tasks::{
         buttons::BUTTON_PRESSED,
+        fram::{request_data, write_data, ReadOperation, WriteOperation, MAX_DATA_LEN},
         leds::LED_VALUES,
         max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
-    CmdSender, EventPubSubChannel, HardwareCmd, HardwareEvent, CLOCK_WATCH,
+    CmdSender, EventPubSubChannel, HardwareCmd, InputEvent, CLOCK_WATCH,
 };
+
+// TODO: This will be refactored using an allocator
+const BYTES_PER_VALUE_SET: u32 = 1000;
+const SCENES_PER_APP: u32 = 3;
 
 pub enum Range {
     // 0 - 10V
@@ -69,7 +76,7 @@ where
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
         let vec = Vec::<T, N>::from_slice(&self.0).unwrap();
         vec.serialize(serializer)
@@ -82,7 +89,7 @@ where
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
         let vec = Vec::<T, N>::deserialize(deserializer)?;
         if vec.len() != N {
@@ -103,6 +110,69 @@ impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T,
     }
 }
 
+#[derive(Clone, Copy)]
+// TODO: Allocator should alloate a certain part of the fram to app storage
+pub struct AppStorageAddress {
+    pub start_channel: u8,
+    pub scene: Option<u8>,
+}
+
+impl From<AppStorageAddress> for u32 {
+    fn from(key: AppStorageAddress) -> Self {
+        let scene_storage_slot_index = match key.scene {
+            // Slot 0 for None
+            None => 0,
+            // Slots 1 and onwards for Some(s)
+            Some(s) => (s as u32) + 1,
+        };
+
+        // Assuming SCENES_PER_APP is the number of scenes like Some(0), Some(1)...
+        // The total number of "slots" per app channel is SCENES_PER_APP + 1 (for the None case)
+        let total_slots_per_app = SCENES_PER_APP + 1; // Placeholder for actual constant arithmetic if needed
+
+        let app_base_offset =
+            (key.start_channel as u32) * total_slots_per_app * BYTES_PER_VALUE_SET;
+        let scene_offset_in_app = scene_storage_slot_index * BYTES_PER_VALUE_SET;
+        app_base_offset + scene_offset_in_app
+    }
+}
+
+impl From<u32> for AppStorageAddress {
+    fn from(address: u32) -> Self {
+        // The total number of "slots" per app channel is SCENES_PER_APP + 1
+        let total_slots_per_app = SCENES_PER_APP + 1; // Placeholder for actual constant arithmetic if needed
+        let bytes_per_app_block: u32 = total_slots_per_app * BYTES_PER_VALUE_SET;
+
+        let start_channel_raw = address / bytes_per_app_block;
+        let start_channel = start_channel_raw as u8;
+
+        let offset_within_app_block = address % bytes_per_app_block;
+        let scene_storage_slot_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
+
+        let scene = if scene_storage_slot_index_raw == 0 {
+            None // Slot 0 maps back to None
+        } else {
+            // Slots 1 and onwards map back to Some(s-1)
+            Some((scene_storage_slot_index_raw - 1) as u8)
+        };
+
+        Self {
+            start_channel,
+            scene,
+        }
+    }
+}
+
+impl AppStorageAddress {
+    pub fn new(start_channel: u8, scene: Option<u8>) -> Self {
+        Self {
+            start_channel,
+            scene,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct Leds<const N: usize> {
     start_channel: usize,
 }
@@ -200,6 +270,7 @@ impl OutJack {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Buttons<const N: usize> {
     event_pubsub: &'static EventPubSubChannel,
     start_channel: usize,
@@ -218,7 +289,7 @@ impl<const N: usize> Buttons<N> {
         let mut subscriber = self.event_pubsub.subscriber().unwrap();
 
         loop {
-            if let HardwareEvent::ButtonDown(channel) = subscriber.next_message_pure().await {
+            if let InputEvent::ButtonDown(channel) = subscriber.next_message_pure().await {
                 if (self.start_channel..self.start_channel + N).contains(&channel) {
                     return channel - self.start_channel;
                 }
@@ -267,6 +338,7 @@ impl<const N: usize> Buttons<N> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Faders<const N: usize> {
     event_pubsub: &'static EventPubSubChannel,
     start_channel: usize,
@@ -285,7 +357,7 @@ impl<const N: usize> Faders<N> {
         let mut subscriber = self.event_pubsub.subscriber().unwrap();
 
         loop {
-            if let HardwareEvent::FaderChange(channel) = subscriber.next_message_pure().await {
+            if let InputEvent::FaderChange(channel) = subscriber.next_message_pure().await {
                 if (self.start_channel..self.start_channel + N).contains(&channel) {
                     return channel - self.start_channel;
                 }
@@ -341,6 +413,12 @@ impl Clock {
     }
 }
 
+pub enum SceneEvent {
+    LoadSscene(u8),
+    SaveScene(u8),
+}
+
+#[derive(Clone, Copy)]
 pub struct Midi<const N: usize> {
     cmd_sender: CmdSender,
     midi_channel: u4,
@@ -393,7 +471,7 @@ impl<const N: usize> Midi<N> {
     }
 }
 
-pub struct Global<T: Sized + Copy> {
+pub struct Global<T: Sized> {
     inner: Mutex<NoopRawMutex, T>,
 }
 
@@ -424,6 +502,56 @@ impl Global<bool> {
     }
 }
 
+impl<T: Sized + Copy + Default> Default for Global<T> {
+    fn default() -> Self {
+        Global {
+            inner: Mutex::new(T::default()),
+        }
+    }
+}
+
+impl<T> Serialize for Global<T>
+where
+    T: Sized + Copy + Serialize, // T must also be Serialize
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self.inner.try_lock() {
+            Ok(guard) => {
+                // Dereference the guard to get &T and serialize it.
+                // The Copy trait on T means *guard would yield T by value,
+                // but &*guard or simply guard (if it derefs to &T) is what serialize expects.
+                // (*guard) also works as serialize takes &self.
+                (*guard).serialize(serializer)
+            }
+            Err(_e) => {
+                // _e is typically embassy_sync::mutex::TryLockError
+                // If the lock can't be acquired synchronously, serialization fails.
+                Err(S::Error::custom("could not lock mutex for serialization"))
+            }
+        }
+    }
+}
+
+impl<'de, T> Deserialize<'de> for Global<T>
+where
+    T: Sized + Copy + Deserialize<'de>, // T must also be Deserialize
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Deserialize T directly.
+        let value = T::deserialize(deserializer)?;
+        // Create a new Mutex holding the deserialized T.
+        Ok(Global {
+            inner: Mutex::new(value),
+        })
+    }
+}
+
 pub struct Die {
     rng: RoscRng,
 }
@@ -435,22 +563,26 @@ impl Die {
     }
 }
 
-pub struct App<'a, const N: usize> {
-    app_id: u8,
+#[derive(Debug)]
+pub enum AppError {
+    DeserializeFailed,
+}
+
+#[derive(Clone, Copy)]
+pub struct App<const N: usize> {
+    pub app_id: u8,
     pub start_channel: usize,
     channel_count: usize,
     cmd_sender: CmdSender,
     event_pubsub: &'static EventPubSubChannel,
-    scene_signal: &'a Signal<NoopRawMutex, u8>,
 }
 
-impl<'a, const N: usize> App<'a, N> {
+impl<const N: usize> App<N> {
     pub fn new(
         app_id: u8,
         start_channel: usize,
         cmd_sender: CmdSender,
         event_pubsub: &'static EventPubSubChannel,
-        scene_signal: &'a Signal<NoopRawMutex, u8>,
     ) -> Self {
         Self {
             app_id,
@@ -458,7 +590,6 @@ impl<'a, const N: usize> App<'a, N> {
             channel_count: N,
             cmd_sender,
             event_pubsub,
-            scene_signal,
         }
     }
 
@@ -472,6 +603,37 @@ impl<'a, const N: usize> App<'a, N> {
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
         Global::new(initial)
+    }
+
+    pub async fn load<T: DeserializeOwned>(&self, scene: Option<u8>) -> Result<T, AppError> {
+        let address = AppStorageAddress::new(self.start_channel as u8, scene);
+        let op = ReadOperation::new(address.into());
+        if let Ok(data) = request_data(op).await {
+            if data.is_empty() {
+                return Err(AppError::DeserializeFailed);
+            }
+            if let Ok(val) = from_bytes::<T>(&data[1..]) {
+                if data[0] != self.app_id {
+                    return Err(AppError::DeserializeFailed);
+                }
+                return Ok(val);
+            }
+        }
+        Err(AppError::DeserializeFailed)
+    }
+
+    pub async fn save<T: Serialize>(&self, storage: &T, scene: Option<u8>) {
+        let mut data = Vec::<u8, MAX_DATA_LEN>::new();
+        data.resize_default(MAX_DATA_LEN)
+            .expect("Failed to resize data Vec");
+
+        data[0] = self.app_id;
+        let len = to_slice(&storage, &mut data[1..]).unwrap().len();
+        data.truncate(1 + len);
+
+        let address = AppStorageAddress::new(self.start_channel as u8, scene);
+        let op = WriteOperation::new(address.into(), data);
+        write_data(op).await.unwrap();
     }
 
     // TODO: How can we prevent people from doing this multiple times?
@@ -533,10 +695,6 @@ impl<'a, const N: usize> App<'a, N> {
         Timer::after_secs(secs).await
     }
 
-    pub async fn wait_for_scene_change(&self) -> u8 {
-        return self.scene_signal.wait().await;
-    }
-
     pub fn use_buttons(&self) -> Buttons<N> {
         Buttons::new(self.start_channel, self.event_pubsub)
     }
@@ -559,5 +717,21 @@ impl<'a, const N: usize> App<'a, N> {
 
     pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
         Midi::new(midi_channel.into(), self.cmd_sender)
+    }
+
+    pub async fn wait_for_scene_event(&self) -> SceneEvent {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+
+        loop {
+            match subscriber.next_message_pure().await {
+                InputEvent::LoadScene(scene) => {
+                    return SceneEvent::LoadSscene(scene);
+                }
+                InputEvent::SaveScene(scene) => {
+                    return SceneEvent::SaveScene(scene);
+                }
+                _ => {}
+            }
+        }
     }
 }

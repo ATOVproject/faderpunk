@@ -1,3 +1,5 @@
+pub const GLOBAL_CHANNELS: usize = 16;
+
 pub static CHAN_LED_MAP: [[usize; 16]; 3] = [
     // Top LEDs
     [

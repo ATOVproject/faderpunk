@@ -1,14 +1,20 @@
+use config::Config;
+use embassy_futures::select::select;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+
 use crate::app::{App, Led};
 
 pub const CHANNELS: usize = 16;
+pub const PARAMS: usize = 0;
 
-app_config! (
-    config("Clock test", "Visualize clock tempo");
-    params();
-    storage();
-);
+pub static CONFIG: config::Config<PARAMS> = Config::new("Clock test", "Visualize clock tempo");
 
-pub async fn run(app: App<'_, CHANNELS>, _ctx: &AppContext<'_>) {
+#[embassy_executor::task(pool_size = 16/CHANNELS)]
+pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+    select(run(&app), exit_signal.wait()).await;
+}
+
+pub async fn run(app: &App<CHANNELS>) {
     let mut clock = app.use_clock();
     let color = (243, 191, 78);
     let leds = app.use_leds();

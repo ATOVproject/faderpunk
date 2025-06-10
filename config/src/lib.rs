@@ -4,10 +4,14 @@ use heapless::Vec;
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
-use libfp::constants::{WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SINE, WAVEFORM_TRIANGLE};
+use libfp::constants::{
+    GLOBAL_CHANNELS, WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SINE, WAVEFORM_TRIANGLE,
+};
 
 /// Maximum number of params per app
-pub const MAX_PARAMS: usize = 16;
+pub const APP_MAX_PARAMS: usize = 4;
+
+pub type ConfigMeta<'a> = (usize, &'a str, &'a str, &'a [Param]);
 
 pub trait FromValue: Sized + Default + Copy {
     fn from_value(value: Value) -> Self;
@@ -42,8 +46,31 @@ pub enum ClockSrc {
     MidiUsb,
 }
 
-/// (app_id, start_channel)
-pub type Layout = Vec<(u8, u8), 16>;
+#[derive(Clone)]
+pub struct Layout {
+    pub apps: Vec<(u8, usize, usize), GLOBAL_CHANNELS>,
+    pub last: usize,
+}
+
+#[allow(clippy::new_without_default)]
+impl Layout {
+    pub const fn new() -> Self {
+        Self {
+            apps: Vec::new(),
+            last: 0,
+        }
+    }
+
+    pub fn push(&mut self, app: (u8, usize, usize)) {
+        if !self.apps.is_full() {
+            self.apps.push(app).expect("Vec should not be full");
+        }
+    }
+
+    pub fn set_last(&mut self, last: usize) {
+        self.last = last;
+    }
+}
 
 #[derive(Clone)]
 pub struct GlobalConfig {
@@ -52,43 +79,13 @@ pub struct GlobalConfig {
     pub layout: Layout,
 }
 
+#[allow(clippy::new_without_default)]
 impl GlobalConfig {
     pub const fn new() -> Self {
         Self {
             clock_src: ClockSrc::Internal,
             reset_src: ClockSrc::None,
-            layout: Vec::new(),
-        }
-    }
-}
-
-impl Default for GlobalConfig {
-    fn default() -> Self {
-        const DEFAULT_LAYOUT: [(u8, u8); 16] = [
-            (1, 0),
-            (1, 1),
-            (1, 2),
-            (1, 3),
-            (1, 4),
-            (1, 5),
-            (1, 6),
-            (1, 7),
-            (1, 8),
-            (1, 9),
-            (1, 10),
-            (1, 11),
-            (1, 12),
-            (1, 13),
-            (1, 14),
-            (1, 15),
-        ];
-
-        Self {
-            clock_src: ClockSrc::Internal,
-            reset_src: ClockSrc::None,
-            layout: Vec::from_slice(&DEFAULT_LAYOUT)
-                // OK here as slice is static length
-                .unwrap(),
+            layout: Layout::new(),
         }
     }
 }
@@ -110,12 +107,13 @@ impl FromValue for Curve {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings)]
 pub enum Waveform {
-    Sine,
+    #[default]
     Triangle,
     Saw,
     Rect,
+    Sine,
 }
 
 impl Waveform {
@@ -198,13 +196,17 @@ impl From<bool> for Value {
     }
 }
 
-#[derive(Clone, Copy, Deserialize, PostcardBindings)]
+#[derive(Deserialize, PostcardBindings)]
 pub enum ConfigMsgIn {
     Ping,
     GetAllApps,
     GetLayout,
-    /// (start_channel, param_slot, Value)
-    SetAppParam(usize, usize, Value),
+    SetLayout([u8; 16]),
+    SetAppParam {
+        start_channel: usize,
+        param_slot: usize,
+        value: Value,
+    },
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]
@@ -212,9 +214,9 @@ pub enum ConfigMsgOut<'a> {
     Pong,
     BatchMsgStart(usize),
     BatchMsgEnd,
-    GlobalConfig(ClockSrc, ClockSrc, &'a [(u8, u8)]),
-    AppConfig((usize, &'a str, &'a str, &'a [Param])),
-    AppState(&'a [Value]),
+    GlobalConfig(ClockSrc, ClockSrc, &'a [(u8, usize, usize)]),
+    AppConfig(u8, usize, ConfigMeta<'a>),
+    AppState(usize, &'a [Value]),
 }
 
 pub struct Config<const N: usize> {
@@ -226,7 +228,7 @@ pub struct Config<const N: usize> {
 
 impl<const N: usize> Config<N> {
     pub const fn new(name: &'static str, description: &'static str) -> Self {
-        assert!(N <= MAX_PARAMS, "Too many params");
+        assert!(N <= APP_MAX_PARAMS, "Too many params");
         Config {
             description,
             len: 0,
@@ -246,7 +248,7 @@ impl<const N: usize> Config<N> {
         }
     }
 
-    pub fn get_meta(&self) -> (usize, &str, &str, &[Param]) {
+    pub fn get_meta(&self) -> ConfigMeta<'_> {
         (N, self.name, self.description, &self.params)
     }
 }

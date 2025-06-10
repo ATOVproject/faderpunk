@@ -2,17 +2,15 @@
 #![no_main]
 
 #[macro_use]
-pub mod macros;
+mod macros;
 
 mod app;
 mod apps;
-pub mod scene;
-pub mod storage;
+mod storage;
 mod tasks;
 
-use defmt::info;
+use apps::{get_layout_from_slice, spawn_app_by_id};
 use embassy_executor::{Executor, Spawner};
-use embassy_futures::select::select;
 use embassy_rp::clocks::ClockConfig;
 use embassy_rp::config::Config;
 use embassy_rp::multicore::{spawn_core1, Stack};
@@ -25,25 +23,25 @@ use embassy_rp::{
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::{Channel, Sender};
+use embassy_sync::mutex::Mutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher};
+use embassy_sync::signal::Signal;
 use embassy_sync::watch::Watch;
 use embassy_time::Timer;
 use fm24v10::{Address, Fm24v10};
-use heapless::Vec;
+use libfp::constants::GLOBAL_CHANNELS;
 use midly::live::LiveEvent;
-use portable_atomic::{AtomicBool, Ordering};
 
-use tasks::fram::DATA_LENGTH;
+use tasks::fram::MAX_DATA_LEN;
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
 
-use apps::run_app_by_id;
-use config::{ClockSrc, GlobalConfig};
+use config::{ClockSrc, GlobalConfig, Layout};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -72,12 +70,13 @@ static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 // TODO: Move all of the message stuff to own file
 /// Messages from core 0 to core 1
 #[derive(Clone)]
-pub enum HardwareEvent {
+pub enum InputEvent {
     ButtonDown(usize),
     ButtonUp(usize),
     FaderChange(usize),
     MidiMsg(LiveEvent<'static>),
-    EepromRefresh,
+    LoadScene(u8),
+    SaveScene(u8),
 }
 
 /// Messages from core 1 to core 0
@@ -100,12 +99,12 @@ pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 // 32 receivers (ephemeral)
 // 18 senders (16 apps for scenes, 1 buttons, 1 max)
 pub type EventPubSubChannel =
-    PubSubChannel<CriticalSectionRawMutex, HardwareEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 18>;
+    PubSubChannel<CriticalSectionRawMutex, InputEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 18>;
 pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
 pub type EventPubSubPublisher = Publisher<
     'static,
     CriticalSectionRawMutex,
-    HardwareEvent,
+    InputEvent,
     EVENT_PUBSUB_SIZE,
     EVENT_PUBSUB_SUBS,
     18,
@@ -114,55 +113,93 @@ pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, HardwareCmd, CMD_CHANNE
     Channel::new();
 pub type CmdSender = Sender<'static, CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE>;
 
-/// Tasks (apps) that are currently running (number 17 is the publisher task)
-static CORE1_TASKS: [AtomicBool; 17] = [const { AtomicBool::new(false) }; 17];
-
 /// MIDI buffers (RX and TX)
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
 static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 
 /// FRAM write buffer
 // TODO: Find a good value here
-static BUF_FRAM_WRITE: StaticCell<[u8; DATA_LENGTH]> = StaticCell::new();
+static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 
-// App slots
-#[embassy_executor::task(pool_size = 16)]
-async fn run_app(number: u8, start_channel: u8) {
-    // INFO: This _should_ be properly dropped when task ends
-    let mut cancel_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
-    // TODO: Is the first value always new?
-    let _ = cancel_receiver.changed().await;
+static LAYOUT_MANAGER: StaticCell<LayoutManager> = StaticCell::new();
 
-    let run_app_fut = async {
-        CORE1_TASKS[start_channel as usize].store(true, Ordering::Relaxed);
-        run_app_by_id(number, start_channel).await;
-    };
+struct LayoutManager {
+    exit_signals: [Signal<NoopRawMutex, bool>; 16],
+    layout: Mutex<NoopRawMutex, [u8; GLOBAL_CHANNELS]>,
+    spawner: Spawner,
+}
 
-    select(run_app_fut, cancel_receiver.changed()).await;
-    CORE1_TASKS[start_channel as usize].store(false, Ordering::Relaxed);
-    info!("App {} on channel {} stopped", number, start_channel)
+impl LayoutManager {
+    pub fn new(spawner: Spawner) -> Self {
+        Self {
+            exit_signals: [const { Signal::new() }; GLOBAL_CHANNELS],
+            layout: Mutex::new([0; GLOBAL_CHANNELS]),
+            spawner,
+        }
+    }
+
+    async fn exit_app(&self, start_channel: usize) {
+        self.exit_signals[start_channel].signal(true);
+        Timer::after_millis(10).await;
+    }
+
+    pub async fn spawn_layout(&'static self, layout: Layout) {
+        for (app_id, start_channel, channel_size) in layout.apps {
+            let current_app = {
+                let own_layout = self.layout.lock().await;
+                own_layout[start_channel]
+            };
+            // Only spawn that app if it isn't already there
+            if current_app != app_id {
+                for channel in start_channel..(start_channel + channel_size) {
+                    let should_exit = {
+                        let own_layout = self.layout.lock().await;
+                        own_layout[channel] > 0
+                    };
+                    if should_exit {
+                        self.exit_app(channel).await;
+                        let mut layout = self.layout.lock().await;
+                        layout[channel] = 0;
+                    }
+                }
+                // Spawn the app!
+                spawn_app_by_id(app_id, start_channel, self.spawner, &self.exit_signals).await;
+                let mut own_layout = self.layout.lock().await;
+                own_layout[start_channel] = app_id;
+            }
+        }
+
+        // Exit any apps that are still running beyond the new layout
+        let first_free = layout.last + 1;
+        if first_free >= GLOBAL_CHANNELS {
+            return;
+        }
+        for channel in first_free..GLOBAL_CHANNELS {
+            let should_exit = {
+                let layout = self.layout.lock().await;
+                layout[channel] > 0
+            };
+            if should_exit {
+                self.exit_app(channel).await;
+                let mut layout = self.layout.lock().await;
+                layout[channel] = 0;
+            }
+        }
+    }
 }
 
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
-    let mut receiver_config = CONFIG_CHANGE_WATCH.receiver().unwrap();
-
+    let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
+    let mut receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     loop {
-        let config = receiver_config.changed().await;
-
-        // Check if all tasks are properly exited
-        loop {
-            if CORE1_TASKS.iter().all(|val| !val.load(Ordering::Relaxed)) {
-                break;
-            }
-            // yield to give apps time to close
-            Timer::after_millis(5).await;
-        }
-
-        for &(app_id, start_chan) in config.layout.iter() {
-            spawner.spawn(run_app(app_id, start_chan)).unwrap();
-        }
+        let global_config = receiver.changed().await;
+        lm.spawn_layout(global_config.layout).await;
     }
+    // lm.spawn_layout(&layout).await;
+    // Timer::after_secs(5).await;
+    // let layout: [u8; 2] = [5; 2];
+    // lm.spawn_layout(&layout).await;
 }
 
 #[embassy_executor::task]
@@ -245,7 +282,7 @@ async fn main(spawner: Spawner) {
     );
 
     // EEPROM
-    let write_buf = BUF_FRAM_WRITE.init([0; DATA_LENGTH]);
+    let write_buf = BUF_FRAM_WRITE.init([0; MAX_DATA_LEN]);
     let eeprom = Fm24v10::new(i2c1, Address(0, 0), write_buf);
 
     // AUX inputs
@@ -280,11 +317,12 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    // TODO: Get this from eeprom
-    let mut config = GlobalConfig::default();
+    // TODO: Get this from fram
+    let mut config = GlobalConfig::new();
+    // let layout = get_layout_from_slice(&[1; 16]);
     config.clock_src = ClockSrc::MidiIn;
     config.reset_src = ClockSrc::MidiIn;
-    // config.layout = Vec::from_slice(&[(1, 0)]).unwrap();
+    // config.layout = layout;
 
     config_sender.send(config);
 }
