@@ -11,6 +11,8 @@ use libfp::constants::{
 /// Maximum number of params per app
 pub const APP_MAX_PARAMS: usize = 4;
 
+pub type ConfigMeta<'a> = (usize, &'a str, &'a str, &'a [Param]);
+
 pub trait FromValue: Sized + Default + Copy {
     fn from_value(value: Value) -> Self;
 }
@@ -213,7 +215,7 @@ pub enum ConfigMsgOut<'a> {
     BatchMsgStart(usize),
     BatchMsgEnd,
     GlobalConfig(ClockSrc, ClockSrc, &'a [(u8, usize, usize)]),
-    AppConfig((usize, &'a str, &'a str, &'a [Param])),
+    AppConfig(u8, usize, ConfigMeta<'a>),
     AppState(usize, &'a [Value]),
 }
 
@@ -246,7 +248,7 @@ impl<const N: usize> Config<N> {
         }
     }
 
-    pub fn get_meta(&self) -> (usize, &str, &str, &[Param]) {
+    pub fn get_meta(&self) -> ConfigMeta<'_> {
         (N, self.name, self.description, &self.params)
     }
 }

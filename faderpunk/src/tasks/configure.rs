@@ -12,7 +12,7 @@ use postcard::{from_bytes, to_vec};
 
 use config::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS};
 
-use crate::apps::{get_config, get_layout_from_slice, REGISTERED_APP_IDS};
+use crate::apps::{get_channels, get_config, get_layout_from_slice, REGISTERED_APP_IDS};
 use crate::{CONFIG_CHANGE_WATCH, GLOBAL_CHANNELS};
 
 use super::transport::WebEndpoints;
@@ -71,13 +71,16 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 proto.send_msg(ConfigMsgOut::Pong).await.unwrap();
             }
             ConfigMsgIn::GetAllApps => {
-                let app_list = REGISTERED_APP_IDS.map(get_config);
+                let configs = REGISTERED_APP_IDS.map(get_config);
                 proto
-                    .send_msg(ConfigMsgOut::BatchMsgStart(app_list.len()))
+                    .send_msg(ConfigMsgOut::BatchMsgStart(configs.len()))
                     .await
                     .unwrap();
-                for app in app_list {
-                    proto.send_msg(ConfigMsgOut::AppConfig(app)).await.unwrap();
+                for (app_id, channels, config_meta) in configs {
+                    proto
+                        .send_msg(ConfigMsgOut::AppConfig(app_id, channels, config_meta))
+                        .await
+                        .unwrap();
                 }
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }

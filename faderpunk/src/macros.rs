@@ -9,7 +9,7 @@ macro_rules! register_apps {
             signal::Signal,
         };
 
-        use config::{Layout, Param};
+        use config::{Layout, ConfigMeta};
         use libfp::constants::GLOBAL_CHANNELS;
         use crate::{CMD_CHANNEL, EVENT_PUBSUB};
         use crate::app::App;
@@ -25,7 +25,7 @@ macro_rules! register_apps {
             count
         };
 
-        pub const REGISTERED_APP_IDS: [usize; _APP_COUNT] = [$($id),*];
+        pub const REGISTERED_APP_IDS: [u8; _APP_COUNT] = [$($id),*];
 
         // IDEA: Currently this doesn't need to be async
         pub async fn spawn_app_by_id(
@@ -84,19 +84,21 @@ macro_rules! register_apps {
             let mut start_channel = 0;
             let mut layout: Layout = Layout::new();
             for &app_id in slice {
-                let channels = get_channels(app_id);
-                let last = start_channel + channels;
-                if last > GLOBAL_CHANNELS {
-                    break;
+                if app_id > 0 {
+                    let channels = get_channels(app_id);
+                    let last = start_channel + channels;
+                    if last > GLOBAL_CHANNELS {
+                        break;
+                    }
+                    layout.push((app_id, start_channel, channels));
+                    start_channel += channels;
                 }
-                layout.push((app_id, start_channel, channels));
-                start_channel += channels;
             }
             layout.set_last(start_channel);
             layout
         }
 
-        fn get_channels(app_id: u8) -> usize {
+        pub fn get_channels(app_id: u8) -> usize {
             match app_id {
                 $(
                     $id => $app_mod::CHANNELS,
@@ -105,11 +107,11 @@ macro_rules! register_apps {
             }
         }
 
-        pub fn get_config(app_id: usize) -> (usize, &'static str, &'static str, &'static [Param]) {
+        pub fn get_config(app_id: u8) -> (u8, usize, ConfigMeta<'static>) {
             match app_id {
                 $(
                     $id => {
-                        $app_mod::CONFIG.get_meta()
+                        (app_id, $app_mod::CHANNELS, $app_mod::CONFIG.get_meta())
                     },
                 )*
                 _ => panic!("Unknown app ID: {}", app_id),

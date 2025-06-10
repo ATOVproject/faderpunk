@@ -43,7 +43,6 @@ pub struct Params<'a> {
     midi_channel: ParamSlot<'a, i32, PARAMS>,
 }
 
-// FIXME: CRITICAL! Apps have to clean up after themselves (maybe use Drop? But it might be async??)
 async fn param_handler(start_channel: usize, param_store: &Store<PARAMS>) {
     APP_PARAM_SIGNALS[start_channel].reset();
     loop {
@@ -85,6 +84,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             run(&app, &params),
             param_handler(app.start_channel, &param_store),
         ),
+        // FIXME: CRITICAL! Apps have to clean up after themselves. Create a cleanup async function
         exit_signal.wait(),
     )
     .await;
