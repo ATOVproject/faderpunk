@@ -1,14 +1,15 @@
 // FIXME: Clean up this file
 use core::marker::PhantomData;
 
-use config::{FromValue, Value};
+use config::{FromValue, Value, APP_MAX_PARAMS};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::tasks::fram::{
-    request_data, write_data, FramData, ReadOperation, WriteOperation, MAX_DATA_LEN,
+use crate::tasks::{
+    configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
+    fram::{request_data, write_data, FramData, ReadOperation, WriteOperation, MAX_DATA_LEN},
 };
 
 const BYTES_PER_VALUE_SET: u32 = 400;
@@ -17,7 +18,7 @@ const SCENES_PER_APP: u32 = 3; // Current value + 2 scenes
 #[derive(Clone, Copy)]
 // TODO: Allocator should alloate a certain part of the fram to app storage
 pub struct AppStorageAddress {
-    pub start_channel: u8,
+    pub start_channel: usize,
     pub scene: Option<u8>,
 }
 
@@ -36,7 +37,7 @@ impl From<u32> for AppStorageAddress {
         let bytes_per_app_block: u32 = SCENES_PER_APP * BYTES_PER_VALUE_SET;
 
         let start_channel_raw = address / bytes_per_app_block;
-        let start_channel = start_channel_raw as u8;
+        let start_channel = start_channel_raw as usize;
 
         let offset_within_app_block = address % bytes_per_app_block;
         let scene_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
@@ -57,7 +58,7 @@ impl From<u32> for AppStorageAddress {
 }
 
 impl AppStorageAddress {
-    pub fn new(start_channel: u8, scene: Option<u8>) -> Self {
+    pub fn new(start_channel: usize, scene: Option<u8>) -> Self {
         Self {
             start_channel,
             scene,
@@ -68,7 +69,7 @@ impl AppStorageAddress {
 pub struct Store<const N: usize> {
     app_id: u8,
     inner: Mutex<NoopRawMutex, [Value; N]>,
-    start_channel: u8,
+    start_channel: usize,
 }
 
 impl<const N: usize> Store<N>
@@ -76,7 +77,7 @@ where
     [Value; N]: Serialize,
     [Value; N]: DeserializeOwned,
 {
-    pub fn new(initial: [Value; N], app_id: u8, start_channel: u8) -> Self {
+    pub fn new(initial: [Value; N], app_id: u8, start_channel: usize) -> Self {
         Self {
             app_id,
             inner: Mutex::new(initial),
@@ -145,6 +146,22 @@ where
         }
         let mut val = self.inner.lock().await;
         val[index] = value;
+    }
+
+    pub async fn param_handler(&self) {
+        APP_PARAM_SIGNALS[self.start_channel].reset();
+        loop {
+            match APP_PARAM_SIGNALS[self.start_channel].wait().await {
+                AppParamCmd::SetParamSlot { param_slot, value } => {
+                    self.set(param_slot, value).await;
+                }
+                AppParamCmd::RequestParamValues => {
+                    let params = self.get_all().await;
+                    let values: Vec<Value, APP_MAX_PARAMS> = Vec::from_slice(&params).unwrap();
+                    APP_PARAM_CHANNEL.send((self.start_channel, values)).await;
+                }
+            }
+        }
     }
 }
 

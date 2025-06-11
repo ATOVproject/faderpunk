@@ -1,16 +1,14 @@
-use config::{Config, Curve, Param, Value, Waveform, APP_MAX_PARAMS};
+use config::{Config, Curve, Param, Value, Waveform};
 use embassy_futures::{
     join::{join, join4},
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
-use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     app::{App, Led, Range, SceneEvent},
     storage::{ParamSlot, Store},
-    tasks::configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
 };
 
 pub const CHANNELS: usize = 1;
@@ -43,21 +41,8 @@ pub struct Params<'a> {
     midi_channel: ParamSlot<'a, i32, PARAMS>,
 }
 
-async fn param_handler(start_channel: usize, param_store: &Store<PARAMS>) {
-    APP_PARAM_SIGNALS[start_channel].reset();
-    loop {
-        match APP_PARAM_SIGNALS[start_channel].wait().await {
-            AppParamCmd::SetParamSlot { param_slot, value } => {
-                param_store.set(param_slot, value).await;
-            }
-            AppParamCmd::RequestParamValues => {
-                let params = param_store.get_all().await;
-                let values: Vec<Value, APP_MAX_PARAMS> = Vec::from_slice(&params).unwrap();
-                APP_PARAM_CHANNEL.send((start_channel, values)).await;
-            }
-        }
-    }
-}
+// NEXT: Add param_handler to Store (see right)
+// Then: add cleanup to all apps
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
@@ -69,7 +54,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let param_store = Store::new(
         [Value::Curve(Curve::Linear), Value::i32(1)],
         app.app_id,
-        app.start_channel as u8,
+        app.start_channel,
     );
 
     // IDEA: If we always allocate ALL param slots for each app, we can share way more code.
@@ -80,10 +65,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     };
 
     select(
-        join(
-            run(&app, &params),
-            param_handler(app.start_channel, &param_store),
-        ),
+        join(run(&app, &params), param_store.param_handler()),
         app.exit_handler(exit_signal),
     )
     .await;

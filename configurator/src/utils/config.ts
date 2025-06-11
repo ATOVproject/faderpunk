@@ -28,7 +28,7 @@ export const getAllApps = async (dev: USBDevice) => {
   }
 };
 
-export const getLayout = async (dev: USBDevice) => {
+export const getGlobalConfig = async (dev: USBDevice) => {
   const result = await sendAndReceive(dev, {
     tag: "GetLayout",
   });
