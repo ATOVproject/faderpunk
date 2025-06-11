@@ -9,7 +9,7 @@ mod apps;
 mod storage;
 mod tasks;
 
-use apps::{get_layout_from_slice, spawn_app_by_id};
+use apps::spawn_app_by_id;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::ClockConfig;
 use embassy_rp::config::Config;
@@ -170,11 +170,10 @@ impl LayoutManager {
         }
 
         // Exit any apps that are still running beyond the new layout
-        let first_free = layout.last + 1;
-        if first_free >= GLOBAL_CHANNELS {
+        if layout.last >= GLOBAL_CHANNELS {
             return;
         }
-        for channel in first_free..GLOBAL_CHANNELS {
+        for channel in layout.last..GLOBAL_CHANNELS {
             let should_exit = {
                 let layout = self.layout.lock().await;
                 layout[channel] > 0
@@ -196,10 +195,6 @@ async fn main_core1(spawner: Spawner) {
         let global_config = receiver.changed().await;
         lm.spawn_layout(global_config.layout).await;
     }
-    // lm.spawn_layout(&layout).await;
-    // Timer::after_secs(5).await;
-    // let layout: [u8; 2] = [5; 2];
-    // lm.spawn_layout(&layout).await;
 }
 
 #[embassy_executor::task]

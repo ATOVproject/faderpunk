@@ -84,8 +84,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             run(&app, &params),
             param_handler(app.start_channel, &param_store),
         ),
-        // FIXME: CRITICAL! Apps have to clean up after themselves. Create a cleanup async function
-        exit_signal.wait(),
+        app.exit_handler(exit_signal),
     )
     .await;
 }
