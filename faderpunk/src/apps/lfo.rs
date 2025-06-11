@@ -1,7 +1,13 @@
-use embassy_futures::{join::join3, select::select};
+use embassy_futures::{
+    join::{join, join3},
+    select::select,
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
-use crate::app::{App, Led, Range};
+use crate::{
+    app::{App, Led, Range},
+    storage::Store,
+};
 use config::{Config, Waveform};
 use libfp::constants::CURVE_LOG;
 
@@ -10,12 +16,21 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: config::Config<PARAMS> = Config::new("LFO", "Wooooosh");
 
+pub struct Params {}
+
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    select(run(&app), exit_signal.wait()).await;
+    let param_store = Store::new([], app.app_id, app.start_channel);
+    let params = Params {};
+
+    select(
+        join(run(&app, &params), param_store.param_handler()),
+        app.exit_handler(exit_signal),
+    )
+    .await;
 }
 
-pub async fn run(app: &App<CHANNELS>) {
+pub async fn run(app: &App<CHANNELS>, _params: &Params) {
     let glob_wave = app.make_global(Waveform::Sine);
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);
