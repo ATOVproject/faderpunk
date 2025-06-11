@@ -1,6 +1,5 @@
 #![no_std]
 
-use heapless::Vec;
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +11,90 @@ use libfp::constants::{
 pub const APP_MAX_PARAMS: usize = 4;
 
 pub type ConfigMeta<'a> = (usize, &'a str, &'a str, &'a [Param]);
+
+/// The config layout is a layout with all the apps in the appropriate spots
+// (app_id, channels)
+type InnerLayout = [Option<(u8, usize)>; GLOBAL_CHANNELS];
+
+#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
+pub struct Layout(pub InnerLayout);
+
+#[allow(clippy::new_without_default)]
+impl Layout {
+    pub const fn new() -> Self {
+        Self([None; GLOBAL_CHANNELS])
+    }
+
+    pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) {
+        let mut validated: InnerLayout = [None; GLOBAL_CHANNELS];
+        let mut start_channel = 0;
+        for (app_id, _channels) in self.0.into_iter().flatten() {
+            // We double-check the channels
+            if let Some(channels) = get_channels(app_id) {
+                let last = start_channel + channels;
+                if last > GLOBAL_CHANNELS {
+                    break;
+                }
+                validated[start_channel] = Some((app_id, channels));
+                start_channel += channels;
+            }
+        }
+        self.0 = validated;
+    }
+
+    pub fn iter(&self) -> LayoutIter<'_> {
+        self.into_iter()
+    }
+
+    pub fn first_free(&self) -> Option<usize> {
+        for i in (0..self.0.len()).rev() {
+            if self.0[i].is_some() {
+                let next_index = i + 1;
+                return if next_index < self.0.len() {
+                    Some(next_index)
+                } else {
+                    None
+                };
+            }
+        }
+        Some(0)
+    }
+}
+
+pub struct LayoutIter<'a> {
+    slice: &'a [Option<(u8, usize)>],
+    index: usize,
+}
+
+impl<'a> Iterator for LayoutIter<'a> {
+    // (app_id, start_channel, channels)
+    type Item = (u8, usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Skip None values
+        while self.index < self.slice.len() {
+            if let Some(value) = self.slice[self.index] {
+                let idx = self.index;
+                self.index += 1;
+                return Some((value.0, idx, value.1));
+            }
+            self.index += 1;
+        }
+        None
+    }
+}
+
+impl<'a> IntoIterator for &'a Layout {
+    type Item = (u8, usize, usize);
+    type IntoIter = LayoutIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        LayoutIter {
+            slice: &self.0,
+            index: 0,
+        }
+    }
+}
 
 pub trait FromValue: Sized + Default + Copy {
     fn from_value(value: Value) -> Self;
@@ -46,33 +129,7 @@ pub enum ClockSrc {
     MidiUsb,
 }
 
-#[derive(Clone)]
-pub struct Layout {
-    pub apps: Vec<(u8, usize, usize), GLOBAL_CHANNELS>,
-    pub last: usize,
-}
-
-#[allow(clippy::new_without_default)]
-impl Layout {
-    pub const fn new() -> Self {
-        Self {
-            apps: Vec::new(),
-            last: 0,
-        }
-    }
-
-    pub fn push(&mut self, app: (u8, usize, usize)) {
-        if !self.apps.is_full() {
-            self.apps.push(app).expect("Vec should not be full");
-        }
-    }
-
-    pub fn set_last(&mut self, last: usize) {
-        self.last = last;
-    }
-}
-
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
 pub struct GlobalConfig {
     pub clock_src: ClockSrc,
     pub reset_src: ClockSrc,
@@ -200,8 +257,8 @@ impl From<bool> for Value {
 pub enum ConfigMsgIn {
     Ping,
     GetAllApps,
-    GetLayout,
-    SetLayout([u8; 16]),
+    GetState,
+    SetGlobalConfig(GlobalConfig),
     SetAppParam {
         start_channel: usize,
         param_slot: usize,
@@ -214,7 +271,7 @@ pub enum ConfigMsgOut<'a> {
     Pong,
     BatchMsgStart(usize),
     BatchMsgEnd,
-    GlobalConfig(ClockSrc, ClockSrc, &'a [(u8, usize, usize)]),
+    GlobalConfig(GlobalConfig),
     AppConfig(u8, usize, ConfigMeta<'a>),
     AppState(usize, &'a [Value]),
 }

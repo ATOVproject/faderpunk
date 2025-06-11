@@ -1,7 +1,7 @@
 // FIXME: Clean up this file
-use core::marker::PhantomData;
+use core::{marker::PhantomData, ops::Range};
 
-use config::{FromValue, Value, APP_MAX_PARAMS};
+use config::{FromValue, GlobalConfig, Value, APP_MAX_PARAMS};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
@@ -12,8 +12,16 @@ use crate::tasks::{
     fram::{request_data, write_data, FramData, ReadOperation, WriteOperation, MAX_DATA_LEN},
 };
 
+const GLOBAL_CONFIG_RANGE: Range<usize> = 0..1_024;
+const APP_STORAGE_RANGE: Range<usize> = GLOBAL_CONFIG_RANGE.end..122_880;
+const APP_PARAM_RANGE: Range<usize> = APP_STORAGE_RANGE.end..131_072;
 const BYTES_PER_VALUE_SET: u32 = 400;
 const SCENES_PER_APP: u32 = 3; // Current value + 2 scenes
+
+pub async fn store_global_config(config: GlobalConfig) {
+    let mut buf: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
+    let len = to_slice(&config, &mut buf).unwrap().len();
+}
 
 #[derive(Clone, Copy)]
 // TODO: Allocator should alloate a certain part of the fram to app storage
@@ -27,19 +35,19 @@ impl From<AppStorageAddress> for u32 {
         let scene_index = key.scene.unwrap_or(0) as u32;
         let app_base_offset = (key.start_channel as u32) * SCENES_PER_APP * BYTES_PER_VALUE_SET;
         let scene_offset_in_app = scene_index * BYTES_PER_VALUE_SET;
-        app_base_offset + scene_offset_in_app
+        APP_STORAGE_RANGE.start as u32 + app_base_offset + scene_offset_in_app
     }
 }
 
 impl From<u32> for AppStorageAddress {
-    // Changed to take u32
     fn from(address: u32) -> Self {
         let bytes_per_app_block: u32 = SCENES_PER_APP * BYTES_PER_VALUE_SET;
+        let app_storage_address = address - APP_STORAGE_RANGE.start as u32;
 
-        let start_channel_raw = address / bytes_per_app_block;
+        let start_channel_raw = app_storage_address / bytes_per_app_block;
         let start_channel = start_channel_raw as usize;
 
-        let offset_within_app_block = address % bytes_per_app_block;
+        let offset_within_app_block = app_storage_address % bytes_per_app_block;
         let scene_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
 
         let scene_index = scene_index_raw as u8;
