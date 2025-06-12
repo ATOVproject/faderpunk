@@ -4,7 +4,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
 use crate::{
     app::{App, Led},
-    storage::Store,
+    storage::ParamStore,
 };
 
 pub const CHANNELS: usize = 16;
@@ -16,7 +16,7 @@ pub struct Params {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = Store::new([], app.app_id, app.start_channel);
+    let param_store = ParamStore::new([], app.app_id, app.start_channel);
     let params = Params {};
 
     select(

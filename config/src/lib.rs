@@ -19,12 +19,7 @@ type InnerLayout = [Option<(u8, usize)>; GLOBAL_CHANNELS];
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]
 pub struct Layout(pub InnerLayout);
 
-#[allow(clippy::new_without_default)]
 impl Layout {
-    pub const fn new() -> Self {
-        Self([None; GLOBAL_CHANNELS])
-    }
-
     pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) {
         let mut validated: InnerLayout = [None; GLOBAL_CHANNELS];
         let mut start_channel = 0;
@@ -58,6 +53,12 @@ impl Layout {
             }
         }
         Some(0)
+    }
+}
+
+impl Default for Layout {
+    fn default() -> Self {
+        Self([Some((1, 1)); GLOBAL_CHANNELS])
     }
 }
 
@@ -136,13 +137,12 @@ pub struct GlobalConfig {
     pub layout: Layout,
 }
 
-#[allow(clippy::new_without_default)]
-impl GlobalConfig {
-    pub const fn new() -> Self {
+impl Default for GlobalConfig {
+    fn default() -> Self {
         Self {
             clock_src: ClockSrc::Internal,
             reset_src: ClockSrc::None,
-            layout: Layout::new(),
+            layout: Layout::default(),
         }
     }
 }

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     app::{App, Led, Range, SceneEvent},
-    storage::{ParamSlot, Store},
+    storage::{ParamSlot, ParamStore},
 };
 
 pub const CHANNELS: usize = 1;
@@ -51,7 +51,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     // FIXME: Make a macro to generate this.
     // FIXME: Move Signal (when changed) to store so that we can do params.wait_for_change maybe
     // FIXME: Generate this from the static params defined above
-    let param_store = Store::new(
+    let param_store = ParamStore::new(
         [Value::Curve(Curve::Linear), Value::i32(1)],
         app.app_id,
         app.start_channel,

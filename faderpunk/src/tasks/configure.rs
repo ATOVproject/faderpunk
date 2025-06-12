@@ -12,6 +12,7 @@ use postcard::{from_bytes, to_vec};
 use config::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS};
 
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
+use crate::storage::store_global_config;
 use crate::{CONFIG_CHANGE_WATCH, GLOBAL_CHANNELS};
 
 use super::transport::WebEndpoints;
@@ -133,6 +134,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             }
             ConfigMsgIn::SetGlobalConfig(mut global_config) => {
                 global_config.layout.validate(get_channels);
+                // TODO: Should we really do this here??
+                store_global_config(&global_config).await;
                 let sender = CONFIG_CHANGE_WATCH.sender();
                 sender.send(global_config);
             }

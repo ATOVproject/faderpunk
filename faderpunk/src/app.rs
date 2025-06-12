@@ -632,17 +632,15 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn save<T: Serialize>(&self, storage: &T, scene: Option<u8>) {
-        let mut data = Vec::<u8, MAX_DATA_LEN>::new();
-        data.resize_default(MAX_DATA_LEN)
-            .expect("Failed to resize data Vec");
+        let mut data: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
 
         data[0] = self.app_id;
         let len = to_slice(&storage, &mut data[1..]).unwrap().len();
-        data.truncate(1 + len);
 
         let address = AppStorageAddress::new(self.start_channel as u8, scene);
-        let op = WriteOperation::new(address.into(), data);
-        write_data(op).await.unwrap();
+        if let Ok(op) = WriteOperation::try_new(address.into(), &data[..len + 1]) {
+            write_data(op).await.unwrap();
+        }
     }
 
     // TODO: How can we prevent people from doing this multiple times?
@@ -746,10 +744,7 @@ impl<const N: usize> App<N> {
         }
     }
 
-    pub async fn exit_handler(
-        &self,
-        exit_signal: &'static Signal<NoopRawMutex, bool>,
-    ) {
+    pub async fn exit_handler(&self, exit_signal: &'static Signal<NoopRawMutex, bool>) {
         exit_signal.wait().await;
         self.reset().await;
     }

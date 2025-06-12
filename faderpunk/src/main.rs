@@ -33,6 +33,7 @@ use layout::{LayoutManager, LAYOUT_MANAGER};
 use libfp::constants::GLOBAL_CHANNELS;
 use midly::live::LiveEvent;
 
+use storage::load_global_config;
 use tasks::fram::MAX_DATA_LEN;
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
@@ -40,7 +41,7 @@ use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
 
-use config::{ClockSrc, GlobalConfig};
+use config::GlobalConfig;
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -91,8 +92,7 @@ pub const EVENT_PUBSUB_SUBS: usize = 64;
 
 // TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
 // mention all uses
-pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> =
-    Watch::new_with(GlobalConfig::new());
+pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
 // 32 receivers (ephemeral)
@@ -246,12 +246,6 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    // TODO: Get this from fram
-    let mut config = GlobalConfig::new();
-    // let layout = get_layout_from_slice(&[1; 16]);
-    config.clock_src = ClockSrc::MidiIn;
-    config.reset_src = ClockSrc::MidiIn;
-    // config.layout = layout;
-
-    config_sender.send(config);
+    let global_config = load_global_config().await;
+    config_sender.send(global_config);
 }
