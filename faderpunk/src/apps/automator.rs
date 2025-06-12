@@ -1,24 +1,27 @@
 //Todo:
-//Fader read applies value always
-// optional : lock array to the grid for recall.
+
 
 use config::Config;
-use embassy_futures::{
-    join::{join, join3},
-    select::select,
-};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use defmt::info;
+use embassy_futures::{join::{join3, join4, join5}, select::select};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use serde::{Deserialize, Serialize};
 
+<<<<<<< Updated upstream
 use crate::{
     app::{App, Led, Range},
     storage::Store,
 };
+=======
+use crate::app::{App, Arr, Led, Range, SceneEvent};
+>>>>>>> Stashed changes
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 0;
 
 pub static CONFIG: config::Config<PARAMS> = Config::new("Automator", "Fader movement recording");
 
+<<<<<<< Updated upstream
 pub struct Params {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
@@ -31,6 +34,26 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         app.exit_handler(exit_signal),
     )
     .await;
+=======
+#[derive(Serialize, Deserialize)]
+pub struct Storage {
+    buffer_saved: Arr<u16, 384>,
+    length_saved: usize,
+}
+
+impl Default for Storage {
+    fn default() -> Self {
+        Self {
+            buffer_saved: Arr([0; 384]),
+            length_saved: 384,
+        }
+    }
+}
+
+#[embassy_executor::task(pool_size = 16/CHANNELS)]
+pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+    select(run(&app), exit_signal.wait()).await;
+>>>>>>> Stashed changes
 }
 
 pub async fn run(app: &App<CHANNELS>, _params: &Params) {
@@ -41,8 +64,16 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
     let mut clock = app.use_clock();
 
     let rec_flag = app.make_global(false);
-    let del_flag = app.make_global(false);
     let offset_glob = app.make_global(0);
+    let buffer_glob= app.make_global([0; 384]);
+    let recording_glob = app.make_global(false);
+    let length_glob = app.make_global(384);
+    let index_glob = app.make_global(0);
+    let latched = app.make_global(false);
+
+
+
+
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
     let mut last_midi = 0;
@@ -53,59 +84,118 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
     let mut length = 384;
     let color = (255, 255, 255);
 
-    leds.set(0, Led::Button, (255, 255, 255), 0);
+    let storage: Mutex<NoopRawMutex, Storage> =
+    Mutex::new(app.load(None).await.unwrap_or(Storage::default()));
+
+    let stor = storage.lock().await;    
+    let buffer_saved = stor.buffer_saved;
+    let length_saved = stor.length_saved;
+    buffer_glob.set(buffer_saved.0).await;
+    length_glob.set(length_saved).await;
+    drop(stor);
+
+    leds.set(0, Led::Button, (255, 255, 255), 100);
+
+    let update_output = async {
+        loop {
+            app.delay_millis(1).await;
+            // info!("here!");
+            let index = index_glob.get().await;
+            let buffer = buffer_glob.get().await;
+            let offset = offset_glob.get().await;
+
+            if recording_glob.get().await {
+                jack.set_value(offset);  
+                if last_midi / 16 != (offset) / 16 {
+                    midi.send_cc(0, offset).await;
+                    last_midi = offset;
+                }                              
+                leds.set(0, Led::Top, (255, 0, 0), (offset / 32) as u8);
+                leds.set( 0,Led::Bottom,(255, 0, 0),(255 - (offset/ 16) as u8) / 2)
+            } else {
+                let mut val = buffer[index] + offset;  
+                val = val.clamp(0, 4095);
+                jack.set_value(val);
+                if last_midi / 16 != (val) / 16 {
+                    midi.send_cc(0, val).await;
+                    last_midi = val;
+                }
+                leds.set(0, Led::Top, color, (val / 32) as u8);
+                leds.set( 0,Led::Bottom,color,(255 - (val / 16) as u8) / 2)
+            } 
+
+            
+        }
+    };
 
     let fut1 = async {
         loop {
             let reset = clock.wait_for_tick(1).await;
+            //info!("here!");
 
             index += 1;
-            //info!("reset = {}", reset);
             if reset {
                 index = 0;
                 recording = false;
-                //info!("reset");
+                recording_glob.set(recording).await;
             }
+            length = length_glob.get().await;
+
 
             //info!("clock");
             index = index % length;
 
+            index_glob.set(index).await;
+            recording = recording_glob.get().await;
+
             if index == 0 && recording {
-                //stop recording at max c
+                //stop recording at max length
                 recording = false;
+                recording_glob.set(recording).await;
+                length = 384;
+                length_glob.set(length).await;
+                buffer_glob.set(buffer).await;
+                offset_glob.set(0).await;
+                latched.set(false).await;
+                let mut stor = storage.lock().await;
+                stor.buffer_saved.0 = buffer;
+                stor.length_saved = length;
+                drop(stor);
             }
 
-            if rec_flag.get().await {
+
+            
+
+            if rec_flag.get().await && index % 96 == 0 {
                 index = 0;
                 recording = true;
+                recording_glob.set(recording).await;
                 rec_flag.set(false).await;
                 length = 384;
-                offset_glob.set(0).await;
+                length_glob.set(length).await;
+                latched.set(true).await
             }
 
             if recording {
                 let val = faders.get_values();
                 buffer[index] = val[0];
-                jack.set_value(buffer[index]);
-                if last_midi / 16 != (buffer[index]) / 16 {
-                    midi.send_cc(0, buffer[index]).await;
-                    last_midi = buffer[index];
-                }
 
-                midi.send_cc(0, buffer[index]).await;
                 leds.set(0, Led::Button, (255, 0, 0), 100);
-                leds.set(0, Led::Top, (255, 0, 0), (buffer[index] / 32) as u8);
-                leds.set(
-                    0,
-                    Led::Bottom,
-                    (255, 0, 0),
-                    (255 - (buffer[index] / 16) as u8) / 2,
-                )
+
             }
 
-            if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
+            if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 { //finish recording
                 recording = !recording;
+                recording_glob.set(recording).await;
                 length = index;
+                length_glob.set(length).await;
+                buffer_glob.set(buffer).await;
+                offset_glob.set(0).await;
+                latched.set(false).await;
+                let mut stor = storage.lock().await;
+                stor.buffer_saved.0 = buffer;
+                stor.length_saved = length;
+                drop(stor);
             }
 
             if !recording {
@@ -114,33 +204,15 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
                 if val > 4095 {
                     val = 4095;
                 }
-                jack.set_value(val);
-                if last_midi / 16 != (val) / 16 {
-                    midi.send_cc(0, val).await;
-                    last_midi = val;
-                }
+                // jack.set_value(val);
+                
                 leds.set(0, Led::Button, color, 100);
-                leds.set(0, Led::Top, color, ((buffer[index] + offset) / 16) as u8);
-                leds.set(
-                    0,
-                    Led::Bottom,
-                    color,
-                    (255 - ((buffer[index] + offset) / 16) as u8) / 2,
-                );
             }
 
             if index == 0 {
                 leds.set(0, Led::Button, (255, 255, 255), 0);
             }
 
-            if del_flag.get().await {
-                for n in 0..383 {
-                    buffer[n] = 0;
-                }
-                recording = false;
-                offset_glob.set(0).await;
-                del_flag.set(false).await;
-            }
         }
     };
 
@@ -148,7 +220,14 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
         loop {
             faders.wait_for_change(0).await;
             let val = faders.get_values();
-            offset_glob.set(val[0]).await;
+
+            if return_if_close(val[0], offset_glob.get().await) && !latched.get().await {
+                latched.set(true).await
+            }
+            if latched.get().await{
+                offset_glob.set(val[0]).await;
+            }
+            
         }
     };
 
@@ -156,12 +235,49 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
         loop {
             buttons.wait_for_down(0).await;
             if buttons.is_shift_pressed() {
-                del_flag.set(true).await;
+                recording_glob.set(false).await;
+                buffer_glob.set([0; 384]).await;
+                length_glob.set(384).await;
+                leds.set(0, Led::Button, color, 100);
+                latched.set(false).await;
             } else {
                 rec_flag.set(true).await;
             }
         }
     };
 
-    join3(fut1, fut2, fut3).await;
+    let scene_handler = async {
+        loop {
+            match app.wait_for_scene_event().await {
+                SceneEvent::LoadSscene(scene) => {
+                    defmt::info!("LOADING SCENE {}", scene);
+                    let mut stor = storage.lock().await;
+                    let scene_stor = app.load(Some(scene)).await.unwrap_or(Storage::default());
+                    *stor = scene_stor;
+                    let buffer_saved = stor.buffer_saved;
+                    let length_saved = stor.length_saved;
+                    buffer_glob.set(buffer_saved.0).await;
+                    length_glob.set(length_saved).await;
+                    latched.set(false).await;
+                    offset_glob.set(0).await;   
+                }
+                SceneEvent::SaveScene(scene) => {
+                    defmt::info!("SAVING SCENE {}", scene);
+                    let stor = storage.lock().await;
+                    app.save(&*stor, Some(scene)).await;
+                }
+            }
+        }
+    };
+
+    join5(update_output, fut1, fut2, fut3, scene_handler).await;
+}
+
+
+fn return_if_close(a: u16, b: u16) -> bool {
+    if a.abs_diff(b) < 100 {
+        true
+    } else {
+        false
+    }
 }

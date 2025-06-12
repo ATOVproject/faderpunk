@@ -245,10 +245,20 @@ async fn x_tx(channel_map: [usize; 16]) {
 }
 
 #[embassy_executor::task]
+<<<<<<< Updated upstream
 async fn x_rx(receiver: Receiver<'static, NoopRawMutex, (usize, XRxMsg), 128>) {
     loop {
         let msg = receiver.receive().await;
         CHAN_X_RX.send(msg).await;
+=======
+async fn main_core1(spawner: Spawner) {
+    // let layout: [u8; 16] = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
+    let layout: [u8; 1] = [6];
+    // TODO: We can now signal "true" to any of the exit signals to kill an app
+    let exit_signals = APP_EXIT_SIGNALS.init([const { Signal::new() }; 16]);
+    for (start_channel, &app_id) in layout.iter().enumerate() {
+        spawn_app_by_id(app_id, start_channel, spawner, exit_signals).await;
+>>>>>>> Stashed changes
     }
 }
 
@@ -448,7 +458,12 @@ async fn main(spawner: Spawner) {
     let mut config = GlobalConfig::default();
     config.clock_src = ClockSrc::MidiUsb;
     config.reset_src = ClockSrc::MidiUsb;
+<<<<<<< Updated upstream
     config.layout = &[6];
+=======
+    // config.layout = Vec::from_slice(&[(1, 0)]).unwrap();
+
+>>>>>>> Stashed changes
     config_sender.send(config);
 
     join(fut, fut2).await;
