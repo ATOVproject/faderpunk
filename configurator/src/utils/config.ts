@@ -1,4 +1,4 @@
-import { Layout } from "@atov/fp-config";
+import { ClockSrc, Layout } from "@atov/fp-config";
 
 import {
   receiveBatchMessages,
@@ -6,7 +6,12 @@ import {
   sendMessage,
 } from "./usb-protocol";
 
-export const setLayout = async (dev: USBDevice, layout: Array<number>) => {
+export const setGlobalConfig = async (
+  dev: USBDevice,
+  layout: Array<number>,
+  clock_src: ClockSrc,
+  reset_src: ClockSrc,
+) => {
   let send_layout: Layout = [
     [
       undefined,
@@ -37,8 +42,8 @@ export const setLayout = async (dev: USBDevice, layout: Array<number>) => {
   await sendMessage(dev, {
     tag: "SetGlobalConfig",
     value: {
-      clock_src: { tag: "MidiIn" },
-      reset_src: { tag: "MidiIn" },
+      clock_src,
+      reset_src,
       layout: send_layout,
     },
   });

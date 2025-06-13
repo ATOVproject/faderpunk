@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Form } from "@heroui/form";
+import { Select, SelectItem } from "@heroui/select";
 import {
   Table,
   TableHeader,
@@ -11,11 +12,12 @@ import {
   TableCell,
 } from "@heroui/table";
 import { button as buttonStyles } from "@heroui/theme";
+import { ClockSrc } from "@atov/fp-config";
 
 import { title } from "@/components/primitives";
 import DefaultLayout from "@/layouts/default";
 import { connectToFaderPunk, getDeviceName } from "@/utils/usb-protocol";
-import { getAllApps, getState, setLayout } from "@/utils/config";
+import { getAllApps, getState, setGlobalConfig } from "@/utils/config";
 
 // TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
@@ -30,6 +32,8 @@ export default function IndexPage() {
     }[]
   >([]);
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
+  const [clockSrc, setClockSrc] = useState<ClockSrc>({ tag: "Internal" });
+  const [resetSrc, setResetSrc] = useState<ClockSrc>({ tag: "Internal" });
 
   const handleConnectToFaderPunk = useCallback(async () => {
     try {
@@ -73,6 +77,8 @@ export default function IndexPage() {
             .filter((app_id) => !!app_id) as string[];
 
           setSelectedApps(appIds);
+          setClockSrc(configData.value.clock_src);
+          setResetSrc(configData.value.reset_src);
         }
       }
 
@@ -98,7 +104,7 @@ export default function IndexPage() {
       //
       // setApps(appConfigs);
     } catch (error) {
-      console.error("Failed to connect to Fader Punk:", error);
+      console.error("Failed to connect to Faderpunk:", error);
     }
   }, []);
 
@@ -123,7 +129,7 @@ export default function IndexPage() {
       <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
         <div className="inline-block max-w-lg text-center justify-center">
           <span className={title()}>Configure&nbsp;</span>
-          <span className={title({ color: "yellow" })}>Fader Punk&nbsp;</span>
+          <span className={title({ color: "yellow" })}>Faderpunk&nbsp;</span>
         </div>
 
         {!usbDevice ? (
@@ -196,13 +202,63 @@ export default function IndexPage() {
                 </div>
               </div>
             )}
+            <div className="w-full max-w-4xl">
+              <h2 className={title({ size: "sm" })}>Clock config</h2>
+              <div className="flex gap-4 items-end mt-4">
+                <Select
+                  className="flex-1"
+                  label="Clock Source"
+                  placeholder="Select clock source"
+                  selectedKeys={[clockSrc.tag]}
+                  onSelectionChange={(keys) => {
+                    const key = Array.from(keys)[0] as string;
+
+                    setClockSrc({ tag: key } as ClockSrc);
+                  }}
+                >
+                  <SelectItem key="None">None</SelectItem>
+                  <SelectItem key="Atom">Atom</SelectItem>
+                  <SelectItem key="Meteor">Meteor</SelectItem>
+                  <SelectItem key="Cube">Cube</SelectItem>
+                  <SelectItem key="Internal">Internal</SelectItem>
+                  <SelectItem key="MidiIn">MIDI In</SelectItem>
+                  <SelectItem key="MidiUsb">MIDI USB</SelectItem>
+                </Select>
+                <Select
+                  className="flex-1"
+                  label="Reset Source"
+                  placeholder="Select reset source"
+                  selectedKeys={[resetSrc.tag]}
+                  onSelectionChange={(keys) => {
+                    const key = Array.from(keys)[0] as string;
+
+                    setResetSrc({ tag: key } as ClockSrc);
+                  }}
+                >
+                  <SelectItem key="None">None</SelectItem>
+                  <SelectItem key="Atom">Atom</SelectItem>
+                  <SelectItem key="Meteor">Meteor</SelectItem>
+                  <SelectItem key="Cube">Cube</SelectItem>
+                  <SelectItem key="Internal">Internal</SelectItem>
+                  <SelectItem key="MidiIn">MIDI In</SelectItem>
+                  <SelectItem key="MidiUsb">MIDI USB</SelectItem>
+                </Select>
+              </div>
+            </div>
             <Button
               disabled={!selectedApps.length}
               type="button"
               variant="bordered"
-              onPress={() => setLayout(usbDevice, selectedApps.map(Number))}
+              onPress={() =>
+                setGlobalConfig(
+                  usbDevice,
+                  selectedApps.map(Number),
+                  clockSrc,
+                  resetSrc,
+                )
+              }
             >
-              Set Layout
+              Set config
             </Button>
           </Form>
         )}
