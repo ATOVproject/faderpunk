@@ -173,8 +173,12 @@ where
         APP_PARAM_SIGNALS[self.start_channel].reset();
         loop {
             match APP_PARAM_SIGNALS[self.start_channel].wait().await {
-                AppParamCmd::SetParamSlot { param_slot, value } => {
-                    self.set(param_slot, value).await;
+                AppParamCmd::SetAppParams { values } => {
+                    for (index, &value) in values.iter().enumerate() {
+                        if let Some(val) = value {
+                            self.set(index, val).await;
+                        }
+                    }
                 }
                 AppParamCmd::RequestParamValues => {
                     let params = self.get_all().await;

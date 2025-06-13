@@ -226,7 +226,6 @@ pub enum Param {
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PostcardBindings)]
 pub enum Value {
-    None,
     i32(i32),
     f32(f32),
     bool(bool),
@@ -257,12 +256,14 @@ impl From<bool> for Value {
 pub enum ConfigMsgIn {
     Ping,
     GetAllApps,
-    GetState,
+    GetGlobalConfig,
     SetGlobalConfig(GlobalConfig),
-    SetAppParam {
+    GetAppParams {
         start_channel: usize,
-        param_slot: usize,
-        value: Value,
+    },
+    SetAppParams {
+        start_channel: usize,
+        values: [Option<Value>; APP_MAX_PARAMS],
     },
 }
 
