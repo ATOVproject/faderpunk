@@ -1,23 +1,48 @@
 // FIXME: Clean up this file
-use core::marker::PhantomData;
+use core::{marker::PhantomData, ops::Range};
 
-use config::{FromValue, Value};
+use config::{FromValue, GlobalConfig, Value, APP_MAX_PARAMS};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::tasks::fram::{
-    request_data, write_data, FramData, ReadOperation, WriteOperation, MAX_DATA_LEN,
+use crate::tasks::{
+    configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
+    fram::{request_data, write_data, ReadOperation, WriteOperation, MAX_DATA_LEN},
 };
 
+const GLOBAL_CONFIG_RANGE: Range<u32> = 0..1_024;
+const APP_STORAGE_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..122_880;
+const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..131_072;
 const BYTES_PER_VALUE_SET: u32 = 400;
-const SCENES_PER_APP: u32 = 3; // Current value + 2 scenes
+const SCENES_PER_APP: u32 = 3;
+
+pub async fn store_global_config(config: &GlobalConfig) {
+    let mut buf: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
+    let len = to_slice(&config, &mut buf).unwrap().len();
+    match WriteOperation::try_new(GLOBAL_CONFIG_RANGE.start, &buf[..len]) {
+        Ok(op) => {
+            write_data(op).await.unwrap();
+        }
+        Err(_) => defmt::error!("Could not write GlobalConfig"),
+    }
+}
+
+pub async fn load_global_config() -> GlobalConfig {
+    let address = GLOBAL_CONFIG_RANGE.start;
+    let op = ReadOperation::new(address);
+    request_data(op)
+        .await
+        .ok()
+        .and_then(|data| from_bytes::<GlobalConfig>(&data).ok())
+        .unwrap_or_else(GlobalConfig::default)
+}
 
 #[derive(Clone, Copy)]
 // TODO: Allocator should alloate a certain part of the fram to app storage
 pub struct AppStorageAddress {
-    pub start_channel: u8,
+    pub start_channel: usize,
     pub scene: Option<u8>,
 }
 
@@ -26,19 +51,19 @@ impl From<AppStorageAddress> for u32 {
         let scene_index = key.scene.unwrap_or(0) as u32;
         let app_base_offset = (key.start_channel as u32) * SCENES_PER_APP * BYTES_PER_VALUE_SET;
         let scene_offset_in_app = scene_index * BYTES_PER_VALUE_SET;
-        app_base_offset + scene_offset_in_app
+        APP_STORAGE_RANGE.start + app_base_offset + scene_offset_in_app
     }
 }
 
 impl From<u32> for AppStorageAddress {
-    // Changed to take u32
     fn from(address: u32) -> Self {
         let bytes_per_app_block: u32 = SCENES_PER_APP * BYTES_PER_VALUE_SET;
+        let app_storage_address = address - APP_STORAGE_RANGE.start;
 
-        let start_channel_raw = address / bytes_per_app_block;
-        let start_channel = start_channel_raw as u8;
+        let start_channel_raw = app_storage_address / bytes_per_app_block;
+        let start_channel = start_channel_raw as usize;
 
-        let offset_within_app_block = address % bytes_per_app_block;
+        let offset_within_app_block = app_storage_address % bytes_per_app_block;
         let scene_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
 
         let scene_index = scene_index_raw as u8;
@@ -57,7 +82,7 @@ impl From<u32> for AppStorageAddress {
 }
 
 impl AppStorageAddress {
-    pub fn new(start_channel: u8, scene: Option<u8>) -> Self {
+    pub fn new(start_channel: usize, scene: Option<u8>) -> Self {
         Self {
             start_channel,
             scene,
@@ -65,18 +90,18 @@ impl AppStorageAddress {
     }
 }
 
-pub struct Store<const N: usize> {
+pub struct ParamStore<const N: usize> {
     app_id: u8,
     inner: Mutex<NoopRawMutex, [Value; N]>,
-    start_channel: u8,
+    start_channel: usize,
 }
 
-impl<const N: usize> Store<N>
+impl<const N: usize> ParamStore<N>
 where
     [Value; N]: Serialize,
     [Value; N]: DeserializeOwned,
 {
-    pub fn new(initial: [Value; N], app_id: u8, start_channel: u8) -> Self {
+    pub fn new(initial: [Value; N], app_id: u8, start_channel: usize) -> Self {
         Self {
             app_id,
             inner: Mutex::new(initial),
@@ -84,17 +109,12 @@ where
         }
     }
 
-    async fn ser(&self) -> FramData {
+    async fn ser(&self, buf: &mut [u8]) -> usize {
         let data = self.inner.lock().await;
-        let mut buf: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
-
         // Prepend the app id to the serialized data for easy filtering
         buf[0] = self.app_id;
-
         // TODO: unwrap
-        let len = to_slice(&*data, &mut buf[1..]).unwrap().len();
-
-        Vec::<u8, MAX_DATA_LEN>::from_slice(&buf[..len + 1]).unwrap()
+        to_slice(&*data, &mut buf[1..]).unwrap().len()
     }
 
     async fn des(&self, data: &[u8]) -> Option<[Value; N]> {
@@ -109,10 +129,12 @@ where
     }
 
     async fn save(&self, scene: Option<u8>) {
-        let data = self.ser().await;
+        let mut buf: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
+        let len = self.ser(&mut buf).await;
         let address = AppStorageAddress::new(self.start_channel, scene);
-        let op = WriteOperation::new(address.into(), data);
-        write_data(op).await.unwrap();
+        if let Ok(op) = WriteOperation::try_new(address.into(), &buf[..len]) {
+            write_data(op).await.unwrap();
+        }
     }
 
     pub async fn load(&self, scene: Option<u8>) {
@@ -146,6 +168,22 @@ where
         let mut val = self.inner.lock().await;
         val[index] = value;
     }
+
+    pub async fn param_handler(&self) {
+        APP_PARAM_SIGNALS[self.start_channel].reset();
+        loop {
+            match APP_PARAM_SIGNALS[self.start_channel].wait().await {
+                AppParamCmd::SetParamSlot { param_slot, value } => {
+                    self.set(param_slot, value).await;
+                }
+                AppParamCmd::RequestParamValues => {
+                    let params = self.get_all().await;
+                    let values: Vec<Value, APP_MAX_PARAMS> = Vec::from_slice(&params).unwrap();
+                    APP_PARAM_CHANNEL.send((self.start_channel, values)).await;
+                }
+            }
+        }
+    }
 }
 
 pub struct StorageSlot<'a, T, const N: usize>
@@ -153,7 +191,7 @@ where
     T: FromValue + Into<Value> + Copy,
 {
     index: usize,
-    values: &'a Store<N>,
+    values: &'a ParamStore<N>,
     _phantom: PhantomData<T>,
 }
 
@@ -163,7 +201,7 @@ where
     [Value; N]: Serialize,
     [Value; N]: DeserializeOwned,
 {
-    pub fn new(values: &'a Store<N>, index: usize) -> Self {
+    pub fn new(values: &'a ParamStore<N>, index: usize) -> Self {
         Self {
             index,
             values,
@@ -218,7 +256,7 @@ where
 {
     index: usize,
     signal: Signal<NoopRawMutex, usize>,
-    values: &'a Store<N>,
+    values: &'a ParamStore<N>,
     _phantom: PhantomData<T>,
 }
 
@@ -228,7 +266,7 @@ where
     [Value; N]: Serialize,
     [Value; N]: DeserializeOwned,
 {
-    pub fn new(values: &'a Store<N>, index: usize) -> Self {
+    pub fn new(values: &'a ParamStore<N>, index: usize) -> Self {
         assert!(index < N, "ParamSlot index out of bounds");
         Self {
             index,

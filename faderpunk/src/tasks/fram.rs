@@ -9,7 +9,7 @@ use embassy_sync::{
 };
 use embassy_time::{with_timeout, Duration};
 use fm24v10::Fm24v10;
-use heapless::Vec; // For timeouts
+use heapless::Vec;
 
 // Address is technically a u17
 type Address = u32;
@@ -29,8 +29,10 @@ pub struct WriteOperation {
 }
 
 impl WriteOperation {
-    pub fn new(address: Address, data: FramData) -> Self {
-        Self { address, data }
+    pub fn try_new(address: Address, data: &[u8]) -> Result<Self, FramError> {
+        let data: Vec<u8, MAX_DATA_LEN> =
+            Vec::from_slice(data).map_err(|_| FramError::BufferOverflow)?;
+        Ok(Self { address, data })
     }
 }
 
@@ -77,7 +79,7 @@ pub enum FramError {
     SignalIndexGuard,
     /// Timeout in Fram signalling
     Timeout,
-    /// Data too big for read buffer
+    /// Data too big for read or write buffer
     BufferOverflow,
     /// No data found for address
     Empty,

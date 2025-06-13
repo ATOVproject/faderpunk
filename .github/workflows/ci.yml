@@ -3,7 +3,7 @@ on: [push, pull_request]
 env:
   CARGO_TERM_COLOR: always
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 jobs:

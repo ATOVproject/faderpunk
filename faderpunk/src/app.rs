@@ -195,6 +195,14 @@ impl<const N: usize> Leds<N> {
             ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
         LED_VALUES[led_no].store(value, Ordering::Relaxed);
     }
+
+    pub fn reset_all(&self) {
+        for chan in 0..N {
+            self.set(chan, Led::Button, (0, 0, 0), 0);
+            self.set(chan, Led::Bottom, (0, 0, 0), 0);
+            self.set(chan, Led::Top, (0, 0, 0), 0);
+        }
+    }
 }
 
 pub struct InJack {
@@ -572,7 +580,6 @@ pub enum AppError {
 pub struct App<const N: usize> {
     pub app_id: u8,
     pub start_channel: usize,
-    channel_count: usize,
     cmd_sender: CmdSender,
     event_pubsub: &'static EventPubSubChannel,
 }
@@ -587,7 +594,6 @@ impl<const N: usize> App<N> {
         Self {
             app_id,
             start_channel,
-            channel_count: N,
             cmd_sender,
             event_pubsub,
         }
@@ -595,9 +601,12 @@ impl<const N: usize> App<N> {
 
     // TODO: We should also probably make sure that people do not reconfigure the jacks within the
     // app (throw error or something)
-    async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
+    async fn reconfigure_jack(&self, chan: usize, config: MaxConfig) {
         self.cmd_sender
-            .send(HardwareCmd::MaxCmd(channel, MaxCmd::ConfigurePort(config)))
+            .send(HardwareCmd::MaxCmd(
+                self.start_channel + chan,
+                MaxCmd::ConfigurePort(config),
+            ))
             .await;
     }
 
@@ -623,17 +632,15 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn save<T: Serialize>(&self, storage: &T, scene: Option<u8>) {
-        let mut data = Vec::<u8, MAX_DATA_LEN>::new();
-        data.resize_default(MAX_DATA_LEN)
-            .expect("Failed to resize data Vec");
+        let mut data: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
 
         data[0] = self.app_id;
         let len = to_slice(&storage, &mut data[1..]).unwrap().len();
-        data.truncate(1 + len);
 
         let address = AppStorageAddress::new(self.start_channel as u8, scene);
-        let op = WriteOperation::new(address.into(), data);
-        write_data(op).await.unwrap();
+        if let Ok(op) = WriteOperation::try_new(address.into(), &data[..len + 1]) {
+            write_data(op).await.unwrap();
+        }
     }
 
     // TODO: How can we prevent people from doing this multiple times?
@@ -644,7 +651,7 @@ impl<const N: usize> App<N> {
             _ => ADCRANGE::Rg0_10v,
         };
         self.reconfigure_jack(
-            self.start_channel + chan,
+            chan,
             MaxConfig::Mode7(ConfigMode7(
                 AVR::InternalRef,
                 adc_range,
@@ -663,22 +670,16 @@ impl<const N: usize> App<N> {
             Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
             _ => DACRANGE::Rg0_10v,
         };
-        self.reconfigure_jack(
-            self.start_channel + chan,
-            MaxConfig::Mode5(ConfigMode5(dac_range)),
-        )
-        .await;
+        self.reconfigure_jack(chan, MaxConfig::Mode5(ConfigMode5(dac_range)))
+            .await;
 
         OutJack::new(self.start_channel + chan, range)
     }
 
     pub async fn make_gate_jack(&self, chan: usize, level: u16) -> GateJack {
         let chan = chan.clamp(0, N - 1);
-        self.reconfigure_jack(
-            self.start_channel + chan,
-            MaxConfig::Mode3(ConfigMode3, level),
-        )
-        .await;
+        self.reconfigure_jack(chan, MaxConfig::Mode3(ConfigMode3, level))
+            .await;
 
         GateJack::new(self.start_channel + chan, self.cmd_sender)
     }
@@ -733,5 +734,18 @@ impl<const N: usize> App<N> {
                 _ => {}
             }
         }
+    }
+
+    async fn reset(&self) {
+        let leds = self.use_leds();
+        leds.reset_all();
+        for chan in 0..N {
+            self.reconfigure_jack(chan, MaxConfig::Mode0).await;
+        }
+    }
+
+    pub async fn exit_handler(&self, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+        exit_signal.wait().await;
+        self.reset().await;
     }
 }

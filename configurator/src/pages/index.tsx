@@ -15,7 +15,7 @@ import { button as buttonStyles } from "@heroui/theme";
 import { title } from "@/components/primitives";
 import DefaultLayout from "@/layouts/default";
 import { connectToFaderPunk, getDeviceName } from "@/utils/usb-protocol";
-import { getAllApps, setLayout } from "@/utils/config";
+import { getAllApps, getState, setLayout } from "@/utils/config";
 
 // TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
@@ -38,10 +38,10 @@ export default function IndexPage() {
       setUsbDevice(device);
 
       const appsData = await getAllApps(device);
-      // const layout = await getLayout(device);
-      // console.log(layout);
+      const deviceState = await getState(device);
 
       if (appsData) {
+        console.log(appsData);
         // Parse apps data into the expected format
         const parsedApps = appsData
           .filter(
@@ -57,6 +57,23 @@ export default function IndexPage() {
           }));
 
         setApps(parsedApps);
+      }
+
+      if (deviceState) {
+        console.log(deviceState);
+        // Extract app IDs from the GlobalConfig array of arrays
+        const configData = deviceState.find(
+          (item): item is Extract<typeof item, { tag: "GlobalConfig" }> =>
+            item.tag === "GlobalConfig",
+        );
+
+        if (configData) {
+          const appIds = configData.value.layout[0]
+            .map((app_data) => app_data?.[0].toString())
+            .filter((app_id) => !!app_id) as string[];
+
+          setSelectedApps(appIds);
+        }
       }
 
       // await sendMessage(device, {

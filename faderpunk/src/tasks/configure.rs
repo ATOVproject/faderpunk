@@ -1,5 +1,4 @@
 use cobs::{decode_in_place, try_encode};
-use defmt::info;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, Endpoint as UsbEndpoint, In, Out};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -12,7 +11,8 @@ use postcard::{from_bytes, to_vec};
 
 use config::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS};
 
-use crate::apps::{get_channels, get_config, get_layout_from_slice, REGISTERED_APP_IDS};
+use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
+use crate::storage::store_global_config;
 use crate::{CONFIG_CHANGE_WATCH, GLOBAL_CHANNELS};
 
 use super::transport::WebEndpoints;
@@ -84,50 +84,36 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 }
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
-            ConfigMsgIn::GetLayout => {
+            ConfigMsgIn::GetState => {
                 let global_config = CONFIG_CHANGE_WATCH.try_get().unwrap();
 
                 let mut params: Vec<(usize, Vec<Value, APP_MAX_PARAMS>), GLOBAL_CHANNELS> =
                     Vec::new();
 
-                for (_, start_channel, _) in global_config.layout.apps.iter() {
-                    APP_PARAM_SIGNALS[*start_channel].signal(AppParamCmd::RequestParamValues);
+                for (_, start_channel, _) in global_config.layout.iter() {
+                    APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::RequestParamValues);
                 }
 
                 let receive = async {
                     loop {
                         let (start_channel, values) = APP_PARAM_CHANNEL.receive().await;
-                        info!(
-                            "PUSHING VALUES FOR CHANNEL {} PARAMS LEN: {}",
-                            start_channel,
-                            params.len()
-                        );
                         params.push((start_channel, values)).unwrap();
                     }
                 };
 
                 with_timeout(Duration::from_secs(1), receive).await.ok();
 
-                info!("RECEIVED PARAMS FROM {} APPS", params.len());
-
-                // info!("SENDING BatchMsgStart");
                 proto
                     .send_msg(ConfigMsgOut::BatchMsgStart(1 + params.len()))
                     .await
                     .unwrap();
 
-                // info!("SENDING GlobalConfig");
                 proto
-                    .send_msg(ConfigMsgOut::GlobalConfig(
-                        global_config.clock_src,
-                        global_config.reset_src,
-                        global_config.layout.apps.as_slice(),
-                    ))
+                    .send_msg(ConfigMsgOut::GlobalConfig(global_config))
                     .await
                     .unwrap();
 
                 for (start_channel, app_params) in params {
-                    // info!("Sending values for app on channel {}", start_channel);
                     proto
                         .send_msg(ConfigMsgOut::AppState(start_channel, &app_params))
                         .await
@@ -146,10 +132,10 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                     .signal(AppParamCmd::SetParamSlot { param_slot, value });
                 // TODO: This should answer to refresh UI
             }
-            ConfigMsgIn::SetLayout(layout_arr) => {
-                let mut global_config = CONFIG_CHANGE_WATCH.try_get().unwrap();
-                let layout = get_layout_from_slice(&layout_arr);
-                global_config.layout = layout;
+            ConfigMsgIn::SetGlobalConfig(mut global_config) => {
+                global_config.layout.validate(get_channels);
+                // TODO: Should we really do this here??
+                store_global_config(&global_config).await;
                 let sender = CONFIG_CHANGE_WATCH.sender();
                 sender.send(global_config);
             }

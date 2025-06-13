@@ -1,4 +1,4 @@
-import { FixedLengthArray, u8 } from "@atov/fp-config";
+import { Layout } from "@atov/fp-config";
 
 import {
   receiveBatchMessages,
@@ -7,14 +7,40 @@ import {
 } from "./usb-protocol";
 
 export const setLayout = async (dev: USBDevice, layout: Array<number>) => {
-  const fixedLengthLayout = new Array(16).fill(0);
+  let send_layout: Layout = [
+    [
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ],
+  ];
 
   for (let i = 0; i < Math.min(layout.length, 16); i++) {
-    fixedLengthLayout[i] = layout[i];
+    if (layout[i]) {
+      send_layout[0][i] = [layout[i], BigInt(0)];
+    }
   }
+
   await sendMessage(dev, {
-    tag: "SetLayout",
-    value: fixedLengthLayout as unknown as FixedLengthArray<u8, 16>,
+    tag: "SetGlobalConfig",
+    value: {
+      clock_src: { tag: "MidiIn" },
+      reset_src: { tag: "MidiIn" },
+      layout: send_layout,
+    },
   });
 };
 
@@ -28,9 +54,9 @@ export const getAllApps = async (dev: USBDevice) => {
   }
 };
 
-export const getLayout = async (dev: USBDevice) => {
+export const getState = async (dev: USBDevice) => {
   const result = await sendAndReceive(dev, {
-    tag: "GetLayout",
+    tag: "GetState",
   });
 
   if (result.tag === "BatchMsgStart") {

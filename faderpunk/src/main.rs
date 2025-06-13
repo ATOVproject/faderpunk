@@ -6,10 +6,10 @@ mod macros;
 
 mod app;
 mod apps;
+mod layout;
 mod storage;
 mod tasks;
 
-use apps::{get_layout_from_slice, spawn_app_by_id};
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::ClockConfig;
 use embassy_rp::config::Config;
@@ -23,17 +23,17 @@ use embassy_rp::{
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
-use embassy_sync::mutex::Mutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher};
-use embassy_sync::signal::Signal;
 use embassy_sync::watch::Watch;
 use embassy_time::Timer;
 use fm24v10::{Address, Fm24v10};
+use layout::{LayoutManager, LAYOUT_MANAGER};
 use libfp::constants::GLOBAL_CHANNELS;
 use midly::live::LiveEvent;
 
+use storage::load_global_config;
 use tasks::fram::MAX_DATA_LEN;
 use tasks::max::{MaxCmd, MAX_CHANNEL};
 use tasks::midi::MIDI_CHANNEL;
@@ -41,7 +41,7 @@ use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
 
-use config::{ClockSrc, GlobalConfig, Layout};
+use config::GlobalConfig;
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -92,8 +92,7 @@ pub const EVENT_PUBSUB_SUBS: usize = 64;
 
 // TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
 // mention all uses
-pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> =
-    Watch::new_with(GlobalConfig::new());
+pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
 pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
 // 32 receivers (ephemeral)
@@ -121,85 +120,15 @@ static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 // TODO: Find a good value here
 static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 
-static LAYOUT_MANAGER: StaticCell<LayoutManager> = StaticCell::new();
-
-struct LayoutManager {
-    exit_signals: [Signal<NoopRawMutex, bool>; 16],
-    layout: Mutex<NoopRawMutex, [u8; GLOBAL_CHANNELS]>,
-    spawner: Spawner,
-}
-
-impl LayoutManager {
-    pub fn new(spawner: Spawner) -> Self {
-        Self {
-            exit_signals: [const { Signal::new() }; GLOBAL_CHANNELS],
-            layout: Mutex::new([0; GLOBAL_CHANNELS]),
-            spawner,
-        }
-    }
-
-    async fn exit_app(&self, start_channel: usize) {
-        self.exit_signals[start_channel].signal(true);
-        Timer::after_millis(10).await;
-    }
-
-    pub async fn spawn_layout(&'static self, layout: Layout) {
-        for (app_id, start_channel, channel_size) in layout.apps {
-            let current_app = {
-                let own_layout = self.layout.lock().await;
-                own_layout[start_channel]
-            };
-            // Only spawn that app if it isn't already there
-            if current_app != app_id {
-                for channel in start_channel..(start_channel + channel_size) {
-                    let should_exit = {
-                        let own_layout = self.layout.lock().await;
-                        own_layout[channel] > 0
-                    };
-                    if should_exit {
-                        self.exit_app(channel).await;
-                        let mut layout = self.layout.lock().await;
-                        layout[channel] = 0;
-                    }
-                }
-                // Spawn the app!
-                spawn_app_by_id(app_id, start_channel, self.spawner, &self.exit_signals).await;
-                let mut own_layout = self.layout.lock().await;
-                own_layout[start_channel] = app_id;
-            }
-        }
-
-        // Exit any apps that are still running beyond the new layout
-        let first_free = layout.last + 1;
-        if first_free >= GLOBAL_CHANNELS {
-            return;
-        }
-        for channel in first_free..GLOBAL_CHANNELS {
-            let should_exit = {
-                let layout = self.layout.lock().await;
-                layout[channel] > 0
-            };
-            if should_exit {
-                self.exit_app(channel).await;
-                let mut layout = self.layout.lock().await;
-                layout[channel] = 0;
-            }
-        }
-    }
-}
-
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
     let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
     let mut receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     loop {
         let global_config = receiver.changed().await;
+        // TODO: Check if the layout actually changed and if we need to spawn it
         lm.spawn_layout(global_config.layout).await;
     }
-    // lm.spawn_layout(&layout).await;
-    // Timer::after_secs(5).await;
-    // let layout: [u8; 2] = [5; 2];
-    // lm.spawn_layout(&layout).await;
 }
 
 #[embassy_executor::task]
@@ -317,12 +246,6 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    // TODO: Get this from fram
-    let mut config = GlobalConfig::new();
-    // let layout = get_layout_from_slice(&[1; 16]);
-    config.clock_src = ClockSrc::MidiIn;
-    config.reset_src = ClockSrc::MidiIn;
-    // config.layout = layout;
-
-    config_sender.send(config);
+    let global_config = load_global_config().await;
+    config_sender.send(global_config);
 }
