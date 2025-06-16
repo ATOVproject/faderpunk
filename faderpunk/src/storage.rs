@@ -179,6 +179,10 @@ where
                             self.set(index, val).await;
                         }
                     }
+                    // Re-spawn app
+                    break;
+                    // NEXT: We could break the loop here, also use select instead of join outside
+                    // Then, re-spawn app
                 }
                 AppParamCmd::RequestParamValues => {
                     let params = self.get_all().await;

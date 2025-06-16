@@ -1,8 +1,5 @@
 use config::{Config, Curve, Param, Value, Waveform};
-use embassy_futures::{
-    join::{join, join4},
-    select::select,
-};
+use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
@@ -41,9 +38,6 @@ pub struct Params<'a> {
     midi_channel: ParamSlot<'a, i32, PARAMS>,
 }
 
-// NEXT: Add param_handler to Store (see right)
-// Then: add cleanup to all apps
-
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     // IDEA: We _could_ do some storage stuff in here.
@@ -57,18 +51,18 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         app.start_channel,
     );
 
-    // IDEA: If we always allocate ALL param slots for each app, we can share way more code.
-    // Is this saving RAM as opposed to having to create a custom handler for each app?
     let params = Params {
         curve: ParamSlot::new(&param_store, 0),
         midi_channel: ParamSlot::new(&param_store, 1),
     };
 
-    select(
-        join(run(&app, &params), param_store.param_handler()),
-        app.exit_handler(exit_signal),
-    )
-    .await;
+    let app_loop = async {
+        loop {
+            select(run(&app, &params), param_store.param_handler()).await;
+        }
+    };
+
+    select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
 // IDEA: Add Storage as the second generic in App?
