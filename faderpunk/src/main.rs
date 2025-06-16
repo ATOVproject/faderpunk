@@ -85,6 +85,13 @@ pub enum HardwareCmd {
     MidiMsg(LiveEvent<'static>),
 }
 
+#[derive(Clone, Copy)]
+pub enum ClockEvent {
+    Tick,
+    Start,
+    Reset,
+}
+
 // TODO: Move all the channels and signalling to own module
 pub const CMD_CHANNEL_SIZE: usize = 16;
 pub const EVENT_PUBSUB_SIZE: usize = 64;
@@ -93,7 +100,7 @@ pub const EVENT_PUBSUB_SUBS: usize = 64;
 // TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
 // mention all uses
 pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> = Watch::new();
-pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
+pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, ClockEvent, 16> = Watch::new();
 
 // 32 receivers (ephemeral)
 // 18 senders (16 apps for scenes, 1 buttons, 1 max)

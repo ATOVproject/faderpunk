@@ -35,7 +35,7 @@ use crate::{
         leds::LED_VALUES,
         max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
-    CmdSender, EventPubSubChannel, HardwareCmd, InputEvent, CLOCK_WATCH,
+    ClockEvent, CmdSender, EventPubSubChannel, HardwareCmd, InputEvent, CLOCK_WATCH,
 };
 
 // TODO: This will be refactored using an allocator
@@ -390,7 +390,7 @@ impl<const N: usize> Faders<N> {
 }
 
 pub struct Clock {
-    receiver: Receiver<'static, CriticalSectionRawMutex, bool, 16>,
+    receiver: Receiver<'static, CriticalSectionRawMutex, ClockEvent, 16>,
 }
 
 impl Clock {
@@ -400,19 +400,23 @@ impl Clock {
     }
 
     // TODO: division needs to be an enum
-    pub async fn wait_for_tick(&mut self, division: usize) -> bool {
+    pub async fn wait_for_event(&mut self, division: usize) -> ClockEvent {
         let mut i: usize = 0;
 
         loop {
-            // Reset always gets through
-            if self.receiver.changed().await {
-                return true;
-            }
-            i += 1;
-            // TODO: Maybe we can make this more efficient by just having subscribers to
-            // subdivisions of the clock
-            if i == division {
-                return false;
+            match self.receiver.changed().await {
+                ClockEvent::Tick => {
+                    i += 1;
+                    // TODO: Maybe we can make this more efficient by just having subscribers to
+                    // subdivisions of the clock
+                    if i == division {
+                        return ClockEvent::Tick;
+                    }
+                    continue;
+                }
+                clock_event => {
+                    return clock_event;
+                }
             }
         }
     }

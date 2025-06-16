@@ -11,7 +11,7 @@ use embassy_sync::{
 };
 use embassy_time::Ticker;
 
-use crate::{Spawner, CLOCK_WATCH, CONFIG_CHANGE_WATCH};
+use crate::{ClockEvent, Spawner, CLOCK_WATCH, CONFIG_CHANGE_WATCH};
 use config::ClockSrc;
 use libfp::utils::bpm_to_clock_duration;
 
@@ -31,7 +31,7 @@ pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
 async fn make_ext_clock_loop(
     mut pin: Input<'_>,
     clock_src: ClockSrc,
-    clock_sender: Sender<'static, CriticalSectionRawMutex, bool, 16>,
+    clock_sender: Sender<'static, CriticalSectionRawMutex, ClockEvent, 16>,
 ) {
     let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     let mut current_config = config_receiver.get().await;
@@ -50,7 +50,13 @@ async fn make_ext_clock_loop(
         pin.wait_for_falling_edge().await;
         pin.wait_for_low().await;
 
-        clock_sender.send(current_config.reset_src == clock_src);
+        let clock_event = if current_config.reset_src == clock_src {
+            ClockEvent::Reset
+        } else {
+            ClockEvent::Tick
+        };
+
+        clock_sender.send(clock_event);
 
         // Check if config has changed after waiting
         if let Some(new_config) = config_receiver.try_get() {
@@ -92,7 +98,7 @@ async fn run_clock(aux_inputs: AuxInputs) {
             let mut clock = internal_clock.lock().await;
             clock.next().await;
 
-            clock_sender.send(false);
+            clock_sender.send(ClockEvent::Tick);
 
             // Check if config has changed after waiting
             if let Some(new_config) = config_receiver.try_get() {

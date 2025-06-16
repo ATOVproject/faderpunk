@@ -17,7 +17,7 @@ use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
 use midly::stream::MidiStream;
 use midly::MidiMessage;
 
-use crate::{CLOCK_WATCH, CONFIG_CHANGE_WATCH};
+use crate::{ClockEvent, CLOCK_WATCH, CONFIG_CHANGE_WATCH};
 
 midly::stack_buffer! {
     struct UartRxBuffer([u8; 3]);
@@ -158,12 +158,17 @@ pub async fn start_midi_loops<'a>(
                             LiveEvent::Realtime(msg) => match msg {
                                 SystemRealtime::TimingClock => {
                                     if let ClockSrc::MidiUsb = clock_src {
-                                        clock_sender.send(false);
+                                        clock_sender.send(ClockEvent::Tick);
                                     }
                                 }
                                 SystemRealtime::Start => {
                                     if let ClockSrc::MidiUsb = reset_src {
-                                        clock_sender.send(true);
+                                        clock_sender.send(ClockEvent::Start);
+                                    }
+                                }
+                                SystemRealtime::Stop => {
+                                    if let ClockSrc::MidiUsb = reset_src {
+                                        clock_sender.send(ClockEvent::Reset);
                                     }
                                 }
                                 _ => {}
@@ -198,12 +203,17 @@ pub async fn start_midi_loops<'a>(
                         LiveEvent::Realtime(msg) => match msg {
                             SystemRealtime::TimingClock => {
                                 if let ClockSrc::MidiIn = clock_src {
-                                    clock_sender.send(false);
+                                    clock_sender.send(ClockEvent::Tick);
                                 }
                             }
                             SystemRealtime::Start => {
                                 if let ClockSrc::MidiIn = reset_src {
-                                    clock_sender.send(true);
+                                    clock_sender.send(ClockEvent::Start);
+                                }
+                            }
+                            SystemRealtime::Stop => {
+                                if let ClockSrc::MidiIn = reset_src {
+                                    clock_sender.send(ClockEvent::Reset);
                                 }
                             }
                             _ => {}
