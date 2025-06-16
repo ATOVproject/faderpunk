@@ -210,9 +210,9 @@ async fn main(spawner: Spawner) {
         p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
     );
 
-    // EEPROM
+    // FRAM
     let write_buf = BUF_FRAM_WRITE.init([0; MAX_DATA_LEN]);
-    let eeprom = Fm24v10::new(i2c1, Address(0, 0), write_buf);
+    let fram = Fm24v10::new(i2c1, Address(0, 0), write_buf);
 
     // AUX inputs
     let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
@@ -227,7 +227,7 @@ async fn main(spawner: Spawner) {
 
     tasks::clock::start_clock(&spawner, aux_inputs).await;
 
-    tasks::fram::start_fram(&spawner, eeprom).await;
+    tasks::fram::start_fram(&spawner, fram).await;
 
     spawner.spawn(hardware_cmd_router()).unwrap();
 

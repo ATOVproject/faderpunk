@@ -3,10 +3,10 @@
 //add per channel gate seq_length
 //add MIDI param
 
-use config::{Config, Curve, Param};
+use config::Config;
 use defmt::info;
 use embassy_futures::{
-    join::{join, join5, join_array},
+    join::{join, join5},
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
@@ -46,11 +46,13 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let param_store = ParamStore::new([], app.app_id, app.start_channel);
     let params = Params {};
 
-    select(
-        join(run(&app, &params), param_store.param_handler()),
-        app.exit_handler(exit_signal),
-    )
-    .await;
+    let app_loop = async {
+        loop {
+            select(run(&app, &params), param_store.param_handler()).await;
+        }
+    };
+
+    select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
 pub async fn run(app: &App<CHANNELS>, _params: &Params) {

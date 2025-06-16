@@ -32,7 +32,9 @@ const FRAME_DELIMITER: u8 = 0;
 const MULTI_PACKET_TIMEOUT_MS: u64 = 100;
 
 pub enum AppParamCmd {
-    SetParamSlot { param_slot: usize, value: Value },
+    SetAppParams {
+        values: [Option<Value>; APP_MAX_PARAMS],
+    },
     RequestParamValues,
 }
 
@@ -84,52 +86,30 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 }
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
-            ConfigMsgIn::GetState => {
+            ConfigMsgIn::GetGlobalConfig => {
                 let global_config = CONFIG_CHANGE_WATCH.try_get().unwrap();
-
-                let mut params: Vec<(usize, Vec<Value, APP_MAX_PARAMS>), GLOBAL_CHANNELS> =
-                    Vec::new();
-
-                for (_, start_channel, _) in global_config.layout.iter() {
-                    APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::RequestParamValues);
-                }
-
-                let receive = async {
-                    loop {
-                        let (start_channel, values) = APP_PARAM_CHANNEL.receive().await;
-                        params.push((start_channel, values)).unwrap();
-                    }
-                };
-
-                with_timeout(Duration::from_secs(1), receive).await.ok();
-
-                proto
-                    .send_msg(ConfigMsgOut::BatchMsgStart(1 + params.len()))
-                    .await
-                    .unwrap();
 
                 proto
                     .send_msg(ConfigMsgOut::GlobalConfig(global_config))
                     .await
                     .unwrap();
-
-                for (start_channel, app_params) in params {
+            }
+            ConfigMsgIn::GetAppParams { start_channel } => {
+                APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::RequestParamValues);
+                let transfer = async {
+                    let (start_channel, values) = APP_PARAM_CHANNEL.receive().await;
                     proto
-                        .send_msg(ConfigMsgOut::AppState(start_channel, &app_params))
+                        .send_msg(ConfigMsgOut::AppState(start_channel, &values))
                         .await
                         .unwrap();
-                }
-
-                // info!("SENDING BatchMsgEnd");
-                proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
+                };
+                with_timeout(Duration::from_secs(1), transfer).await.ok();
             }
-            ConfigMsgIn::SetAppParam {
+            ConfigMsgIn::SetAppParams {
                 start_channel,
-                param_slot,
-                value,
+                values,
             } => {
-                APP_PARAM_SIGNALS[start_channel]
-                    .signal(AppParamCmd::SetParamSlot { param_slot, value });
+                APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::SetAppParams { values });
                 // TODO: This should answer to refresh UI
             }
             ConfigMsgIn::SetGlobalConfig(mut global_config) => {

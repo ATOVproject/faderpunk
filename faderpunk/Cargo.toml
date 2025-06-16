@@ -30,6 +30,7 @@ embassy-rp = { version = "0.4", features = [
 ] }
 embassy-futures = { version = "0.1" }
 
+cobs = { version = "0.3.0", default-features = false }
 cortex-m = { version = "0.7", features = ["inline-asm"], optional = true }
 cortex-m-rt = "0.7"
 critical-section = "1.1"
@@ -57,7 +58,9 @@ ws2812-async = "0.3"
 
 config = { path = "../config" }
 libfp = { path = "../libfp" }
-cobs = { version = "0.3.0", default-features = false }
+
+[lints.clippy]
+large_futures = "warn"
 
 [profile.release]
 lto = true

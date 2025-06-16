@@ -1,5 +1,3 @@
-use core::ptr::from_mut;
-
 use defmt::info;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
@@ -9,12 +7,9 @@ use embassy_sync::{
     signal::Signal,
     watch::Receiver,
 };
-use embassy_time::{with_timeout, Duration, Timer};
+use embassy_time::{Duration, Timer};
 use heapless::Vec;
-use max11300::{
-    config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES},
-    ConfigurePort,
-};
+use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
 use postcard::{from_bytes, to_slice};
@@ -34,7 +29,9 @@ use serde::{
 use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
-        fram::{request_data, write_data, ReadOperation, WriteOperation, MAX_DATA_LEN},
+        fram::{
+            request_data, write_data, ReadOperation, WriteOperation, FRAM_WRITE_BUF, MAX_DATA_LEN,
+        },
         leds::LED_VALUES,
         max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
     },
@@ -632,13 +629,13 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn save<T: Serialize>(&self, storage: &T, scene: Option<u8>) {
-        let mut data: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
+        let mut data = FRAM_WRITE_BUF.lock().await;
 
         data[0] = self.app_id;
         let len = to_slice(&storage, &mut data[1..]).unwrap().len();
 
         let address = AppStorageAddress::new(self.start_channel as u8, scene);
-        if let Ok(op) = WriteOperation::try_new(address.into(), &data[..len + 1]) {
+        if let Ok(op) = WriteOperation::try_new(address.into(), len + 1) {
             write_data(op).await.unwrap();
         }
     }

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Form } from "@heroui/form";
+import { Select, SelectItem } from "@heroui/select";
 import {
   Table,
   TableHeader,
@@ -11,25 +12,40 @@ import {
   TableCell,
 } from "@heroui/table";
 import { button as buttonStyles } from "@heroui/theme";
+import { ClockSrc, Param } from "@atov/fp-config";
 
+import { AppConfigDrawer } from "@/components/app-config-drawer";
 import { title } from "@/components/primitives";
 import DefaultLayout from "@/layouts/default";
 import { connectToFaderPunk, getDeviceName } from "@/utils/usb-protocol";
-import { getAllApps, getState, setLayout } from "@/utils/config";
+import { getAllApps, getGlobalConfig, setGlobalConfig } from "@/utils/config";
 
 // TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
   const [usbDevice, setUsbDevice] = useState<USBDevice | null>(null);
   const [apps, setApps] = useState<
-    {
-      appId: string;
-      channels: string;
-      name: string;
-      description: string;
-      paramCount: string;
-    }[]
+    Map<
+      string,
+      {
+        appId: string;
+        channels: string;
+        name: string;
+        description: string;
+        paramCount: string;
+        params: Param[];
+      }
+    >
+  >(new Map());
+  const [selectedApps, setSelectedApps] = useState<
+    { appId: string; startChannel: number }[]
   >([]);
-  const [selectedApps, setSelectedApps] = useState<string[]>([]);
+  const [clockSrc, setClockSrc] = useState<ClockSrc>({ tag: "Internal" });
+  const [resetSrc, setResetSrc] = useState<ClockSrc>({ tag: "Internal" });
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedAppForConfig, setSelectedAppForConfig] = useState<{
+    appId: string;
+    startChannel: number;
+  } | null>(null);
 
   const handleConnectToFaderPunk = useCallback(async () => {
     try {
@@ -38,43 +54,51 @@ export default function IndexPage() {
       setUsbDevice(device);
 
       const appsData = await getAllApps(device);
-      const deviceState = await getState(device);
+      const globalConfig = await getGlobalConfig(device);
 
       if (appsData) {
-        console.log(appsData);
-        // Parse apps data into the expected format
-        const parsedApps = appsData
+        // Parse apps data into a Map for easy lookup by app ID
+        const parsedApps = new Map();
+
+        appsData
           .filter(
             (item): item is Extract<typeof item, { tag: "AppConfig" }> =>
               item.tag === "AppConfig",
           )
-          .map((app) => ({
-            appId: app.value[0].toString(),
-            channels: app.value[1].toString(),
-            paramCount: app.value[2][0].toString(),
-            name: app.value[2][1] as string,
-            description: app.value[2][2] as string,
-          }));
+          .forEach((app) => {
+            const appConfig = {
+              appId: app.value[0].toString(),
+              channels: app.value[1].toString(),
+              paramCount: app.value[2][0].toString(),
+              name: app.value[2][1] as string,
+              description: app.value[2][2] as string,
+              params: app.value[2][3],
+            };
+
+            parsedApps.set(appConfig.appId, appConfig);
+          });
 
         setApps(parsedApps);
       }
 
-      if (deviceState) {
-        console.log(deviceState);
-        // Extract app IDs from the GlobalConfig array of arrays
-        const configData = deviceState.find(
-          (item): item is Extract<typeof item, { tag: "GlobalConfig" }> =>
-            item.tag === "GlobalConfig",
-        );
+      if (globalConfig && globalConfig.tag === "GlobalConfig") {
+        const appsWithChannels = globalConfig.value.layout[0]
+          .map((app_data, index) =>
+            app_data
+              ? { appId: app_data[0].toString(), startChannel: index }
+              : null,
+          )
+          .filter((app) => app !== null) as {
+          appId: string;
+          startChannel: number;
+        }[];
 
-        if (configData) {
-          const appIds = configData.value.layout[0]
-            .map((app_data) => app_data?.[0].toString())
-            .filter((app_id) => !!app_id) as string[];
-
-          setSelectedApps(appIds);
-        }
+        setSelectedApps(appsWithChannels);
+        setClockSrc(globalConfig.value.clock_src);
+        setResetSrc(globalConfig.value.reset_src);
       }
+
+      // NEXT: On drawer open retrieve app params (using GetAppParams) and show them in the form
 
       // await sendMessage(device, {
       //   tag: "SetAppParam",
@@ -98,7 +122,7 @@ export default function IndexPage() {
       //
       // setApps(appConfigs);
     } catch (error) {
-      console.error("Failed to connect to Fader Punk:", error);
+      console.error("Failed to connect to Faderpunk:", error);
     }
   }, []);
 
@@ -108,12 +132,37 @@ export default function IndexPage() {
         return prev;
       }
 
-      return [...prev, appId];
+      // Find the next available start channel
+      const usedChannels = new Set(prev.map((app) => app.startChannel));
+      let startChannel = 0;
+
+      while (usedChannels.has(startChannel) && startChannel < 16) {
+        startChannel++;
+      }
+
+      if (startChannel >= 16) {
+        return prev;
+      }
+
+      return [...prev, { appId, startChannel }];
     });
   }, []);
 
   const handleRemoveApp = useCallback((index: number) => {
     setSelectedApps((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleChipClick = useCallback(
+    (app: { appId: string; startChannel: number }) => {
+      setSelectedAppForConfig(app);
+      setIsDrawerOpen(true);
+    },
+    [],
+  );
+
+  const handleDrawerClose = useCallback(() => {
+    setIsDrawerOpen(false);
+    setSelectedAppForConfig(null);
   }, []);
 
   const deviceName = usbDevice ? getDeviceName(usbDevice) : "";
@@ -123,7 +172,7 @@ export default function IndexPage() {
       <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
         <div className="inline-block max-w-lg text-center justify-center">
           <span className={title()}>Configure&nbsp;</span>
-          <span className={title({ color: "yellow" })}>Fader Punk&nbsp;</span>
+          <span className={title({ color: "yellow" })}>Faderpunk&nbsp;</span>
         </div>
 
         {!usbDevice ? (
@@ -135,7 +184,7 @@ export default function IndexPage() {
             })}
             onPress={handleConnectToFaderPunk}
           >
-            Connect to Fader Punk
+            Connect to Faderpunk
           </Button>
         ) : (
           <Form
@@ -143,7 +192,7 @@ export default function IndexPage() {
             validationBehavior="native"
           >
             <span>Connected to {deviceName}</span>
-            {apps && apps.length > 0 && (
+            {apps && apps.size > 0 && (
               <div className="w-full max-w-4xl">
                 <h2 className={title({ size: "sm" })}>Available Apps</h2>
                 <Table aria-label="Available apps table" className="mt-4">
@@ -156,7 +205,7 @@ export default function IndexPage() {
                     <TableColumn>ACTIONS</TableColumn>
                   </TableHeader>
                   <TableBody>
-                    {apps.map((app, index) => (
+                    {Array.from(apps.values()).map((app, index) => (
                       <TableRow key={app.appId || index}>
                         <TableCell>{app.appId}</TableCell>
                         <TableCell>{app.channels}</TableCell>
@@ -183,30 +232,96 @@ export default function IndexPage() {
               <div className="w-full max-w-4xl">
                 <h2 className={title({ size: "sm" })}>Selected Apps</h2>
                 <div className="flex flex-wrap gap-2 mt-4">
-                  {selectedApps.map((appId, index) => (
+                  {selectedApps.map((app, index) => (
                     <Chip
                       key={index}
+                      className="cursor-pointer"
                       color="primary"
                       variant="flat"
+                      onClick={() => handleChipClick(app)}
                       onClose={() => handleRemoveApp(index)}
                     >
-                      App ID: {appId}
+                      App {app.appId} (Ch {app.startChannel + 1})
                     </Chip>
                   ))}
                 </div>
               </div>
             )}
+            <div className="w-full max-w-4xl">
+              <h2 className={title({ size: "sm" })}>Clock config</h2>
+              <div className="flex gap-4 items-end mt-4">
+                <Select
+                  className="flex-1"
+                  label="Clock Source"
+                  placeholder="Select clock source"
+                  selectedKeys={[clockSrc.tag]}
+                  onSelectionChange={(keys) => {
+                    const key = Array.from(keys)[0] as string;
+
+                    setClockSrc({ tag: key } as ClockSrc);
+                  }}
+                >
+                  <SelectItem key="None">None</SelectItem>
+                  <SelectItem key="Atom">Atom</SelectItem>
+                  <SelectItem key="Meteor">Meteor</SelectItem>
+                  <SelectItem key="Cube">Cube</SelectItem>
+                  <SelectItem key="Internal">Internal</SelectItem>
+                  <SelectItem key="MidiIn">MIDI In</SelectItem>
+                  <SelectItem key="MidiUsb">MIDI USB</SelectItem>
+                </Select>
+                <Select
+                  className="flex-1"
+                  label="Reset Source"
+                  placeholder="Select reset source"
+                  selectedKeys={[resetSrc.tag]}
+                  onSelectionChange={(keys) => {
+                    const key = Array.from(keys)[0] as string;
+
+                    setResetSrc({ tag: key } as ClockSrc);
+                  }}
+                >
+                  <SelectItem key="None">None</SelectItem>
+                  <SelectItem key="Atom">Atom</SelectItem>
+                  <SelectItem key="Meteor">Meteor</SelectItem>
+                  <SelectItem key="Cube">Cube</SelectItem>
+                  <SelectItem key="Internal">Internal</SelectItem>
+                  <SelectItem key="MidiIn">MIDI In</SelectItem>
+                  <SelectItem key="MidiUsb">MIDI USB</SelectItem>
+                </Select>
+              </div>
+            </div>
             <Button
               disabled={!selectedApps.length}
               type="button"
               variant="bordered"
-              onPress={() => setLayout(usbDevice, selectedApps.map(Number))}
+              onPress={() =>
+                setGlobalConfig(
+                  usbDevice,
+                  selectedApps.map((app) => Number(app.appId)),
+                  clockSrc,
+                  resetSrc,
+                )
+              }
             >
-              Set Layout
+              Set config
             </Button>
           </Form>
         )}
       </section>
+
+      {usbDevice ? (
+        <AppConfigDrawer
+          appConfig={
+            selectedAppForConfig
+              ? apps.get(selectedAppForConfig.appId) || null
+              : null
+          }
+          isOpen={isDrawerOpen}
+          selectedApp={selectedAppForConfig}
+          usbDevice={usbDevice}
+          onClose={handleDrawerClose}
+        />
+      ) : null}
     </DefaultLayout>
   );
 }

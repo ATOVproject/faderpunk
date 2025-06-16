@@ -5,7 +5,10 @@ use embassy_rp::{
     peripherals::I2C1,
 };
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
+    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
+    channel::Channel,
+    mutex::Mutex,
+    signal::Signal,
 };
 use embassy_time::{with_timeout, Duration};
 use fm24v10::Fm24v10;
@@ -23,16 +26,17 @@ const WRITES_CAPACITY: usize = 16;
 // TODO: Find a good number for this
 pub const MAX_DATA_LEN: usize = 1024;
 
+pub static FRAM_WRITE_BUF: Mutex<ThreadModeRawMutex, [u8; MAX_DATA_LEN]> =
+    Mutex::new([0; MAX_DATA_LEN]);
+
 pub struct WriteOperation {
     address: Address,
-    data: FramData,
+    len: usize,
 }
 
 impl WriteOperation {
-    pub fn try_new(address: Address, data: &[u8]) -> Result<Self, FramError> {
-        let data: Vec<u8, MAX_DATA_LEN> =
-            Vec::from_slice(data).map_err(|_| FramError::BufferOverflow)?;
-        Ok(Self { address, data })
+    pub fn try_new(address: Address, len: usize) -> Result<Self, FramError> {
+        Ok(Self { address, len })
     }
 }
 
@@ -240,8 +244,9 @@ async fn run_fram(fram: Fram) {
                 FRAM_RESPONSE_SIGNALS_POOL[req.signal_idx].signal(result);
             }
             Either::Second(write_op) => {
+                let data = FRAM_WRITE_BUF.lock().await;
                 storage
-                    .store(write_op.address, write_op.data.as_slice())
+                    .store(write_op.address, &data[..write_op.len])
                     .await
                     .unwrap();
             }
