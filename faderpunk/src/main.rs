@@ -244,7 +244,7 @@ async fn main(spawner: Spawner) {
 
     let config_sender = CONFIG_CHANGE_WATCH.sender();
 
-    Timer::after_millis(500).await;
+    Timer::after_millis(100).await;
 
     let global_config = load_global_config().await;
     config_sender.send(global_config);

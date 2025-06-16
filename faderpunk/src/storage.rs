@@ -1,8 +1,8 @@
-// FIXME: Clean up this file
 use core::{marker::PhantomData, ops::Range};
 
 use config::{FromValue, GlobalConfig, Value, APP_MAX_PARAMS};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, lazy_lock::LazyLock, mutex::Mutex};
+use defmt::Debug2Format;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
 use serde::{de::DeserializeOwned, Serialize};
@@ -34,11 +34,25 @@ pub async fn store_global_config(config: &GlobalConfig) {
 pub async fn load_global_config() -> GlobalConfig {
     let address = GLOBAL_CONFIG_RANGE.start;
     let op = ReadOperation::new(address);
-    request_data(op)
-        .await
-        .ok()
-        .and_then(|data| from_bytes::<GlobalConfig>(&data).ok())
-        .unwrap_or_else(GlobalConfig::default)
+    match request_data(op).await {
+        Ok(data) => match from_bytes::<GlobalConfig>(&data) {
+            Ok(global_config) => {
+                return global_config;
+            }
+            Err(err) => {
+                defmt::error!("Could not parse GlobalConfig: {:?}", Debug2Format(&err));
+            }
+        },
+        Err(err) => {
+            defmt::error!("Could not read GlobalConfig: {:?}", Debug2Format(&err));
+        }
+    }
+    GlobalConfig::default()
+    // request_data(op)
+    //     .await
+    //     .ok()
+    //     .and_then(|data| from_bytes::<GlobalConfig>(&data).ok())
+    //     .unwrap_or_else(GlobalConfig::default)
 }
 
 #[derive(Clone, Copy)]
