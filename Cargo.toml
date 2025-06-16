@@ -1,6 +1,6 @@
 [workspace]
 members = ["config", "faderpunk", "libfp"]
 
-exclude = ["gen-bindings"]
+exclude = ["gen-bindings", "calibrator"]
 
 resolver = "2"
