@@ -2,10 +2,7 @@
 //add a function to the button
 //add LED to the button
 
-use crate::{
-    app::{App, Led, Range},
-    ClockEvent,
-};
+use crate::app::{App, ClockEvent, Led, Range};
 use config::Config;
 use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};

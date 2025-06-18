@@ -13,9 +13,8 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Sign
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::{App, Arr, Led, Range, SceneEvent},
+    app::{App, Arr, ClockEvent, Led, Range, SceneEvent},
     storage::ParamStore,
-    ClockEvent,
 };
 
 pub const CHANNELS: usize = 8;

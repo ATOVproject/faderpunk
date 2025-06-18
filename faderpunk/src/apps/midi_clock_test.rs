@@ -3,7 +3,10 @@ use embassy_futures::select::select;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use midly::live::{LiveEvent, SystemRealtime};
 
-use crate::{app::App, storage::ParamStore, tasks::clock::CLOCK_CHANNEL, ClockEvent, CLOCK_CHANNEL};
+use crate::{
+    app::{App, ClockEvent},
+    storage::ParamStore,
+};
 
 pub const CHANNELS: usize = 16;
 pub const PARAMS: usize = 0;
@@ -28,11 +31,10 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 }
 
 pub async fn run(app: &App<CHANNELS>, _params: &Params) {
-    // let mut clock = app.use_clock();
     let midi = app.use_midi(0);
-    let mut clk_receiver = CLOCK_CHANNEL.receiver().unwrap();
+    let mut clock = app.use_clock();
     loop {
-        match clk_receiver.changed().await {
+        match clock.wait_for_event(1).await {
             ClockEvent::Tick => {
                 midi.send_msg(LiveEvent::Realtime(SystemRealtime::TimingClock))
                     .await;

@@ -19,7 +19,9 @@ use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
 use midly::stream::MidiStream;
 use midly::MidiMessage;
 
-use crate::{ClockEvent, CLOCK_WATCH, CONFIG_CHANGE_WATCH};
+use crate::{tasks::clock::CLOCK_PUBSUB, CONFIG_CHANGE_WATCH};
+
+use super::clock::ClockEvent;
 
 midly::stack_buffer! {
     struct UartRxBuffer([u8; 3]);
@@ -110,9 +112,9 @@ pub async fn start_midi_loops<'a>(
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
     let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, UART0, Async>> = Mutex::new(uart0);
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
-    let clock_sender = CLOCK_WATCH.sender();
+    let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
     let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
-    let initial_config = config_receiver.get().await;
+    let initial_config = config_receiver.try_get().unwrap();
     let config: Mutex<NoopRawMutex, GlobalConfig> = Mutex::new(initial_config);
 
     let midi_tx = async {
@@ -161,17 +163,17 @@ pub async fn start_midi_loops<'a>(
                             LiveEvent::Realtime(msg) => match msg {
                                 SystemRealtime::TimingClock => {
                                     if let ClockSrc::MidiUsb = cfg.clock_src {
-                                        clock_sender.send(ClockEvent::Tick);
+                                        clock_publisher.publish(ClockEvent::Tick).await;
                                     }
                                 }
                                 SystemRealtime::Start => {
                                     if let ClockSrc::MidiUsb = cfg.reset_src {
-                                        clock_sender.send(ClockEvent::Start);
+                                        clock_publisher.publish(ClockEvent::Start).await;
                                     }
                                 }
                                 SystemRealtime::Stop => {
                                     if let ClockSrc::MidiUsb = cfg.reset_src {
-                                        clock_sender.send(ClockEvent::Reset);
+                                        clock_publisher.publish(ClockEvent::Reset).await;
                                     }
                                 }
                                 _ => {}
@@ -203,17 +205,17 @@ pub async fn start_midi_loops<'a>(
                         LiveEvent::Realtime(msg) => match msg {
                             SystemRealtime::TimingClock => {
                                 if let ClockSrc::MidiIn = cfg.clock_src {
-                                    clock_sender.send(ClockEvent::Tick);
+                                    clock_publisher.publish_immediate(ClockEvent::Tick);
                                 }
                             }
                             SystemRealtime::Start => {
                                 if let ClockSrc::MidiIn = cfg.reset_src {
-                                    clock_sender.send(ClockEvent::Start);
+                                    clock_publisher.publish_immediate(ClockEvent::Start);
                                 }
                             }
                             SystemRealtime::Stop => {
                                 if let ClockSrc::MidiIn = cfg.reset_src {
-                                    clock_sender.send(ClockEvent::Reset);
+                                    clock_publisher.publish_immediate(ClockEvent::Reset);
                                 }
                             }
                             _ => {}

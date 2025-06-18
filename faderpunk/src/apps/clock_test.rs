@@ -3,9 +3,8 @@ use embassy_futures::select::select;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
 use crate::{
-    app::{App, Led},
+    app::{App, ClockEvent, Led},
     storage::ParamStore,
-    ClockEvent,
 };
 
 pub const CHANNELS: usize = 16;

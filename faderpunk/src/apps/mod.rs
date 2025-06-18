@@ -6,4 +6,5 @@ register_apps!(
     5 => seq8,
     6 => automator,
     7 => clkcvrnd,
+    8 => midi_clock_test,
 );

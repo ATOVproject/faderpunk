@@ -4,6 +4,7 @@ use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Sender,
     mutex::Mutex,
+    pubsub::Subscriber,
     signal::Signal,
     watch::Receiver,
 };
@@ -29,13 +30,16 @@ use serde::{
 use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
+        clock::{ClockSubscriber, CLOCK_PUBSUB},
         fram::{request_data, write_data, ReadOperation, WriteOperation, FRAM_WRITE_BUF},
         leds::LED_VALUES,
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender,
     },
-    ClockEvent, EventPubSubChannel, InputEvent, CLOCK_WATCH,
+    EventPubSubChannel, InputEvent,
 };
+
+pub use crate::tasks::clock::ClockEvent;
 
 // TODO: This will be refactored using an allocator
 const BYTES_PER_VALUE_SET: u32 = 1000;
@@ -389,13 +393,13 @@ impl<const N: usize> Faders<N> {
 }
 
 pub struct Clock {
-    receiver: Receiver<'static, CriticalSectionRawMutex, ClockEvent, 16>,
+    subscriber: ClockSubscriber,
 }
 
 impl Clock {
     pub fn new() -> Self {
-        let receiver = CLOCK_WATCH.receiver().unwrap();
-        Self { receiver }
+        let subscriber = CLOCK_PUBSUB.subscriber().unwrap();
+        Self { subscriber }
     }
 
     // TODO: division needs to be an enum
@@ -403,7 +407,7 @@ impl Clock {
         let mut i: usize = 0;
 
         loop {
-            match self.receiver.changed().await {
+            match self.subscriber.next_message_pure().await {
                 ClockEvent::Tick => {
                     i += 1;
                     // TODO: Maybe we can make this more efficient by just having subscribers to
@@ -712,6 +716,7 @@ impl<const N: usize> App<N> {
         Die { rng: RoscRng }
     }
 
+    // TODO: Make sure we can only create one clock per app
     pub fn use_clock(&self) -> Clock {
         Clock::new()
     }

@@ -20,6 +20,9 @@ type InnerLayout = [Option<(u8, usize)>; GLOBAL_CHANNELS];
 pub struct Layout(pub InnerLayout);
 
 impl Layout {
+    pub const fn new() -> Self {
+        Self([None; GLOBAL_CHANNELS])
+    }
     pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) {
         let mut validated: InnerLayout = [None; GLOBAL_CHANNELS];
         let mut start_channel = 0;
@@ -53,12 +56,6 @@ impl Layout {
             }
         }
         Some(0)
-    }
-}
-
-impl Default for Layout {
-    fn default() -> Self {
-        Self([Some((1, 1)); GLOBAL_CHANNELS])
     }
 }
 
@@ -137,12 +134,12 @@ pub struct GlobalConfig {
     pub layout: Layout,
 }
 
-impl Default for GlobalConfig {
-    fn default() -> Self {
+impl GlobalConfig {
+    pub const fn new() -> Self {
         Self {
             clock_src: ClockSrc::Internal,
             reset_src: ClockSrc::None,
-            layout: Layout::default(),
+            layout: Layout::new(),
         }
     }
 }
