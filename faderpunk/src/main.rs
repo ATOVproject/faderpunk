@@ -16,7 +16,9 @@ use embassy_rp::config::Config;
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::spi::{self, Spi};
-use embassy_rp::uart::{self, Async as UartAsync, BufferedUart, Config as UartConfig, UartTx};
+use embassy_rp::uart::{
+    self, Async as UartAsync, BufferedUart, BufferedUartTx, Config as UartConfig, UartTx,
+};
 use embassy_rp::usb;
 use embassy_rp::{
     bind_interrupts, i2c,
