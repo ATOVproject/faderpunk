@@ -97,30 +97,6 @@ export default function IndexPage() {
         setClockSrc(globalConfig.value.clock_src);
         setResetSrc(globalConfig.value.reset_src);
       }
-
-      // NEXT: On drawer open retrieve app params (using GetAppParams) and show them in the form
-
-      // await sendMessage(device, {
-      //   tag: "SetAppParam",
-      //   value: [
-      //     BigInt(0),
-      //     BigInt(0),
-      //     { tag: "Curve", value: { tag: "Logarithmic" } },
-      //   ],
-      // });
-
-      // const appConfigs = results
-      //   .filter(
-      //     (res): res is Extract<ConfigMsgOut, { tag: "AppConfig" }> =>
-      //       res.tag === "AppConfig",
-      //   )
-      //   .map(({ value }) => ({
-      //     name: value[0],
-      //     description: value[1],
-      //     params: value[2] as ValidParam[],
-      //   }));
-      //
-      // setApps(appConfigs);
     } catch (error) {
       console.error("Failed to connect to Faderpunk:", error);
     }

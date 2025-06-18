@@ -10,7 +10,7 @@ macro_rules! register_apps {
         };
 
         use config::ConfigMeta;
-        use crate::{CMD_CHANNEL, EVENT_PUBSUB};
+        use crate::{MAX_CHANNEL, MIDI_CHANNEL, EVENT_PUBSUB};
         use crate::app::App;
         use embassy_executor::Spawner;
 
@@ -39,7 +39,8 @@ macro_rules! register_apps {
                         let app = App::<{ $app_mod::CHANNELS }>::new(
                             app_id,
                             start_channel,
-                            CMD_CHANNEL.sender(),
+                            MAX_CHANNEL.sender(),
+                            MIDI_CHANNEL.sender(),
                             &EVENT_PUBSUB
                         );
 

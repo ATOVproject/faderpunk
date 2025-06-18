@@ -25,14 +25,14 @@ pub static CONFIG: config::Config<PARAMS> = Config::new("Default", "16n vibes pl
 const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
 const BUTTON_BRIGHTNESS: u8 = 75;
 
-// FIXME: Make a macro to generate this. (Also create a "new" function)
+// TODO: Make a macro to generate this. (Also create a "new" function)
 #[derive(Serialize, Deserialize, Default)]
 pub struct Storage {
     muted: bool,
     foo: Waveform,
 }
 
-// FIXME: Make a macro to generate this.
+// TODO: Make a macro to generate this.
 pub struct Params<'a> {
     curve: ParamSlot<'a, Curve, PARAMS>,
     midi_channel: ParamSlot<'a, i32, PARAMS>,
@@ -42,9 +42,9 @@ pub struct Params<'a> {
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     // IDEA: We _could_ do some storage stuff in here.
 
-    // FIXME: Make a macro to generate this.
-    // FIXME: Move Signal (when changed) to store so that we can do params.wait_for_change maybe
-    // FIXME: Generate this from the static params defined above
+    // TODO: Make a macro to generate this.
+    // TODO: Move Signal (when changed) to store so that we can do params.wait_for_change maybe
+    // TODO: Generate this from the static params defined above
     let param_store = ParamStore::new(
         [Value::Curve(Curve::Linear), Value::i32(1)],
         app.app_id,
@@ -74,13 +74,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let midi_chan = params.midi_channel.get().await;
     let midi = app.use_midi(midi_chan as u8);
 
-    // FIXME: Maybe create a macro to generate this? We actually need to be able to supply default
+    // TODO: Maybe create a macro to generate this? We actually need to be able to supply default
     // values. Then move to wrapper, I think that would make sense
     // We could also put the storage as the second argument of run
     let storage: Mutex<NoopRawMutex, Storage> =
         Mutex::new(app.load(None).await.unwrap_or(Storage::default()));
 
-    // FIXME: Definitely improve this API
+    // TODO: Definitely improve this API
     let stor = storage.lock().await;
     let muted = stor.muted;
     drop(stor);
@@ -111,7 +111,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let fut1 = async {
         loop {
             app.delay_millis(10).await;
-            // FIXME: Definitely improve this API
+            // TODO: Definitely improve this API
             let muted = {
                 let stor = storage.lock().await;
                 stor.muted
@@ -127,7 +127,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let fut2 = async {
         loop {
             faders.wait_for_change(0).await;
-            // FIXME: Definitely improve this API
+            // TODO: Definitely improve this API
             let muted = {
                 let stor = storage.lock().await;
                 stor.muted
@@ -142,7 +142,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let fut3 = async {
         loop {
             buttons.wait_for_down(0).await;
-            // FIXME: Definitely improve this API (maybe closure?)
+            // TODO: Definitely improve this API (maybe closure?)
             let mut stor = storage.lock().await;
             stor.muted = !stor.muted;
             app.save(&*stor, None).await;

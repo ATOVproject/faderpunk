@@ -24,7 +24,6 @@ use embassy_rp::{
     pio,
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::pubsub::{PubSubChannel, Publisher};
 use embassy_sync::watch::Watch;
 use embassy_time::Timer;
@@ -35,7 +34,7 @@ use midly::live::LiveEvent;
 
 use storage::load_global_config;
 use tasks::fram::MAX_DATA_LEN;
-use tasks::max::{MaxCmd, MAX_CHANNEL};
+use tasks::max::MAX_CHANNEL;
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -79,12 +78,6 @@ pub enum InputEvent {
     SaveScene(u8),
 }
 
-/// Messages from core 1 to core 0
-pub enum HardwareCmd {
-    MaxCmd(usize, MaxCmd),
-    MidiMsg(LiveEvent<'static>),
-}
-
 #[derive(Clone, Copy)]
 pub enum ClockEvent {
     Tick,
@@ -115,9 +108,6 @@ pub type EventPubSubPublisher = Publisher<
     EVENT_PUBSUB_SUBS,
     18,
 >;
-pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE> =
-    Channel::new();
-pub type CmdSender = Sender<'static, CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE>;
 
 /// MIDI buffers (RX and TX)
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
@@ -135,16 +125,6 @@ async fn main_core1(spawner: Spawner) {
         let global_config = receiver.changed().await;
         // TODO: Check if the layout actually changed and if we need to spawn it
         lm.spawn_layout(global_config.layout).await;
-    }
-}
-
-#[embassy_executor::task]
-async fn hardware_cmd_router() {
-    loop {
-        match CMD_CHANNEL.receive().await {
-            HardwareCmd::MaxCmd(channel, max_cmd) => MAX_CHANNEL.send((channel, max_cmd)).await,
-            HardwareCmd::MidiMsg(live_event) => MIDI_CHANNEL.send(live_event).await,
-        }
     }
 }
 
@@ -235,8 +215,6 @@ async fn main(spawner: Spawner) {
     tasks::clock::start_clock(&spawner, aux_inputs).await;
 
     tasks::fram::start_fram(&spawner, fram).await;
-
-    spawner.spawn(hardware_cmd_router()).unwrap();
 
     spawn_core1(
         p.CORE1,

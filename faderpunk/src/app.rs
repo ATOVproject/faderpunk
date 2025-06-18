@@ -29,13 +29,12 @@ use serde::{
 use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
-        fram::{
-            request_data, write_data, ReadOperation, WriteOperation, FRAM_WRITE_BUF, MAX_DATA_LEN,
-        },
+        fram::{request_data, write_data, ReadOperation, WriteOperation, FRAM_WRITE_BUF},
         leds::LED_VALUES,
-        max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
+        max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
+        midi::MidiSender,
     },
-    ClockEvent, CmdSender, EventPubSubChannel, HardwareCmd, InputEvent, CLOCK_WATCH,
+    ClockEvent, EventPubSubChannel, InputEvent, CLOCK_WATCH,
 };
 
 // TODO: This will be refactored using an allocator
@@ -223,26 +222,26 @@ impl InJack {
 
 pub struct GateJack {
     channel: usize,
-    cmd_sender: CmdSender,
+    max_sender: MaxSender,
 }
 
 impl GateJack {
-    fn new(channel: usize, cmd_sender: CmdSender) -> Self {
+    fn new(channel: usize, max_sender: MaxSender) -> Self {
         Self {
             channel,
-            cmd_sender,
+            max_sender,
         }
     }
 
     pub async fn set_high(&self) {
-        self.cmd_sender
-            .send(HardwareCmd::MaxCmd(self.channel, MaxCmd::GpoSetHigh))
+        self.max_sender
+            .send((self.channel, MaxCmd::GpoSetHigh))
             .await;
     }
 
     pub async fn set_low(&self) {
-        self.cmd_sender
-            .send(HardwareCmd::MaxCmd(self.channel, MaxCmd::GpoSetLow))
+        self.max_sender
+            .send((self.channel, MaxCmd::GpoSetLow))
             .await;
     }
 }
@@ -429,14 +428,14 @@ pub enum SceneEvent {
 
 #[derive(Clone, Copy)]
 pub struct Midi<const N: usize> {
-    cmd_sender: CmdSender,
+    midi_sender: MidiSender,
     midi_channel: u4,
 }
 
 impl<const N: usize> Midi<N> {
-    pub fn new(midi_channel: u4, cmd_sender: CmdSender) -> Self {
+    pub fn new(midi_channel: u4, midi_sender: MidiSender) -> Self {
         Self {
-            cmd_sender,
+            midi_sender,
             midi_channel,
         }
     }
@@ -476,7 +475,7 @@ impl<const N: usize> Midi<N> {
     }
 
     pub async fn send_msg(&self, msg: LiveEvent<'static>) {
-        self.cmd_sender.send(HardwareCmd::MidiMsg(msg)).await;
+        self.midi_sender.send(msg).await;
     }
 }
 
@@ -581,7 +580,8 @@ pub enum AppError {
 pub struct App<const N: usize> {
     pub app_id: u8,
     pub start_channel: usize,
-    cmd_sender: CmdSender,
+    max_sender: MaxSender,
+    midi_sender: MidiSender,
     event_pubsub: &'static EventPubSubChannel,
 }
 
@@ -589,13 +589,15 @@ impl<const N: usize> App<N> {
     pub fn new(
         app_id: u8,
         start_channel: usize,
-        cmd_sender: CmdSender,
+        max_sender: MaxSender,
+        midi_sender: MidiSender,
         event_pubsub: &'static EventPubSubChannel,
     ) -> Self {
         Self {
             app_id,
             start_channel,
-            cmd_sender,
+            max_sender,
+            midi_sender,
             event_pubsub,
         }
     }
@@ -603,11 +605,8 @@ impl<const N: usize> App<N> {
     // TODO: We should also probably make sure that people do not reconfigure the jacks within the
     // app (throw error or something)
     async fn reconfigure_jack(&self, chan: usize, config: MaxConfig) {
-        self.cmd_sender
-            .send(HardwareCmd::MaxCmd(
-                self.start_channel + chan,
-                MaxCmd::ConfigurePort(config),
-            ))
+        self.max_sender
+            .send((self.start_channel + chan, MaxCmd::ConfigurePort(config)))
             .await;
     }
 
@@ -682,7 +681,7 @@ impl<const N: usize> App<N> {
         self.reconfigure_jack(chan, MaxConfig::Mode3(ConfigMode3, level))
             .await;
 
-        GateJack::new(self.start_channel + chan, self.cmd_sender)
+        GateJack::new(self.start_channel + chan, self.max_sender)
     }
 
     pub async fn delay_micros(&self, micros: u64) {
@@ -718,7 +717,7 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
-        Midi::new(midi_channel.into(), self.cmd_sender)
+        Midi::new(midi_channel.into(), self.midi_sender)
     }
 
     pub async fn wait_for_scene_event(&self) -> SceneEvent {

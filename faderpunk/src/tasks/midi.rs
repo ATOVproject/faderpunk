@@ -2,11 +2,13 @@ use config::{ClockSrc, GlobalConfig};
 use defmt::info;
 use embassy_futures::join::{join, join4};
 use embassy_rp::peripherals::USB;
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex};
-use embassy_sync::channel::Channel;
+use embassy_sync::blocking_mutex::raw::{
+    CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex,
+};
+use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::mutex::Mutex;
 use embassy_time::{with_timeout, Duration, Instant, TimeoutError};
-use embassy_usb::class::midi::{MidiClass, Sender};
+use embassy_usb::class::midi::{MidiClass, Sender as UsbSender};
 use embedded_io_async::{Read, Write};
 
 use embassy_rp::peripherals::{UART0, UART1};
@@ -24,8 +26,12 @@ midly::stack_buffer! {
 }
 
 const RUNNING_STATUS_DEBOUNCE: Duration = Duration::from_millis(200);
+const MIDI_CHANNEL_SIZE: usize = 16;
 
-pub static MIDI_CHANNEL: Channel<ThreadModeRawMutex, LiveEvent<'_>, 16> = Channel::new();
+pub type MidiSender =
+    Sender<'static, CriticalSectionRawMutex, LiveEvent<'static>, MIDI_CHANNEL_SIZE>;
+pub static MIDI_CHANNEL: Channel<CriticalSectionRawMutex, LiveEvent<'_>, MIDI_CHANNEL_SIZE> =
+    Channel::new();
 
 #[derive(Copy, Clone)]
 enum CodeIndexNumber {
@@ -64,7 +70,7 @@ enum CodeIndexNumber {
 }
 
 async fn write_msg_to_usb<'a>(
-    usb_tx: &mut Sender<'a, Driver<'a, USB>>,
+    usb_tx: &mut UsbSender<'a, Driver<'a, USB>>,
     midi_ev: LiveEvent<'a>,
 ) -> Result<(), TimeoutError> {
     let mut usb_buf = [0_u8; 4];
@@ -81,7 +87,7 @@ async fn write_msg_to_usb<'a>(
     Ok(())
 }
 
-// TODO: Use running status again, but use default UART implementation as opposed to BufferedUart
+// FIXME: Use running status again, but use default UART implementation as opposed to BufferedUart
 async fn write_msg_to_uart(
     uart1_tx: &mut BufferedUartTx<'static, UART1>,
     midi_ev: LiveEvent<'_>,
@@ -150,24 +156,21 @@ pub async fn start_midi_loops<'a>(
                 tx.write(data).await.unwrap();
                 match LiveEvent::parse(data) {
                     Ok(event) => {
-                        let cfg = config.lock().await;
-                        let clock_src = cfg.clock_src;
-                        let reset_src = cfg.reset_src;
-                        drop(cfg);
+                        let cfg = CONFIG_CHANGE_WATCH.try_get().unwrap();
                         match event {
                             LiveEvent::Realtime(msg) => match msg {
                                 SystemRealtime::TimingClock => {
-                                    if let ClockSrc::MidiUsb = clock_src {
+                                    if let ClockSrc::MidiUsb = cfg.clock_src {
                                         clock_sender.send(ClockEvent::Tick);
                                     }
                                 }
                                 SystemRealtime::Start => {
-                                    if let ClockSrc::MidiUsb = reset_src {
+                                    if let ClockSrc::MidiUsb = cfg.reset_src {
                                         clock_sender.send(ClockEvent::Start);
                                     }
                                 }
                                 SystemRealtime::Stop => {
-                                    if let ClockSrc::MidiUsb = reset_src {
+                                    if let ClockSrc::MidiUsb = cfg.reset_src {
                                         clock_sender.send(ClockEvent::Reset);
                                     }
                                 }
@@ -193,26 +196,23 @@ pub async fn start_midi_loops<'a>(
         let mut midi_stream = MidiStream::<UartRxBuffer>::default();
         loop {
             if let Ok(bytes_read) = uart1_rx.read(&mut uart_rx_buffer).await {
-                let cfg = config.lock().await;
-                let clock_src = cfg.clock_src;
-                let reset_src = cfg.reset_src;
-                drop(cfg);
+                let cfg = CONFIG_CHANGE_WATCH.try_get().unwrap();
                 midi_stream.feed(
                     &uart_rx_buffer[..bytes_read],
                     |event: LiveEvent| match event {
                         LiveEvent::Realtime(msg) => match msg {
                             SystemRealtime::TimingClock => {
-                                if let ClockSrc::MidiIn = clock_src {
+                                if let ClockSrc::MidiIn = cfg.clock_src {
                                     clock_sender.send(ClockEvent::Tick);
                                 }
                             }
                             SystemRealtime::Start => {
-                                if let ClockSrc::MidiIn = reset_src {
+                                if let ClockSrc::MidiIn = cfg.reset_src {
                                     clock_sender.send(ClockEvent::Start);
                                 }
                             }
                             SystemRealtime::Stop => {
-                                if let ClockSrc::MidiIn = reset_src {
+                                if let ClockSrc::MidiIn = cfg.reset_src {
                                     clock_sender.send(ClockEvent::Reset);
                                 }
                             }
