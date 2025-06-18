@@ -1,12 +1,7 @@
-use defmt::info;
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
-    channel::Sender,
-    mutex::Mutex,
-    pubsub::Subscriber,
-    signal::Signal,
-    watch::Receiver,
+    blocking_mutex::raw::NoopRawMutex, channel::Sender, mutex::Mutex, pubsub::Subscriber,
+    signal::Signal, watch::Receiver,
 };
 use embassy_time::{Duration, Timer};
 use heapless::Vec;
@@ -28,6 +23,7 @@ use serde::{
 };
 
 use crate::{
+    storage::AppStorageAddress,
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
@@ -107,68 +103,6 @@ where
 impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T, N> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
-    }
-}
-
-#[derive(Clone, Copy)]
-// TODO: Allocator should alloate a certain part of the fram to app storage
-pub struct AppStorageAddress {
-    pub start_channel: u8,
-    pub scene: Option<u8>,
-}
-
-impl From<AppStorageAddress> for u32 {
-    fn from(key: AppStorageAddress) -> Self {
-        let scene_storage_slot_index = match key.scene {
-            // Slot 0 for None
-            None => 0,
-            // Slots 1 and onwards for Some(s)
-            Some(s) => (s as u32) + 1,
-        };
-
-        // Assuming SCENES_PER_APP is the number of scenes like Some(0), Some(1)...
-        // The total number of "slots" per app channel is SCENES_PER_APP + 1 (for the None case)
-        let total_slots_per_app = SCENES_PER_APP + 1; // Placeholder for actual constant arithmetic if needed
-
-        let app_base_offset =
-            (key.start_channel as u32) * total_slots_per_app * BYTES_PER_VALUE_SET;
-        let scene_offset_in_app = scene_storage_slot_index * BYTES_PER_VALUE_SET;
-        app_base_offset + scene_offset_in_app
-    }
-}
-
-impl From<u32> for AppStorageAddress {
-    fn from(address: u32) -> Self {
-        // The total number of "slots" per app channel is SCENES_PER_APP + 1
-        let total_slots_per_app = SCENES_PER_APP + 1; // Placeholder for actual constant arithmetic if needed
-        let bytes_per_app_block: u32 = total_slots_per_app * BYTES_PER_VALUE_SET;
-
-        let start_channel_raw = address / bytes_per_app_block;
-        let start_channel = start_channel_raw as u8;
-
-        let offset_within_app_block = address % bytes_per_app_block;
-        let scene_storage_slot_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
-
-        let scene = if scene_storage_slot_index_raw == 0 {
-            None // Slot 0 maps back to None
-        } else {
-            // Slots 1 and onwards map back to Some(s-1)
-            Some((scene_storage_slot_index_raw - 1) as u8)
-        };
-
-        Self {
-            start_channel,
-            scene,
-        }
-    }
-}
-
-impl AppStorageAddress {
-    pub fn new(start_channel: u8, scene: Option<u8>) -> Self {
-        Self {
-            start_channel,
-            scene,
-        }
     }
 }
 
@@ -619,7 +553,7 @@ impl<const N: usize> App<N> {
     }
 
     pub async fn load<T: DeserializeOwned>(&self, scene: Option<u8>) -> Result<T, AppError> {
-        let address = AppStorageAddress::new(self.start_channel as u8, scene);
+        let address = AppStorageAddress::new(self.start_channel, scene);
         let op = ReadOperation::new(address.into());
         if let Ok(data) = request_data(op).await {
             if data.is_empty() {
@@ -641,7 +575,7 @@ impl<const N: usize> App<N> {
         data[0] = self.app_id;
         let len = to_slice(&storage, &mut data[1..]).unwrap().len();
 
-        let address = AppStorageAddress::new(self.start_channel as u8, scene);
+        let address = AppStorageAddress::new(self.start_channel, scene);
         if let Ok(op) = WriteOperation::try_new(address.into(), len + 1) {
             write_data(op).await.unwrap();
         }
