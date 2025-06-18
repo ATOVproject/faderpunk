@@ -7,17 +7,36 @@ use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::Channel,
     mutex::Mutex,
-    watch::Sender,
+    pubsub::{PubSubChannel, Subscriber},
 };
 use embassy_time::Ticker;
 
-use crate::{Spawner, CLOCK_WATCH, CONFIG_CHANGE_WATCH};
+use crate::{Spawner, CONFIG_CHANGE_WATCH};
 use config::ClockSrc;
 use libfp::utils::bpm_to_clock_duration;
 
-type AuxInputs = (PIN_1, PIN_2, PIN_3);
+const CLOCK_PUBSUB_SIZE: usize = 16;
 
-pub static CLOCK_CHANNEL: Channel<ThreadModeRawMutex, ClockCmd, 16> = Channel::new();
+type AuxInputs = (PIN_1, PIN_2, PIN_3);
+// 5 Publishers: 3 Ext clocks, internal clock, midi
+pub type ClockSubscriber =
+    Subscriber<'static, CriticalSectionRawMutex, ClockEvent, CLOCK_PUBSUB_SIZE, 16, 5>;
+
+pub static CLOCK_CMD_CHANNEL: Channel<ThreadModeRawMutex, ClockCmd, 4> = Channel::new();
+pub static CLOCK_PUBSUB: PubSubChannel<
+    CriticalSectionRawMutex,
+    ClockEvent,
+    CLOCK_PUBSUB_SIZE,
+    16,
+    5,
+> = PubSubChannel::new();
+
+#[derive(Clone, Copy)]
+pub enum ClockEvent {
+    Tick,
+    Start,
+    Reset,
+}
 
 #[derive(Clone, Copy)]
 pub enum ClockCmd {
@@ -28,13 +47,10 @@ pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(run_clock(aux_inputs)).unwrap();
 }
 
-async fn make_ext_clock_loop(
-    mut pin: Input<'_>,
-    clock_src: ClockSrc,
-    clock_sender: Sender<'static, CriticalSectionRawMutex, bool, 16>,
-) {
+async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     let mut current_config = config_receiver.get().await;
+    let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
 
     loop {
         let should_be_active =
@@ -50,7 +66,13 @@ async fn make_ext_clock_loop(
         pin.wait_for_falling_edge().await;
         pin.wait_for_low().await;
 
-        clock_sender.send(current_config.reset_src == clock_src);
+        let clock_event = if current_config.reset_src == clock_src {
+            ClockEvent::Reset
+        } else {
+            ClockEvent::Tick
+        };
+
+        clock_publisher.publish(clock_event).await;
 
         // Check if config has changed after waiting
         if let Some(new_config) = config_receiver.try_get() {
@@ -66,7 +88,6 @@ async fn run_clock(aux_inputs: AuxInputs) {
     let atom = Input::new(atom_pin, Pull::Up);
     let meteor = Input::new(meteor_pin, Pull::Up);
     let cube = Input::new(hexagon_pin, Pull::Up);
-    let clock_sender = CLOCK_WATCH.sender();
     // TODO: Get PPQN from config somehow (and keep updated)
     const PPQN: u8 = 24;
 
@@ -77,6 +98,7 @@ async fn run_clock(aux_inputs: AuxInputs) {
     let internal_fut = async {
         let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
         let mut current_config = config_receiver.get().await;
+        let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
 
         loop {
             // TODO: How to handle internal reset?
@@ -92,7 +114,7 @@ async fn run_clock(aux_inputs: AuxInputs) {
             let mut clock = internal_clock.lock().await;
             clock.next().await;
 
-            clock_sender.send(false);
+            clock_publisher.publish(ClockEvent::Tick).await;
 
             // Check if config has changed after waiting
             if let Some(new_config) = config_receiver.try_get() {
@@ -101,13 +123,13 @@ async fn run_clock(aux_inputs: AuxInputs) {
         }
     };
 
-    let atom_fut = make_ext_clock_loop(atom, ClockSrc::Atom, clock_sender.clone());
-    let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor, clock_sender.clone());
-    let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube, clock_sender.clone());
+    let atom_fut = make_ext_clock_loop(atom, ClockSrc::Atom);
+    let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor);
+    let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube);
 
     let msg_fut = async {
         loop {
-            let ClockCmd::SetBpm(bpm) = CLOCK_CHANNEL.receive().await;
+            let ClockCmd::SetBpm(bpm) = CLOCK_CMD_CHANNEL.receive().await;
             let mut clock = internal_clock.lock().await;
             *clock = Ticker::every(bpm_to_clock_duration(bpm, PPQN));
         }

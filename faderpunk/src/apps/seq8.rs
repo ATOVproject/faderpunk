@@ -13,7 +13,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Sign
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::{App, Arr, Led, Range, SceneEvent},
+    app::{App, Arr, ClockEvent, Led, Range, SceneEvent},
     storage::ParamStore,
 };
 
@@ -365,60 +365,62 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
 
             let mut clockn = clockn_glob.get().await;
             // let page = page_glob.get().await;
-            let reset = clk.wait_for_tick(6).await;
-            clockn += 1;
-            if reset {
-                clockn = 0;
-                clockn_glob.set(clockn).await;
-            }
-            if !reset {
-                clockn_glob.set(clockn).await;
-                //led.set((clockn % seq_length[page / 2] as usize) % 8, Led::Button, (255, 0, 0), 100 );
-                let stor = storage.lock().await;
-                let seq = stor.seq_glob;
-                drop(stor);
-
-                for n in 0..=3 {
-                    let clkindex = ((clockn % seq_length.0[n] as usize) + (n * 16));
-
-                    if gateseq.0[clkindex] {
-                        gate_out[n].set_high().await;
-                        cv_out[n].set_value(seq.0[clkindex] / 4); //only update CV out on active step
-                        midi[n]
-                            .send_note_on((seq.0[clkindex] / 170) as u8 + 60, 4095)
-                            .await;
-
-                        //gate_flag_glob[n].set(true).await;
-
-                        //app.delay_millis(gatet).await;
-                        //gate_out[n].set_low().await;
-                    } else {
-                        // note that are not triggered
-                        gate_out[n].set_low().await;
-
-                        //midi[n].send_note_off((seq[clkindex] / 170) as u8 + 60).await
-                    }
-                    //led_flag_glob.set(true).await;
+            match clk.wait_for_event(6).await {
+                ClockEvent::Reset => {
+                    clockn = 0;
+                    clockn_glob.set(clockn).await;
                 }
+                ClockEvent::Tick => {
+                    clockn += 1;
+                    clockn_glob.set(clockn).await;
+                    //led.set((clockn % seq_length[page / 2] as usize) % 8, Led::Button, (255, 0, 0), 100 );
+                    let stor = storage.lock().await;
+                    let seq = stor.seq_glob;
+                    drop(stor);
 
-                app.delay_millis(gatet).await;
-                for n in 0..=3 {
-                    let clkindex = (clockn % seq_length.0[n] as usize) + (n * 16);
-                    if gateseq.0[clkindex] {
-                        //gate_out[n].set_high().await;
-                        //gate_flag_glob[n].set(true).await;
+                    for n in 0..=3 {
+                        let clkindex = ((clockn % seq_length.0[n] as usize) + (n * 16));
 
-                        //app.delay_millis(gatet).await;
-                        gate_out[n].set_low().await;
+                        if gateseq.0[clkindex] {
+                            gate_out[n].set_high().await;
+                            cv_out[n].set_value(seq.0[clkindex] / 4); //only update CV out on active step
+                            midi[n]
+                                .send_note_on((seq.0[clkindex] / 170) as u8 + 60, 4095)
+                                .await;
 
-                        midi[n]
-                            .send_note_off((seq.0[clkindex] / 170) as u8 + 60)
-                            .await
+                            //gate_flag_glob[n].set(true).await;
+
+                            //app.delay_millis(gatet).await;
+                            //gate_out[n].set_low().await;
+                        } else {
+                            // note that are not triggered
+                            gate_out[n].set_low().await;
+
+                            //midi[n].send_note_off((seq[clkindex] / 170) as u8 + 60).await
+                        }
+                        //led_flag_glob.set(true).await;
                     }
 
-                    led_flag_glob.set(true).await;
+                    app.delay_millis(gatet).await;
+                    for n in 0..=3 {
+                        let clkindex = (clockn % seq_length.0[n] as usize) + (n * 16);
+                        if gateseq.0[clkindex] {
+                            //gate_out[n].set_high().await;
+                            //gate_flag_glob[n].set(true).await;
+
+                            //app.delay_millis(gatet).await;
+                            gate_out[n].set_low().await;
+
+                            midi[n]
+                                .send_note_off((seq.0[clkindex] / 170) as u8 + 60)
+                                .await
+                        }
+
+                        led_flag_glob.set(true).await;
+                    }
+                    //clockn += 1;
                 }
-                //clockn += 1;
+                _ => {}
             }
         }
     };

@@ -47,7 +47,7 @@ pub async fn load_global_config() -> GlobalConfig {
             defmt::error!("Could not read GlobalConfig: {:?}", Debug2Format(&err));
         }
     }
-    GlobalConfig::default()
+    GlobalConfig::new()
     // request_data(op)
     //     .await
     //     .ok()

@@ -2,12 +2,9 @@
 //add a function to the button
 //add LED to the button
 
-use crate::app::{App, Led, Range};
+use crate::app::{App, ClockEvent, Led, Range};
 use config::Config;
-use embassy_futures::{
-    join::{join, join3},
-    select::select,
-};
+use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
 pub const CHANNELS: usize = 1;
@@ -41,16 +38,17 @@ pub async fn run(app: &App<CHANNELS>) {
 
     let fut1 = async {
         loop {
-            clock.wait_for_tick(1).await;
-            clkn += 1;
-            let muted = glob_muted.get().await;
-            div = fader.get_values();
-            div[0] = (25 - (((div[0] as u32 * 24) / 4095) + 1)) as u16;
-            if clkn % div[0] == 0 && !muted {
-                let val = rnd.roll();
-                output.set_value(val);
-                leds.set(0, Led::Top, LED_COLOR, (val / 16) as u8);
-                leds.set(0, Led::Bottom, LED_COLOR, (255 - val / 16) as u8);
+            if let ClockEvent::Tick = clock.wait_for_event(1).await {
+                clkn += 1;
+                let muted = glob_muted.get().await;
+                div = fader.get_values();
+                div[0] = (25 - (((div[0] as u32 * 24) / 4095) + 1)) as u16;
+                if clkn % div[0] == 0 && !muted {
+                    let val = rnd.roll();
+                    output.set_value(val);
+                    leds.set(0, Led::Top, LED_COLOR, (val / 16) as u8);
+                    leds.set(0, Led::Bottom, LED_COLOR, (255 - val / 16) as u8);
+                }
             }
         }
     };

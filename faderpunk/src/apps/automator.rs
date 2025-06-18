@@ -7,7 +7,7 @@ use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
 use crate::{
-    app::{App, Led, Range},
+    app::{App, ClockEvent, Led, Range},
     storage::ParamStore,
 };
 
@@ -56,15 +56,16 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
 
     let fut1 = async {
         loop {
-            let reset = clock.wait_for_tick(1).await;
+            match clock.wait_for_event(1).await {
+                ClockEvent::Reset => {
+                    index = 0;
+                    recording = false;
+                    //info!("reset");
+                }
+                _ => {}
+            }
 
             index += 1;
-            //info!("reset = {}", reset);
-            if reset {
-                index = 0;
-                recording = false;
-                //info!("reset");
-            }
 
             //info!("clock");
             index = index % length;

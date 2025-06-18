@@ -6,8 +6,8 @@ use embassy_rp::{
     spi::{self, Async, Spi},
 };
 use embassy_sync::{
-    blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex},
-    channel::{Channel, Receiver},
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    channel::{Channel, Sender},
     mutex::Mutex,
 };
 use embassy_time::Timer;
@@ -23,16 +23,18 @@ use static_cell::StaticCell;
 
 use crate::{InputEvent, Irqs, EVENT_PUBSUB};
 
-// MaxCmd(usize, MaxCmd),
+const MIDI_CHANNEL_SIZE: usize = 16;
 
 type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
 type MuxPins = (PIN_12, PIN_13, PIN_14, PIN_15);
+
+pub type MaxSender = Sender<'static, CriticalSectionRawMutex, (usize, MaxCmd), MIDI_CHANNEL_SIZE>;
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
 pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-pub static MAX_CHANNEL: Channel<ThreadModeRawMutex, (usize, MaxCmd), 16> = Channel::new();
+pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, (usize, MaxCmd), 16> = Channel::new();
 
 #[derive(Clone, Copy)]
 pub enum MaxCmd {

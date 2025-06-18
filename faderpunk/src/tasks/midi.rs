@@ -2,11 +2,11 @@ use config::{ClockSrc, GlobalConfig};
 use defmt::info;
 use embassy_futures::join::{join, join4};
 use embassy_rp::peripherals::USB;
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex};
-use embassy_sync::channel::Channel;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
+use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::mutex::Mutex;
-use embassy_time::{with_timeout, Duration, Instant, TimeoutError};
-use embassy_usb::class::midi::{MidiClass, Sender};
+use embassy_time::{with_timeout, Duration, TimeoutError};
+use embassy_usb::class::midi::{MidiClass, Sender as UsbSender};
 use embedded_io_async::{Read, Write};
 
 use embassy_rp::peripherals::{UART0, UART1};
@@ -17,15 +17,21 @@ use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
 use midly::stream::MidiStream;
 use midly::MidiMessage;
 
-use crate::{CLOCK_WATCH, CONFIG_CHANGE_WATCH};
+use crate::{tasks::clock::CLOCK_PUBSUB, CONFIG_CHANGE_WATCH};
+
+use super::clock::ClockEvent;
 
 midly::stack_buffer! {
     struct UartRxBuffer([u8; 3]);
 }
 
 const RUNNING_STATUS_DEBOUNCE: Duration = Duration::from_millis(200);
+const MIDI_CHANNEL_SIZE: usize = 16;
 
-pub static MIDI_CHANNEL: Channel<ThreadModeRawMutex, LiveEvent<'_>, 16> = Channel::new();
+pub type MidiSender =
+    Sender<'static, CriticalSectionRawMutex, LiveEvent<'static>, MIDI_CHANNEL_SIZE>;
+pub static MIDI_CHANNEL: Channel<CriticalSectionRawMutex, LiveEvent<'_>, MIDI_CHANNEL_SIZE> =
+    Channel::new();
 
 #[derive(Copy, Clone)]
 enum CodeIndexNumber {
@@ -64,7 +70,7 @@ enum CodeIndexNumber {
 }
 
 async fn write_msg_to_usb<'a>(
-    usb_tx: &mut Sender<'a, Driver<'a, USB>>,
+    usb_tx: &mut UsbSender<'a, Driver<'a, USB>>,
     midi_ev: LiveEvent<'a>,
 ) -> Result<(), TimeoutError> {
     let mut usb_buf = [0_u8; 4];
@@ -81,17 +87,15 @@ async fn write_msg_to_usb<'a>(
     Ok(())
 }
 
-// TODO: Use running status again, but use default UART implementation as opposed to BufferedUart
 async fn write_msg_to_uart(
     uart1_tx: &mut BufferedUartTx<'static, UART1>,
     midi_ev: LiveEvent<'_>,
-    running_status: &mut Option<u8>,
 ) -> Result<(), UartError> {
     let mut ser_buf = [0_u8; 3];
     let mut ser_cursor = Cursor::new(&mut ser_buf);
     midi_ev.write(&mut ser_cursor).unwrap();
     let bytes_written = ser_cursor.cursor();
-    uart1_tx.write(&ser_buf[..bytes_written]).await?;
+    uart1_tx.write_all(&ser_buf[..bytes_written]).await?;
     uart1_tx.flush().await?;
     Ok(())
 }
@@ -104,9 +108,9 @@ pub async fn start_midi_loops<'a>(
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
     let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, UART0, Async>> = Mutex::new(uart0);
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
-    let clock_sender = CLOCK_WATCH.sender();
+    let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
     let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
-    let initial_config = config_receiver.get().await;
+    let initial_config = config_receiver.try_get().unwrap();
     let config: Mutex<NoopRawMutex, GlobalConfig> = Mutex::new(initial_config);
 
     let midi_tx = async {
@@ -114,25 +118,15 @@ pub async fn start_midi_loops<'a>(
         // usb_tx.wait_connection().await;
         // TODO: Deal with backpressure as well (do it on core b maybe?)
         // See https://claude.ai/chat/1a702bdf-b1f9-4d52-a004-aa221cbb4642 for improving this
-        let mut running_status: Option<u8> = None;
-        let mut last_sent = Instant::now();
 
         loop {
             let midi_ev = MIDI_CHANNEL.receive().await;
 
-            let now = Instant::now();
-            if now.saturating_duration_since(last_sent) >= RUNNING_STATUS_DEBOUNCE {
-                running_status = None;
-            }
-            let (res_uart, _) = join(
-                write_msg_to_uart(&mut uart1_tx, midi_ev, &mut running_status),
+            let (_, _) = join(
+                write_msg_to_uart(&mut uart1_tx, midi_ev),
                 write_msg_to_usb(&mut usb_tx, midi_ev),
             )
             .await;
-
-            if res_uart.is_ok() {
-                last_sent = now;
-            }
         }
     };
 
@@ -150,20 +144,22 @@ pub async fn start_midi_loops<'a>(
                 tx.write(data).await.unwrap();
                 match LiveEvent::parse(data) {
                     Ok(event) => {
-                        let cfg = config.lock().await;
-                        let clock_src = cfg.clock_src;
-                        let reset_src = cfg.reset_src;
-                        drop(cfg);
+                        let cfg = CONFIG_CHANGE_WATCH.try_get().unwrap();
                         match event {
                             LiveEvent::Realtime(msg) => match msg {
                                 SystemRealtime::TimingClock => {
-                                    if let ClockSrc::MidiUsb = clock_src {
-                                        clock_sender.send(false);
+                                    if let ClockSrc::MidiUsb = cfg.clock_src {
+                                        clock_publisher.publish(ClockEvent::Tick).await;
                                     }
                                 }
                                 SystemRealtime::Start => {
-                                    if let ClockSrc::MidiUsb = reset_src {
-                                        clock_sender.send(true);
+                                    if let ClockSrc::MidiUsb = cfg.reset_src {
+                                        clock_publisher.publish(ClockEvent::Start).await;
+                                    }
+                                }
+                                SystemRealtime::Stop => {
+                                    if let ClockSrc::MidiUsb = cfg.reset_src {
+                                        clock_publisher.publish(ClockEvent::Reset).await;
                                     }
                                 }
                                 _ => {}
@@ -188,22 +184,24 @@ pub async fn start_midi_loops<'a>(
         let mut midi_stream = MidiStream::<UartRxBuffer>::default();
         loop {
             if let Ok(bytes_read) = uart1_rx.read(&mut uart_rx_buffer).await {
-                let cfg = config.lock().await;
-                let clock_src = cfg.clock_src;
-                let reset_src = cfg.reset_src;
-                drop(cfg);
+                let cfg = CONFIG_CHANGE_WATCH.try_get().unwrap();
                 midi_stream.feed(
                     &uart_rx_buffer[..bytes_read],
                     |event: LiveEvent| match event {
                         LiveEvent::Realtime(msg) => match msg {
                             SystemRealtime::TimingClock => {
-                                if let ClockSrc::MidiIn = clock_src {
-                                    clock_sender.send(false);
+                                if let ClockSrc::MidiIn = cfg.clock_src {
+                                    clock_publisher.publish_immediate(ClockEvent::Tick);
                                 }
                             }
                             SystemRealtime::Start => {
-                                if let ClockSrc::MidiIn = reset_src {
-                                    clock_sender.send(true);
+                                if let ClockSrc::MidiIn = cfg.reset_src {
+                                    clock_publisher.publish_immediate(ClockEvent::Start);
+                                }
+                            }
+                            SystemRealtime::Stop => {
+                                if let ClockSrc::MidiIn = cfg.reset_src {
+                                    clock_publisher.publish_immediate(ClockEvent::Reset);
                                 }
                             }
                             _ => {}
