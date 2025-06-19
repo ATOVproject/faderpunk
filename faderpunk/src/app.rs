@@ -28,10 +28,6 @@ pub use crate::{
     tasks::clock::ClockEvent,
 };
 
-// TODO: This will be refactored using an allocator
-const BYTES_PER_VALUE_SET: u32 = 1000;
-const SCENES_PER_APP: u32 = 3;
-
 pub enum Range {
     // 0 - 10V
     _0_10V,
@@ -307,13 +303,19 @@ pub enum SceneEvent {
 
 #[derive(Clone, Copy)]
 pub struct Midi<const N: usize> {
+    event_pubsub: &'static EventPubSubChannel,
     midi_sender: MidiSender,
     midi_channel: u4,
 }
 
 impl<const N: usize> Midi<N> {
-    pub fn new(midi_channel: u4, midi_sender: MidiSender) -> Self {
+    pub fn new(
+        midi_channel: u4,
+        midi_sender: MidiSender,
+        event_pubsub: &'static EventPubSubChannel,
+    ) -> Self {
         Self {
+            event_pubsub,
             midi_sender,
             midi_channel,
         }
@@ -355,6 +357,16 @@ impl<const N: usize> Midi<N> {
 
     pub async fn send_msg(&self, msg: LiveEvent<'static>) {
         self.midi_sender.send(msg).await;
+    }
+
+    pub async fn wait_for_message(&self) -> LiveEvent<'static> {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+
+        loop {
+            if let InputEvent::MidiMsg(msg) = subscriber.next_message_pure().await {
+                return msg;
+            }
+        }
     }
 }
 
@@ -526,7 +538,7 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
-        Midi::new(midi_channel.into(), self.midi_sender)
+        Midi::new(midi_channel.into(), self.midi_sender, self.event_pubsub)
     }
 
     pub async fn wait_for_scene_event(&self) -> SceneEvent {
