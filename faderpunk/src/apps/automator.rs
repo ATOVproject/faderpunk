@@ -1,23 +1,38 @@
 // TODO :
 //  Add param
 
-use config::Config;
+use config::{Config, Param, Value};
 use defmt::info;
 use embassy_futures::{join::{join3, join4, join5}, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
-use crate::app::{App, Arr, Led, Range, SceneEvent};
+use crate::{app::{App, Arr, ClockEvent, Led, Range, SceneEvent}, storage::{ParamSlot, ParamStore}};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 0;
+pub const PARAMS: usize = 2;
 
-pub static CONFIG: config::Config<PARAMS> = Config::new("Automator", "Fader movement recording");
+pub static CONFIG: config::Config<PARAMS> = Config::new("Automator", "Fader movement recording")
+    .add_param(Param::i32 {
+        name: "MIDI Channel",
+        min: 1,
+        max: 16,
+    })
+    .add_param(Param::i32 {
+        name: "MIDI CC",
+        min: 1,
+        max: 128,
+    });
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     buffer_saved: Arr<u16, 384>,
     length_saved: usize,
+}
+
+pub struct Params<'a> {
+    midi_channel: ParamSlot<'a, i32, PARAMS>,
+    cc: ParamSlot<'a, i32, PARAMS>,
 }
 
 impl Default for Storage {
@@ -31,14 +46,34 @@ impl Default for Storage {
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    select(run(&app), exit_signal.wait()).await;
+    let param_store = ParamStore::new(
+        [Value::i32(1), Value::i32(32)],
+        app.app_id,
+        app.start_channel,
+    );
+
+    let params = Params {
+        midi_channel: ParamSlot::new(&param_store, 0),
+        cc: ParamSlot::new(&param_store, 1),
+    };
+
+    let app_loop = async {
+        loop {
+            select(run(&app, &params), param_store.param_handler()).await;
+        }
+    };
+
+    select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>) {
+pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let midi = app.use_midi(4);
+
+    let midi_chan = params.midi_channel.get().await;
+    let cc = params.cc.get().await;
+    let midi = app.use_midi(midi_chan as u8 - 1);
     let mut clock = app.use_clock();
 
     let rec_flag = app.make_global(false);
@@ -95,7 +130,7 @@ pub async fn run(app: &App<CHANNELS>) {
                 val = val.clamp(0, 4095);
                 jack.set_value(val);
                 if last_midi / 16 != (val) / 16 {
-                    midi.send_cc(0, val).await;
+                    midi.send_cc(cc as u8, val).await;
                     last_midi = val;
                 }
                 leds.set(0, Led::Top, color, (val / 32) as u8);
@@ -108,15 +143,20 @@ pub async fn run(app: &App<CHANNELS>) {
 
     let fut1 = async {
         loop {
-            let reset = clock.wait_for_tick(1).await;
-            //info!("here!");
 
-            index += 1;
-            if reset {
-                index = 0;
-                recording = false;
-                recording_glob.set(recording).await;
+            match clock.wait_for_event(1).await {
+                ClockEvent::Reset => {
+                    index = 0;
+                    recording = false;
+                    recording_glob.set(recording).await;
+                    info!("reset!")
+                }
+                ClockEvent::Tick => {
+                    index += 1;
+                }
+                _ => {}
             }
+            
             length = length_glob.get().await;
 
 
@@ -187,7 +227,7 @@ pub async fn run(app: &App<CHANNELS>) {
                 leds.set(0, Led::Button, color, 100);
             }
 
-            if index == 0 {
+            if index == 1 {
                 leds.set(0, Led::Button, (255, 255, 255), 0);
             }
 
