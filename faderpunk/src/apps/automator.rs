@@ -1,8 +1,4 @@
-// TODO :
-//  Add param
-
 use config::{Config, Param, Value};
-use defmt::info;
 use embassy_futures::{join::{join3, join4, join5}, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use serde::{Deserialize, Serialize};
@@ -85,8 +81,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let latched = app.make_global(false);
 
 
-
-
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
     let mut last_midi = 0;
@@ -112,7 +106,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let update_output = async {
         loop {
             app.delay_millis(1).await;
-            // info!("here!");
             let index = index_glob.get().await;
             let buffer = buffer_glob.get().await;
             let offset = offset_glob.get().await;
@@ -149,7 +142,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                     index = 0;
                     recording = false;
                     recording_glob.set(recording).await;
-                    info!("reset!")
                 }
                 ClockEvent::Tick => {
                     index += 1;
@@ -160,7 +152,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
             length = length_glob.get().await;
 
 
-            //info!("clock");
             index = index % length;
 
             index_glob.set(index).await;
@@ -192,16 +183,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                 length = 384;
                 length_glob.set(length).await;
                 latched.set(true).await
-                length_glob.set(length).await;
-                latched.set(true).await
             }
 
             if recording {
                 let val = faders.get_values();
                 buffer[index] = val[0];
-
                 leds.set(0, Led::Button, (255, 0, 0), 100);
-
+            } else {
+                leds.set(0, Led::Button, color, 100);
             }
 
             if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 { //finish recording
@@ -218,20 +207,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                 drop(stor);
             }
 
-            if !recording {
-                let offset = offset_glob.get().await;
-                let mut val: u16 = buffer[index] + offset;
-                if val > 4095 {
-                    val = 4095;
-                }
-                // jack.set_value(val);
-                
-                leds.set(0, Led::Button, color, 100);
-            }
-
             if index == 1 {
                 leds.set(0, Led::Button, (255, 255, 255), 0);
             }
+            
 
         }
     };
@@ -270,7 +249,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    defmt::info!("LOADING SCENE {}", scene);
                     let mut stor = storage.lock().await;
                     let scene_stor = app.load(Some(scene)).await.unwrap_or(Storage::default());
                     *stor = scene_stor;
@@ -282,7 +260,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                     offset_glob.set(0).await;   
                 }
                 SceneEvent::SaveScene(scene) => {
-                    defmt::info!("SAVING SCENE {}", scene);
                     let stor = storage.lock().await;
                     app.save(&*stor, Some(scene)).await;
                 }
