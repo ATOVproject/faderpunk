@@ -192,6 +192,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                 length = 384;
                 length_glob.set(length).await;
                 latched.set(true).await
+                length_glob.set(length).await;
+                latched.set(true).await
             }
 
             if recording {
