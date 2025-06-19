@@ -3,10 +3,7 @@ use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    app::{App, AppStorage, Led, ManagedStorage, Range, SceneEvent},
-    storage::{ParamSlot, ParamStore},
-};
+use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
