@@ -552,35 +552,6 @@ impl<const N: usize> App<N> {
         Global::new(initial)
     }
 
-    pub async fn load<T: DeserializeOwned>(&self, scene: Option<u8>) -> Result<T, AppError> {
-        let address = AppStorageAddress::new(self.start_channel, scene);
-        let op = ReadOperation::new(address.into());
-        if let Ok(data) = request_data(op).await {
-            if data.is_empty() {
-                return Err(AppError::DeserializeFailed);
-            }
-            if let Ok(val) = from_bytes::<T>(&data[1..]) {
-                if data[0] != self.app_id {
-                    return Err(AppError::DeserializeFailed);
-                }
-                return Ok(val);
-            }
-        }
-        Err(AppError::DeserializeFailed)
-    }
-
-    pub async fn save<T: Serialize>(&self, storage: &T, scene: Option<u8>) {
-        let mut data = FRAM_WRITE_BUF.lock().await;
-
-        data[0] = self.app_id;
-        let len = to_slice(&storage, &mut data[1..]).unwrap().len();
-
-        let address = AppStorageAddress::new(self.start_channel, scene);
-        if let Ok(op) = WriteOperation::try_new(address.into(), len + 1) {
-            write_data(op).await.unwrap();
-        }
-    }
-
     // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
         let chan = chan.clamp(0, N - 1);
@@ -686,5 +657,82 @@ impl<const N: usize> App<N> {
     pub async fn exit_handler(&self, exit_signal: &'static Signal<NoopRawMutex, bool>) {
         exit_signal.wait().await;
         self.reset().await;
+    }
+}
+
+pub trait AppStorage:
+    Serialize + for<'de> Deserialize<'de> + Default + Send + Sync + 'static
+{
+}
+
+pub struct ManagedStorage<S: AppStorage> {
+    app_id: u8,
+    inner: Mutex<NoopRawMutex, S>,
+    start_channel: usize,
+}
+
+impl<S: AppStorage> ManagedStorage<S> {
+    pub fn new(app_id: u8, start_channel: usize) -> Self {
+        Self {
+            app_id,
+            inner: Mutex::new(S::default()),
+            start_channel,
+        }
+    }
+
+    pub async fn load(&self, scene: Option<u8>) {
+        let address = AppStorageAddress::new(self.start_channel, scene);
+        let op = ReadOperation::new(address.into());
+        if let Ok(data) = request_data(op).await {
+            if data.is_empty() {
+                return;
+            }
+            if let Ok(val) = from_bytes::<S>(&data[1..]) {
+                if data[0] != self.app_id {
+                    return;
+                }
+                let mut inner = self.inner.lock().await;
+                *inner = val;
+            }
+        }
+    }
+
+    pub async fn save(&self, scene: Option<u8>) {
+        let mut data = FRAM_WRITE_BUF.lock().await;
+
+        data[0] = self.app_id;
+        let inner = self.inner.lock().await;
+        let len = to_slice(&*inner, &mut data[1..]).unwrap().len();
+
+        let address = AppStorageAddress::new(self.start_channel, scene);
+        if let Ok(op) = WriteOperation::try_new(address.into(), len + 1) {
+            write_data(op).await.unwrap();
+        }
+    }
+
+    pub async fn query<F, R>(&self, accessor: F) -> R
+    where
+        F: FnOnce(&S) -> R,
+    {
+        let guard = self.inner.lock().await;
+        accessor(&*guard)
+    }
+
+    pub async fn modify<F, R>(&self, modifier: F) -> R
+    where
+        F: FnOnce(&mut S) -> R,
+    {
+        let mut guard = self.inner.lock().await;
+        modifier(&mut *guard)
+    }
+
+    pub async fn modify_and_save<F, R>(&self, modifier: F, scene: Option<u8>) -> R
+    where
+        F: FnOnce(&mut S) -> R,
+    {
+        let mut guard = self.inner.lock().await;
+        let s = modifier(&mut *guard);
+        self.save(scene).await;
+        s
     }
 }
