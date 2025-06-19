@@ -11,7 +11,9 @@ use serde::{
 
 use crate::tasks::{
     configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
-    fram::{request_data, write_data, ReadOperation, WriteOperation, FRAM_WRITE_BUF},
+    fram::{
+        request_data, write_data, ReadOperation, WriteOperation, FRAM_READ_BUF, FRAM_WRITE_BUF,
+    },
 };
 
 const GLOBAL_CONFIG_RANGE: Range<u32> = 0..1_024;
@@ -36,11 +38,16 @@ pub async fn store_global_config(config: &GlobalConfig) {
 pub async fn load_global_config() -> GlobalConfig {
     let address = GLOBAL_CONFIG_RANGE.start;
     let op = ReadOperation::new(address);
-    request_data(op)
-        .await
-        .ok()
-        .and_then(|data| from_bytes::<GlobalConfig>(&data).ok())
-        .unwrap_or_else(GlobalConfig::new)
+    if let Ok(len) = request_data(op).await {
+        if len > 0 {
+            let read_buf = FRAM_READ_BUF.lock().await;
+            let data = &read_buf[..len];
+            if let Ok(res) = from_bytes::<GlobalConfig>(data) {
+                return res;
+            }
+        }
+    }
+    GlobalConfig::new()
 }
 
 #[derive(Clone, Copy)]
@@ -220,15 +227,15 @@ where
         // Prepend the app id to the serialized data for easy filtering
         buf[0] = self.app_id;
         // TODO: unwrap
-        to_slice(&*data, &mut buf[1..]).unwrap().len()
+        to_slice(&*data, &mut buf[1..]).unwrap().len() + 1
     }
 
     async fn des(&self, data: &[u8]) -> Option<[Value; N]> {
         // First byte is app id
+        if data[0] != self.app_id {
+            return None;
+        }
         if let Ok(val) = from_bytes::<[Value; N]>(&data[1..]) {
-            if data[0] != self.app_id {
-                return None;
-            }
             return Some(val);
         }
         None
@@ -237,6 +244,7 @@ where
     async fn save(&self) {
         let mut buf = FRAM_WRITE_BUF.lock().await;
         let len = self.ser(&mut *buf).await;
+        drop(buf);
         let address = AppParamsAddress::new(self.start_channel);
         if let Ok(op) = WriteOperation::try_new(address.into(), len) {
             write_data(op).await.unwrap();
@@ -246,11 +254,12 @@ where
     pub async fn load(&self) {
         let address = AppParamsAddress::new(self.start_channel);
         let op = ReadOperation::new(address.into());
-        if let Ok(data) = request_data(op).await {
-            if data.is_empty() {
+        if let Ok(len) = request_data(op).await {
+            if len == 0 {
                 return;
             }
-            if let Some(val) = self.des(data.as_slice()).await {
+            let read_buf = FRAM_READ_BUF.lock().await;
+            if let Some(val) = self.des(&read_buf[..len]).await {
                 let mut inner_val = self.inner.lock().await;
                 *inner_val = val;
             }
@@ -353,7 +362,9 @@ impl<S: AppStorage> ManagedStorage<S> {
     pub async fn load(&self, scene: Option<u8>) {
         let address = AppStorageAddress::new(self.start_channel, scene);
         let op = ReadOperation::new(address.into());
-        if let Ok(data) = request_data(op).await {
+        if let Ok(len) = request_data(op).await {
+            let read_buf = FRAM_READ_BUF.lock().await;
+            let data = &read_buf[..len];
             if data.is_empty() {
                 return;
             }
@@ -373,6 +384,7 @@ impl<S: AppStorage> ManagedStorage<S> {
         data[0] = self.app_id;
         let inner = self.inner.lock().await;
         let len = to_slice(&*inner, &mut data[1..]).unwrap().len();
+        drop(data);
 
         let address = AppStorageAddress::new(self.start_channel, scene);
         if let Ok(op) = WriteOperation::try_new(address.into(), len + 1) {

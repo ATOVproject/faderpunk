@@ -69,7 +69,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let midi_chan = params.midi_channel.get().await;
     let midi = app.use_midi(midi_chan as u8);
-    storage.load(None);
+    storage.load(None).await;
 
     let muted = storage.query(|s| s.muted).await;
 
