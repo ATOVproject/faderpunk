@@ -91,9 +91,9 @@ pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26>
     Watch::new_with(GlobalConfig::new());
 
 // 32 receivers (ephemeral)
-// 18 senders (16 apps for scenes, 1 buttons, 1 max)
+// 19 senders (16 apps for scenes, 1 buttons, 1 max, 1 midi)
 pub type EventPubSubChannel =
-    PubSubChannel<CriticalSectionRawMutex, InputEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 18>;
+    PubSubChannel<CriticalSectionRawMutex, InputEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 19>;
 pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
 pub type EventPubSubPublisher = Publisher<
     'static,
@@ -101,7 +101,7 @@ pub type EventPubSubPublisher = Publisher<
     InputEvent,
     EVENT_PUBSUB_SIZE,
     EVENT_PUBSUB_SUBS,
-    18,
+    19,
 >;
 
 /// MIDI buffers (RX and TX)
