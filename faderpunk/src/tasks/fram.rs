@@ -26,8 +26,6 @@ const WRITES_CAPACITY: usize = 16;
 // TODO: Find a good number for this
 pub const MAX_DATA_LEN: usize = 1024;
 
-pub static FRAM_READ_BUF: Mutex<ThreadModeRawMutex, [u8; MAX_DATA_LEN]> =
-    Mutex::new([0; MAX_DATA_LEN]);
 pub static FRAM_WRITE_BUF: Mutex<ThreadModeRawMutex, [u8; MAX_DATA_LEN]> =
     Mutex::new([0; MAX_DATA_LEN]);
 
@@ -60,7 +58,7 @@ pub struct Request {
 pub static FRAM_WRITE_CHANNEL: Channel<CriticalSectionRawMutex, WriteOperation, WRITES_CAPACITY> =
     Channel::new();
 
-pub type FramReadResult = Result<usize, FramError>;
+pub type FramReadResult = Result<FramData, FramError>;
 
 pub static FRAM_RESPONSE_SIGNALS_POOL: [Signal<CriticalSectionRawMutex, FramReadResult>;
     MAX_CONCURRENT_REQUESTS] = [const { Signal::new() }; MAX_CONCURRENT_REQUESTS];
@@ -130,7 +128,7 @@ impl Drop for SignalIndexGuard {
     }
 }
 
-pub async fn request_data(op: ReadOperation) -> Result<usize, FramError> {
+pub async fn request_data(op: ReadOperation) -> Result<FramData, FramError> {
     let guard = SignalIndexGuard::acquire().await?;
     let signal_idx = guard.index();
 
@@ -192,7 +190,7 @@ impl Storage {
             .map_err(|_| FramError::I2c)
     }
 
-    pub async fn read(&mut self, address: u32, data: &mut [u8]) -> Result<usize, FramError> {
+    pub async fn read(&mut self, address: u32) -> Result<FramData, FramError> {
         let mut len_bytes: [u8; 2] = [0; 2];
         // Read length bytes first
         self.fram
@@ -200,14 +198,18 @@ impl Storage {
             .await
             .map_err(|_| FramError::I2c)?;
         let data_length = u16::from_le_bytes(len_bytes) as usize;
+        let mut read_buf: FramData = Vec::new();
         if data_length == 0 {
-            return Ok(0);
+            return Ok(read_buf);
+        }
+        if read_buf.resize(data_length, 0).is_err() {
+            return Err(FramError::BufferOverflow);
         }
         self.fram
-            .read(address + 2, data)
+            .read(address + 2, &mut read_buf)
             .await
             .map_err(|_| FramError::I2c)?;
-        Ok(data_length)
+        Ok(read_buf)
     }
 }
 
@@ -238,8 +240,7 @@ async fn run_fram(fram: Fram) {
     loop {
         match select(read_receiver.receive(), write_receiver.receive()).await {
             Either::First(req) => {
-                let mut data = FRAM_READ_BUF.lock().await;
-                let result = storage.read(req.op.address, &mut *data).await;
+                let result = storage.read(req.op.address).await;
                 FRAM_RESPONSE_SIGNALS_POOL[req.signal_idx].signal(result);
             }
             Either::Second(write_op) => {

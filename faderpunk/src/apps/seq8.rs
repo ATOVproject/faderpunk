@@ -9,11 +9,12 @@ use embassy_futures::{
     join::{join, join5},
     select::select,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
-use crate::app::{
-    App, AppStorage, Arr, ClockEvent, Led, ManagedStorage, ParamStore, Range, SceneEvent,
+use crate::{
+    app::{App, Arr, ClockEvent, Led, Range, SceneEvent},
+    storage::ParamStore,
 };
 
 pub const CHANNELS: usize = 8;
@@ -31,14 +32,12 @@ pub struct Storage {
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            seq_glob: Arr::new([0; 64]),
-            gateseq_glob: Arr::new([true; 64]),
-            seq_length_glob: Arr::new([16; 4]),
+            seq_glob: Arr([0; 64]),
+            gateseq_glob: Arr([true; 64]),
+            seq_length_glob: Arr([16; 4]),
         }
     }
 }
-
-impl AppStorage for Storage {}
 
 pub struct Params {}
 
@@ -49,15 +48,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
     let app_loop = async {
         loop {
-            let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(run(&app, &params), param_store.param_handler()).await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<Storage>) {
+pub async fn run(app: &App<CHANNELS>, _params: &Params) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let mut clk = app.use_clock();
@@ -93,6 +91,19 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     // gateseq_glob.load().await;
     // let mut seq_length_glob = app.make_global_with_store(Arr([16; 4]), StorageSlot::C);
     // seq_length_glob.load().await;
+
+    let storage: Mutex<NoopRawMutex, Storage> =
+        Mutex::new(app.load(None).await.unwrap_or(Storage::default()));
+
+    //recall from memory
+    let stor = storage.lock().await;
+    // let seq_glob = stor.seq_glob;
+    // let gateseq_glob = stor.gateseq_glob;
+    // let seq_length_glob = stor.seq_length_glob;
+    // stor.seq_length_glob = Arr([16; 4]);
+    // app.save(&*stor, None).await;
+
+    drop(stor);
 
     //let mut latched_glob = app.make_global([true, true, true, true, true, true, true, true]);
 
@@ -130,8 +141,10 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             let vals = faders.get_values();
             let page = page_glob.get().await;
 
-            let (mut seq, mut seq_length) =
-                storage.query(|s| (s.seq_glob, s.seq_length_glob)).await;
+            let stor = storage.lock().await;
+            let mut seq = stor.seq_glob;
+            let mut seq_length = stor.seq_length_glob;
+            drop(stor);
 
             // let mut seq_length = seq_length_glob.get_array().await;
             // let mut seq = seq_glob.get_array().await;
@@ -139,17 +152,19 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             let _shift = buttons.is_shift_pressed();
             let mut latched = latched_glob.get().await;
 
-            if return_if_close(vals[chan], seq.at(chan + (page * 8))) && !_shift {
+            if return_if_close(vals[chan], seq.0[chan + (page * 8)]) && !_shift {
                 latched[chan] = true;
                 latched_glob.set(latched).await;
             }
 
             if !_shift && chan < 8 && latched[chan] && latched[chan] {
-                seq.set_at(chan + (page * 8), vals[chan]);
-                storage.modify_and_save(|s| s.seq_glob = seq, None).await;
+                seq.0[chan + (page * 8)] = vals[chan];
+                let mut stor = storage.lock().await;
+                stor.seq_glob = seq;
+                app.save(&*stor, None).await;
             }
 
-            if (vals[0] / 256 + 1) as u8 == seq_length.at(page / 2) && _shift {
+            if (vals[0] / 256 + 1) as u8 == seq_length.0[page / 2] && _shift {
                 latched[0] = true;
                 latched_glob.set(latched).await;
                 //info!("latching!");
@@ -159,11 +174,11 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 // add check for latching
                 if chan == 0 && latched[0] {
                     //fader 1 + shift
-                    seq_length.set_at(page / 2, (((vals[0]) / 256) + 1) as u8);
+                    seq_length.0[(page / 2)] = (((vals[0]) / 256) + 1) as u8;
                     //info!("{}", seq_length[page / 2]);
-                    storage
-                        .modify_and_save(|s| s.seq_length_glob = seq_length, None)
-                        .await;
+                    let mut stor = storage.lock().await;
+                    stor.seq_length_glob = seq_length;
+                    app.save(&*stor, None).await;
 
                     // seq_length_glob.set_array(seq_length).await;
                     // seq_length_glob.save().await;
@@ -182,19 +197,22 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         loop {
             let chan = buttons.wait_for_any_down().await;
 
+            let stor = storage.lock().await;
             // let seq = stor.seq_glob;
+            let mut gateseq = stor.gateseq_glob;
             // let seq_length = stor.seq_length_glob;
-            let mut gateseq = storage.query(|s| s.gateseq_glob).await;
+            drop(stor);
 
             // let mut gateseq = gateseq_glob.get_array().await;
             let _shift = buttons.is_shift_pressed();
             let page = page_glob.get().await;
             if !_shift {
-                gateseq.set_at(chan + (page * 8), !gateseq.at(chan + (page * 8)));
+                gateseq.0[chan + (page * 8)] = !gateseq.0[chan + (page * 8)];
 
-                storage
-                    .modify_and_save(|s| s.gateseq_glob = gateseq, None)
-                    .await;
+                let mut stor = storage.lock().await;
+                stor.gateseq_glob = gateseq;
+                app.save(&*stor, None).await;
+                drop(stor);
 
                 // gateseq_glob.set_array(gateseq).await;
                 // gateseq_glob.save().await;
@@ -227,7 +245,9 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
                 //let seq_length = seq_length_glob.get_array().await;
 
-                let seq_length = storage.query(|s| s.seq_length_glob).await;
+                let stor = storage.lock().await;
+                let seq_length = stor.seq_length_glob;
+                drop(stor);
 
                 let page = page_glob.get().await;
                 let mut bright = 75;
@@ -240,13 +260,13 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     led.set(n, Led::Button, colours[n / 2], bright);
                 }
                 for n in 0..=15 {
-                    if n < seq_length.at(page / 2) {
+                    if n < seq_length.0[page / 2] {
                         bright = 100
                     }
-                    if n == clockn as u8 % seq_length.at(page / 2) {
+                    if n == clockn as u8 % seq_length.0[page / 2] {
                         bright = 200
                     }
-                    if n >= seq_length.at(page / 2) {
+                    if n >= seq_length.0[page / 2] {
                         bright = 0
                     }
                     if n < 8 {
@@ -262,9 +282,11 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 // LED stuff
                 let page = page_glob.get().await;
 
-                let (seq, gateseq, seq_length) = storage
-                    .query(|s| (s.seq_glob, s.gateseq_glob, s.seq_length_glob))
-                    .await;
+                let stor = storage.lock().await;
+                let seq = stor.seq_glob;
+                let gateseq = stor.gateseq_glob;
+                let seq_length = stor.seq_length_glob;
+                drop(stor);
 
                 // let gateseq = gateseq_glob.get_array().await;
                 // let seq_length = seq_length_glob.get_array().await; //use this to highlight active notes
@@ -287,35 +309,35 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 }
 
                 for n in 0..=7 {
-                    led.set(n, Led::Top, colour, (seq.at(n + (page * 8)) / 16) as u8 / 2);
+                    led.set(n, Led::Top, colour, (seq.0[n + (page * 8)] / 16) as u8 / 2);
 
-                    if gateseq.at(n + (page * 8)) {
+                    if gateseq.0[n + (page * 8)] {
                         led.set(n, Led::Button, colour, intencity[1]);
 
                         //led.set(n, Led::Bottom , colour, 0);
                     }
-                    if !gateseq.at(n + (page * 8)) {
+                    if !gateseq.0[n + (page * 8)] {
                         led.set(n, Led::Button, colour, intencity[0]);
                         //led.set(n, Led::Bottom , colour, 0);
                     }
 
-                    let index = seq_length.at(page / 2) as usize - (page % 2 * 8);
+                    let index = seq_length.0[page / 2] as usize - (page % 2 * 8);
                     //info!("{}", index);
 
                     if n >= index || index > 16 {
                         led.set(n, Led::Button, colour, 0);
                     }
 
-                    if (clockn % seq_length.at(n / 2) as usize) % 16 - (n % 2) * 8 < 8 {
+                    if (clockn % seq_length.0[n / 2] as usize) % 16 - (n % 2) * 8 < 8 {
                         led.set(n, Led::Bottom, (255, 0, 0), 100)
                     } else {
                         led.set(n, Led::Bottom, (255, 0, 0), 0)
                     }
                 }
                 //runing light on buttons
-                if (clockn % seq_length.at(page / 2) as usize) % 16 - (page % 2) * 8 < 8 {
+                if (clockn % seq_length.0[page / 2] as usize) % 16 - (page % 2) * 8 < 8 {
                     led.set(
-                        (clockn % seq_length.at(page / 2) as usize) % 16 - (page % 2) * 8,
+                        (clockn % seq_length.0[page / 2] as usize) % 16 - (page % 2) * 8,
                         Led::Button,
                         (255, 0, 0),
                         100,
@@ -332,8 +354,11 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let fut5 = async {
         //sequencer functions
         loop {
-            let (gateseq, seq_length) =
-                storage.query(|s| (s.gateseq_glob, s.seq_length_glob)).await;
+            let stor = storage.lock().await;
+            // let seq = stor.seq_glob;
+            let gateseq = stor.gateseq_glob;
+            let seq_length = stor.seq_length_glob;
+            drop(stor);
 
             // let gateseq = gateseq_glob.get_array().await;
             // let seq_length = seq_length_glob.get_array().await;
@@ -349,16 +374,18 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     clockn += 1;
                     clockn_glob.set(clockn).await;
                     //led.set((clockn % seq_length[page / 2] as usize) % 8, Led::Button, (255, 0, 0), 100 );
-                    let seq = storage.query(|s| s.seq_glob).await;
+                    let stor = storage.lock().await;
+                    let seq = stor.seq_glob;
+                    drop(stor);
 
                     for n in 0..=3 {
-                        let clkindex = (clockn % seq_length.at(n) as usize) + (n * 16);
+                        let clkindex = ((clockn % seq_length.0[n] as usize) + (n * 16));
 
-                        if gateseq.at(clkindex) {
+                        if gateseq.0[clkindex] {
                             gate_out[n].set_high().await;
-                            cv_out[n].set_value(seq.at(clkindex) / 4); //only update CV out on active step
+                            cv_out[n].set_value(seq.0[clkindex] / 4); //only update CV out on active step
                             midi[n]
-                                .send_note_on((seq.at(clkindex) / 170) as u8 + 60, 4095)
+                                .send_note_on((seq.0[clkindex] / 170) as u8 + 60, 4095)
                                 .await;
 
                             //gate_flag_glob[n].set(true).await;
@@ -376,8 +403,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
                     app.delay_millis(gatet).await;
                     for n in 0..=3 {
-                        let clkindex = (clockn % seq_length.at(n) as usize) + (n * 16);
-                        if gateseq.at(clkindex) {
+                        let clkindex = (clockn % seq_length.0[n] as usize) + (n * 16);
+                        if gateseq.0[clkindex] {
                             //gate_out[n].set_high().await;
                             //gate_flag_glob[n].set(true).await;
 
@@ -385,7 +412,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                             gate_out[n].set_low().await;
 
                             midi[n]
-                                .send_note_off((seq.at(clkindex) / 170) as u8 + 60)
+                                .send_note_off((seq.0[clkindex] / 170) as u8 + 60)
                                 .await
                         }
 
@@ -403,11 +430,15 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     defmt::info!("LOADING SCENE {}", scene);
-                    storage.load(Some(scene)).await;
+                    let mut stor = storage.lock().await;
+                    let scene_stor = app.load(Some(scene)).await.unwrap_or(Storage::default());
+                    *stor = scene_stor;
+                    //update_outputs(stor.muted).await;
                 }
                 SceneEvent::SaveScene(scene) => {
                     defmt::info!("SAVING SCENE {}", scene);
-                    storage.save(Some(scene)).await;
+                    let stor = storage.lock().await;
+                    app.save(&*stor, Some(scene)).await;
                 }
             }
         }
