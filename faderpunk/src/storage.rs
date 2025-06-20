@@ -414,6 +414,7 @@ impl<S: AppStorage> ManagedStorage<S> {
     {
         let mut guard = self.inner.lock().await;
         let s = modifier(&mut *guard);
+        drop(guard);
         self.save(scene).await;
         s
     }
