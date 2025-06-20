@@ -1,4 +1,8 @@
+//Bug : 
+// No midi out when recording
+
 use config::{Config, Param, Value};
+use defmt::info;
 use embassy_futures::{join::{join3, join4, join5}, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use serde::{Deserialize, Serialize};
@@ -110,15 +114,16 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
             let buffer = buffer_glob.get().await;
             let offset = offset_glob.get().await;
 
-            if recording_glob.get().await {
-                jack.set_value(offset);  
-                if last_midi / 16 != (offset) / 16 {
-                    midi.send_cc(0, offset).await;
-                    last_midi = offset;
-                }                              
-                leds.set(0, Led::Top, (255, 0, 0), (offset / 32) as u8);
-                leds.set( 0,Led::Bottom,(255, 0, 0),(255 - (offset/ 16) as u8) / 2)
-            } else {
+            // if recording_glob.get().await {
+            //     jack.set_value(offset);
+            //     info!("last midi {}, offset {}", last_midi / 16, (offset) / 16 ); 
+            //     if last_midi / 16 != (offset) / 16 {
+            //         midi.send_cc(0, offset).await;
+            //         last_midi = offset;
+            //     }                              
+            //     leds.set(0, Led::Top, (255, 0, 0), (offset / 32) as u8);
+            //     leds.set( 0,Led::Bottom,(255, 0, 0),(255 - (offset/ 16) as u8) / 2)
+            
                 let mut val = buffer[index] + offset;  
                 val = val.clamp(0, 4095);
                 jack.set_value(val);
@@ -127,8 +132,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                     last_midi = val;
                 }
                 leds.set(0, Led::Top, color, (val / 32) as u8);
-                leds.set( 0,Led::Bottom,color,(255 - (val / 16) as u8) / 2)
-            } 
+                leds.set( 0,Led::Bottom,color,(255 - (val / 16) as u8) / 2);
+                if recording_glob.get().await {
+                    leds.set(0, Led::Top, (255, 0, 0), (val / 32) as u8);
+                    leds.set( 0,Led::Bottom,(255, 0, 0),(255 - (val/ 16) as u8) / 2)
+                }
+            
 
             
         }
