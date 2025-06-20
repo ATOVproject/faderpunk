@@ -1,82 +1,20 @@
-name: Check, build (and release) firmware
-on: [push, pull_request]
+name: Check and Build Firmware (CI)
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - 'v*'
+  pull_request:
+    branches:
+      - '**'
 env:
   CARGO_TERM_COLOR: always
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 jobs:
-  picotool:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') # Run this job only for tags starting with "v"
-    steps:
-      # Checkout your repository code
-      - name: Checkout code
-        uses: actions/checkout@v4
-      # Install dependencies for building picotool and pico-sdk
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y build-essential pkg-config libusb-1.0-0-dev cmake git
-      # Clone pico-sdk repository
-      - name: Clone pico-sdk repository
-        run: |
-          git clone --branch master https://github.com/raspberrypi/pico-sdk.git
-      # Clone picotool repository
-      - name: Clone picotool repository
-        run: |
-          git clone --branch master https://github.com/raspberrypi/picotool.git
-      # Get the latest commit hash for both picotool and pico-sdk
-      - name: Get Git commit hashes for caching
-        id: hashes
-        run: |
-          picotool_hash=$(git -C picotool rev-parse HEAD)
-          pico_sdk_hash=$(git -C pico-sdk rev-parse HEAD)
-          echo "picotool_hash=${picotool_hash}" >> $GITHUB_ENV
-          echo "pico_sdk_hash=${pico_sdk_hash}" >> $GITHUB_ENV
-      # Cache picotool build outputs based on both repo hashes
-      - name: Cache picotool build outputs
-        uses: actions/cache@v4
-        with:
-          path: picotool/build
-          key: ${{ runner.os }}-picotool-${{ env.picotool_hash }}-${{ env.pico_sdk_hash }}
-      # Skip build if picotool binary exists
-      - name: Check if picotool already exists
-        run: |
-          if [ -f picotool/build/picotool ]; then
-            echo "picotool already exists. Skipping build."
-            echo "skip_build=true" >> $GITHUB_ENV
-          else
-            echo "skip_build=false" >> $GITHUB_ENV
-          fi
-      # Initialize pico-sdk submodules (for the mbedtls library)
-      - name: Initialize pico-sdk submodules
-        if: env.skip_build == 'false'
-        run: |
-          cd pico-sdk
-          git submodule update --init lib/mbedtls
-      # Set environment variable for pico-sdk path
-      - name: Set PICO_SDK_PATH
-        if: env.skip_build == 'false'
-        run: echo "PICO_SDK_PATH=${{ github.workspace }}/pico-sdk" >> $GITHUB_ENV
-      # Build picotool
-      - name: Build picotool
-        if: env.skip_build == 'false'
-        run: |
-          cd picotool
-          mkdir -p build
-          cd build
-          cmake ..
-          make
-      # Upload picotool binary as an artifact
-      - name: Upload picotool artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: picotool
-          path: picotool/build/picotool
   lint:
-    name: Formatting and linting
+    name: Formatting and Linting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -86,8 +24,7 @@ jobs:
           components: rustfmt
           targets: thumbv8m.main-none-eabihf
       - run: cargo fmt -- --check
-      # - run: cargo clippy -- -D warnings
-      - run: cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf
+      - run: cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf -- -D warnings
   check-bindings:
     name: Try to generate the postcard bindings
     runs-on: ubuntu-latest
@@ -97,13 +34,13 @@ jobs:
         with:
           toolchain: nightly
       - run: ./gen-bindings.sh
-  build:
-    name: Build
+  build_firmware_check:
+    name: Build Firmware (Check)
     needs: [lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Dependencies
+      - name: Install System Dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get clean && sudo apt-get update
@@ -114,79 +51,3 @@ jobs:
           targets: thumbv8m.main-none-eabihf
       - run: cargo install flip-link
       - run: cargo build --bin faderpunk --release --target thumbv8m.main-none-eabihf
-      # Upload picotool binary as an artifact (if it's a release)
-      - name: Upload build artifact
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: build
-          path: target/thumbv8m.main-none-eabihf/release/faderpunk
-  release:
-    name: Release
-    if: startsWith(github.ref, 'refs/tags/v') # Run this job only for tags starting with "v"
-    needs: [build, picotool]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download picotool artifact from picotool workflow
-        uses: actions/download-artifact@v4
-        with:
-          name: picotool
-          path: picotool
-      - name: Download build artifact from build workflow
-        uses: actions/download-artifact@v4
-        with:
-          name: build
-          path: target
-      - run: cp target/faderpunk target/faderpunk.elf
-      - run: chmod +x picotool/picotool
-      - run: picotool/picotool uf2 convert target/faderpunk.elf target/faderpunk.uf2
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            target/faderpunk.elf
-            target/faderpunk.uf2
-          prerelease: true
-  build-configurator:
-    name: Build new configurator version
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - name: Setup rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: ./configurator
-      - name: Generate postcard bindings
-        run: ./gen-bindings.sh
-      - name: Build
-        run: pnpm run build
-        working-directory: ./configurator
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: 'configurator/dist'
-  deploy-configurator:
-    name: Deploy configurator to Github pages
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build-configurator
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
