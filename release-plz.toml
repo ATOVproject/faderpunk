@@ -1,0 +1,26 @@
+[workspace]
+
+# By setting `release` to false, we tell release-plz to ignore all packages
+# by default. We will then enable it for specific packages.
+release = false
+
+# This globally disables publishing to crates.io for all packages.
+# Since we don't override this in the package-specific section, nothing will ever be published.
+publish = false
+
+# This globally disables the creation of GitHub/Gitea releases.
+# We will enable it specifically for the "faderpunk" package.
+git_release_enable = false
+
+# This section defines package-specific overrides.
+# The double square brackets indicate it's an element in a TOML array.
+[[package]]
+# The name of the package to apply this specific configuration to.
+name = "faderpunk"
+
+# Override the workspace default to enable processing for "faderpunk".
+# This allows changelogs and version bumps to be generated for this package.
+release = true
+
+# Override the workspace default to enable Git releases only for "faderpunk".
+git_release_enable = true
