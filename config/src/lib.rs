@@ -19,6 +19,7 @@ type InnerLayout = [Option<(u8, usize)>; GLOBAL_CHANNELS];
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]
 pub struct Layout(pub InnerLayout);
 
+#[allow(clippy::new_without_default)]
 impl Layout {
     pub const fn new() -> Self {
         Self([None; GLOBAL_CHANNELS])
@@ -64,7 +65,7 @@ pub struct LayoutIter<'a> {
     index: usize,
 }
 
-impl<'a> Iterator for LayoutIter<'a> {
+impl Iterator for LayoutIter<'_> {
     // (app_id, start_channel, channels)
     type Item = (u8, usize, usize);
 
@@ -134,6 +135,7 @@ pub struct GlobalConfig {
     pub layout: Layout,
 }
 
+#[allow(clippy::new_without_default)]
 impl GlobalConfig {
     pub const fn new() -> Self {
         Self {
