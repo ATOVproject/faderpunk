@@ -47,6 +47,8 @@ pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(run_clock(aux_inputs)).unwrap();
 }
 
+// TODO:
+// This task is responsible for handling an external clock signal. It correctly waits for a configuration change if it's not the active clock. However, once active, it only waits for a hardware pin event (pin.wait_for_falling_edge().await). If a configuration change happens while it's waiting for the pin, this task will not notice until after the next clock tick arrives. The correct way to handle waiting for multiple different events is with the embassy_futures::select::select macro, which ensures the task wakes up for whichever event happens first.
 async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     let mut current_config = config_receiver.get().await;

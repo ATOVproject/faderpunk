@@ -178,10 +178,10 @@ async fn process_channel_values(max_driver: &'static SharedMax) {
     loop {
         // hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
-        let mut max = max_driver.lock().await;
 
         for i in 0..16 {
             let port = Port::try_from(i).unwrap();
+            let mut max = max_driver.lock().await;
             match max.get_mode(port) {
                 5 => {
                     let value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);

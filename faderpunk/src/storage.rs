@@ -223,11 +223,11 @@ where
     }
 
     async fn ser(&self, buf: &mut [u8]) -> usize {
-        let data = self.inner.lock().await;
+        let inner = self.inner.lock().await;
         // Prepend the app id to the serialized data for easy filtering
         buf[0] = self.app_id;
         // TODO: unwrap
-        to_slice(&*data, &mut buf[1..]).unwrap().len() + 1
+        to_slice(&*inner, &mut buf[1..]).unwrap().len() + 1
     }
 
     async fn des(&self, data: &[u8]) -> Option<[Value; N]> {
@@ -260,8 +260,8 @@ where
             }
             let read_buf = FRAM_READ_BUF.lock().await;
             if let Some(val) = self.des(&read_buf[..len]).await {
-                let mut inner_val = self.inner.lock().await;
-                *inner_val = val;
+                let mut inner = self.inner.lock().await;
+                *inner = val;
             }
         }
     }
@@ -381,10 +381,11 @@ impl<S: AppStorage> ManagedStorage<S> {
     pub async fn save(&self, scene: Option<u8>) {
         let mut data = FRAM_WRITE_BUF.lock().await;
 
-        data[0] = self.app_id;
-        let inner = self.inner.lock().await;
-        let len = to_slice(&*inner, &mut data[1..]).unwrap().len();
-        drop(data);
+        let len = {
+            data[0] = self.app_id;
+            let inner = self.inner.lock().await;
+            to_slice(&*inner, &mut data[1..]).unwrap().len()
+        };
 
         let address = AppStorageAddress::new(self.start_channel, scene);
         if let Ok(op) = WriteOperation::try_new(address.into(), len + 1) {
@@ -412,10 +413,11 @@ impl<S: AppStorage> ManagedStorage<S> {
     where
         F: FnOnce(&mut S) -> R,
     {
-        let mut guard = self.inner.lock().await;
-        let s = modifier(&mut *guard);
-        drop(guard);
+        let res = {
+            let mut guard = self.inner.lock().await;
+            modifier(&mut *guard)
+        };
         self.save(scene).await;
-        s
+        res
     }
 }
