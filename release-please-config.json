@@ -1,0 +1,15 @@
+{
+  "packages": {
+    "faderpunk": {
+      "release-type": "rust",
+      "package-name": "faderpunk",
+      "pull-request-title-pattern": "chore(release): ${package-name} v${version}",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
+    }
+  },
+  "plugins": [
+    "cargo-workspace"
+  ]
+}
