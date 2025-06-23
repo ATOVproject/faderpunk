@@ -2,7 +2,7 @@ name: Create Release Artifacts and Deploy
 on:
   push:
     tags:
-      - 'v*'
+      - 'faderpunk-v*'
 env:
   CARGO_TERM_COLOR: always
 permissions:
