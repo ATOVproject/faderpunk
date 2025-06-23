@@ -21,7 +21,10 @@ use max11300::{
 use portable_atomic::{AtomicU16, Ordering};
 use static_cell::StaticCell;
 
-use crate::{InputEvent, Irqs, EVENT_PUBSUB};
+use crate::{
+    events::{InputEvent, EVENT_PUBSUB},
+    Irqs,
+};
 
 const MIDI_CHANNEL_SIZE: usize = 16;
 

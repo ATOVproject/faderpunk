@@ -10,7 +10,7 @@ use crate::apps::spawn_app_by_id;
 pub static LAYOUT_MANAGER: StaticCell<LayoutManager> = StaticCell::new();
 
 pub struct LayoutManager {
-    exit_signals: [Signal<NoopRawMutex, bool>; 16],
+    exit_signals: [Signal<NoopRawMutex, bool>; GLOBAL_CHANNELS],
     layout: Mutex<NoopRawMutex, [u8; GLOBAL_CHANNELS]>,
     spawner: Spawner,
 }
