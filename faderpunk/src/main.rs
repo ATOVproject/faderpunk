@@ -73,7 +73,6 @@ async fn main_core1(spawner: Spawner) {
     let mut receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     loop {
         let global_config = receiver.changed().await;
-        // TODO: Check if the layout actually changed and if we need to spawn it
         lm.spawn_layout(global_config.layout).await;
     }
 }
