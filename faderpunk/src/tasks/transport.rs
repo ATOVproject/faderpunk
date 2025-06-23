@@ -6,6 +6,7 @@ use embassy_usb::class::cdc_acm::{CdcAcmClass, State as CdcAcmState};
 use embassy_usb::class::midi::MidiClass;
 use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
 use embassy_usb::driver::Driver;
+use embassy_usb::msos::{self, windows_version};
 use embassy_usb::{Builder, Config as UsbConfig};
 
 use embassy_rp::peripherals::{UART0, UART1};
@@ -14,9 +15,11 @@ use embassy_rp::uart::{Async, BufferedUart, UartTx};
 use super::configure::start_webusb_loop;
 use super::midi::start_midi_loops;
 
-// TODO: Include this in config
-// This is a randomly generated GUID to allow clients on Windows to find our device
-const DEVICE_INTERFACE_GUIDS: &[&str] = &["{AFB9A6FB-30BA-44BC-9232-806CFC875321}"];
+const USB_VENDOR_ID: u16 = 0xf569;
+const USB_PRODUCT_ID: u16 = 0x1;
+const USB_VENDOR_NAME: &str = "ATOV";
+const USB_PRODUCT_NAME: &str = "Faderpunk";
+const USB_INTERFACE_GUIDS: &[&str] = &["{3A8E7B0C-F569-4A21-9B7D-6E2C1F8A9D04}"];
 
 pub const USB_MAX_PACKET_SIZE: u16 = 64;
 
@@ -59,14 +62,13 @@ async fn run_transports(
     uart0: UartTx<'static, UART0, Async>,
     uart1: BufferedUart<'static, UART1>,
 ) {
-    let mut usb_config = UsbConfig::new(0xf569, 0x1);
-    usb_config.manufacturer = Some("ATOV");
-    usb_config.product = Some("Faderpunk");
-    usb_config.serial_number = Some("12345678");
+    let mut usb_config = UsbConfig::new(USB_VENDOR_ID, USB_PRODUCT_ID);
+    usb_config.manufacturer = Some(USB_VENDOR_NAME);
+    usb_config.product = Some(USB_PRODUCT_NAME);
     // 0x0 (Major) | 0x1 (Minor) | 0x0 (Patch)
     usb_config.device_release = 0x010;
     usb_config.max_power = 500;
-    usb_config.max_packet_size_0 = 64;
+    usb_config.max_packet_size_0 = USB_MAX_PACKET_SIZE as u8;
     usb_config.device_class = 0xEF;
     usb_config.device_sub_class = 0x02;
     usb_config.device_protocol = 0x01;
@@ -75,7 +77,8 @@ async fn run_transports(
     // Create embassy-usb DeviceBuilder using the driver and config.
     // It needs some buffers for building the descriptors.
     let mut config_descriptor = [0; 256];
-    let mut bos_descriptor = [0; 256];
+    let mut bos_descriptor = [0; 128];
+    let mut msos_descriptor = [0; 256];
     let mut control_buf = [0; 64];
 
     let webusb_config = WebUsbConfig {
@@ -92,9 +95,17 @@ async fn run_transports(
         usb_config,
         &mut config_descriptor,
         &mut bos_descriptor,
-        &mut [], // no msos descriptors
+        &mut msos_descriptor,
         &mut control_buf,
     );
+
+    // Add msos descriptors for windows compatibility
+    usb_builder.msos_descriptor(windows_version::WIN8_1, 0);
+    usb_builder.msos_feature(msos::CompatibleIdFeatureDescriptor::new("WINUSB", ""));
+    usb_builder.msos_feature(msos::RegistryPropertyFeatureDescriptor::new(
+        "DeviceInterfaceGUIDs",
+        msos::PropertyData::RegMultiSz(USB_INTERFACE_GUIDS),
+    ));
 
     // Create classes on the builder (WebUSB just needs some setup, but doesn't return anything)
     WebUsb::configure(&mut usb_builder, &mut webusb_state, &webusb_config);
