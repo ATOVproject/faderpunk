@@ -13,6 +13,7 @@ use libfp::{
 };
 
 use crate::{
+    events::{EventPubSubChannel, InputEvent},
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
@@ -20,7 +21,6 @@ use crate::{
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender,
     },
-    EventPubSubChannel, InputEvent,
 };
 
 pub use crate::{

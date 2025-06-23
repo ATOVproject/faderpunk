@@ -10,8 +10,8 @@ macro_rules! register_apps {
         };
 
         use config::ConfigMeta;
-        use crate::{MAX_CHANNEL, MIDI_CHANNEL, EVENT_PUBSUB};
-        use crate::app::App;
+        use crate::{MAX_CHANNEL, MIDI_CHANNEL};
+        use crate::{app::App, events::EVENT_PUBSUB};
         use embassy_executor::Spawner;
 
         const _APP_COUNT: usize = {
