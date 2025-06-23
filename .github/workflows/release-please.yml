@@ -5,6 +5,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 name: release-please
 jobs:
   release-please:
@@ -12,5 +13,5 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
-          release-type: rust
-          path: ./faderpunk
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
