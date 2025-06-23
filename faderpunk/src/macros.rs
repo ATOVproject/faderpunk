@@ -39,9 +39,9 @@ macro_rules! register_apps {
                         let app = App::<{ $app_mod::CHANNELS }>::new(
                             app_id,
                             start_channel,
+                            &EVENT_PUBSUB,
                             MAX_CHANNEL.sender(),
                             MIDI_CHANNEL.sender(),
-                            &EVENT_PUBSUB
                         );
 
                         spawner.spawn($app_mod::wrapper(app, &exit_signals[start_channel])).unwrap();
