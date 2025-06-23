@@ -84,7 +84,18 @@ async fn main(spawner: Spawner) {
     let mut clock_config = ClockConfig::crystal(12_000_000);
     if let Some(ref mut xosc) = clock_config.xosc {
         if let Some(ref mut sys_pll) = xosc.sys_pll {
-            //  TODO: Add calculation (post_div2 is 2)
+            // Calculation for 250MHz system clock from 12MHz crystal:
+            // SYS_CLK = (FREF / REFDIV * FBDIV) / (POSTDIV1 * POSTDIV2)
+            // FREF (crystal) = 12_000_000 Hz
+            // REFDIV = 1 (typical for crystal)
+            // POSTDIV1 = 3 (value changed below)
+            // POSTDIV2 = 2 (ensures POSTDIV1 >= POSTDIV2)
+            // Target SYS_CLK = 250_000_000 Hz
+            // So, FBDIV = (SYS_CLK * POSTDIV1 * POSTDIV2 * REFDIV) / FREF
+            // FBDIV = (250_000_000 * 3 * 2 * 1) / 12_000_000
+            // FBDIV = 1_500_000_000 / 12_000_000 = 125
+            // VCO frequency = FREF * FBDIV / REFDIV = 12MHz * 125 / 1 = 1500MHz (Range: 750-1600MHz)
+
             // Changed from 5 to 3
             sys_pll.post_div1 = 3;
         }
