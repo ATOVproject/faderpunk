@@ -226,7 +226,6 @@ where
         let inner = self.inner.lock().await;
         // Prepend the app id to the serialized data for easy filtering
         buf[0] = self.app_id;
-        // TODO: unwrap
         to_slice(&*inner, &mut buf[1..]).unwrap().len() + 1
     }
 
