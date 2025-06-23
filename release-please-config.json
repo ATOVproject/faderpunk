@@ -5,8 +5,7 @@
       "package-name": "faderpunk",
       "pull-request-title-pattern": "chore(release): ${component} v${version}",
       "changelog-path": "CHANGELOG.md",
-      "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true
+      "bump-minor-pre-major": true
     }
   },
   "plugins": [
