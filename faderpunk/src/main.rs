@@ -6,6 +6,7 @@ mod macros;
 
 mod app;
 mod apps;
+mod events;
 mod layout;
 mod storage;
 mod tasks;
@@ -16,33 +17,24 @@ use embassy_rp::config::Config;
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::spi::{self, Spi};
-use embassy_rp::uart::{
-    self, Async as UartAsync, BufferedUart, BufferedUartTx, Config as UartConfig, UartTx,
-};
+use embassy_rp::uart::{self, Async as UartAsync, BufferedUart, Config as UartConfig, UartTx};
 use embassy_rp::usb;
 use embassy_rp::{
     bind_interrupts, i2c,
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::pubsub::{PubSubChannel, Publisher};
-use embassy_sync::watch::Watch;
 use embassy_time::Timer;
 use fm24v10::{Address, Fm24v10};
-use layout::{LayoutManager, LAYOUT_MANAGER};
-use libfp::constants::GLOBAL_CHANNELS;
-use midly::live::LiveEvent;
-
-use storage::load_global_config;
-use tasks::fram::MAX_DATA_LEN;
-use tasks::max::MAX_CHANNEL;
-use tasks::midi::MIDI_CHANNEL;
+use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-use static_cell::StaticCell;
+use libfp::constants::GLOBAL_CHANNELS;
 
-use config::GlobalConfig;
+use events::CONFIG_CHANGE_WATCH;
+use layout::{LayoutManager, LAYOUT_MANAGER};
+use storage::load_global_config;
+use tasks::{fram::MAX_DATA_LEN, max::MAX_CHANNEL, midi::MIDI_CHANNEL};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -68,48 +60,11 @@ bind_interrupts!(struct Irqs {
 static mut CORE1_STACK: Stack<131_072> = Stack::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
-// TODO: Move all of the message stuff to own file
-/// Messages from core 0 to core 1
-#[derive(Clone)]
-pub enum InputEvent {
-    ButtonDown(usize),
-    ButtonUp(usize),
-    FaderChange(usize),
-    MidiMsg(LiveEvent<'static>),
-    LoadScene(u8),
-    SaveScene(u8),
-}
-
-// TODO: Move all the channels and signalling to own module
-pub const CMD_CHANNEL_SIZE: usize = 16;
-pub const EVENT_PUBSUB_SIZE: usize = 64;
-pub const EVENT_PUBSUB_SUBS: usize = 64;
-
-// TODO: Adjust number of receivers accordingly (we need at least 18 for layout + x), then also
-// mention all uses
-pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> =
-    Watch::new_with(GlobalConfig::new());
-
-// 32 receivers (ephemeral)
-// 19 senders (16 apps for scenes, 1 buttons, 1 max, 1 midi)
-pub type EventPubSubChannel =
-    PubSubChannel<CriticalSectionRawMutex, InputEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 19>;
-pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
-pub type EventPubSubPublisher = Publisher<
-    'static,
-    CriticalSectionRawMutex,
-    InputEvent,
-    EVENT_PUBSUB_SIZE,
-    EVENT_PUBSUB_SUBS,
-    19,
->;
-
 /// MIDI buffers (RX and TX)
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
 static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 
 /// FRAM write buffer
-// TODO: Find a good value here
 static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 
 #[embassy_executor::task]
