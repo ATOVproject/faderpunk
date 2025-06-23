@@ -14,8 +14,11 @@ use embassy_rp::uart::{Async, BufferedUart, UartTx};
 use super::configure::start_webusb_loop;
 use super::midi::start_midi_loops;
 
+// TODO: Include this in config
 // This is a randomly generated GUID to allow clients on Windows to find our device
 const DEVICE_INTERFACE_GUIDS: &[&str] = &["{AFB9A6FB-30BA-44BC-9232-806CFC875321}"];
+
+pub const USB_MAX_PACKET_SIZE: u16 = 64;
 
 pub struct WebEndpoints<'d, D: Driver<'d>> {
     write_ep: D::EndpointIn,
@@ -76,7 +79,7 @@ async fn run_transports(
     let mut control_buf = [0; 64];
 
     let webusb_config = WebUsbConfig {
-        max_packet_size: 64,
+        max_packet_size: USB_MAX_PACKET_SIZE,
         vendor_code: 1,
         landing_url: Some(Url::new("https://faderpunk.io")),
     };
@@ -98,10 +101,10 @@ async fn run_transports(
     let webusb = WebEndpoints::new(&mut usb_builder, &webusb_config);
 
     // Create classes on the builder.
-    let usb_midi = MidiClass::new(&mut usb_builder, 1, 1, 64);
+    let usb_midi = MidiClass::new(&mut usb_builder, 1, 1, USB_MAX_PACKET_SIZE);
 
     // Create USB logger
-    let usb_logger = CdcAcmClass::new(&mut usb_builder, &mut logger_state, 64);
+    let usb_logger = CdcAcmClass::new(&mut usb_builder, &mut logger_state, USB_MAX_PACKET_SIZE);
     let log_fut = embassy_usb_logger::with_class!(1024, log::LevelFilter::Info, usb_logger);
 
     let mut usb = usb_builder.build();
