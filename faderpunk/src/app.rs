@@ -381,7 +381,6 @@ impl<T: Sized + Copy> Global<T> {
         }
     }
 
-    // TODO: implement something like replace (using a closure)
     pub async fn get(&self) -> T {
         let value = self.inner.lock().await;
         *value
@@ -390,6 +389,14 @@ impl<T: Sized + Copy> Global<T> {
     pub async fn set(&self, val: T) {
         let mut value = self.inner.lock().await;
         *value = val
+    }
+
+    pub async fn modify<F>(&self, modifier: F) -> T
+    where
+        F: FnOnce(&mut T) -> T,
+    {
+        let mut value = self.inner.lock().await;
+        modifier(&mut *value)
     }
 }
 
