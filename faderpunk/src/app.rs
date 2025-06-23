@@ -436,18 +436,18 @@ pub enum AppError {
 pub struct App<const N: usize> {
     pub app_id: u8,
     pub start_channel: usize,
+    event_pubsub: &'static EventPubSubChannel,
     max_sender: MaxSender,
     midi_sender: MidiSender,
-    event_pubsub: &'static EventPubSubChannel,
 }
 
 impl<const N: usize> App<N> {
     pub fn new(
         app_id: u8,
         start_channel: usize,
+        event_pubsub: &'static EventPubSubChannel,
         max_sender: MaxSender,
         midi_sender: MidiSender,
-        event_pubsub: &'static EventPubSubChannel,
     ) -> Self {
         Self {
             app_id,
@@ -458,8 +458,6 @@ impl<const N: usize> App<N> {
         }
     }
 
-    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
-    // app (throw error or something)
     async fn reconfigure_jack(&self, chan: usize, config: MaxConfig) {
         self.max_sender
             .send((self.start_channel + chan, MaxCmd::ConfigurePort(config)))
@@ -470,7 +468,6 @@ impl<const N: usize> App<N> {
         Global::new(initial)
     }
 
-    // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
         let chan = chan.clamp(0, N - 1);
         let adc_range = match range {
@@ -490,7 +487,6 @@ impl<const N: usize> App<N> {
         InJack::new(self.start_channel + chan, range)
     }
 
-    // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_out_jack(&self, chan: usize, range: Range) -> OutJack {
         let chan = chan.clamp(0, N - 1);
         let dac_range = match range {
@@ -539,7 +535,6 @@ impl<const N: usize> App<N> {
         Die { rng: RoscRng }
     }
 
-    // TODO: Make sure we can only create one clock per app
     pub fn use_clock(&self) -> Clock {
         Clock::new()
     }
