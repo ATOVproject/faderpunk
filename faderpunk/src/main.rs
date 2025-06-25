@@ -6,40 +6,43 @@ mod macros;
 
 mod app;
 mod apps;
+mod layout;
+mod storage;
 mod tasks;
-pub mod storage;
 
-use apps::spawn_app_by_id;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::ClockConfig;
 use embassy_rp::config::Config;
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::spi::{self, Spi};
-use embassy_rp::uart::{self, Async as UartAsync, BufferedUart, Config as UartConfig, UartTx};
+use embassy_rp::uart::{
+    self, Async as UartAsync, BufferedUart, BufferedUartTx, Config as UartConfig, UartTx,
+};
 use embassy_rp::usb;
 use embassy_rp::{
     bind_interrupts, i2c,
     peripherals::{I2C1, PIO0},
     pio,
 };
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
-use embassy_sync::channel::{Channel, Sender};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher};
-use embassy_sync::signal::Signal;
 use embassy_sync::watch::Watch;
 use embassy_time::Timer;
 use fm24v10::{Address, Fm24v10};
+use layout::{LayoutManager, LAYOUT_MANAGER};
+use libfp::constants::GLOBAL_CHANNELS;
 use midly::live::LiveEvent;
 
+use storage::load_global_config;
 use tasks::fram::MAX_DATA_LEN;
-use tasks::max::{MaxCmd, MAX_CHANNEL};
+use tasks::max::MAX_CHANNEL;
 use tasks::midi::MIDI_CHANNEL;
 use {defmt_rtt as _, panic_probe as _};
 
 use static_cell::StaticCell;
 
-use config::{ClockSrc, GlobalConfig};
+use config::GlobalConfig;
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -77,12 +80,6 @@ pub enum InputEvent {
     SaveScene(u8),
 }
 
-/// Messages from core 1 to core 0
-pub enum HardwareCmd {
-    MaxCmd(usize, MaxCmd),
-    MidiMsg(LiveEvent<'static>),
-}
-
 // TODO: Move all the channels and signalling to own module
 pub const CMD_CHANNEL_SIZE: usize = 16;
 pub const EVENT_PUBSUB_SIZE: usize = 64;
@@ -92,12 +89,11 @@ pub const EVENT_PUBSUB_SUBS: usize = 64;
 // mention all uses
 pub static CONFIG_CHANGE_WATCH: Watch<CriticalSectionRawMutex, GlobalConfig, 26> =
     Watch::new_with(GlobalConfig::new());
-pub static CLOCK_WATCH: Watch<CriticalSectionRawMutex, bool, 16> = Watch::new();
 
 // 32 receivers (ephemeral)
-// 18 senders (16 apps for scenes, 1 buttons, 1 max)
+// 19 senders (16 apps for scenes, 1 buttons, 1 max, 1 midi)
 pub type EventPubSubChannel =
-    PubSubChannel<CriticalSectionRawMutex, InputEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 18>;
+    PubSubChannel<CriticalSectionRawMutex, InputEvent, EVENT_PUBSUB_SIZE, EVENT_PUBSUB_SUBS, 19>;
 pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
 pub type EventPubSubPublisher = Publisher<
     'static,
@@ -105,11 +101,8 @@ pub type EventPubSubPublisher = Publisher<
     InputEvent,
     EVENT_PUBSUB_SIZE,
     EVENT_PUBSUB_SUBS,
-    18,
+    19,
 >;
-pub static CMD_CHANNEL: Channel<CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE> =
-    Channel::new();
-pub type CmdSender = Sender<'static, CriticalSectionRawMutex, HardwareCmd, CMD_CHANNEL_SIZE>;
 
 /// MIDI buffers (RX and TX)
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
@@ -119,29 +112,14 @@ static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 // TODO: Find a good value here
 static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 
-static APP_EXIT_SIGNALS: StaticCell<[Signal<NoopRawMutex, bool>; 16]> = StaticCell::new();
-
-// NEXT: Create AppManager that orchestrates the exiting and spawning of apps depending on the
-// changed layout
-
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
-    // let layout: [u8; 16] = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
-    let layout= [2, 6];
-    // TODO: We can now signal "true" to any of the exit signals to kill an app
-    let exit_signals = APP_EXIT_SIGNALS.init([const { Signal::new() }; 16]);
-    for (start_channel, &app_id) in layout.iter().enumerate() {
-        spawn_app_by_id(app_id, start_channel, spawner, exit_signals).await;
-    }
-}
-
-#[embassy_executor::task]
-async fn hardware_cmd_router() {
+    let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
+    let mut receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
     loop {
-        match CMD_CHANNEL.receive().await {
-            HardwareCmd::MaxCmd(channel, max_cmd) => MAX_CHANNEL.send((channel, max_cmd)).await,
-            HardwareCmd::MidiMsg(live_event) => MIDI_CHANNEL.send(live_event).await,
-        }
+        let global_config = receiver.changed().await;
+        // TODO: Check if the layout actually changed and if we need to spawn it
+        lm.spawn_layout(global_config.layout).await;
     }
 }
 
@@ -214,9 +192,9 @@ async fn main(spawner: Spawner) {
         p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
     );
 
-    // EEPROM
+    // FRAM
     let write_buf = BUF_FRAM_WRITE.init([0; MAX_DATA_LEN]);
-    let eeprom = Fm24v10::new(i2c1, Address(0, 0), write_buf);
+    let fram = Fm24v10::new(i2c1, Address(0, 0), write_buf);
 
     // AUX inputs
     let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
@@ -231,9 +209,7 @@ async fn main(spawner: Spawner) {
 
     tasks::clock::start_clock(&spawner, aux_inputs).await;
 
-    tasks::fram::start_fram(&spawner, eeprom).await;
-
-    spawner.spawn(hardware_cmd_router()).unwrap();
+    tasks::fram::start_fram(&spawner, fram).await;
 
     spawn_core1(
         p.CORE1,
@@ -250,11 +226,6 @@ async fn main(spawner: Spawner) {
 
     Timer::after_millis(100).await;
 
-    // TODO: Get this from fram
-    let mut config = GlobalConfig::default();
-    config.clock_src = ClockSrc::MidiIn;
-    config.reset_src = ClockSrc::MidiIn;
-    // config.layout = Vec::from_slice(&[(1, 0)]).unwrap();
-
-    config_sender.send(config);
+    let global_config = load_global_config().await;
+    config_sender.send(global_config);
 }

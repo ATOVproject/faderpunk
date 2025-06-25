@@ -1,23 +1,9 @@
-use core::ptr::from_mut;
-
-use defmt::info;
 use embassy_rp::clocks::RoscRng;
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
-    channel::Sender,
-    mutex::Mutex,
-    signal::Signal,
-    watch::Receiver,
-};
-use embassy_time::{with_timeout, Duration, Timer};
-use heapless::Vec;
-use max11300::{
-    config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES},
-    ConfigurePort,
-};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use embassy_time::{Duration, Timer};
+use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
-use postcard::{from_bytes, to_slice};
 use rand::Rng;
 
 use config::Curve;
@@ -25,25 +11,22 @@ use libfp::{
     constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
     utils::scale_bits_12_7,
 };
-use serde::{
-    de::{DeserializeOwned, Error as DeError},
-    ser::Error as SerError,
-    Deserialize, Deserializer, Serialize, Serializer,
-};
 
 use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
-        fram::{request_data, write_data, ReadOperation, WriteOperation, MAX_DATA_LEN},
+        clock::{ClockSubscriber, CLOCK_PUBSUB},
         leds::LED_VALUES,
-        max::{MaxCmd, MaxConfig, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
+        max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
+        midi::MidiSender,
     },
-    CmdSender, EventPubSubChannel, HardwareCmd, InputEvent, CLOCK_WATCH,
+    EventPubSubChannel, InputEvent,
 };
 
-// TODO: This will be refactored using an allocator
-const BYTES_PER_VALUE_SET: u32 = 1000;
-const SCENES_PER_APP: u32 = 3;
+pub use crate::{
+    storage::{AppStorage, Arr, ManagedStorage, ParamSlot, ParamStore},
+    tasks::clock::ClockEvent,
+};
 
 pub enum Range {
     // 0 - 10V
@@ -58,118 +41,6 @@ pub enum Led {
     Top,
     Bottom,
     Button,
-}
-
-// TODO: Move to storage
-#[derive(Clone, Copy)]
-pub struct Arr<T: Sized + Copy + Default, const N: usize>(pub [T; N]);
-
-impl<T: Sized + Copy + Default, const N: usize> Default for Arr<T, N> {
-    fn default() -> Self {
-        Self([T::default(); N])
-    }
-}
-
-impl<T, const N: usize> Serialize for Arr<T, N>
-where
-    T: Serialize + Sized + Copy + Default,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let vec = Vec::<T, N>::from_slice(&self.0).unwrap();
-        vec.serialize(serializer)
-    }
-}
-
-impl<'de, T, const N: usize> Deserialize<'de> for Arr<T, N>
-where
-    T: Deserialize<'de> + Sized + Copy + Default,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let vec = Vec::<T, N>::deserialize(deserializer)?;
-        if vec.len() != N {
-            return Err(D::Error::invalid_length(
-                vec.len(),
-                &"an array of exact length N",
-            ));
-        }
-        let mut arr = [T::default(); N];
-        arr.copy_from_slice(vec.as_slice()); // Safe due to length check above
-        Ok(Arr(arr))
-    }
-}
-
-impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T, N> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-#[derive(Clone, Copy)]
-// TODO: Allocator should alloate a certain part of the fram to app storage
-pub struct AppStorageAddress {
-    pub start_channel: u8,
-    pub scene: Option<u8>,
-}
-
-impl From<AppStorageAddress> for u32 {
-    fn from(key: AppStorageAddress) -> Self {
-        let scene_storage_slot_index = match key.scene {
-            // Slot 0 for None
-            None => 0,
-            // Slots 1 and onwards for Some(s)
-            Some(s) => (s as u32) + 1,
-        };
-
-        // Assuming SCENES_PER_APP is the number of scenes like Some(0), Some(1)...
-        // The total number of "slots" per app channel is SCENES_PER_APP + 1 (for the None case)
-        let total_slots_per_app = SCENES_PER_APP + 1; // Placeholder for actual constant arithmetic if needed
-
-        let app_base_offset =
-            (key.start_channel as u32) * total_slots_per_app * BYTES_PER_VALUE_SET;
-        let scene_offset_in_app = scene_storage_slot_index * BYTES_PER_VALUE_SET;
-        app_base_offset + scene_offset_in_app
-    }
-}
-
-impl From<u32> for AppStorageAddress {
-    fn from(address: u32) -> Self {
-        // The total number of "slots" per app channel is SCENES_PER_APP + 1
-        let total_slots_per_app = SCENES_PER_APP + 1; // Placeholder for actual constant arithmetic if needed
-        let bytes_per_app_block: u32 = total_slots_per_app * BYTES_PER_VALUE_SET;
-
-        let start_channel_raw = address / bytes_per_app_block;
-        let start_channel = start_channel_raw as u8;
-
-        let offset_within_app_block = address % bytes_per_app_block;
-        let scene_storage_slot_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
-
-        let scene = if scene_storage_slot_index_raw == 0 {
-            None // Slot 0 maps back to None
-        } else {
-            // Slots 1 and onwards map back to Some(s-1)
-            Some((scene_storage_slot_index_raw - 1) as u8)
-        };
-
-        Self {
-            start_channel,
-            scene,
-        }
-    }
-}
-
-impl AppStorageAddress {
-    pub fn new(start_channel: u8, scene: Option<u8>) -> Self {
-        Self {
-            start_channel,
-            scene,
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -195,6 +66,14 @@ impl<const N: usize> Leds<N> {
             ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
         LED_VALUES[led_no].store(value, Ordering::Relaxed);
     }
+
+    pub fn reset_all(&self) {
+        for chan in 0..N {
+            self.set(chan, Led::Button, (0, 0, 0), 0);
+            self.set(chan, Led::Bottom, (0, 0, 0), 0);
+            self.set(chan, Led::Top, (0, 0, 0), 0);
+        }
+    }
 }
 
 pub struct InJack {
@@ -218,26 +97,26 @@ impl InJack {
 
 pub struct GateJack {
     channel: usize,
-    cmd_sender: CmdSender,
+    max_sender: MaxSender,
 }
 
 impl GateJack {
-    fn new(channel: usize, cmd_sender: CmdSender) -> Self {
+    fn new(channel: usize, max_sender: MaxSender) -> Self {
         Self {
             channel,
-            cmd_sender,
+            max_sender,
         }
     }
 
     pub async fn set_high(&self) {
-        self.cmd_sender
-            .send(HardwareCmd::MaxCmd(self.channel, MaxCmd::GpoSetHigh))
+        self.max_sender
+            .send((self.channel, MaxCmd::GpoSetHigh))
             .await;
     }
 
     pub async fn set_low(&self) {
-        self.cmd_sender
-            .send(HardwareCmd::MaxCmd(self.channel, MaxCmd::GpoSetLow))
+        self.max_sender
+            .send((self.channel, MaxCmd::GpoSetLow))
             .await;
     }
 }
@@ -385,29 +264,33 @@ impl<const N: usize> Faders<N> {
 }
 
 pub struct Clock {
-    receiver: Receiver<'static, CriticalSectionRawMutex, bool, 16>,
+    subscriber: ClockSubscriber,
 }
 
 impl Clock {
     pub fn new() -> Self {
-        let receiver = CLOCK_WATCH.receiver().unwrap();
-        Self { receiver }
+        let subscriber = CLOCK_PUBSUB.subscriber().unwrap();
+        Self { subscriber }
     }
 
     // TODO: division needs to be an enum
-    pub async fn wait_for_tick(&mut self, division: usize) -> bool {
+    pub async fn wait_for_event(&mut self, division: usize) -> ClockEvent {
         let mut i: usize = 0;
 
         loop {
-            // Reset always gets through
-            if self.receiver.changed().await {
-                return true;
-            }
-            i += 1;
-            // TODO: Maybe we can make this more efficient by just having subscribers to
-            // subdivisions of the clock
-            if i == division {
-                return false;
+            match self.subscriber.next_message_pure().await {
+                ClockEvent::Tick => {
+                    i += 1;
+                    // TODO: Maybe we can make this more efficient by just having subscribers to
+                    // subdivisions of the clock
+                    if i == division {
+                        return ClockEvent::Tick;
+                    }
+                    continue;
+                }
+                clock_event => {
+                    return clock_event;
+                }
             }
         }
     }
@@ -420,14 +303,20 @@ pub enum SceneEvent {
 
 #[derive(Clone, Copy)]
 pub struct Midi<const N: usize> {
-    cmd_sender: CmdSender,
+    event_pubsub: &'static EventPubSubChannel,
+    midi_sender: MidiSender,
     midi_channel: u4,
 }
 
 impl<const N: usize> Midi<N> {
-    pub fn new(midi_channel: u4, cmd_sender: CmdSender) -> Self {
+    pub fn new(
+        midi_channel: u4,
+        midi_sender: MidiSender,
+        event_pubsub: &'static EventPubSubChannel,
+    ) -> Self {
         Self {
-            cmd_sender,
+            event_pubsub,
+            midi_sender,
             midi_channel,
         }
     }
@@ -467,7 +356,17 @@ impl<const N: usize> Midi<N> {
     }
 
     pub async fn send_msg(&self, msg: LiveEvent<'static>) {
-        self.cmd_sender.send(HardwareCmd::MidiMsg(msg)).await;
+        self.midi_sender.send(msg).await;
+    }
+
+    pub async fn wait_for_message(&self) -> LiveEvent<'static> {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+
+        loop {
+            if let InputEvent::MidiMsg(msg) = subscriber.next_message_pure().await {
+                return msg;
+            }
+        }
     }
 }
 
@@ -510,48 +409,6 @@ impl<T: Sized + Copy + Default> Default for Global<T> {
     }
 }
 
-impl<T> Serialize for Global<T>
-where
-    T: Sized + Copy + Serialize, // T must also be Serialize
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self.inner.try_lock() {
-            Ok(guard) => {
-                // Dereference the guard to get &T and serialize it.
-                // The Copy trait on T means *guard would yield T by value,
-                // but &*guard or simply guard (if it derefs to &T) is what serialize expects.
-                // (*guard) also works as serialize takes &self.
-                (*guard).serialize(serializer)
-            }
-            Err(_e) => {
-                // _e is typically embassy_sync::mutex::TryLockError
-                // If the lock can't be acquired synchronously, serialization fails.
-                Err(S::Error::custom("could not lock mutex for serialization"))
-            }
-        }
-    }
-}
-
-impl<'de, T> Deserialize<'de> for Global<T>
-where
-    T: Sized + Copy + Deserialize<'de>, // T must also be Deserialize
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Deserialize T directly.
-        let value = T::deserialize(deserializer)?;
-        // Create a new Mutex holding the deserialized T.
-        Ok(Global {
-            inner: Mutex::new(value),
-        })
-    }
-}
-
 pub struct Die {
     rng: RoscRng,
 }
@@ -570,10 +427,10 @@ pub enum AppError {
 
 #[derive(Clone, Copy)]
 pub struct App<const N: usize> {
-    app_id: u8,
+    pub app_id: u8,
     pub start_channel: usize,
-    channel_count: usize,
-    cmd_sender: CmdSender,
+    max_sender: MaxSender,
+    midi_sender: MidiSender,
     event_pubsub: &'static EventPubSubChannel,
 }
 
@@ -581,59 +438,29 @@ impl<const N: usize> App<N> {
     pub fn new(
         app_id: u8,
         start_channel: usize,
-        cmd_sender: CmdSender,
+        max_sender: MaxSender,
+        midi_sender: MidiSender,
         event_pubsub: &'static EventPubSubChannel,
     ) -> Self {
         Self {
             app_id,
             start_channel,
-            channel_count: N,
-            cmd_sender,
+            max_sender,
+            midi_sender,
             event_pubsub,
         }
     }
 
     // TODO: We should also probably make sure that people do not reconfigure the jacks within the
     // app (throw error or something)
-    async fn reconfigure_jack(&self, channel: usize, config: MaxConfig) {
-        self.cmd_sender
-            .send(HardwareCmd::MaxCmd(channel, MaxCmd::ConfigurePort(config)))
+    async fn reconfigure_jack(&self, chan: usize, config: MaxConfig) {
+        self.max_sender
+            .send((self.start_channel + chan, MaxCmd::ConfigurePort(config)))
             .await;
     }
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
         Global::new(initial)
-    }
-
-    pub async fn load<T: DeserializeOwned>(&self, scene: Option<u8>) -> Result<T, AppError> {
-        let address = AppStorageAddress::new(self.start_channel as u8, scene);
-        let op = ReadOperation::new(address.into());
-        if let Ok(data) = request_data(op).await {
-            if data.is_empty() {
-                return Err(AppError::DeserializeFailed);
-            }
-            if let Ok(val) = from_bytes::<T>(&data[1..]) {
-                if data[0] != self.app_id {
-                    return Err(AppError::DeserializeFailed);
-                }
-                return Ok(val);
-            }
-        }
-        Err(AppError::DeserializeFailed)
-    }
-
-    pub async fn save<T: Serialize>(&self, storage: &T, scene: Option<u8>) {
-        let mut data = Vec::<u8, MAX_DATA_LEN>::new();
-        data.resize_default(MAX_DATA_LEN)
-            .expect("Failed to resize data Vec");
-
-        data[0] = self.app_id;
-        let len = to_slice(&storage, &mut data[1..]).unwrap().len();
-        data.truncate(1 + len);
-
-        let address = AppStorageAddress::new(self.start_channel as u8, scene);
-        let op = WriteOperation::new(address.into(), data);
-        write_data(op).await.unwrap();
     }
 
     // TODO: How can we prevent people from doing this multiple times?
@@ -644,7 +471,7 @@ impl<const N: usize> App<N> {
             _ => ADCRANGE::Rg0_10v,
         };
         self.reconfigure_jack(
-            self.start_channel + chan,
+            chan,
             MaxConfig::Mode7(ConfigMode7(
                 AVR::InternalRef,
                 adc_range,
@@ -663,24 +490,18 @@ impl<const N: usize> App<N> {
             Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
             _ => DACRANGE::Rg0_10v,
         };
-        self.reconfigure_jack(
-            self.start_channel + chan,
-            MaxConfig::Mode5(ConfigMode5(dac_range)),
-        )
-        .await;
+        self.reconfigure_jack(chan, MaxConfig::Mode5(ConfigMode5(dac_range)))
+            .await;
 
         OutJack::new(self.start_channel + chan, range)
     }
 
     pub async fn make_gate_jack(&self, chan: usize, level: u16) -> GateJack {
         let chan = chan.clamp(0, N - 1);
-        self.reconfigure_jack(
-            self.start_channel + chan,
-            MaxConfig::Mode3(ConfigMode3, level),
-        )
-        .await;
+        self.reconfigure_jack(chan, MaxConfig::Mode3(ConfigMode3, level))
+            .await;
 
-        GateJack::new(self.start_channel + chan, self.cmd_sender)
+        GateJack::new(self.start_channel + chan, self.max_sender)
     }
 
     pub async fn delay_micros(&self, micros: u64) {
@@ -711,12 +532,13 @@ impl<const N: usize> App<N> {
         Die { rng: RoscRng }
     }
 
+    // TODO: Make sure we can only create one clock per app
     pub fn use_clock(&self) -> Clock {
         Clock::new()
     }
 
     pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
-        Midi::new(midi_channel.into(), self.cmd_sender)
+        Midi::new(midi_channel.into(), self.midi_sender, self.event_pubsub)
     }
 
     pub async fn wait_for_scene_event(&self) -> SceneEvent {
@@ -733,5 +555,18 @@ impl<const N: usize> App<N> {
                 _ => {}
             }
         }
+    }
+
+    async fn reset(&self) {
+        let leds = self.use_leds();
+        leds.reset_all();
+        for chan in 0..N {
+            self.reconfigure_jack(chan, MaxConfig::Mode0).await;
+        }
+    }
+
+    pub async fn exit_handler(&self, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+        exit_signal.wait().await;
+        self.reset().await;
     }
 }

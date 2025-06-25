@@ -4,3 +4,13 @@ members = ["config", "faderpunk", "libfp"]
 exclude = ["gen-bindings"]
 
 resolver = "2"
+
+[profile.release]
+lto = true
+incremental = false
+codegen-units = 1
+debug = 2
+
+[profile.dev]
+lto = true
+opt-level = "z"

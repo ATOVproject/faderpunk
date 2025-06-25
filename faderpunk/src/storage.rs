@@ -1,68 +1,156 @@
-use core::marker::PhantomData;
+use core::{marker::PhantomData, ops::Range};
 
-use config::{FromValue, Value};
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
-    channel::Channel,
-    mutex::Mutex,
-    pubsub::{PubSubChannel, Publisher},
-    signal::Signal,
-};
+use config::{FromValue, GlobalConfig, Value, APP_MAX_PARAMS};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
-use serde::{de::DeserializeOwned, Serialize};
-
-use crate::{
-    tasks::fram::{
-        request_data, write_data, FramData, ReadOperation, StorageSlotType, WriteOperation,
-        MAX_DATA_LEN,
-    },
-    CmdSender, HardwareCmd, CMD_CHANNEL,
+use serde::{
+    de::{DeserializeOwned, Error as DeError},
+    Deserialize, Deserializer, Serialize, Serializer,
 };
 
-pub const APP_MAX_PARAMS: usize = 8;
-const BYTES_PER_VALUE_SET: u32 = 400;
-const SCENES_PER_APP: u32 = 3; // Current value + 2 scenes
+use crate::tasks::{
+    configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
+    fram::{
+        request_data, write_data, ReadOperation, WriteOperation, FRAM_READ_BUF, FRAM_WRITE_BUF,
+    },
+};
 
-pub static APP_STORAGE_CMD_PUBSUB: PubSubChannel<
-    CriticalSectionRawMutex,
-    AppStorageCmd,
-    16,
-    16,
-    3,
-> = PubSubChannel::new();
-pub type AppStoragePublisher =
-    Publisher<'static, CriticalSectionRawMutex, AppStorageCmd, 16, 16, 3>;
+const GLOBAL_CONFIG_RANGE: Range<u32> = 0..1_024;
+const APP_STORAGE_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..122_880;
+const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..131_072;
+const APP_STORAGE_MAX_BYTES: u32 = 400;
+const APP_PARAMS_MAX_BYTES: u32 = 128;
+const SCENES_PER_APP: u32 = 3;
 
-pub static APP_CONFIGURE_EVENT: Channel<CriticalSectionRawMutex, Vec<Value, APP_MAX_PARAMS>, 20> =
-    Channel::new();
+pub async fn store_global_config(config: &GlobalConfig) {
+    let mut buf = FRAM_WRITE_BUF.lock().await;
+    let len = to_slice(&config, &mut *buf).unwrap().len();
+    drop(buf);
+    match WriteOperation::try_new(GLOBAL_CONFIG_RANGE.start, len) {
+        Ok(op) => {
+            write_data(op).await.unwrap();
+        }
+        Err(_) => defmt::error!("Could not write GlobalConfig"),
+    }
+}
+
+pub async fn load_global_config() -> GlobalConfig {
+    let address = GLOBAL_CONFIG_RANGE.start;
+    let op = ReadOperation::new(address);
+    if let Ok(len) = request_data(op).await {
+        if len > 0 {
+            let read_buf = FRAM_READ_BUF.lock().await;
+            let data = &read_buf[..len];
+            if let Ok(res) = from_bytes::<GlobalConfig>(data) {
+                return res;
+            }
+        }
+    }
+    GlobalConfig::new()
+}
+
+#[derive(Clone, Copy)]
+pub struct Arr<T: Sized + Copy + Default, const N: usize>([T; N]);
+
+impl<T: Sized + Copy + Default, const N: usize> Default for Arr<T, N> {
+    fn default() -> Self {
+        Self([T::default(); N])
+    }
+}
+
+impl<T: Sized + Copy + Default, const N: usize> Arr<T, N> {
+    pub fn new(initial: [T; N]) -> Self {
+        Self(initial)
+    }
+
+    #[inline(always)]
+    pub fn at(&self, idx: usize) -> T {
+        self.0[idx]
+    }
+
+    #[inline(always)]
+    pub fn set_at(&mut self, idx: usize, value: T) {
+        self.0[idx] = value;
+    }
+
+    #[inline(always)]
+    pub fn get(&self) -> [T; N] {
+        self.0
+    }
+
+    #[inline(always)]
+    pub fn set(&mut self, value: [T; N]) {
+        self.0 = value;
+    }
+}
+
+impl<T, const N: usize> Serialize for Arr<T, N>
+where
+    T: Serialize + Sized + Copy + Default,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let vec = Vec::<T, N>::from_slice(&self.0).unwrap();
+        vec.serialize(serializer)
+    }
+}
+
+impl<'de, T, const N: usize> Deserialize<'de> for Arr<T, N>
+where
+    T: Deserialize<'de> + Sized + Copy + Default,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let vec = Vec::<T, N>::deserialize(deserializer)?;
+        if vec.len() != N {
+            return Err(D::Error::invalid_length(
+                vec.len(),
+                &"an array of exact length N",
+            ));
+        }
+        let mut arr = [T::default(); N];
+        arr.copy_from_slice(vec.as_slice()); // Safe due to length check above
+        Ok(Arr(arr))
+    }
+}
+
+impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
 
 #[derive(Clone, Copy)]
 // TODO: Allocator should alloate a certain part of the fram to app storage
 pub struct AppStorageAddress {
-    pub start_channel: u8,
+    pub start_channel: usize,
     pub scene: Option<u8>,
 }
 
 impl From<AppStorageAddress> for u32 {
     fn from(key: AppStorageAddress) -> Self {
         let scene_index = key.scene.unwrap_or(0) as u32;
-        let app_base_offset = (key.start_channel as u32) * SCENES_PER_APP * BYTES_PER_VALUE_SET;
-        let scene_offset_in_app = scene_index * BYTES_PER_VALUE_SET;
-        app_base_offset + scene_offset_in_app
+        let app_base_offset = (key.start_channel as u32) * SCENES_PER_APP * APP_STORAGE_MAX_BYTES;
+        let scene_offset_in_app = scene_index * APP_STORAGE_MAX_BYTES;
+        APP_STORAGE_RANGE.start + app_base_offset + scene_offset_in_app
     }
 }
 
 impl From<u32> for AppStorageAddress {
-    // Changed to take u32
     fn from(address: u32) -> Self {
-        let bytes_per_app_block: u32 = SCENES_PER_APP * BYTES_PER_VALUE_SET;
+        let bytes_per_app_block: u32 = SCENES_PER_APP * APP_STORAGE_MAX_BYTES;
+        let app_storage_address = address - APP_STORAGE_RANGE.start;
 
-        let start_channel_raw = address / bytes_per_app_block;
-        let start_channel = start_channel_raw as u8;
+        let start_channel_raw = app_storage_address / bytes_per_app_block;
+        let start_channel = start_channel_raw as usize;
 
-        let offset_within_app_block = address % bytes_per_app_block;
-        let scene_index_raw = offset_within_app_block / BYTES_PER_VALUE_SET;
+        let offset_within_app_block = app_storage_address % bytes_per_app_block;
+        let scene_index_raw = offset_within_app_block / APP_STORAGE_MAX_BYTES;
 
         let scene_index = scene_index_raw as u8;
 
@@ -80,7 +168,7 @@ impl From<u32> for AppStorageAddress {
 }
 
 impl AppStorageAddress {
-    pub fn new(start_channel: u8, scene: Option<u8>) -> Self {
+    pub fn new(start_channel: usize, scene: Option<u8>) -> Self {
         Self {
             start_channel,
             scene,
@@ -88,34 +176,45 @@ impl AppStorageAddress {
     }
 }
 
-#[derive(Clone)]
-pub enum AppStorageCmd {
-    GetAllParams {
-        start_channel: u8,
-    },
-    SetParamSlot {
-        start_channel: u8,
-        param_slot: u8,
-        value: Value,
-    },
-    SaveScene {
-        scene: u8,
-    },
-    LoadScene,
+#[derive(Clone, Copy)]
+pub struct AppParamsAddress {
+    pub start_channel: usize,
 }
 
-pub struct Store<const N: usize> {
+impl From<AppParamsAddress> for u32 {
+    fn from(key: AppParamsAddress) -> Self {
+        APP_PARAM_RANGE.start + (key.start_channel as u32) * APP_PARAMS_MAX_BYTES
+    }
+}
+
+impl From<u32> for AppParamsAddress {
+    fn from(address: u32) -> Self {
+        let app_storage_address = address - APP_PARAM_RANGE.start;
+
+        let start_channel = (app_storage_address / APP_PARAMS_MAX_BYTES) as usize;
+
+        Self { start_channel }
+    }
+}
+
+impl AppParamsAddress {
+    pub fn new(start_channel: usize) -> Self {
+        Self { start_channel }
+    }
+}
+
+pub struct ParamStore<const N: usize> {
     app_id: u8,
     inner: Mutex<NoopRawMutex, [Value; N]>,
-    start_channel: u8,
+    start_channel: usize,
 }
 
-impl<const N: usize> Store<N>
+impl<const N: usize> ParamStore<N>
 where
     [Value; N]: Serialize,
     [Value; N]: DeserializeOwned,
 {
-    pub fn new(initial: [Value; N], app_id: u8, start_channel: u8) -> Self {
+    pub fn new(initial: [Value; N], app_id: u8, start_channel: usize) -> Self {
         Self {
             app_id,
             inner: Mutex::new(initial),
@@ -123,47 +222,46 @@ where
         }
     }
 
-    async fn ser(&self) -> FramData {
-        let data = self.inner.lock().await;
-        let mut buf: [u8; MAX_DATA_LEN] = [0; MAX_DATA_LEN];
-
+    async fn ser(&self, buf: &mut [u8]) -> usize {
+        let inner = self.inner.lock().await;
         // Prepend the app id to the serialized data for easy filtering
         buf[0] = self.app_id;
-
         // TODO: unwrap
-        let len = to_slice(&*data, &mut buf[1..]).unwrap().len();
-
-        Vec::<u8, MAX_DATA_LEN>::from_slice(&buf[..len + 1]).unwrap()
+        to_slice(&*inner, &mut buf[1..]).unwrap().len() + 1
     }
 
     async fn des(&self, data: &[u8]) -> Option<[Value; N]> {
         // First byte is app id
+        if data[0] != self.app_id {
+            return None;
+        }
         if let Ok(val) = from_bytes::<[Value; N]>(&data[1..]) {
-            if data[0] != self.app_id {
-                return None;
-            }
             return Some(val);
         }
         None
     }
 
-    async fn save(&self, scene: Option<u8>) {
-        let data = self.ser().await;
-        let address = AppStorageAddress::new(self.start_channel, scene);
-        let op = WriteOperation::new(address.into(), data);
-        write_data(op).await.unwrap();
+    async fn save(&self) {
+        let mut buf = FRAM_WRITE_BUF.lock().await;
+        let len = self.ser(&mut *buf).await;
+        drop(buf);
+        let address = AppParamsAddress::new(self.start_channel);
+        if let Ok(op) = WriteOperation::try_new(address.into(), len) {
+            write_data(op).await.unwrap();
+        }
     }
 
-    pub async fn load(&self, scene: Option<u8>) {
-        let address = AppStorageAddress::new(self.start_channel, scene);
+    pub async fn load(&self) {
+        let address = AppParamsAddress::new(self.start_channel);
         let op = ReadOperation::new(address.into());
-        if let Ok(data) = request_data(op).await {
-            if data.is_empty() {
+        if let Ok(len) = request_data(op).await {
+            if len == 0 {
                 return;
             }
-            if let Some(val) = self.des(data.as_slice()).await {
-                let mut inner_val = self.inner.lock().await;
-                *inner_val = val;
+            let read_buf = FRAM_READ_BUF.lock().await;
+            if let Some(val) = self.des(&read_buf[..len]).await {
+                let mut inner = self.inner.lock().await;
+                *inner = val;
             }
         }
     }
@@ -185,69 +283,29 @@ where
         let mut val = self.inner.lock().await;
         val[index] = value;
     }
-}
 
-pub struct StorageSlot<'a, T, const N: usize>
-where
-    T: FromValue + Into<Value> + Copy,
-{
-    index: usize,
-    values: &'a Store<N>,
-    _phantom: PhantomData<T>,
-}
-
-impl<'a, T, const N: usize> StorageSlot<'a, T, N>
-where
-    T: FromValue + Into<Value> + Copy,
-    [Value; N]: Serialize,
-    [Value; N]: DeserializeOwned,
-{
-    pub fn new(values: &'a Store<N>, index: usize) -> Self {
-        Self {
-            index,
-            values,
-            _phantom: PhantomData,
+    pub async fn param_handler(&self) {
+        APP_PARAM_SIGNALS[self.start_channel].reset();
+        self.load().await;
+        loop {
+            match APP_PARAM_SIGNALS[self.start_channel].wait().await {
+                AppParamCmd::SetAppParams { values } => {
+                    for (index, &value) in values.iter().enumerate() {
+                        if let Some(val) = value {
+                            self.set(index, val).await;
+                        }
+                    }
+                    self.save().await;
+                    // Re-spawn app
+                    break;
+                }
+                AppParamCmd::RequestParamValues => {
+                    let params = self.get_all().await;
+                    let values: Vec<Value, APP_MAX_PARAMS> = Vec::from_slice(&params).unwrap();
+                    APP_PARAM_CHANNEL.send((self.start_channel, values)).await;
+                }
+            }
         }
-    }
-
-    pub async fn get(&self) -> T {
-        let value = self.values.get(self.index).await;
-        T::from_value(value)
-    }
-
-    pub async fn set(&self, value: T) {
-        self.values.set(self.index, value.into()).await;
-    }
-
-    pub async fn save(&self) {
-        // TODO: Use a different storage technique for individual storage slots
-        // Make sure we can store them individually
-        self.values.save(None).await;
-    }
-
-    // TODO: This should be on the Store only (as it saves all of it)
-    pub async fn save_to_scene(&self, scene: u8) {
-        self.values.save(Some(scene)).await;
-    }
-
-    pub async fn load(&self) {
-        self.values.load(None).await;
-    }
-
-    pub async fn load_from_scene(&self, scene: u8) {
-        self.values.load(Some(scene)).await;
-    }
-}
-
-impl<const N: usize> StorageSlot<'_, bool, N>
-where
-    [Value; N]: Serialize,
-    [Value; N]: DeserializeOwned,
-{
-    pub async fn toggle(&self) -> bool {
-        let value = self.get().await;
-        self.set(!value).await;
-        !value
     }
 }
 
@@ -256,8 +314,7 @@ where
     T: FromValue + Into<Value> + Copy,
 {
     index: usize,
-    signal: Signal<NoopRawMutex, usize>,
-    values: &'a Store<N>,
+    values: &'a ParamStore<N>,
     _phantom: PhantomData<T>,
 }
 
@@ -267,11 +324,10 @@ where
     [Value; N]: Serialize,
     [Value; N]: DeserializeOwned,
 {
-    pub fn new(values: &'a Store<N>, index: usize) -> Self {
+    pub fn new(values: &'a ParamStore<N>, index: usize) -> Self {
         assert!(index < N, "ParamSlot index out of bounds");
         Self {
             index,
-            signal: Signal::new(),
             values,
             _phantom: PhantomData,
         }
@@ -281,18 +337,87 @@ where
         let value = self.values.get(self.index).await;
         T::from_value(value)
     }
+}
 
-    pub async fn set(&self, value: T) {
-        self.values.set(self.index, value.into()).await;
-        self.signal.signal(self.index);
+pub trait AppStorage:
+    Serialize + for<'de> Deserialize<'de> + Default + Send + Sync + 'static
+{
+}
+
+pub struct ManagedStorage<S: AppStorage> {
+    app_id: u8,
+    inner: Mutex<NoopRawMutex, S>,
+    start_channel: usize,
+}
+
+impl<S: AppStorage> ManagedStorage<S> {
+    pub fn new(app_id: u8, start_channel: usize) -> Self {
+        Self {
+            app_id,
+            inner: Mutex::new(S::default()),
+            start_channel,
+        }
     }
 
-    pub async fn wait_for_change(&self) -> T {
-        loop {
-            let index = self.signal.wait().await;
-            if self.index == index {
-                return self.get().await;
+    pub async fn load(&self, scene: Option<u8>) {
+        let address = AppStorageAddress::new(self.start_channel, scene);
+        let op = ReadOperation::new(address.into());
+        if let Ok(len) = request_data(op).await {
+            let read_buf = FRAM_READ_BUF.lock().await;
+            let data = &read_buf[..len];
+            if data.is_empty() {
+                return;
+            }
+            if let Ok(val) = from_bytes::<S>(&data[1..]) {
+                if data[0] != self.app_id {
+                    return;
+                }
+                let mut inner = self.inner.lock().await;
+                *inner = val;
             }
         }
+    }
+
+    pub async fn save(&self, scene: Option<u8>) {
+        let mut data = FRAM_WRITE_BUF.lock().await;
+
+        let len = {
+            data[0] = self.app_id;
+            let inner = self.inner.lock().await;
+            to_slice(&*inner, &mut data[1..]).unwrap().len()
+        };
+
+        let address = AppStorageAddress::new(self.start_channel, scene);
+        if let Ok(op) = WriteOperation::try_new(address.into(), len + 1) {
+            write_data(op).await.unwrap();
+        }
+    }
+
+    pub async fn query<F, R>(&self, accessor: F) -> R
+    where
+        F: FnOnce(&S) -> R,
+    {
+        let guard = self.inner.lock().await;
+        accessor(&*guard)
+    }
+
+    pub async fn modify<F, R>(&self, modifier: F) -> R
+    where
+        F: FnOnce(&mut S) -> R,
+    {
+        let mut guard = self.inner.lock().await;
+        modifier(&mut *guard)
+    }
+
+    pub async fn modify_and_save<F, R>(&self, modifier: F, scene: Option<u8>) -> R
+    where
+        F: FnOnce(&mut S) -> R,
+    {
+        let res = {
+            let mut guard = self.inner.lock().await;
+            modifier(&mut *guard)
+        };
+        self.save(scene).await;
+        res
     }
 }

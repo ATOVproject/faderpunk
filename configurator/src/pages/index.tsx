@@ -1,214 +1,154 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import { Form } from "@heroui/form";
-import { useState } from "react";
-import { button as buttonStyles } from "@heroui/theme";
+import { Select, SelectItem } from "@heroui/select";
 import {
-  ConfigMsgIn,
-  ConfigMsgOut,
-  deserialize,
-  Param,
-  serialize,
-} from "@atov/fp-config";
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+} from "@heroui/table";
+import { button as buttonStyles } from "@heroui/theme";
+import { ClockSrc, Param } from "@atov/fp-config";
 
+import { AppConfigDrawer } from "@/components/app-config-drawer";
 import { title } from "@/components/primitives";
 import DefaultLayout from "@/layouts/default";
-
-const FRAME_DELIMITER = 0;
-
-type ValidParam = Exclude<Param, { tag: "None" }>;
-
-export function cobsEncode(data: Uint8Array): Uint8Array {
-  // Allocate output buffer with worst-case size
-  const maxSize = data.length + Math.ceil(data.length / 254) + 1;
-  const encoded = new Uint8Array(maxSize);
-
-  let codeIndex = 0; // Index where we'll write the current code byte
-  let writeIndex = 1; // Start writing data at position 1
-  let code = 1; // Current code value, starts at 1
-
-  // Process each input byte
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] === 0) {
-      // Zero byte found, write the code and reset
-      encoded[codeIndex] = code;
-      code = 1;
-      codeIndex = writeIndex++;
-    } else {
-      // Non-zero byte, copy it to output
-      encoded[writeIndex++] = data[i];
-      code++;
-
-      // If we've reached the maximum code value, write code and start a new block
-      if (code === 255) {
-        encoded[codeIndex] = code;
-        code = 1;
-        codeIndex = writeIndex++;
-      }
-    }
-  }
-
-  // Write the final code byte
-  encoded[codeIndex] = code;
-
-  // Return the actual encoded data
-  return encoded.slice(0, writeIndex);
-}
-
-export function cobsDecode(data: Uint8Array): Uint8Array {
-  if (data.length === 0) {
-    return new Uint8Array(0);
-  }
-
-  // Allocate output buffer
-  const decoded = new Uint8Array(data.length);
-  let writeIndex = 0;
-  let readIndex = 0;
-
-  while (readIndex < data.length) {
-    // Read the code byte
-    const code = data[readIndex++];
-
-    if (code === 0) {
-      throw new Error("Invalid COBS-encoded data: zero code byte found");
-    }
-
-    // Copy data bytes
-    for (let i = 1; i < code; i++) {
-      if (readIndex >= data.length) {
-        break; // End of input reached
-      }
-      decoded[writeIndex++] = data[readIndex++];
-    }
-
-    // Unless this was the last block or the code was 255, add a zero byte
-    if (readIndex < data.length && code < 255) {
-      decoded[writeIndex++] = 0;
-    }
-  }
-
-  // Return the actual decoded data
-  return decoded.slice(0, writeIndex);
-}
-
-const punkOneShot = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
-  const serialized = serialize("ConfigMsgIn", msg);
-  const buf = new Uint8Array(serialized.length + 2);
-
-  buf[0] = (serialized.length >> 8) & 0xff;
-  buf[1] = serialized.length & 0xff;
-  buf.set(serialized, 2);
-
-  const cobsResult = cobsEncode(buf);
-  const cobsEncoded = new Uint8Array(cobsResult.length + 1);
-
-  cobsEncoded.set(cobsResult, 0);
-  cobsEncoded[cobsEncoded.length] = FRAME_DELIMITER;
-
-  return usbDevice?.transferOut(1, cobsEncoded);
-};
-
-const punkRequest = async (usbDevice: USBDevice, msg: ConfigMsgIn) => {
-  await punkOneShot(usbDevice, msg);
-
-  return receiveMessage(usbDevice);
-};
-
-const receiveMessage = async (usbDevice: USBDevice): Promise<ConfigMsgOut> => {
-  const data = await usbDevice?.transferIn(1, 128);
-
-  if (!data?.data?.buffer) {
-    throw new Error("No data received");
-  }
-
-  const dataBuf = new Uint8Array(data.data.buffer);
-  const cobsDecoded = cobsDecode(dataBuf.slice(0, dataBuf.length - 1));
-
-  const len = (cobsDecoded[0] << 8) | cobsDecoded[1];
-
-  let res = deserialize("ConfigMsgOut", cobsDecoded.slice(2));
-
-  return res.value;
-};
-
-const receiveBatchMessages = async (usbDevice: USBDevice, count: bigint) => {
-  let resArray: Promise<ConfigMsgOut>[] = [];
-
-  for (let i = 0; i < count; i++) {
-    resArray.push(receiveMessage(usbDevice));
-  }
-  let results = await Promise.all(resArray);
-  let last = await receiveMessage(usbDevice);
-
-  if (last.tag !== "BatchMsgEnd") {
-    throw new Error("Unexpected message in batch end.");
-  }
-
-  return results;
-};
+import { connectToFaderPunk, getDeviceName } from "@/utils/usb-protocol";
+import { getAllApps, getGlobalConfig, setGlobalConfig } from "@/utils/config";
 
 // TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
   const [usbDevice, setUsbDevice] = useState<USBDevice | null>(null);
   const [apps, setApps] = useState<
-    {
-      name: string;
-      description: string;
-      params: ValidParam[];
-    }[]
-  >();
+    Map<
+      string,
+      {
+        appId: string;
+        channels: string;
+        name: string;
+        description: string;
+        paramCount: string;
+        params: Param[];
+      }
+    >
+  >(new Map());
+  const [selectedApps, setSelectedApps] = useState<
+    { appId: string; startChannel: number }[]
+  >([]);
+  const [clockSrc, setClockSrc] = useState<ClockSrc>({ tag: "Internal" });
+  const [resetSrc, setResetSrc] = useState<ClockSrc>({ tag: "Internal" });
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedAppForConfig, setSelectedAppForConfig] = useState<{
+    appId: string;
+    startChannel: number;
+  } | null>(null);
 
-  const connectToFaderPunk = useCallback(async () => {
-    const usbDevice = await navigator.usb.requestDevice({
-      filters: [{ vendorId: 0xf569, productId: 0x1 }],
-    });
+  const handleConnectToFaderPunk = useCallback(async () => {
+    try {
+      const device = await connectToFaderPunk();
 
-    await usbDevice.open();
+      setUsbDevice(device);
 
-    await usbDevice.claimInterface(1);
-    setUsbDevice(usbDevice);
+      const appsData = await getAllApps(device);
+      const globalConfig = await getGlobalConfig(device);
 
-    let result = await punkRequest(usbDevice, {
-      tag: "GetLayout",
-    });
+      if (appsData) {
+        // Parse apps data into a Map for easy lookup by app ID
+        const parsedApps = new Map();
 
-    if (result.tag === "BatchMsgStart") {
-      const results = await receiveBatchMessages(usbDevice, result.value);
+        appsData
+          .filter(
+            (item): item is Extract<typeof item, { tag: "AppConfig" }> =>
+              item.tag === "AppConfig",
+          )
+          .forEach((app) => {
+            const appConfig = {
+              appId: app.value[0].toString(),
+              channels: app.value[1].toString(),
+              paramCount: app.value[2][0].toString(),
+              name: app.value[2][1] as string,
+              description: app.value[2][2] as string,
+              params: app.value[2][3],
+            };
 
-      console.log(results);
+            parsedApps.set(appConfig.appId, appConfig);
+          });
 
-      await punkOneShot(usbDevice, {
-        tag: "SetAppParam",
-        value: [
-          BigInt(0),
-          BigInt(0),
-          { tag: "Curve", value: { tag: "Logarithmic" } },
-        ],
-      });
+        setApps(parsedApps);
+      }
 
-      // const appConfigs = results
-      //   .filter(
-      //     (res): res is Extract<ConfigMsgOut, { tag: "AppConfig" }> =>
-      //       res.tag === "AppConfig",
-      //   )
-      //   .map(({ value }) => ({
-      //     name: value[0],
-      //     description: value[1],
-      //     params: value[2] as ValidParam[],
-      //   }));
-      //
-      // setApps(appConfigs);
+      if (globalConfig && globalConfig.tag === "GlobalConfig") {
+        const appsWithChannels = globalConfig.value.layout[0]
+          .map((app_data, index) =>
+            app_data
+              ? { appId: app_data[0].toString(), startChannel: index }
+              : null,
+          )
+          .filter((app) => app !== null) as {
+          appId: string;
+          startChannel: number;
+        }[];
+
+        setSelectedApps(appsWithChannels);
+        setClockSrc(globalConfig.value.clock_src);
+        setResetSrc(globalConfig.value.reset_src);
+      }
+    } catch (error) {
+      console.error("Failed to connect to Faderpunk:", error);
     }
   }, []);
 
-  const deviceName = `${usbDevice?.manufacturerName} ${usbDevice?.productName} v${usbDevice?.deviceVersionMajor}.${usbDevice?.deviceVersionMinor}.${usbDevice?.deviceVersionSubminor}`;
+  const handleAddApp = useCallback((appId: string) => {
+    setSelectedApps((prev) => {
+      if (prev.length >= 16) {
+        return prev;
+      }
+
+      // Find the next available start channel
+      const usedChannels = new Set(prev.map((app) => app.startChannel));
+      let startChannel = 0;
+
+      while (usedChannels.has(startChannel) && startChannel < 16) {
+        startChannel++;
+      }
+
+      if (startChannel >= 16) {
+        return prev;
+      }
+
+      return [...prev, { appId, startChannel }];
+    });
+  }, []);
+
+  const handleRemoveApp = useCallback((index: number) => {
+    setSelectedApps((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleChipClick = useCallback(
+    (app: { appId: string; startChannel: number }) => {
+      setSelectedAppForConfig(app);
+      setIsDrawerOpen(true);
+    },
+    [],
+  );
+
+  const handleDrawerClose = useCallback(() => {
+    setIsDrawerOpen(false);
+    setSelectedAppForConfig(null);
+  }, []);
+
+  const deviceName = usbDevice ? getDeviceName(usbDevice) : "";
 
   return (
     <DefaultLayout>
       <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
         <div className="inline-block max-w-lg text-center justify-center">
           <span className={title()}>Configure&nbsp;</span>
-          <span className={title({ color: "yellow" })}>Fader Punk&nbsp;</span>
+          <span className={title({ color: "yellow" })}>Faderpunk&nbsp;</span>
         </div>
 
         {!usbDevice ? (
@@ -218,9 +158,9 @@ export default function IndexPage() {
               radius: "full",
               variant: "shadow",
             })}
-            onPress={connectToFaderPunk}
+            onPress={handleConnectToFaderPunk}
           >
-            Connect to Fader Punk
+            Connect to Faderpunk
           </Button>
         ) : (
           <Form
@@ -228,37 +168,136 @@ export default function IndexPage() {
             validationBehavior="native"
           >
             <span>Connected to {deviceName}</span>
-            {apps && apps.length && (
-              <div>
-                <h2 className={title({ size: "sm" })}>Available apps</h2>
-                <ul>
-                  {apps.map((app) => (
-                    <li key={app.name} className="mb-2">
-                      <span>
-                        {app.name} - {app.description}
-                      </span>
-                      <br />
-                      {app.params.length ? (
-                        <span className="ml-1 text-small">
-                          Parameters:{" "}
-                          {app.params
-                            .map(
-                              (param) => `${param.value.name} (${param.tag})`,
-                            )
-                            .join(",")}
-                        </span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
+            {apps && apps.size > 0 && (
+              <div className="w-full max-w-4xl">
+                <h2 className={title({ size: "sm" })}>Available Apps</h2>
+                <Table aria-label="Available apps table" className="mt-4">
+                  <TableHeader>
+                    <TableColumn>APP ID</TableColumn>
+                    <TableColumn>CHANNELS</TableColumn>
+                    <TableColumn>NAME</TableColumn>
+                    <TableColumn>DESCRIPTION</TableColumn>
+                    <TableColumn>PARAMETERS</TableColumn>
+                    <TableColumn>ACTIONS</TableColumn>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from(apps.values()).map((app, index) => (
+                      <TableRow key={app.appId || index}>
+                        <TableCell>{app.appId}</TableCell>
+                        <TableCell>{app.channels}</TableCell>
+                        <TableCell>{app.name}</TableCell>
+                        <TableCell>{app.description}</TableCell>
+                        <TableCell>{app.paramCount}</TableCell>
+                        <TableCell>
+                          <Button
+                            isDisabled={selectedApps.length >= 16}
+                            size="sm"
+                            variant="flat"
+                            onPress={() => handleAddApp(app.appId)}
+                          >
+                            Add
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
-            <Button type="button" variant="bordered">
-              DO THING
+            {selectedApps.length > 0 && (
+              <div className="w-full max-w-4xl">
+                <h2 className={title({ size: "sm" })}>Selected Apps</h2>
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {selectedApps.map((app, index) => (
+                    <Chip
+                      key={index}
+                      className="cursor-pointer"
+                      color="primary"
+                      variant="flat"
+                      onClick={() => handleChipClick(app)}
+                      onClose={() => handleRemoveApp(index)}
+                    >
+                      App {app.appId} (Ch {app.startChannel + 1})
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="w-full max-w-4xl">
+              <h2 className={title({ size: "sm" })}>Clock config</h2>
+              <div className="flex gap-4 items-end mt-4">
+                <Select
+                  className="flex-1"
+                  label="Clock Source"
+                  placeholder="Select clock source"
+                  selectedKeys={[clockSrc.tag]}
+                  onSelectionChange={(keys) => {
+                    const key = Array.from(keys)[0] as string;
+
+                    setClockSrc({ tag: key } as ClockSrc);
+                  }}
+                >
+                  <SelectItem key="None">None</SelectItem>
+                  <SelectItem key="Atom">Atom</SelectItem>
+                  <SelectItem key="Meteor">Meteor</SelectItem>
+                  <SelectItem key="Cube">Cube</SelectItem>
+                  <SelectItem key="Internal">Internal</SelectItem>
+                  <SelectItem key="MidiIn">MIDI In</SelectItem>
+                  <SelectItem key="MidiUsb">MIDI USB</SelectItem>
+                </Select>
+                <Select
+                  className="flex-1"
+                  label="Reset Source"
+                  placeholder="Select reset source"
+                  selectedKeys={[resetSrc.tag]}
+                  onSelectionChange={(keys) => {
+                    const key = Array.from(keys)[0] as string;
+
+                    setResetSrc({ tag: key } as ClockSrc);
+                  }}
+                >
+                  <SelectItem key="None">None</SelectItem>
+                  <SelectItem key="Atom">Atom</SelectItem>
+                  <SelectItem key="Meteor">Meteor</SelectItem>
+                  <SelectItem key="Cube">Cube</SelectItem>
+                  <SelectItem key="Internal">Internal</SelectItem>
+                  <SelectItem key="MidiIn">MIDI In</SelectItem>
+                  <SelectItem key="MidiUsb">MIDI USB</SelectItem>
+                </Select>
+              </div>
+            </div>
+            <Button
+              disabled={!selectedApps.length}
+              type="button"
+              variant="bordered"
+              onPress={() =>
+                setGlobalConfig(
+                  usbDevice,
+                  selectedApps.map((app) => Number(app.appId)),
+                  clockSrc,
+                  resetSrc,
+                )
+              }
+            >
+              Set config
             </Button>
           </Form>
         )}
       </section>
+
+      {usbDevice ? (
+        <AppConfigDrawer
+          appConfig={
+            selectedAppForConfig
+              ? apps.get(selectedAppForConfig.appId) || null
+              : null
+          }
+          isOpen={isDrawerOpen}
+          selectedApp={selectedAppForConfig}
+          usbDevice={usbDevice}
+          onClose={handleDrawerClose}
+        />
+      ) : null}
     </DefaultLayout>
   );
 }

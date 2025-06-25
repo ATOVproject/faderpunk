@@ -20,7 +20,9 @@ fn main() {
             config::Curve,
             config::Waveform,
             config::ClockSrc,
-            config::Value
+            config::Value,
+            config::GlobalConfig,
+            config::Layout
         ),
     )
     .unwrap();
