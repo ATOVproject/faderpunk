@@ -12,13 +12,13 @@ use libfp::constants::CURVE_LOG;
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, Arr, ClockEvent, Led, ManagedStorage, ParamStore, Range, SceneEvent,
+    App, AppStorage, Led, ManagedStorage, ParamStore, Range, SceneEvent,
 };
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;
 
-pub static CONFIG: config::Config<PARAMS> = Config::new("AD Envelope", "FIXME");
+pub static CONFIG: config::Config<PARAMS> = Config::new("AD Envelope", "variable curve AD, ASR or looping AD");
 
 #[derive(Serialize, Deserialize)]
 
@@ -26,6 +26,7 @@ pub static CONFIG: config::Config<PARAMS> = Config::new("AD Envelope", "FIXME");
 pub struct Storage {
     fader_saved: [u16; 2],
     curve_saved: [u8; 2],
+    mode_saved: u8,
 }
 
 impl Default for Storage {
@@ -33,6 +34,7 @@ impl Default for Storage {
         Self {
             fader_saved: [2000; 2],
             curve_saved: [0; 2],
+            mode_saved: 0,
         }
     }
 }
@@ -60,6 +62,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
+    //let midi = app.use_midi(0);
 
     let times_glob = app.make_global([0.0682, 0.0682]);
     let glob_curve = app.make_global([0, 0]);
@@ -69,7 +72,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let output = app.make_out_jack(1, Range::_0_10V).await;
 
     let minispeed = 10.0;
-    let fadstep = 1;
 
     let mut vals: f32 = 0.0;
     let mut oldinputval = 0;
@@ -77,7 +79,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let latched_glob = app.make_global([false; 2]);
 
-    let color = [(243, 191, 78), (188, 77, 216), (78, 243, 243)];
+    let colorb = [(243, 191, 78), (188, 77, 216), (78, 243, 243)];
 
 
     // storage.load(None).await;
@@ -162,6 +164,16 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     }
                 }
             }
+
+            if buttons.is_shift_pressed(){
+                leds.set(0, Led::Button, colorb[mode as usize], 75);
+                leds.set(1, Led::Button, colorb[0], 0);
+            }
+            if !buttons.is_shift_pressed(){
+                for n in 0..2 {
+                    leds.set(n, Led::Button, colorb[curve_setting[n] as usize], 75);
+                }
+            }
         }
     };
 
@@ -208,12 +220,13 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let fut3 = async {
         loop {
             let chan = buttons.wait_for_any_down().await;
-            if buttons.is_button_pressed() {
+            if !buttons.is_shift_pressed() {
                 let mut curve_setting = storage.query(|s| s.curve_saved).await;
 
                 
                 curve_setting[chan] = (curve_setting[chan] + 1) % 3;
-                leds.set(chan, Led::Button, color[curve_setting[chan] as usize], 75);
+                glob_curve.set(curve_setting).await;
+                
 
                 
                 storage.modify_and_save(|s| {
@@ -228,6 +241,13 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 let mut mode = mode_glob.get().await;
                 mode = (mode + 1) % 3;
                 mode_glob.set(mode).await;
+
+                storage.modify_and_save(|s| {
+                        s.mode_saved = mode;
+                        s.mode_saved
+                    },
+                    None
+                ).await;
             }
         }
 
@@ -243,17 +263,21 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
                     let curve_setting = storage.query(|s| s.curve_saved).await;
                     let stored_faders = storage.query(|s| s.fader_saved).await;
+                    let mode = storage.query(|s| s.mode_saved).await;
                     glob_curve.set(curve_setting).await;
+                    mode_glob.set(mode).await;
                 
                 
-                    leds.set(0, Led::Button, color[curve_setting[0] as usize], 100);
-                    leds.set(1, Led::Button, color[curve_setting[1] as usize], 100);
+                    leds.set(0, Led::Button, colorb[curve_setting[0] as usize], 100);
+                    leds.set(1, Led::Button, colorb[curve_setting[1] as usize], 100);
                 
                     let mut times: [f32; 2] = [0.0682, 0.0682];
                     for n in 0..1{
                         times[n]= CURVE_LOG[stored_faders[n] as usize] as f32 + minispeed;
                     }
                     times_glob.set(times).await;
+
+
                     
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
