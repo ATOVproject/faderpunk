@@ -148,21 +148,27 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
     let mut shift_old = false;
+    let mut lastnote = [0; 4];
+    let mut gatelength1 = gatelength_glob.get().await;
 
-    storage.load(None).await;
+    // storage.load(None).await;
 
-    let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel) = storage
-        .query(|s| (s.seq, s.gateseq, s.seq_length, s.seqres, s.gate_length))
-        .await;
+    // let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel) = storage
+    //     .query(|s| (s.seq, s.gateseq, s.seq_length, s.seqres, s.gate_length))
+    //     .await;
 
-    seq_glob.set(seq_saved.get()).await;
-    gateseq_glob.set(gateseq_saved.get()).await;
-    seq_length_glob.set(seq_length_saved).await;
+    // seq_glob.set(seq_saved.get()).await;
+    // gateseq_glob.set(gateseq_saved.get()).await;
+    // seq_length_glob.set(seq_length_saved).await;
 
-    for n in 0..3 {
+    let mut clockres: [usize; 4] = [4; 4];
+    let mut gatel: [u8; 4] = [128; 4];
+
+
+    for n in 0..4 {
         clockres[n] = resolution[clockres[n]];
         gatel[n] = (clockres[n] * gatel[n] as usize / 256) as u8;
-        gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
+        gatel[n] = gatel[n].clamp(1, clockres[n] as u8);
     }
     clockres_glob.set(clockres).await;
     gatelength_glob.set(gatel).await;
@@ -260,7 +266,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
                         let mut gatelength = gatelength_glob.get().await;
                         gatelength[page / 2] =
-                            gatelength[page / 2].clamp(1, clockres[page / 2] as u8 - 1);
+                            gatelength[page / 2].clamp(1, clockres[page / 2] as u8);
                         gatelength_glob.set(gatelength).await;
                     }
                 }
@@ -457,8 +463,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         }
     };
 
-    let mut lastnote = [0; 4];
-    let mut gatelength1 = gatelength_glob.get().await;
+    
 
     let fut5 = async {
         //sequencer functions
@@ -473,44 +478,62 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let mut clockn = clockn_glob.get().await;
 
             // let gateseq = gateseq_glob.get_array().await;
+            
+
 
             match clk.wait_for_event(1).await {
                 ClockEvent::Reset => {
                     clockn = 0;
-                    info!("reset!")
+                    info!("reset!");
+                    for n in 0 ..4 {
+                        midi[n].send_note_off(lastnote[n]).await;
+                        gate_out[n].set_low().await;
+                    }
+
                 }
                 ClockEvent::Tick => {
                     clockn += 1;
+                    for n in 0..=3 {
+                        if clockn % clockres[n] == 0 {
+                            let clkindex = (clockn / clockres[n] % seq_length[n] as usize) + (n * 16);
+        
+                            if gateseq[clkindex] {
+                                midi[n].send_note_off(lastnote[n]).await;
+                                let seq = seq_glob.get().await;
+                                lastnote[n] = (seq[clkindex] / 170) as u8 + 60;
+                                midi[n].send_note_on(lastnote[n], 4095).await;
+                                gate_out[n].set_high().await;
+                                cv_out[n].set_value(seq[clkindex] / 4);
+                                gatelength1 = gatelength_glob.get().await;
+                                if n == 0 {
+                                    info!("tick {}", clockn);
+                                }
+                            }
+                        }
+                        if (clockn - gatelength1[n] as usize) % clockres[n] == 0 {
+                            let clkindex =
+                                (((clockn - 1) / clockres[n]) % seq_length[n] as usize) + (n * 16);
+                            if gateseq[clkindex] {
+                                gate_out[n].set_low().await;
+        
+                                midi[n].send_note_off(lastnote[n]).await;
+                            }
+                            
+                        }
+                    }  
+                    
                 }
                 _ => {}
             }
 
+            
+
+            
+            
             clockn_glob.set(clockn).await;
+            
 
-            for n in 0..=3 {
-                if clockn % clockres[n] == 0 {
-                    let clkindex = (clockn / clockres[n] % seq_length[n] as usize) + (n * 16);
-
-                    if gateseq[clkindex] {
-                        midi[n].send_note_off(lastnote[n]).await;
-                        let seq = seq_glob.get().await;
-                        lastnote[n] = (seq[clkindex] / 170) as u8 + 60;
-                        midi[n].send_note_on(lastnote[n], 4095).await;
-                        gate_out[n].set_high().await;
-                        cv_out[n].set_value(seq[clkindex] / 4);
-                        gatelength1 = gatelength_glob.get().await;
-                    }
-                }
-                if (clockn - gatelength1[n] as usize) % clockres[n] == 0 {
-                    let clkindex =
-                        (((clockn - 1) / clockres[n]) % seq_length[n] as usize) + (n * 16);
-                    if gateseq[clkindex] {
-                        gate_out[n].set_low().await;
-
-                        midi[n].send_note_off(lastnote[n]).await;
-                    }
-                }
-            }
+            
         }
     };
 
