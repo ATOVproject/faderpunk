@@ -4,11 +4,11 @@
 
 use config::{Config, Param, Value};
 use defmt::info;
-use embassy_futures::{join::{join3, join4, join5}, select::select};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use embassy_futures::{join::{join5}, select::select};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
-use crate::{app::{App, Arr, ClockEvent, Led, Range, SceneEvent}, storage::{ParamSlot, ParamStore}};
+use crate::app::{App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
@@ -49,6 +49,7 @@ impl Default for Storage {
         }
     }
 }
+impl AppStorage for Storage {}
 
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
@@ -66,14 +67,15 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
     let app_loop = async {
         loop {
-            select(run(&app, &params), param_store.param_handler()).await;
+            let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
+            select(run(&app, &params, storage), param_store.param_handler()).await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
+pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
     let mut clock = app.use_clock();
     let mut rnd = app.use_die();
     let fader = app.use_faders();
@@ -86,6 +88,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
+    let att_glob = app.make_global(4096);
+    let latched_glob = app.make_global(false);
 
     let output = app.make_out_jack(0, Range::_Neg5_5V).await;
 
@@ -102,7 +106,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
 
     let fut1 = async {
         loop {
-
+            
             
 
             match clock.wait_for_event(1).await {
@@ -111,20 +115,23 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                 }
                 ClockEvent::Tick => {
                     clkn += 1;
+                    let muted = glob_muted.get().await;
+                    let att = att_glob.get().await;
+                    let div = div_glob.get().await;
+                    if clkn % div == 0 && !muted {
+                        let midival = attenuate(val, att);
+                        let jackval = attenuate_bipolar(val, att);
+                        output.set_value(jackval);
+                        midi.send_cc(cc as u8, midival).await;
+                        leds.set(0, Led::Top, LED_COLOR, (jackval / 16) as u8);
+                        leds.set(0, Led::Bottom, LED_COLOR, (255 - jackval / 16) as u8);
+                        val = rnd.roll();
+                    }
                 }
                 _ => {}
             }
             
-            let muted = glob_muted.get().await;
-            
-            let div = div_glob.get().await;
-            if clkn % div == 0 && !muted {
-                output.set_value(val);
-                midi.send_cc(36, val).await;
-                leds.set(0, Led::Top, LED_COLOR, (val / 16) as u8);
-                leds.set(0, Led::Bottom, LED_COLOR, (255 - val / 16) as u8);
-                val = rnd.roll();
-            }
+
         
         }
     };
@@ -133,10 +140,20 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
         loop {
             buttons.wait_for_any_down().await;
             let muted = glob_muted.toggle().await;
+            storage
+            .modify_and_save(
+                |s| {
+                    s.mute_save = muted;
+                    s.mute_save
+                },
+                None,
+            )
+            .await;
+            
             if muted {
                 leds.set(0, Led::Button, LED_COLOR, 0);
                 output.set_value(2047);
-                midi.send_cc(36, 0).await;
+                midi.send_cc(cc as u8, 0).await;
                 leds.set(0, Led::Top, LED_COLOR, 0);
                 leds.set(0, Led::Bottom, LED_COLOR, 0);
             } else {
@@ -148,10 +165,122 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let fut3 = async {
         loop {
             fader.wait_for_change(0).await;
+            storage.load(None).await;
             let fad = fader.get_values();
-            div_glob.set(resolution[fad[0] as usize / 345]).await;
+            
+            
+            if !buttons.is_shift_pressed() {
+                let fad_saved = storage.query(|s| s.fader_saved).await;
+                if is_close(fad[0], fad_saved){
+                    latched_glob.set(true).await;
+                }
+                if latched_glob.get().await {
+                    div_glob.set(resolution[fad[0] as usize / 345]).await;
+                    storage.modify_and_save(|s| s.fader_saved = fad[0], None).await;
+
+                }
+                
+                
+            }
+            else {
+                let att = att_glob.get().await;
+                if is_close(fad[0], att){
+                    latched_glob.set(true).await;
+                }
+                if latched_glob.get().await{
+                    att_glob.set(fad[0]).await;
+                    storage.modify_and_save(|s| s.att_saved = fad[0], None).await;
+                    info!("att = {}", fad[0])
+                }
+            }
         }
     };
 
-    join3(fut1, fut2, fut3).await;
+    let scene_handler = async {
+        loop {
+            match app.wait_for_scene_event().await {
+                SceneEvent::LoadSscene(scene) => {
+                    storage.load(Some(scene)).await;
+                    let (res, mute, att) =
+                        storage
+                            .query(|s| (s.fader_saved, s.mute_save, s.att_saved))
+                            .await;
+
+                    att_glob.set(att).await;
+                    glob_muted.set(mute).await;
+                    div_glob.set(resolution[res as usize / 345]).await;
+                    info!("fader = {}, att = {}, muted = {}", res, att, mute);
+
+                    if mute {
+                        leds.set(0, Led::Button, LED_COLOR, 0);
+                        output.set_value(2047);
+                        midi.send_cc(cc as u8, 0).await;
+                        leds.set(0, Led::Top, LED_COLOR, 0);
+                        leds.set(0, Led::Bottom, LED_COLOR, 0);
+                    } else {
+                        leds.set(0, Led::Button, LED_COLOR, 75);
+                    }                   
+                }
+
+
+
+                SceneEvent::SaveScene(scene) => {
+                    storage.save(Some(scene)).await;
+                    info!("scene {} saved", scene);
+                
+                }
+            }
+        }
+    };
+
+    let mut shift_old = false;
+
+    let shift = async {
+        loop {
+            // latching on pressing and depressing shift
+
+            app.delay_millis(1).await;
+            if !shift_old && buttons.is_shift_pressed() {
+                latched_glob.set(false).await;
+                shift_old = true;
+            }
+            if shift_old && !buttons.is_shift_pressed() {
+                latched_glob.set(false).await;
+                shift_old = false;
+            }
+        }
+    };
+
+    
+
+    join5(fut1, fut2, fut3, scene_handler, shift).await;
 }
+
+
+fn attenuate(signal: u16, level: u16) -> u16 {
+
+    let attenuated = (signal as u32 * level as u32) / 4095;
+
+    attenuated as u16
+}
+
+
+fn attenuate_bipolar(signal: u16, level: u16) -> u16 {
+    let center = 2048u32;
+
+    // Convert to signed deviation from center
+    let deviation = signal as i32 - center as i32;
+
+    // Apply attenuation as fixed-point scaling
+    let scaled = (deviation as i64 * level as i64) / 4095;
+
+    // Add back the center and clamp to 0..=4095
+    let result = center as i64 + scaled;
+    result.clamp(0, 4095) as u16
+}
+
+
+fn is_close(a: u16, b: u16) -> bool {
+    a.abs_diff(b) < 100
+}
+
