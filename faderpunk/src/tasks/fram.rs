@@ -26,9 +26,10 @@ const WRITES_CAPACITY: usize = 16;
 // TODO: Find a good number for this
 pub const MAX_DATA_LEN: usize = 1024;
 
-pub static FRAM_READ_BUF: Mutex<ThreadModeRawMutex, [u8; MAX_DATA_LEN]> =
+// TODO: Check if this is still a good way of doing saves (could defer a lot)
+pub static FRAM_READ_BUF: Mutex<CriticalSectionRawMutex, [u8; MAX_DATA_LEN]> =
     Mutex::new([0; MAX_DATA_LEN]);
-pub static FRAM_WRITE_BUF: Mutex<ThreadModeRawMutex, [u8; MAX_DATA_LEN]> =
+pub static FRAM_WRITE_BUF: Mutex<CriticalSectionRawMutex, [u8; MAX_DATA_LEN]> =
     Mutex::new([0; MAX_DATA_LEN]);
 
 pub struct WriteOperation {
