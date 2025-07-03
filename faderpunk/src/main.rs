@@ -34,7 +34,7 @@ use libfp::constants::GLOBAL_CHANNELS;
 use events::CONFIG_CHANGE_WATCH;
 use layout::{LayoutManager, LAYOUT_MANAGER};
 use storage::load_global_config;
-use tasks::{fram::MAX_DATA_LEN, max::MAX_CHANNEL, midi::MIDI_CHANNEL};
+use tasks::{fram::MAX_DATA_LEN, leds::LED_CHANNEL, max::MAX_CHANNEL, midi::MIDI_CHANNEL};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
