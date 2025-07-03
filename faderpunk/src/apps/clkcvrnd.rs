@@ -3,7 +3,6 @@
 // Add attenuator (shift + fader)
 
 use config::{Config, Param, Value};
-use defmt::info;
 use embassy_futures::{join::{join5}, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
@@ -159,7 +158,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             buttons.wait_for_any_down().await;
             let muted = glob_muted.toggle().await;
-            info!("{}", muted);
             
             storage
             .modify_and_save(
@@ -211,7 +209,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if latched_glob.get().await{
                     att_glob.set(fad[0]).await;
                     storage.modify_and_save(|s| s.att_saved = fad[0], None).await;
-                    info!("att = {}", fad[0])
                 }
             }
         }
@@ -245,7 +242,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
                 SceneEvent::SaveScene(scene) => {
                     storage.save(Some(scene)).await;
-                    info!("scene {} saved", scene);
+
                 
                 }
             }
