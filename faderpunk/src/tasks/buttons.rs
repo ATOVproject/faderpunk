@@ -1,4 +1,3 @@
-use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::join::{join, join_array};
 use embassy_rp::gpio::{Input, Pull};
@@ -9,7 +8,7 @@ use embassy_rp::peripherals::{
 use embassy_time::{with_timeout, Duration, Timer};
 use portable_atomic::{AtomicBool, Ordering};
 
-use crate::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
+use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
 
 use {defmt_rtt as _, panic_probe as _};
 
