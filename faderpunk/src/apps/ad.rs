@@ -2,7 +2,7 @@ use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
 use crate::{
-    app::{App, Led, Range},
+    app::{colors::WHITE, App, Led, Range, RGB8},
     storage::ParamStore,
 };
 use config::{Config, Curve};
@@ -41,22 +41,37 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
     let output = app.make_out_jack(1, Range::_0_10V).await;
 
     let minispeed = 10.0;
-    let fadstep = 1;
 
     let mut vals: f32 = 0.0;
     let mut oldinputval = 0;
     let mut env_state = 0;
 
-    let color = [(243, 191, 78), (188, 77, 216), (78, 243, 243)];
+    let color = [
+        RGB8 {
+            r: 243,
+            g: 191,
+            b: 78,
+        },
+        RGB8 {
+            r: 188,
+            g: 77,
+            b: 216,
+        },
+        RGB8 {
+            r: 78,
+            g: 243,
+            b: 243,
+        },
+    ];
 
     let curve = glob_curve.get().await;
-    leds.set(0, Led::Button, color[curve[0] as usize], 100);
-    leds.set(1, Led::Button, color[curve[1] as usize], 100);
+    leds.set(0, Led::Button, color[curve[0] as usize], 100)
+        .await;
+    leds.set(1, Led::Button, color[curve[1] as usize], 100)
+        .await;
 
     let fut1 = async {
         loop {
-            let color = (255, 255, 255);
-
             app.delay_millis(1).await;
             let times = times_glob.get().await;
             let curve_setting = glob_curve.get().await;
@@ -84,14 +99,16 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
                 let curve: [Curve; 3] = [Curve::Linear, Curve::Exponential, Curve::Logarithmic];
 
                 output.set_value_with_curve(curve[curve_setting[0]], vals as u16);
-                leds.set(0, Led::Bottom, color, (255.0 - (vals as f32) / 32.0) as u8);
-                leds.set(0, Led::Top, color, (vals as f32 / 32.0) as u8);
+                leds.set(0, Led::Bottom, WHITE, (255.0 - (vals as f32) / 32.0) as u8)
+                    .await;
+                leds.set(0, Led::Top, WHITE, (vals as f32 / 32.0) as u8)
+                    .await;
                 if vals == 4094.0 {
-                    leds.set(0, Led::Top, (0, 0, 0), 0);
-                    leds.set(0, Led::Bottom, (0, 0, 0), 0);
+                    leds.reset(0, Led::Top).await;
+                    leds.reset(0, Led::Bottom).await;
                 }
-                leds.set(1, Led::Top, (0, 0, 0), 0);
-                leds.set(1, Led::Bottom, (0, 0, 0), 0);
+                leds.reset(1, Led::Top).await;
+                leds.reset(1, Led::Bottom).await;
             }
 
             if env_state == 2 {
@@ -102,11 +119,13 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
                 }
                 let curve: [Curve; 3] = [Curve::Linear, Curve::Exponential, Curve::Logarithmic];
                 output.set_value_with_curve(curve[curve_setting[1]], vals as u16);
-                leds.set(1, Led::Top, color, (vals as f32 / 32.0) as u8);
-                leds.set(1, Led::Bottom, color, (255.0 - (vals as f32) / 32.0) as u8);
+                leds.set(1, Led::Top, WHITE, (vals as f32 / 32.0) as u8)
+                    .await;
+                leds.set(1, Led::Bottom, WHITE, (255.0 - (vals as f32) / 32.0) as u8)
+                    .await;
 
                 if vals == 0.0 {
-                    leds.set(1, Led::Bottom, (0, 0, 0), 0);
+                    leds.reset(1, Led::Bottom).await;
                 }
             }
         }
@@ -132,7 +151,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
             let mut curve_setting = glob_curve.get().await;
             curve_setting[chan] = (curve_setting[chan] + 1) % 3;
             glob_curve.set(curve_setting).await;
-            leds.set(chan, Led::Button, color[curve_setting[chan] as usize], 75);
+            leds.set(chan, Led::Button, color[curve_setting[chan] as usize], 75)
+                .await;
         }
     };
 

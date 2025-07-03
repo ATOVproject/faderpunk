@@ -8,7 +8,7 @@ use rand::Rng;
 
 use config::Curve;
 use libfp::{
-    constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
+    constants::{CURVE_EXP, CURVE_LOG},
     utils::scale_bits_12_7,
 };
 
@@ -17,7 +17,7 @@ use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
-        leds::LED_VALUES,
+        leds::{BrightnessExt, LedMode, LedMsg, LedSender},
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender,
     },
@@ -25,8 +25,9 @@ use crate::{
 
 pub use crate::{
     storage::{AppStorage, Arr, ManagedStorage, ParamSlot, ParamStore},
-    tasks::clock::ClockEvent,
+    tasks::{clock::ClockEvent, leds::Led},
 };
+pub use smart_leds::{colors, RGB8};
 
 pub enum Range {
     // 0 - 10V
@@ -37,41 +38,45 @@ pub enum Range {
     _Neg5_5V,
 }
 
-pub enum Led {
-    Top,
-    Bottom,
-    Button,
-}
-
 #[derive(Clone, Copy)]
 pub struct Leds<const N: usize> {
+    led_sender: LedSender,
     start_channel: usize,
 }
 
 impl<const N: usize> Leds<N> {
-    pub fn new(start_channel: usize) -> Self {
-        Self { start_channel }
+    pub fn new(start_channel: usize, led_sender: LedSender) -> Self {
+        Self {
+            led_sender,
+            start_channel,
+        }
     }
 
-    // TODO: Add effects
-    // TODO: add methods to set brightness/color independently
-    pub fn set(&self, chan: usize, position: Led, (r, g, b): (u8, u8, u8), brightness: u8) {
+    pub async fn set(&self, chan: usize, position: Led, color: RGB8, brightness: u8) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
-        let led_no = match position {
-            Led::Top => CHAN_LED_MAP[0][channel],
-            Led::Bottom => CHAN_LED_MAP[1][channel],
-            Led::Button => CHAN_LED_MAP[2][channel],
-        };
-        let value =
-            ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-        LED_VALUES[led_no].store(value, Ordering::Relaxed);
+        self.led_sender
+            .send(LedMsg::Set(
+                channel,
+                position,
+                LedMode::Static(color.scale(brightness)),
+            ))
+            .await;
     }
 
-    pub fn reset_all(&self) {
+    pub async fn reset(&self, chan: usize, position: Led) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        self.led_sender.send(LedMsg::Reset(channel, position)).await;
+    }
+
+    pub async fn reset_chan(&self, chan: usize) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        self.led_sender.send(LedMsg::ResetAll(channel)).await;
+    }
+
+    pub async fn reset_all(&self) {
         for chan in 0..N {
-            self.set(chan, Led::Button, (0, 0, 0), 0);
-            self.set(chan, Led::Bottom, (0, 0, 0), 0);
-            self.set(chan, Led::Top, (0, 0, 0), 0);
+            let channel = self.start_channel + chan.clamp(0, N - 1);
+            self.led_sender.send(LedMsg::ResetAll(channel)).await;
         }
     }
 }
@@ -437,6 +442,7 @@ pub struct App<const N: usize> {
     pub app_id: u8,
     pub start_channel: usize,
     event_pubsub: &'static EventPubSubChannel,
+    led_sender: LedSender,
     max_sender: MaxSender,
     midi_sender: MidiSender,
 }
@@ -446,12 +452,14 @@ impl<const N: usize> App<N> {
         app_id: u8,
         start_channel: usize,
         event_pubsub: &'static EventPubSubChannel,
+        led_sender: LedSender,
         max_sender: MaxSender,
         midi_sender: MidiSender,
     ) -> Self {
         Self {
             app_id,
             start_channel,
+            led_sender,
             max_sender,
             midi_sender,
             event_pubsub,
@@ -528,7 +536,7 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_leds(&self) -> Leds<N> {
-        Leds::new(self.start_channel)
+        Leds::new(self.start_channel, self.led_sender)
     }
 
     pub fn use_die(&self) -> Die {
@@ -561,7 +569,7 @@ impl<const N: usize> App<N> {
 
     async fn reset(&self) {
         let leds = self.use_leds();
-        leds.reset_all();
+        leds.reset_all().await;
         for chan in 0..N {
             self.reconfigure_jack(chan, MaxConfig::Mode0).await;
         }
