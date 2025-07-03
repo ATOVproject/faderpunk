@@ -13,7 +13,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, Arr, ClockEvent, Led, ManagedStorage, ParamStore, Range, SceneEvent,
+    App, AppStorage, Arr, ClockEvent, Led, ManagedStorage, ParamStore, Range, SceneEvent, RGB8,
 };
 
 pub const CHANNELS: usize = 8;
@@ -211,14 +211,30 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let fut4 = async {
         //LED update
+        let intensity = [50, 100, 200];
+        let colors = [
+            RGB8 {
+                r: 243,
+                g: 191,
+                b: 78,
+            },
+            RGB8 {
+                r: 188,
+                g: 77,
+                b: 216,
+            },
+            RGB8 {
+                r: 78,
+                g: 243,
+                b: 243,
+            },
+            RGB8 {
+                r: 250,
+                g: 250,
+                b: 250,
+            },
+        ];
         loop {
-            let intencity = [50, 100, 200];
-            let colours = [
-                (243, 191, 78),
-                (188, 77, 216),
-                (78, 243, 243),
-                (250, 250, 250),
-            ];
             app.delay_millis(10).await;
 
             //if buttons.is_shift_pressed().await;
@@ -233,26 +249,33 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 let mut bright = 75;
                 for n in 0..=7 {
                     if n == page {
-                        bright = intencity[2];
+                        bright = intensity[2];
                     } else {
-                        bright = intencity[1];
+                        bright = intensity[1];
                     }
-                    led.set(n, Led::Button, colours[n / 2], bright);
+                    led.set(n, Led::Button, colors[n / 2], bright).await;
                 }
                 for n in 0..=15 {
                     if n < seq_length.at(page / 2) {
-                        bright = 100
+                        bright = 100;
                     }
                     if n == clockn as u8 % seq_length.at(page / 2) {
-                        bright = 200
+                        bright = 200;
                     }
                     if n >= seq_length.at(page / 2) {
-                        bright = 0
+                        bright = 0;
                     }
                     if n < 8 {
-                        led.set(n as usize, Led::Top, (255, 0, 0), bright)
+                        led.set(n as usize, Led::Top, RGB8 { r: 255, g: 0, b: 0 }, bright)
+                            .await;
                     } else {
-                        led.set(n as usize - 8, Led::Bottom, (255, 0, 0), bright)
+                        led.set(
+                            n as usize - 8,
+                            Led::Bottom,
+                            RGB8 { r: 255, g: 0, b: 0 },
+                            bright,
+                        )
+                        .await;
                     }
                 }
             }
@@ -270,32 +293,33 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 // let seq_length = seq_length_glob.get_array().await; //use this to highlight active notes
                 // let seq = seq_glob.get_array().await;
 
-                let mut colour = (243, 191, 78);
+                let mut color = colors[0];
                 let clockn = clockn_glob.get().await;
 
                 if page / 2 == 0 {
-                    colour = (243, 191, 78);
+                    color = colors[0]
                 }
                 if page / 2 == 1 {
-                    colour = (188, 77, 216);
+                    color = colors[1];
                 }
                 if page / 2 == 2 {
-                    colour = (78, 243, 243);
+                    color = colors[2];
                 }
                 if page / 2 == 3 {
-                    colour = (250, 250, 250);
+                    color = colors[3];
                 }
 
                 for n in 0..=7 {
-                    led.set(n, Led::Top, colour, (seq.at(n + (page * 8)) / 16) as u8 / 2);
+                    led.set(n, Led::Top, color, (seq.at(n + (page * 8)) / 16) as u8 / 2)
+                        .await;
 
                     if gateseq.at(n + (page * 8)) {
-                        led.set(n, Led::Button, colour, intencity[1]);
+                        led.set(n, Led::Button, color, intensity[1]).await;
 
                         //led.set(n, Led::Bottom , colour, 0);
                     }
                     if !gateseq.at(n + (page * 8)) {
-                        led.set(n, Led::Button, colour, intencity[0]);
+                        led.set(n, Led::Button, color, intensity[0]).await;
                         //led.set(n, Led::Bottom , colour, 0);
                     }
 
@@ -303,13 +327,14 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     //info!("{}", index);
 
                     if n >= index || index > 16 {
-                        led.set(n, Led::Button, colour, 0);
+                        led.reset(n, Led::Button).await;
                     }
 
                     if (clockn % seq_length.at(n / 2) as usize) % 16 - (n % 2) * 8 < 8 {
-                        led.set(n, Led::Bottom, (255, 0, 0), 100)
+                        led.set(n, Led::Bottom, RGB8 { r: 255, g: 0, b: 0 }, 100)
+                            .await;
                     } else {
-                        led.set(n, Led::Bottom, (255, 0, 0), 0)
+                        led.reset(n, Led::Bottom).await;
                     }
                 }
                 //runing light on buttons
@@ -317,12 +342,13 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     led.set(
                         (clockn % seq_length.at(page / 2) as usize) % 16 - (page % 2) * 8,
                         Led::Button,
-                        (255, 0, 0),
+                        RGB8 { r: 255, g: 0, b: 0 },
                         100,
-                    );
+                    )
+                    .await;
                 }
 
-                led.set(page, Led::Bottom, colour, 255);
+                led.set(page, Led::Bottom, color, 255).await;
             }
 
             led_flag_glob.set(false).await;

@@ -2,7 +2,7 @@
 //add a function to the button
 //add LED to the button
 
-use crate::app::{App, ClockEvent, Led, Range};
+use crate::app::{App, ClockEvent, Led, Range, RGB8};
 use config::Config;
 use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -16,6 +16,12 @@ pub static CONFIG: config::Config<PARAMS> = Config::new("Random CV", "clocked ra
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     select(run(&app), exit_signal.wait()).await;
 }
+
+const LED_COLOR: RGB8 = RGB8 {
+    r: 188,
+    g: 77,
+    b: 216,
+};
 
 pub async fn run(app: &App<CHANNELS>) {
     let mut clock = app.use_clock();
@@ -32,9 +38,7 @@ pub async fn run(app: &App<CHANNELS>) {
 
     let mut clkn = 0;
 
-    const LED_COLOR: (u8, u8, u8) = (188, 77, 216);
-
-    leds.set(0, Led::Button, LED_COLOR, 100);
+    leds.set(0, Led::Button, LED_COLOR, 100).await;
 
     let fut1 = async {
         loop {
@@ -46,8 +50,8 @@ pub async fn run(app: &App<CHANNELS>) {
                 if clkn % div[0] == 0 && !muted {
                     let val = rnd.roll();
                     output.set_value(val);
-                    leds.set(0, Led::Top, LED_COLOR, (val / 16) as u8);
-                    leds.set(0, Led::Bottom, LED_COLOR, (255 - val / 16) as u8);
+                    leds.set(0, Led::Top, LED_COLOR, (val / 16) as u8).await;
+                    leds.set(0, Led::Bottom, LED_COLOR, (255 - val / 16) as u8).await;
                 }
             }
         }
@@ -58,12 +62,12 @@ pub async fn run(app: &App<CHANNELS>) {
             buttons.wait_for_any_down().await;
             let muted = glob_muted.toggle().await;
             if muted {
-                leds.set(0, Led::Button, LED_COLOR, 0);
+                leds.reset(0, Led::Button).await;
                 output.set_value(2047);
-                leds.set(0, Led::Top, LED_COLOR, 0);
-                leds.set(0, Led::Bottom, LED_COLOR, 0);
+                leds.reset(0, Led::Top).await;
+                leds.reset(0, Led::Bottom).await;
             } else {
-                leds.set(0, Led::Button, LED_COLOR, 75);
+                leds.set(0, Led::Button, LED_COLOR, 75).await;
             }
         }
     };
