@@ -151,15 +151,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut lastnote = [0; 4];
     let mut gatelength1 = gatelength_glob.get().await;
 
-    // storage.load(None).await;
+    storage.load(None).await;
 
-    // let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel) = storage
-    //     .query(|s| (s.seq, s.gateseq, s.seq_length, s.seqres, s.gate_length))
-    //     .await;
+    let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel) = storage
+        .query(|s| (s.seq, s.gateseq, s.seq_length, s.seqres, s.gate_length))
+        .await;
 
-    // seq_glob.set(seq_saved.get()).await;
-    // gateseq_glob.set(gateseq_saved.get()).await;
-    // seq_length_glob.set(seq_length_saved).await;
+    seq_glob.set(seq_saved.get()).await;
+    gateseq_glob.set(gateseq_saved.get()).await;
+    seq_length_glob.set(seq_length_saved).await;
 
     let mut clockres: [usize; 4] = [4; 4];
     let mut gatel: [u8; 4] = [128; 4];
@@ -505,9 +505,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                                 gate_out[n].set_high().await;
                                 cv_out[n].set_value(seq[clkindex] / 4);
                                 gatelength1 = gatelength_glob.get().await;
-                                if n == 0 {
-                                    info!("tick {}", clockn);
-                                }
+                           
+
                             }
                         }
                         if (clockn - gatelength1[n] as usize) % clockres[n] == 0 {
