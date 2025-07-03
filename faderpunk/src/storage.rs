@@ -33,10 +33,11 @@ pub async fn store_global_config(config: &GlobalConfig) {
 }
 
 pub async fn load_global_config() -> GlobalConfig {
-    if let Ok(data) = read_data(GLOBAL_CONFIG_RANGE.start).await {
+    if let Ok(guard) = read_data(GLOBAL_CONFIG_RANGE.start).await {
+        let data = guard.data();
         if !data.is_empty() {
-            if let Ok(res) = from_bytes::<GlobalConfig>(&data) {
-                return res;
+            if let Ok(config) = from_bytes::<GlobalConfig>(data) {
+                return config;
             }
         }
     }
@@ -243,9 +244,10 @@ where
 
     pub async fn load(&self) {
         let address = AppParamsAddress::new(self.start_channel);
-        if let Ok(data) = read_data(address.into()).await {
+        if let Ok(guard) = read_data(address.into()).await {
+            let data = guard.data();
             if !data.is_empty() {
-                if let Some(val) = self.des(&data).await {
+                if let Some(val) = self.des(data).await {
                     let mut inner = self.inner.lock().await;
                     *inner = val;
                 }
@@ -348,7 +350,8 @@ impl<S: AppStorage> ManagedStorage<S> {
 
     pub async fn load(&self, scene: Option<u8>) {
         let address = AppStorageAddress::new(self.start_channel, scene).into();
-        if let Ok(data) = read_data(address).await {
+        if let Ok(guard) = read_data(address).await {
+            let data = guard.data();
             if !data.is_empty() && data[0] == self.app_id {
                 if let Ok(val) = from_bytes::<S>(&data[1..]) {
                     let mut inner = self.inner.lock().await;
