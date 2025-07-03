@@ -128,8 +128,13 @@ pub struct AppStorageAddress {
 
 impl From<AppStorageAddress> for u32 {
     fn from(key: AppStorageAddress) -> Self {
-        let scene_index = key.scene.unwrap_or(0) as u32;
-        let app_base_offset = (key.start_channel as u32) * SCENES_PER_APP * APP_STORAGE_MAX_BYTES;
+        let scene_index = match key.scene {
+            None => 0,
+            Some(s) => (s as u32) + 1,
+        };
+
+        let app_base_offset =
+            (key.start_channel as u32) * (SCENES_PER_APP + 1) * APP_STORAGE_MAX_BYTES;
         let scene_offset_in_app = scene_index * APP_STORAGE_MAX_BYTES;
         APP_STORAGE_RANGE.start + app_base_offset + scene_offset_in_app
     }
@@ -137,7 +142,7 @@ impl From<AppStorageAddress> for u32 {
 
 impl From<u32> for AppStorageAddress {
     fn from(address: u32) -> Self {
-        let bytes_per_app_block: u32 = SCENES_PER_APP * APP_STORAGE_MAX_BYTES;
+        let bytes_per_app_block: u32 = (SCENES_PER_APP + 1) * APP_STORAGE_MAX_BYTES;
         let app_storage_address = address - APP_STORAGE_RANGE.start;
 
         let start_channel_raw = app_storage_address / bytes_per_app_block;
@@ -146,12 +151,10 @@ impl From<u32> for AppStorageAddress {
         let offset_within_app_block = app_storage_address % bytes_per_app_block;
         let scene_index_raw = offset_within_app_block / APP_STORAGE_MAX_BYTES;
 
-        let scene_index = scene_index_raw as u8;
-
-        let scene = if scene_index == 0 {
+        let scene = if scene_index_raw == 0 {
             None
         } else {
-            Some(scene_index)
+            Some((scene_index_raw - 1) as u8)
         };
 
         Self {
