@@ -5,9 +5,9 @@ use embassy_rp::{
     peripherals::I2C1,
 };
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
+    blocking_mutex::raw::CriticalSectionRawMutex,
     channel::Channel,
-    mutex::Mutex,
+    mutex::{Mutex, MutexGuard},
     signal::Signal,
 };
 use embassy_time::{with_timeout, Duration};
@@ -18,50 +18,16 @@ use heapless::Vec;
 type Address = u32;
 type Fram = Fm24v10<'static, I2c<'static, I2C1, Async>>;
 pub type FramData = Vec<u8, MAX_DATA_LEN>;
+pub type FramReadResult = Result<usize, FramError>;
+
 const MAX_CONCURRENT_REQUESTS: usize = 16;
 const TIMEOUT_MS: u64 = 200;
-
 const WRITES_CAPACITY: usize = 16;
-
-// TODO: Find a good number for this
 pub const MAX_DATA_LEN: usize = 1024;
 
-// TODO: Check if this is still a good way of doing saves (could defer a lot)
-pub static FRAM_READ_BUF: Mutex<CriticalSectionRawMutex, [u8; MAX_DATA_LEN]> =
+pub static IO_BUFFER: Mutex<CriticalSectionRawMutex, [u8; MAX_DATA_LEN]> =
     Mutex::new([0; MAX_DATA_LEN]);
-pub static FRAM_WRITE_BUF: Mutex<CriticalSectionRawMutex, [u8; MAX_DATA_LEN]> =
-    Mutex::new([0; MAX_DATA_LEN]);
-
-pub struct WriteOperation {
-    address: Address,
-    len: usize,
-}
-
-impl WriteOperation {
-    pub fn try_new(address: Address, len: usize) -> Result<Self, FramError> {
-        Ok(Self { address, len })
-    }
-}
-
-pub struct ReadOperation {
-    address: Address,
-}
-
-impl ReadOperation {
-    pub fn new(address: Address) -> Self {
-        Self { address }
-    }
-}
-
-pub struct Request {
-    op: ReadOperation,
-    signal_idx: usize,
-}
-
-pub static FRAM_WRITE_CHANNEL: Channel<CriticalSectionRawMutex, WriteOperation, WRITES_CAPACITY> =
-    Channel::new();
-
-pub type FramReadResult = Result<usize, FramError>;
+pub static BUFFER_TOKEN: Channel<CriticalSectionRawMutex, (), 1> = Channel::new();
 
 pub static FRAM_RESPONSE_SIGNALS_POOL: [Signal<CriticalSectionRawMutex, FramReadResult>;
     MAX_CONCURRENT_REQUESTS] = [const { Signal::new() }; MAX_CONCURRENT_REQUESTS];
@@ -71,6 +37,9 @@ pub static FRAM_AVAILABLE_SIGNAL_INDICES: Channel<
     usize,
     MAX_CONCURRENT_REQUESTS,
 > = Channel::new();
+
+pub static FRAM_WRITE_CHANNEL: Channel<CriticalSectionRawMutex, WriteOperation, WRITES_CAPACITY> =
+    Channel::new();
 
 pub static FRAM_REQUEST_CHANNEL: Channel<
     CriticalSectionRawMutex,
@@ -92,6 +61,45 @@ pub enum FramError {
     Empty,
 }
 
+struct WriteOperation {
+    address: Address,
+    len: usize,
+}
+
+impl WriteOperation {
+    pub fn new(address: Address, len: usize) -> Self {
+        Self { address, len }
+    }
+}
+
+pub struct Request {
+    address: Address,
+    signal_idx: usize,
+}
+
+pub struct ReadGuard {
+    len: usize,
+}
+
+impl ReadGuard {
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub async fn data(&self) -> MutexGuard<'_, CriticalSectionRawMutex, [u8; MAX_DATA_LEN]> {
+        IO_BUFFER.lock().await
+    }
+}
+
+impl Drop for ReadGuard {
+    fn drop(&mut self) {
+        // When this guard goes out of scope, the buffer lease is released
+        if BUFFER_TOKEN.try_send(()).is_err() {
+            defmt::error!("CRITICAL: Failed to release FRAM buffer token. A deadlock will occur.");
+        }
+    }
+}
+
 pub struct SignalIndexGuard {
     index: Option<usize>,
 }
@@ -99,9 +107,10 @@ pub struct SignalIndexGuard {
 impl SignalIndexGuard {
     /// Attempts to acquire a signal index from the pool.
     pub async fn acquire() -> Result<Self, FramError> {
+        // Wait to receive an index from the channel
         match with_timeout(
             Duration::from_millis(TIMEOUT_MS),
-            FRAM_AVAILABLE_SIGNAL_INDICES.receive(), // Wait to receive an index from the channel
+            FRAM_AVAILABLE_SIGNAL_INDICES.receive(),
         )
         .await
         {
@@ -131,36 +140,64 @@ impl Drop for SignalIndexGuard {
     }
 }
 
-pub async fn request_data(op: ReadOperation) -> Result<usize, FramError> {
+pub async fn read_data(address: u32) -> Result<ReadGuard, FramError> {
+    BUFFER_TOKEN.receive().await;
+
     let guard = SignalIndexGuard::acquire().await?;
     let signal_idx = guard.index();
-
     FRAM_RESPONSE_SIGNALS_POOL[signal_idx].reset();
 
-    let req = Request { op, signal_idx };
+    let req = Request {
+        address,
+        signal_idx,
+    };
     FRAM_REQUEST_CHANNEL.send(req).await;
-    with_timeout(
+
+    // Wait for run_fram to fill the buffer and signal us
+    match with_timeout(
         Duration::from_millis(TIMEOUT_MS),
         FRAM_RESPONSE_SIGNALS_POOL[signal_idx].wait(),
     )
     .await
-    .map_err(|_| FramError::Timeout)
-    .and_then(|res| res)
+    {
+        Ok(Ok(len)) => Ok(ReadGuard { len }),
+        Ok(Err(e)) => {
+            // Must release token on error
+            BUFFER_TOKEN.try_send(()).unwrap();
+            Err(e)
+        }
+        Err(_) => {
+            // Must release token on timeout
+            BUFFER_TOKEN.try_send(()).unwrap();
+            Err(FramError::Timeout)
+        }
+    }
 }
 
-pub async fn write_data(op: WriteOperation) -> Result<(), FramError> {
+pub async fn write_with<F>(address: u32, writer: F) -> Result<(), FramError>
+where
+    F: FnOnce(&mut [u8]) -> Result<usize, postcard::Error>,
+{
+    BUFFER_TOKEN.receive().await; // Acquire lease on the buffer.
+
+    let len = {
+        let mut buffer = IO_BUFFER.lock().await;
+        // The closure runs here, synchronously, while the lock is held.
+        writer(&mut *buffer).map_err(|_| FramError::BufferOverflow)?
+    };
+
+    if len > MAX_DATA_LEN {
+        BUFFER_TOKEN.try_send(()).unwrap(); // Must release token on error
+        return Err(FramError::BufferOverflow);
+    }
+
+    let op = WriteOperation { address, len };
     FRAM_WRITE_CHANNEL.send(op).await;
+    // `run_fram` is now responsible for releasing the token.
     Ok(())
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum StorageSlotType {
-    Param,
-    Storage,
-}
-
-pub struct Storage {
+struct Storage {
     /// Fram driver
     fram: Fram,
     /// Write buffer
@@ -231,6 +268,10 @@ async fn run_fram(fram: Fram) {
         }
     }
 
+    BUFFER_TOKEN
+        .try_send(())
+        .expect("Failed to initialize BUFFER_TOKEN");
+
     // TODO: Add debounced writes (collect write ops and only save at a certain interval)
     // let ticker = Ticker::every(Duration::from_secs(1));
 
@@ -239,16 +280,21 @@ async fn run_fram(fram: Fram) {
     loop {
         match select(read_receiver.receive(), write_receiver.receive()).await {
             Either::First(req) => {
-                let mut data = FRAM_READ_BUF.lock().await;
-                let result = storage.read(req.op.address, &mut *data).await;
+                let mut data = IO_BUFFER.lock().await;
+                let result = storage.read(req.address, &mut *data).await;
+                // Signal the caller. The caller's ReadGuard is responsible for releasing the lease
+                // as we need to know when the caller is "done" with the data
                 FRAM_RESPONSE_SIGNALS_POOL[req.signal_idx].signal(result);
             }
             Either::Second(write_op) => {
-                let data = FRAM_WRITE_BUF.lock().await;
+                let data = IO_BUFFER.lock().await;
                 storage
                     .store(write_op.address, &data[..write_op.len])
                     .await
                     .unwrap();
+                drop(data);
+                // Release the lease, making the buffer available for the next operation
+                BUFFER_TOKEN.send(()).await;
             }
         }
     }
