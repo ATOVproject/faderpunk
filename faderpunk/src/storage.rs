@@ -33,10 +33,9 @@ pub async fn store_global_config(config: &GlobalConfig) {
 }
 
 pub async fn load_global_config() -> GlobalConfig {
-    if let Ok(guard) = read_data(GLOBAL_CONFIG_RANGE.start).await {
-        let data = guard.data().await;
-        if guard.len() > 0 {
-            if let Ok(res) = from_bytes::<GlobalConfig>(&data[..guard.len()]) {
+    if let Ok(data) = read_data(GLOBAL_CONFIG_RANGE.start).await {
+        if !data.is_empty() {
+            if let Ok(res) = from_bytes::<GlobalConfig>(&data) {
                 return res;
             }
         }
@@ -244,14 +243,12 @@ where
 
     pub async fn load(&self) {
         let address = AppParamsAddress::new(self.start_channel);
-        if let Ok(guard) = read_data(address.into()).await {
-            let data = guard.data().await;
-            if guard.len() == 0 {
-                return;
-            }
-            if let Some(val) = self.des(&data[..guard.len()]).await {
-                let mut inner = self.inner.lock().await;
-                *inner = val;
+        if let Ok(data) = read_data(address.into()).await {
+            if !data.is_empty() {
+                if let Some(val) = self.des(&data).await {
+                    let mut inner = self.inner.lock().await;
+                    *inner = val;
+                }
             }
         }
     }
@@ -351,16 +348,11 @@ impl<S: AppStorage> ManagedStorage<S> {
 
     pub async fn load(&self, scene: Option<u8>) {
         let address = AppStorageAddress::new(self.start_channel, scene).into();
-        if let Ok(guard) = read_data(address).await {
-            if guard.len() > 0 {
-                let data = guard.data().await;
-                let data_slice = &data[..guard.len()];
-
-                if data_slice[0] == self.app_id {
-                    if let Ok(val) = from_bytes::<S>(&data_slice[1..]) {
-                        let mut inner = self.inner.lock().await;
-                        *inner = val;
-                    }
+        if let Ok(data) = read_data(address).await {
+            if !data.is_empty() && data[0] == self.app_id {
+                if let Ok(val) = from_bytes::<S>(&data[1..]) {
+                    let mut inner = self.inner.lock().await;
+                    *inner = val;
                 }
             }
         }
