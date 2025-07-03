@@ -5,7 +5,7 @@ use embassy_rp::spi::{Async, Spi};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use embassy_time::Timer;
-use libfp::constants::CHAN_LED_MAP;
+use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
 use smart_leds::colors::BLACK;
 use smart_leds::{gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
@@ -21,21 +21,6 @@ pub static LED_CHANNEL: Channel<CriticalSectionRawMutex, LedMsg, LED_CHANNEL_SIZ
 
 pub async fn start_leds(spawner: &Spawner, spi1: Spi<'static, SPI1, Async>) {
     spawner.spawn(run_leds(spi1)).unwrap();
-}
-
-pub trait BrightnessExt {
-    /// Scales the color by a brightness factor.
-    /// A brightness of 255 means full intensity, 0 means black.
-    fn scale(&self, brightness: u8) -> Self;
-}
-
-impl BrightnessExt for RGB8 {
-    fn scale(&self, brightness: u8) -> Self {
-        let r = ((self.r as u16 * (brightness as u16 + 1)) >> 8) as u8;
-        let g = ((self.g as u16 * (brightness as u16 + 1)) >> 8) as u8;
-        let b = ((self.b as u16 * (brightness as u16 + 1)) >> 8) as u8;
-        Self { r, g, b }
-    }
 }
 
 pub enum LedMsg {

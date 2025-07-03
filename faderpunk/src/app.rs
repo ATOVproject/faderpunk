@@ -9,6 +9,7 @@ use rand::Rng;
 use config::Curve;
 use libfp::{
     constants::{CURVE_EXP, CURVE_LOG},
+    ext::BrightnessExt,
     utils::scale_bits_12_7,
 };
 
@@ -17,7 +18,7 @@ use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
-        leds::{BrightnessExt, LedMode, LedMsg, LedSender},
+        leds::{LedMode, LedMsg, LedSender},
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender,
     },
