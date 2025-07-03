@@ -102,7 +102,26 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     const LED_COLOR: (u8, u8, u8) = (188, 77, 216);
 
-    leds.set(0, Led::Button, LED_COLOR, 100);
+    storage.load(None).await;
+
+    let (res, mute, att) =
+        storage
+            .query(|s| (s.fader_saved, s.mute_save, s.att_saved))
+            .await;
+
+    att_glob.set(att).await;
+    glob_muted.set(mute).await;
+    div_glob.set(resolution[res as usize / 345]).await;
+    if mute {
+        leds.set(0, Led::Button, LED_COLOR, 0);
+        output.set_value(2047);
+        midi.send_cc(cc as u8, 0).await;
+        leds.set(0, Led::Top, LED_COLOR, 0);
+        leds.set(0, Led::Bottom, LED_COLOR, 0);
+    } else {
+        leds.set(0, Led::Button, LED_COLOR, 75);
+    }  
+
 
     let fut1 = async {
         loop {
@@ -140,6 +159,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             buttons.wait_for_any_down().await;
             let muted = glob_muted.toggle().await;
+            info!("{}", muted);
+            
             storage
             .modify_and_save(
                 |s| {
@@ -209,8 +230,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     att_glob.set(att).await;
                     glob_muted.set(mute).await;
                     div_glob.set(resolution[res as usize / 345]).await;
-                    info!("fader = {}, att = {}, muted = {}", res, att, mute);
-
                     if mute {
                         leds.set(0, Led::Button, LED_COLOR, 0);
                         output.set_value(2047);
