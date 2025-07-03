@@ -955,6 +955,7 @@ version = "0.1.0"
 dependencies = [
  "embassy-time",
  "midly",
+ "smart-leds",
 ]
 
 [[package]]
