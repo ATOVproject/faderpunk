@@ -17,8 +17,10 @@ use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
 use midly::stream::MidiStream;
 use midly::MidiMessage;
 
-use crate::{tasks::clock::CLOCK_PUBSUB, CONFIG_CHANGE_WATCH};
-use crate::{InputEvent, EVENT_PUBSUB};
+use crate::{
+    events::{InputEvent, CONFIG_CHANGE_WATCH, EVENT_PUBSUB},
+    tasks::clock::CLOCK_PUBSUB,
+};
 
 use super::clock::ClockEvent;
 

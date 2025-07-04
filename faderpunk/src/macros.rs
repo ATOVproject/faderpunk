@@ -10,8 +10,8 @@ macro_rules! register_apps {
         };
 
         use config::ConfigMeta;
-        use crate::{MAX_CHANNEL, MIDI_CHANNEL, EVENT_PUBSUB};
-        use crate::app::App;
+        use crate::{MAX_CHANNEL, MIDI_CHANNEL};
+        use crate::{app::App, events::EVENT_PUBSUB};
         use embassy_executor::Spawner;
 
         const _APP_COUNT: usize = {
@@ -39,9 +39,9 @@ macro_rules! register_apps {
                         let app = App::<{ $app_mod::CHANNELS }>::new(
                             app_id,
                             start_channel,
+                            &EVENT_PUBSUB,
                             MAX_CHANNEL.sender(),
                             MIDI_CHANNEL.sender(),
-                            &EVENT_PUBSUB
                         );
 
                         spawner.spawn($app_mod::wrapper(app, &exit_signals[start_channel])).unwrap();

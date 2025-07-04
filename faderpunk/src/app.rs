@@ -13,6 +13,7 @@ use libfp::{
 };
 
 use crate::{
+    events::{EventPubSubChannel, InputEvent},
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
@@ -20,7 +21,6 @@ use crate::{
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender,
     },
-    EventPubSubChannel, InputEvent,
 };
 
 pub use crate::{
@@ -381,7 +381,6 @@ impl<T: Sized + Copy> Global<T> {
         }
     }
 
-    // TODO: implement something like replace (using a closure)
     pub async fn get(&self) -> T {
         let value = self.inner.lock().await;
         *value
@@ -390,6 +389,14 @@ impl<T: Sized + Copy> Global<T> {
     pub async fn set(&self, val: T) {
         let mut value = self.inner.lock().await;
         *value = val
+    }
+
+    pub async fn modify<F>(&self, modifier: F) -> T
+    where
+        F: FnOnce(&mut T) -> T,
+    {
+        let mut value = self.inner.lock().await;
+        modifier(&mut *value)
     }
 }
 
@@ -429,18 +436,18 @@ pub enum AppError {
 pub struct App<const N: usize> {
     pub app_id: u8,
     pub start_channel: usize,
+    event_pubsub: &'static EventPubSubChannel,
     max_sender: MaxSender,
     midi_sender: MidiSender,
-    event_pubsub: &'static EventPubSubChannel,
 }
 
 impl<const N: usize> App<N> {
     pub fn new(
         app_id: u8,
         start_channel: usize,
+        event_pubsub: &'static EventPubSubChannel,
         max_sender: MaxSender,
         midi_sender: MidiSender,
-        event_pubsub: &'static EventPubSubChannel,
     ) -> Self {
         Self {
             app_id,
@@ -451,8 +458,6 @@ impl<const N: usize> App<N> {
         }
     }
 
-    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
-    // app (throw error or something)
     async fn reconfigure_jack(&self, chan: usize, config: MaxConfig) {
         self.max_sender
             .send((self.start_channel + chan, MaxCmd::ConfigurePort(config)))
@@ -463,7 +468,6 @@ impl<const N: usize> App<N> {
         Global::new(initial)
     }
 
-    // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
         let chan = chan.clamp(0, N - 1);
         let adc_range = match range {
@@ -483,7 +487,6 @@ impl<const N: usize> App<N> {
         InJack::new(self.start_channel + chan, range)
     }
 
-    // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_out_jack(&self, chan: usize, range: Range) -> OutJack {
         let chan = chan.clamp(0, N - 1);
         let dac_range = match range {
@@ -532,7 +535,6 @@ impl<const N: usize> App<N> {
         Die { rng: RoscRng }
     }
 
-    // TODO: Make sure we can only create one clock per app
     pub fn use_clock(&self) -> Clock {
         Clock::new()
     }
