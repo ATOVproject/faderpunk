@@ -9,7 +9,6 @@ use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
 use smart_leds::colors::BLACK;
 use smart_leds::{gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
-use {defmt_rtt as _, panic_probe as _};
 
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
@@ -27,6 +26,7 @@ pub enum LedMsg {
     Reset(usize, Led),
     ResetAll(usize),
     Set(usize, Led, LedMode),
+    SetOverlay(usize, Led, LedMode),
 }
 
 pub enum Led {
@@ -38,6 +38,7 @@ pub enum Led {
 pub enum LedMode {
     Static(RGB8),
     FadeOut(RGB8),
+    Flash(RGB8, usize),
 }
 
 impl LedMode {
@@ -45,6 +46,11 @@ impl LedMode {
         match self {
             LedMode::Static(color) => LedEffect::Static { color },
             LedMode::FadeOut(from) => LedEffect::FadeOut { from, step: 0 },
+            LedMode::Flash(color, times) => LedEffect::Flash {
+                color,
+                times,
+                step: 0,
+            },
         }
     }
 }
@@ -54,6 +60,7 @@ enum LedEffect {
     Off,
     Static { color: RGB8 },
     FadeOut { from: RGB8, step: u8 },
+    Flash { color: RGB8, times: usize, step: u8 },
 }
 
 impl LedEffect {
@@ -69,6 +76,34 @@ impl LedEffect {
                     *self = LedEffect::Off;
                 }
                 new_color
+            }
+            LedEffect::Flash { color, times, step } => {
+                if *times == 0 {
+                    *self = LedEffect::Off;
+                    return BLACK;
+                }
+
+                // Each flash cycle has 16 steps total (8 on, 8 off)
+                let cycle_step = *step % 16;
+                let result = if cycle_step < 8 {
+                    // First 8 steps: fade out from full brightness (sawtooth)
+                    let fade_step = cycle_step * 32;
+                    color.scale(255 - fade_step)
+                } else {
+                    // Next 8 steps: off
+                    BLACK
+                };
+
+                *step += 1;
+                if *step >= 16 {
+                    *times -= 1;
+                    *step = 0;
+                    if *times == 0 {
+                        *self = LedEffect::Off;
+                    }
+                }
+
+                result
             }
         }
     }
@@ -86,17 +121,18 @@ fn get_no(channel: usize, position: Led) -> usize {
 async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
     let mut ws: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi1);
 
-    let mut led_state = [LedEffect::Off; 50];
+    let mut base_layer = [LedEffect::Off; 50];
+    let mut overlay_layer: [LedEffect; 50] = [LedEffect::Off; 50];
     let mut buffer = [BLACK; NUM_LEDS];
 
-    led_state[16] = LedEffect::Static {
+    base_layer[16] = LedEffect::Static {
         color: RGB8 {
             r: 75,
             g: 75,
             b: 75,
         },
     };
-    led_state[17] = LedEffect::Static {
+    base_layer[17] = LedEffect::Static {
         color: RGB8 {
             r: 75,
             g: 75,
@@ -109,27 +145,42 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
             Either::First(_) => {}
             Either::Second(msg) => match msg {
                 LedMsg::Set(chan, pos, mode) => {
-                    led_state[get_no(chan, pos)] = mode.into_effect();
+                    base_layer[get_no(chan, pos)] = mode.into_effect();
+                }
+                LedMsg::SetOverlay(chan, pos, mode) => {
+                    overlay_layer[get_no(chan, pos)] = mode.into_effect();
                 }
                 LedMsg::Reset(chan, pos) => {
                     let index = get_no(chan, pos);
-                    if let LedEffect::Static { color } = led_state[index] {
-                        led_state[index] = LedMode::FadeOut(color).into_effect();
+                    if let LedEffect::Static { color } = base_layer[index] {
+                        base_layer[index] = LedMode::FadeOut(color).into_effect();
                     }
                 }
                 LedMsg::ResetAll(chan) => {
                     for pos in [Led::Top, Led::Bottom, Led::Button] {
                         let index = get_no(chan, pos);
-                        if let LedEffect::Static { color } = led_state[index] {
-                            led_state[index] = LedMode::FadeOut(color).into_effect();
+                        if let LedEffect::Static { color } = base_layer[index] {
+                            base_layer[index] = LedMode::FadeOut(color).into_effect();
                         }
                     }
                 }
             },
         }
 
-        for (effect, led) in led_state.iter_mut().zip(buffer.iter_mut()) {
-            *led = effect.update();
+        for ((base, overlay), led) in base_layer
+            .iter_mut()
+            .zip(overlay_layer.iter_mut())
+            .zip(buffer.iter_mut())
+        {
+            if let LedEffect::Off = overlay {
+                // Overlay effect is off, we use the base layer
+                *led = base.update();
+            } else {
+                // Overlay effect is present, use that
+                *led = overlay.update();
+                // But also update base layer to continue effects
+                base.update();
+            }
         }
         ws.write(gamma(buffer.iter().cloned())).await.ok();
     }
