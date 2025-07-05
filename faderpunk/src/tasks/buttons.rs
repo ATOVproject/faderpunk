@@ -7,10 +7,12 @@ use embassy_rp::peripherals::{
 };
 use embassy_time::{with_timeout, Duration, Timer};
 use portable_atomic::{AtomicBool, Ordering};
+use smart_leds::colors::{GREEN, RED};
 
+use crate::app::Led;
 use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
 
-use {defmt_rtt as _, panic_probe as _};
+use super::leds::{LedMode, LedMsg, LED_CHANNEL};
 
 type Buttons = (
     PIN_6,
@@ -49,6 +51,9 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
                 .await
                 .is_ok()
             {
+                LED_CHANNEL
+                    .send(LedMsg::SetOverlay(i, Led::Button, LedMode::Flash(GREEN, 1)))
+                    .await;
                 event_publisher
                     .publish(InputEvent::LoadScene(i as u8))
                     .await;
@@ -56,6 +61,9 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
                 .await
                 .is_ok()
             {
+                LED_CHANNEL
+                    .send(LedMsg::SetOverlay(i, Led::Button, LedMode::Flash(RED, 3)))
+                    .await;
                 event_publisher
                     .publish(InputEvent::SaveScene(i as u8))
                     .await;
