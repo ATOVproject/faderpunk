@@ -5,6 +5,4 @@ edition = "2021"
 
 [dependencies]
 config = { path = "../config" }
-postcard-bindgen = { git = "https://github.com/chmanie/postcard-bindgen", rev = "73aa76f95bcdcf95656eed1c79d77a4b5026cb05", package = "postcard-bindgen", features = [
-  "generating",
-] }
+postcard-bindgen = { version = "0.7.1", features = ["generating"] }
