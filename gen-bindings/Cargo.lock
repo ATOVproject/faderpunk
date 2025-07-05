@@ -302,8 +302,9 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "postcard-bindgen"
-version = "0.7.0"
-source = "git+https://github.com/chmanie/postcard-bindgen?rev=73aa76f95bcdcf95656eed1c79d77a4b5026cb05#73aa76f95bcdcf95656eed1c79d77a4b5026cb05"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52fabf3a6f4c61cf90eff4f15dc638ff296be94f18de4eb2faaa36d6aab85db5"
 dependencies = [
  "postcard-bindgen-core",
  "postcard-bindgen-derive",
@@ -311,8 +312,9 @@ dependencies = [
 
 [[package]]
 name = "postcard-bindgen-core"
-version = "0.7.0"
-source = "git+https://github.com/chmanie/postcard-bindgen?rev=73aa76f95bcdcf95656eed1c79d77a4b5026cb05#73aa76f95bcdcf95656eed1c79d77a4b5026cb05"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e7511ef219d49d1221eb0a8cc605c42c2bb4493b524f7a9f040e62038175794"
 dependencies = [
  "convert_case",
  "genco",
@@ -321,8 +323,9 @@ dependencies = [
 
 [[package]]
 name = "postcard-bindgen-derive"
-version = "0.7.0"
-source = "git+https://github.com/chmanie/postcard-bindgen?rev=73aa76f95bcdcf95656eed1c79d77a4b5026cb05#73aa76f95bcdcf95656eed1c79d77a4b5026cb05"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9241877891d8557874da44f8adc9b1fe4cf4a64769d24c7dc93b126ff669d294"
 dependencies = [
  "convert_case",
  "genco",
