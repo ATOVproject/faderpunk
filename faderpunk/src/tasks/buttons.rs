@@ -1,11 +1,12 @@
 use embassy_executor::Spawner;
 use embassy_futures::join::{join, join_array};
+use embassy_futures::select::{select, Either};
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::peripherals::{
     PIN_23, PIN_24, PIN_25, PIN_28, PIN_29, PIN_30, PIN_31, PIN_32, PIN_33, PIN_34, PIN_35, PIN_36,
     PIN_37, PIN_38, PIN_4, PIN_5, PIN_6, PIN_7,
 };
-use embassy_time::{with_timeout, Duration, Timer};
+use embassy_time::Timer;
 use portable_atomic::{AtomicBool, Ordering};
 use smart_leds::colors::{GREEN, RED};
 
@@ -47,26 +48,24 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
         if BUTTON_PRESSED[16].load(Ordering::Relaxed) {
             // Debounce a bit (bounces are all in sub 1ms)
             Timer::after_millis(1).await;
-            if with_timeout(Duration::from_secs(1), button.wait_for_rising_edge())
-                .await
-                .is_ok()
-            {
-                LED_CHANNEL
-                    .send(LedMsg::SetOverlay(i, Led::Button, LedMode::Flash(GREEN, 1)))
-                    .await;
-                event_publisher
-                    .publish(InputEvent::LoadScene(i as u8))
-                    .await;
-            } else if with_timeout(Duration::from_secs(3), button.wait_for_rising_edge())
-                .await
-                .is_ok()
-            {
-                LED_CHANNEL
-                    .send(LedMsg::SetOverlay(i, Led::Button, LedMode::Flash(RED, 3)))
-                    .await;
-                event_publisher
-                    .publish(InputEvent::SaveScene(i as u8))
-                    .await;
+            match select(button.wait_for_rising_edge(), Timer::after_millis(1500)).await {
+                Either::First(_) => {
+                    LED_CHANNEL
+                        .send(LedMsg::SetOverlay(i, Led::Button, LedMode::Flash(GREEN, 2)))
+                        .await;
+                    event_publisher
+                        .publish(InputEvent::LoadScene(i as u8))
+                        .await;
+                }
+                Either::Second(_) => {
+                    LED_CHANNEL
+                        .send(LedMsg::SetOverlay(i, Led::Button, LedMode::Flash(RED, 3)))
+                        .await;
+                    event_publisher
+                        .publish(InputEvent::SaveScene(i as u8))
+                        .await;
+                    button.wait_for_rising_edge().await;
+                }
             }
         } else {
             event_publisher.publish(InputEvent::ButtonDown(i)).await;
@@ -76,9 +75,9 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
             button.wait_for_rising_edge().await;
             event_publisher.publish(InputEvent::ButtonUp(i)).await;
             BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
-            // Debounce a bit more (bounces are all in sub 1ms)
-            Timer::after_millis(1).await;
         }
+        // Release debounce
+        Timer::after_millis(1).await;
     }
 }
 
