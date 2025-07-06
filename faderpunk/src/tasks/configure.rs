@@ -93,14 +93,14 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             }
             ConfigMsgIn::GetAppParams { start_channel } => {
                 APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::RequestParamValues);
-                let transfer = async {
-                    let (start_channel, values) = APP_PARAM_CHANNEL.receive().await;
+                if let Ok((res_start_channel, values)) =
+                    with_timeout(Duration::from_secs(1), APP_PARAM_CHANNEL.receive()).await
+                {
                     proto
-                        .send_msg(ConfigMsgOut::AppState(start_channel, &values))
+                        .send_msg(ConfigMsgOut::AppState(res_start_channel, &values))
                         .await
                         .unwrap();
-                };
-                with_timeout(Duration::from_secs(1), transfer).await.ok();
+                }
             }
             ConfigMsgIn::SetAppParams {
                 start_channel,
