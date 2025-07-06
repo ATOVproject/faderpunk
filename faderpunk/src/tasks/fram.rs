@@ -32,7 +32,7 @@ pub enum FramError {
     Empty,
 }
 
-pub const MAX_DATA_LEN: usize = 1024;
+pub const MAX_DATA_LEN: usize = 384;
 const MAX_CONCURRENT_REQUESTS: usize = 16;
 const TIMEOUT_MS: u64 = 200;
 const WRITES_CAPACITY: usize = 16;

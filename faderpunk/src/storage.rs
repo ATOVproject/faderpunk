@@ -19,7 +19,7 @@ const APP_STORAGE_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..122_880;
 const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..131_072;
 const APP_STORAGE_MAX_BYTES: u32 = 400;
 const APP_PARAMS_MAX_BYTES: u32 = 128;
-const SCENES_PER_APP: u32 = 3;
+const SCENES_PER_APP: u32 = 16;
 
 pub async fn store_global_config(config: &GlobalConfig) {
     let res = write_with(GLOBAL_CONFIG_RANGE.start, |buf| {
