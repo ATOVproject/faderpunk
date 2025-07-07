@@ -1,17 +1,33 @@
-name: Create Release Artifacts and Deploy
+name: Release Please and Deploy
 on:
   push:
-    tags:
-      - 'faderpunk-v*'
+    branches:
+      - main
 env:
   CARGO_TERM_COLOR: always
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
   pages: write
   id-token: write
 jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      upload_url: ${{ steps.release.outputs.upload_url }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
   build_picotool_for_release:
     name: Build Picotool for Release
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -68,6 +84,8 @@ jobs:
           path: picotool/build/picotool
   build_firmware_for_release:
     name: Build Firmware for Release
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,7 +107,8 @@ jobs:
           path: target/thumbv8m.main-none-eabihf/release/faderpunk
   package_and_release_firmware:
     name: Package and Release Firmware
-    needs: [build_firmware_for_release, build_picotool_for_release]
+    needs: [release-please, build_firmware_for_release, build_picotool_for_release]
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     steps:
       - name: Download picotool artifact
@@ -111,11 +130,14 @@ jobs:
       - name: Publish GitHub Release Artifacts
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: |
             release_files/faderpunk.elf
             release_files/faderpunk.uf2
   build_configurator_for_release:
     name: Build Configurator for Release
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -147,7 +169,8 @@ jobs:
           path: 'configurator/dist'
   deploy_configurator_to_pages:
     name: Deploy Configurator to GitHub Pages
-    needs: build_configurator_for_release
+    needs: [release-please, build_configurator_for_release]
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
