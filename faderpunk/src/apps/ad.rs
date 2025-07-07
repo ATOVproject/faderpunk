@@ -117,7 +117,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     leds.set(1, Led::Button, color[curve_setting[1] as usize], 100);
 
     let mut times: [f32; 2] = [0.0682, 0.0682];
-    for n in 0..1{
+    for n in 0..2{
         times[n]= CURVE_LOG[stored_faders[n] as usize] as f32 + minispeed;
     }
     times_glob.set(times).await;
@@ -166,8 +166,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     outval = CURVE_LOG[vals as usize];
                 }
 
-                leds.set(0, Led::Bottom, WHITE, 255 - (outval as u8 / 32) );
-                leds.set(0, Led::Top, WHITE, ((outval / 32) as u8));
+                leds.set(0, Led::Bottom, WHITE, 255 - (outval / 16) as u8 );
+                leds.set(0, Led::Top, WHITE, (outval / 16) as u8);
                 if vals == 4094.0 {
 
                 }
@@ -192,8 +192,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 if curve_setting[1] == 2 {
                     outval = CURVE_LOG[vals as usize];
                 }
-                leds.set(1, Led::Bottom, WHITE, 255 - (outval as u8 / 32) );
-                leds.set(1, Led::Top, WHITE, ((outval / 32) as u8));
+                leds.set(1, Led::Bottom, WHITE, 255 - (outval / 16) as u8 );
+                leds.set(1, Led::Top, WHITE, ((outval / 16) as u8));
 
                 
 
@@ -210,8 +210,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 leds.set(0, Led::Button, color[mode as usize], 75);
                 leds.set(1, Led::Button, color[0], 0);
                 let att = att_glob.get().await;
-                leds.set(1, Led::Bottom, RED, 255 - (att as u8 / 32) );
-                leds.set(1, Led::Top, RED, ((att / 32) as u8));
+                leds.set(1, Led::Bottom, RED, 255 - (att / 16) as u8 );
+                leds.set(1, Led::Top, RED, ((att / 16) as u8));
             }
             else{ 
                  for n in 0..2 {
@@ -349,7 +349,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     leds.set(1, Led::Button, color[curve_setting[1] as usize], 100);
                 
                     let mut times: [f32; 2] = [0.0682, 0.0682];
-                    for n in 0..1{
+                    for n in 0..2{
                         times[n]= CURVE_LOG[stored_faders[n] as usize] as f32 + minispeed;
                     }
                     times_glob.set(times).await;
@@ -367,7 +367,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
 
 fn return_if_close(a: u16, b: u16) -> bool {
-    if a.abs_diff(b) < 100 {
+    if a.abs_diff(b) < 75 {
         true
     } else {
         false
