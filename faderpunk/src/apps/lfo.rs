@@ -75,16 +75,15 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
                 },
             };
 
-            leds.set(0, Led::Button, color, 75).await;
-            leds.set(0, Led::Top, color, ((val as f32 / 16.0) / 2.0) as u8)
-                .await;
+            leds.set(0, Led::Button, color, 75);
+            leds.set(0, Led::Top, color, ((val as f32 / 16.0) / 2.0) as u8);
+
             leds.set(
                 0,
                 Led::Bottom,
                 color,
                 ((255.0 - (val as f32) / 16.0) / 2.0) as u8,
-            )
-            .await;
+            );
             glob_lfo_pos.set(next_pos).await;
         }
     };
