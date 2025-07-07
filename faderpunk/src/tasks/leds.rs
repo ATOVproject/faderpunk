@@ -142,7 +142,24 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
 
     loop {
         match select(Timer::after_millis(T), LED_CHANNEL.receive()).await {
-            Either::First(_) => {}
+            Either::First(_) => {
+                for ((base, overlay), led) in base_layer
+                    .iter_mut()
+                    .zip(overlay_layer.iter_mut())
+                    .zip(buffer.iter_mut())
+                {
+                    if let LedEffect::Off = overlay {
+                        // Overlay effect is off, we use the base layer
+                        *led = base.update();
+                    } else {
+                        // Overlay effect is present, use that
+                        *led = overlay.update();
+                        // But also update base layer to continue effects
+                        base.update();
+                    }
+                }
+                ws.write(gamma(buffer.iter().cloned())).await.ok();
+            }
             Either::Second(msg) => match msg {
                 LedMsg::Set(chan, pos, mode) => {
                     base_layer[get_no(chan, pos)] = mode.into_effect();
@@ -166,22 +183,5 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
                 }
             },
         }
-
-        for ((base, overlay), led) in base_layer
-            .iter_mut()
-            .zip(overlay_layer.iter_mut())
-            .zip(buffer.iter_mut())
-        {
-            if let LedEffect::Off = overlay {
-                // Overlay effect is off, we use the base layer
-                *led = base.update();
-            } else {
-                // Overlay effect is present, use that
-                *led = overlay.update();
-                // But also update base layer to continue effects
-                base.update();
-            }
-        }
-        ws.write(gamma(buffer.iter().cloned())).await.ok();
     }
 }
