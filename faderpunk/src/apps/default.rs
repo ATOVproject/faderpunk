@@ -3,7 +3,9 @@ use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent};
+use crate::app::{
+    App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent, RGB8,
+};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
@@ -19,7 +21,11 @@ pub static CONFIG: config::Config<PARAMS> = Config::new("Default", "16n vibes pl
         max: 15,
     });
 
-const LED_COLOR: (u8, u8, u8) = (0, 200, 150);
+const LED_COLOR: RGB8 = RGB8 {
+    r: 0,
+    g: 200,
+    b: 150,
+};
 const BUTTON_BRIGHTNESS: u8 = 75;
 
 // TODO: Make a macro to generate this.
@@ -84,11 +90,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let update_outputs = async |muted: bool| {
         if muted {
-            leds.set(0, Led::Button, LED_COLOR, 0);
             jack.set_value(0);
             midi.send_cc(32 + app.start_channel as u8, 0).await;
-            leds.set(0, Led::Top, LED_COLOR, 0);
-            leds.set(0, Led::Bottom, LED_COLOR, 0);
+            leds.reset_all();
         } else {
             leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
             let vals = faders.get_values();

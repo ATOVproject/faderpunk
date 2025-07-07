@@ -7,7 +7,7 @@ use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
 use crate::{
-    app::{App, ClockEvent, Led, Range},
+    app::{colors::WHITE, App, ClockEvent, Led, Range, RGB8},
     storage::ParamStore,
 };
 
@@ -50,9 +50,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
     let mut recording = false;
     let mut buffer = [0; 384];
     let mut length = 384;
-    let color = (255, 255, 255);
 
-    leds.set(0, Led::Button, (255, 255, 255), 0);
+    leds.reset(0, Led::Button);
 
     let fut1 = async {
         loop {
@@ -93,14 +92,19 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
                 }
 
                 midi.send_cc(0, buffer[index]).await;
-                leds.set(0, Led::Button, (255, 0, 0), 100);
-                leds.set(0, Led::Top, (255, 0, 0), (buffer[index] / 32) as u8);
+                leds.set(0, Led::Button, RGB8 { r: 255, g: 0, b: 0 }, 100);
+                leds.set(
+                    0,
+                    Led::Top,
+                    RGB8 { r: 255, g: 0, b: 0 },
+                    (buffer[index] / 32) as u8,
+                );
                 leds.set(
                     0,
                     Led::Bottom,
-                    (255, 0, 0),
+                    RGB8 { r: 255, g: 0, b: 0 },
                     (255 - (buffer[index] / 16) as u8) / 2,
-                )
+                );
             }
 
             if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
@@ -119,18 +123,18 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
                     midi.send_cc(0, val).await;
                     last_midi = val;
                 }
-                leds.set(0, Led::Button, color, 100);
-                leds.set(0, Led::Top, color, ((buffer[index] + offset) / 16) as u8);
+                leds.set(0, Led::Button, WHITE, 100);
+                leds.set(0, Led::Top, WHITE, ((buffer[index] + offset) / 16) as u8);
                 leds.set(
                     0,
                     Led::Bottom,
-                    color,
+                    WHITE,
                     (255 - ((buffer[index] + offset) / 16) as u8) / 2,
                 );
             }
 
             if index == 0 {
-                leds.set(0, Led::Button, (255, 255, 255), 0);
+                leds.reset(0, Led::Button);
             }
 
             if del_flag.get().await {

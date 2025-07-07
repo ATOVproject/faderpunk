@@ -8,7 +8,8 @@ use rand::Rng;
 
 use config::Curve;
 use libfp::{
-    constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
+    constants::{CURVE_EXP, CURVE_LOG},
+    ext::BrightnessExt,
     utils::scale_bits_12_7,
 };
 
@@ -17,7 +18,7 @@ use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
-        leds::LED_VALUES,
+        leds::{signal_led, LedMode, LedMsg},
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender,
     },
@@ -25,8 +26,9 @@ use crate::{
 
 pub use crate::{
     storage::{AppStorage, Arr, ManagedStorage, ParamSlot, ParamStore},
-    tasks::clock::ClockEvent,
+    tasks::{clock::ClockEvent, leds::Led},
 };
+pub use smart_leds::{colors, RGB8};
 
 pub enum Range {
     // 0 - 10V
@@ -35,12 +37,6 @@ pub enum Range {
     _0_5V,
     // -5 - 5V
     _Neg5_5V,
-}
-
-pub enum Led {
-    Top,
-    Bottom,
-    Button,
 }
 
 #[derive(Clone, Copy)]
@@ -53,25 +49,33 @@ impl<const N: usize> Leds<N> {
         Self { start_channel }
     }
 
-    // TODO: Add effects
-    // TODO: add methods to set brightness/color independently
-    pub fn set(&self, chan: usize, position: Led, (r, g, b): (u8, u8, u8), brightness: u8) {
+    pub fn set(&self, chan: usize, position: Led, color: RGB8, brightness: u8) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
-        let led_no = match position {
-            Led::Top => CHAN_LED_MAP[0][channel],
-            Led::Bottom => CHAN_LED_MAP[1][channel],
-            Led::Button => CHAN_LED_MAP[2][channel],
-        };
-        let value =
-            ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-        LED_VALUES[led_no].store(value, Ordering::Relaxed);
+        signal_led(
+            channel,
+            position,
+            LedMsg::Set(LedMode::Static(color.scale(brightness))),
+        );
+    }
+
+    pub fn reset(&self, chan: usize, position: Led) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        signal_led(channel, position, LedMsg::Reset);
+    }
+
+    pub fn reset_chan(&self, chan: usize) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        for position in [Led::Top, Led::Bottom, Led::Button] {
+            signal_led(channel, position, LedMsg::Reset);
+        }
     }
 
     pub fn reset_all(&self) {
         for chan in 0..N {
-            self.set(chan, Led::Button, (0, 0, 0), 0);
-            self.set(chan, Led::Bottom, (0, 0, 0), 0);
-            self.set(chan, Led::Top, (0, 0, 0), 0);
+            let channel = self.start_channel + chan.clamp(0, N - 1);
+            for position in [Led::Top, Led::Bottom, Led::Button] {
+                signal_led(channel, position, LedMsg::Reset);
+            }
         }
     }
 }

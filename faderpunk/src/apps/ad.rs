@@ -1,18 +1,23 @@
 // TODO : 
 // add saving to modes
 
-use config::{Config, Curve};
+use crate::{
+    app::{colors::{WHITE, RED}, App, Led, Range, RGB8},
+    storage::ParamStore,
+};
+use config::{Config, Curve, Value};
 use defmt::info;
 use embassy_futures::{
     join::{join, join4, join5},
     select::select,
 };
+use embassy_rp::pio_programs::hd44780::PioHD44780CommandSequenceProgram;
 use embassy_sync::{blocking_mutex::{raw::NoopRawMutex, Mutex}, signal::Signal};
-use libfp::constants::CURVE_LOG;
+use libfp::constants::{ CURVE_LOG, CURVE_EXP};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, Led, ManagedStorage, ParamStore, Range, SceneEvent,
+     AppStorage, ManagedStorage,SceneEvent,
 };
 
 pub const CHANNELS: usize = 2;
@@ -27,6 +32,7 @@ pub struct Storage {
     fader_saved: [u16; 2],
     curve_saved: [u8; 2],
     mode_saved: u8,
+    att_saved: u16,
 }
 
 impl Default for Storage {
@@ -35,6 +41,7 @@ impl Default for Storage {
             fader_saved: [2000; 2],
             curve_saved: [0; 2],
             mode_saved: 0,
+            att_saved: 4095,
         }
     }
 }
@@ -66,8 +73,10 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let times_glob = app.make_global([0.0682, 0.0682]);
     let glob_curve = app.make_global([0, 0]);
-    let mode_glob = app.make_global(1); //0 AD, 1, ASR, 2 Looping AD
-
+    let mode_glob = app.make_global(0); //0 AD, 1, ASR, 2 Looping AD
+    let latched_glob = app.make_global([false; 2]);
+    let att_glob = app.make_global(4095);
+ 
     let input = app.make_in_jack(0, Range::_0_10V).await;
     let output = app.make_out_jack(1, Range::_0_10V).await;
 
@@ -77,37 +86,53 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let mut oldinputval = 0;
     let mut env_state = 0;
 
-    let latched_glob = app.make_global([false; 2]);
+    let color = [
+        RGB8 {
+            r: 243,
+            g: 191,
+            b: 78,
+        },
+        RGB8 {
+            r: 188,
+            g: 77,
+            b: 216,
+        },
+        RGB8 {
+            r: 78,
+            g: 243,
+            b: 243,
+        },
+    ];
 
-    let colorb = [(243, 191, 78), (188, 77, 216), (78, 243, 243)];
+    storage.load(None).await;
+
+    let curve_setting = storage.query(|s| s.curve_saved).await;
+    let stored_faders = storage.query(|s| s.fader_saved).await;
+    let att_saved = storage.query(|s| s.att_saved).await;
+    att_glob.set(att_saved).await;
+    glob_curve.set(curve_setting).await;
 
 
-    // storage.load(None).await;
+    leds.set(0, Led::Button, color[curve_setting[0] as usize], 100);
+    leds.set(1, Led::Button, color[curve_setting[1] as usize], 100);
 
-    // let curve_setting = storage.query(|s| s.curve_saved).await;
-    // let stored_faders = storage.query(|s| s.fader_saved).await;
-    // glob_curve.set(curve_setting).await;
-
-
-    // leds.set(0, Led::Button, color[curve_setting[0] as usize], 100);
-    // leds.set(1, Led::Button, color[curve_setting[1] as usize], 100);
-
-    // let mut times: [f32; 2] = [0.0682, 0.0682];
-    // for n in 0..1{
-    //     times[n]= CURVE_LOG[stored_faders[n] as usize] as f32 + minispeed;
-    // }
-    // times_glob.set(times).await;
+    let mut times: [f32; 2] = [0.0682, 0.0682];
+    for n in 0..1{
+        times[n]= CURVE_LOG[stored_faders[n] as usize] as f32 + minispeed;
+    }
+    times_glob.set(times).await;
+    
+    let mut outval = 0;
+    let mut shift_old = false;
 
 
     let fut1 = async {
         loop {
-            let color = (255, 255, 255);
-
             app.delay_millis(1).await;
             let mode = mode_glob.get().await;
             let times = times_glob.get().await;
-
             let curve_setting = glob_curve.get().await;
+            
 
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 { // catching rising edge
@@ -131,65 +156,98 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     }
                     vals = 4094.0;
                 }
-                let curve: [Curve; 3] = [Curve::Linear, Curve::Exponential, Curve::Logarithmic];
-
-                output.set_value_with_curve(curve[curve_setting[0]as usize], vals as u16);
-                leds.set(0, Led::Bottom, color, (255.0 - (vals as f32) / 32.0) as u8);
-                leds.set(0, Led::Top, color, (vals as f32 / 32.0) as u8);
-                if vals == 4094.0 {
-                    leds.set(0, Led::Top, (0, 0, 0), 0);
-                    leds.set(0, Led::Bottom, (0, 0, 0), 0);
+                if curve_setting[0] == 0 {
+                    outval = vals as u16;
                 }
-                leds.set(1, Led::Top, (0, 0, 0), 0);
-                leds.set(1, Led::Bottom, (0, 0, 0), 0);
+                if curve_setting[0] == 1 {
+                    outval = CURVE_EXP[vals as usize];
+                }
+                if curve_setting[0] == 2 {
+                    outval = CURVE_LOG[vals as usize];
+                }
+
+                leds.set(0, Led::Bottom, WHITE, 255 - (outval as u8 / 32) );
+                leds.set(0, Led::Top, WHITE, ((outval / 32) as u8));
+                if vals == 4094.0 {
+
+                }
+                leds.reset(1, Led::Top);
+                leds.reset(1, Led::Bottom);
             }
 
             if env_state == 2 {
                 vals = vals - (4095.0 / times[1]);
+                leds.reset(0, Led::Top);
+                leds.reset(0, Led::Bottom);
                 if vals < 0.0 {
                     env_state = 0;
-                    vals = 0.0;
-                    
+                    vals = 0.0;  
                 }
-                let curve: [Curve; 3] = [Curve::Linear, Curve::Exponential, Curve::Logarithmic];
-                output.set_value_with_curve(curve[curve_setting[1] as usize], vals as u16);
-                leds.set(1, Led::Top, color, (vals as f32 / 32.0) as u8);
-                leds.set(1, Led::Bottom, color, (255.0 - (vals as f32) / 32.0) as u8);
+                if curve_setting[1] == 0 {
+                    outval = vals as u16;
+                }
+                if curve_setting[1] == 1 {
+                    outval = CURVE_EXP[vals as usize];
+                }
+                if curve_setting[1] == 2 {
+                    outval = CURVE_LOG[vals as usize];
+                }
+                leds.set(1, Led::Bottom, WHITE, 255 - (outval as u8 / 32) );
+                leds.set(1, Led::Top, WHITE, ((outval / 32) as u8));
+
                 
 
                 if vals == 0.0 {
-                    leds.set(1, Led::Bottom, (0, 0, 0), 0);
+                    leds.reset(1, Led::Bottom);
                     if mode == 2 && inputval > 406 {
                         env_state = 1;
                     }
                 }
             }
-
-            if buttons.is_shift_pressed(){
-                leds.set(0, Led::Button, colorb[mode as usize], 75);
-                leds.set(1, Led::Button, colorb[0], 0);
+            outval = attenuate(vals as u16, att_glob.get().await);
+            output.set_value(outval);
+            if shift_old {
+                leds.set(0, Led::Button, color[mode as usize], 75);
+                leds.set(1, Led::Button, color[0], 0);
+                let att = att_glob.get().await;
+                leds.set(1, Led::Bottom, RED, 255 - (att as u8 / 32) );
+                leds.set(1, Led::Top, RED, ((att / 32) as u8));
             }
-            if !buttons.is_shift_pressed(){
-                for n in 0..2 {
-                    leds.set(n, Led::Button, colorb[curve_setting[n] as usize], 75);
+            else{ 
+                 for n in 0..2 {
+                    leds.set(n, Led::Button, color[curve_setting[n] as usize], 75);
                 }
+            }
+
+
+
+            if !shift_old && buttons.is_shift_pressed() {
+                
+                latched_glob.set([false; 2]).await;
+                shift_old = true;
+            }
+            if shift_old && !buttons.is_shift_pressed() {
+                latched_glob.set([false; 2]).await;
+                
+                shift_old = false;
             }
         }
     };
 
     let fut2 = async {
         loop {
-            let chan = faders.wait_for_any_change().await;
+            let chan: usize = faders.wait_for_any_change().await;
+            let mut latched = latched_glob.get().await;
+            let vals = faders.get_values();
             
 
-            if chan < 2 {
-                let vals = faders.get_values();
+            if !buttons.is_shift_pressed() {
                 let mut times = times_glob.get().await;
 
 
                 let mut stored_faders = storage.query(|s| s.fader_saved).await;
 
-                let mut latched = latched_glob.get().await;
+                
 
                 if return_if_close(vals[chan], stored_faders[chan]) {
                 latched[chan] = true;
@@ -211,6 +269,25 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     times[chan] = CURVE_LOG[vals[chan] as usize] as f32 + minispeed;
                     // (4096.0 - CURVE_EXP[vals[chan] as usize] as f32) * fadstep + minispeed;
                     times_glob.set(times).await;
+                }
+            }
+            else {
+                if chan == 1{
+                    
+                    if return_if_close(vals[chan], att_glob.get().await) {
+                        latched[chan] = true;
+                        latched_glob.set(latched).await;
+                    }
+                    if latched[1] {
+                        att_glob.set(vals[chan]).await;
+                        
+                        storage.modify_and_save(|s| {
+                            s.att_saved = vals[1];
+                            s.att_saved
+                        },
+                        None
+                    ).await;
+                    }
                 }
             }
             
@@ -268,8 +345,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     mode_glob.set(mode).await;
                 
                 
-                    leds.set(0, Led::Button, colorb[curve_setting[0] as usize], 100);
-                    leds.set(1, Led::Button, colorb[curve_setting[1] as usize], 100);
+                    leds.set(0, Led::Button, color[curve_setting[0] as usize], 100);
+                    leds.set(1, Led::Button, color[curve_setting[1] as usize], 100);
                 
                     let mut times: [f32; 2] = [0.0682, 0.0682];
                     for n in 0..1{
@@ -295,4 +372,11 @@ fn return_if_close(a: u16, b: u16) -> bool {
     } else {
         false
     }
+}
+
+fn attenuate(signal: u16, level: u16) -> u16 {
+
+    let attenuated = (signal as u32 * level as u32) / 4095;
+
+    attenuated as u16
 }
