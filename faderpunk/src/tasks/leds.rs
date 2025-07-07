@@ -1,9 +1,10 @@
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
+use embassy_futures::join::join;
 use embassy_rp::peripherals::SPI1;
 use embassy_rp::spi::{Async, Spi};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::{Channel, Sender};
+use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
 use smart_leds::colors::BLACK;
@@ -109,6 +110,35 @@ impl LedEffect {
     }
 }
 
+struct LedProcessor {
+    base_layer: [LedEffect; 50],
+    overlay_layer: [LedEffect; 50],
+    buffer: [RGB8; NUM_LEDS],
+    ws: Ws2812<Spi<'static, SPI1, Async>, Grb, { 12 * NUM_LEDS }>,
+}
+
+impl LedProcessor {
+    async fn process(&mut self) {
+        for ((base, overlay), led) in self
+            .base_layer
+            .iter_mut()
+            .zip(self.overlay_layer.iter_mut())
+            .zip(self.buffer.iter_mut())
+        {
+            if let LedEffect::Off = overlay {
+                // Overlay effect is off, we use the base layer
+                *led = base.update();
+            } else {
+                // Overlay effect is present, use that
+                *led = overlay.update();
+                // But also update base layer to continue effects
+                base.update();
+            }
+        }
+        self.ws.write(gamma(self.buffer.iter().cloned())).await.ok();
+    }
+}
+
 fn get_no(channel: usize, position: Led) -> usize {
     match position {
         Led::Top => CHAN_LED_MAP[0][channel],
@@ -119,69 +149,69 @@ fn get_no(channel: usize, position: Led) -> usize {
 
 #[embassy_executor::task]
 async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
-    let mut ws: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi1);
+    let ws: Ws2812<_, Grb, { 12 * NUM_LEDS }> = Ws2812::new(spi1);
 
-    let mut base_layer = [LedEffect::Off; 50];
-    let mut overlay_layer: [LedEffect; 50] = [LedEffect::Off; 50];
-    let mut buffer = [BLACK; NUM_LEDS];
+    let leds: Mutex<NoopRawMutex, LedProcessor> = Mutex::new(LedProcessor {
+        base_layer: [LedEffect::Off; NUM_LEDS],
+        overlay_layer: [LedEffect::Off; NUM_LEDS],
+        buffer: [BLACK; NUM_LEDS],
+        ws,
+    });
 
-    base_layer[16] = LedEffect::Static {
+    // TODO: find a better way to initialize these
+    let mut led_guard = leds.lock().await;
+    led_guard.base_layer[16] = LedEffect::Static {
         color: RGB8 {
             r: 75,
             g: 75,
             b: 75,
         },
     };
-    base_layer[17] = LedEffect::Static {
+    led_guard.base_layer[17] = LedEffect::Static {
         color: RGB8 {
             r: 75,
             g: 75,
             b: 75,
         },
     };
+    drop(led_guard);
 
-    loop {
-        match select(Timer::after_millis(T), LED_CHANNEL.receive()).await {
-            Either::First(_) => {
-                for ((base, overlay), led) in base_layer
-                    .iter_mut()
-                    .zip(overlay_layer.iter_mut())
-                    .zip(buffer.iter_mut())
-                {
-                    if let LedEffect::Off = overlay {
-                        // Overlay effect is off, we use the base layer
-                        *led = base.update();
-                    } else {
-                        // Overlay effect is present, use that
-                        *led = overlay.update();
-                        // But also update base layer to continue effects
-                        base.update();
-                    }
-                }
-                ws.write(gamma(buffer.iter().cloned())).await.ok();
-            }
-            Either::Second(msg) => match msg {
+    let frame_loop = async {
+        loop {
+            Timer::after_millis(T).await;
+            let mut led_guard = leds.lock().await;
+            led_guard.process().await;
+        }
+    };
+
+    let msg_loop = async {
+        loop {
+            let msg = LED_CHANNEL.receive().await;
+            let mut led_guard = leds.lock().await;
+            match msg {
                 LedMsg::Set(chan, pos, mode) => {
-                    base_layer[get_no(chan, pos)] = mode.into_effect();
+                    led_guard.base_layer[get_no(chan, pos)] = mode.into_effect();
                 }
                 LedMsg::SetOverlay(chan, pos, mode) => {
-                    overlay_layer[get_no(chan, pos)] = mode.into_effect();
+                    led_guard.overlay_layer[get_no(chan, pos)] = mode.into_effect();
                 }
                 LedMsg::Reset(chan, pos) => {
                     let index = get_no(chan, pos);
-                    if let LedEffect::Static { color } = base_layer[index] {
-                        base_layer[index] = LedMode::FadeOut(color).into_effect();
+                    if let LedEffect::Static { color } = led_guard.base_layer[index] {
+                        led_guard.base_layer[index] = LedMode::FadeOut(color).into_effect();
                     }
                 }
                 LedMsg::ResetAll(chan) => {
                     for pos in [Led::Top, Led::Bottom, Led::Button] {
                         let index = get_no(chan, pos);
-                        if let LedEffect::Static { color } = base_layer[index] {
-                            base_layer[index] = LedMode::FadeOut(color).into_effect();
+                        if let LedEffect::Static { color } = led_guard.base_layer[index] {
+                            led_guard.base_layer[index] = LedMode::FadeOut(color).into_effect();
                         }
                     }
                 }
-            },
+            }
         }
-    }
+    };
+
+    join(frame_loop, msg_loop).await;
 }
