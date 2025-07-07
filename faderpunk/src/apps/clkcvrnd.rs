@@ -38,7 +38,7 @@ pub async fn run(app: &App<CHANNELS>) {
 
     let mut clkn = 0;
 
-    leds.set(0, Led::Button, LED_COLOR, 100).await;
+    leds.set(0, Led::Button, LED_COLOR, 100);
 
     let fut1 = async {
         loop {
@@ -50,8 +50,8 @@ pub async fn run(app: &App<CHANNELS>) {
                 if clkn % div[0] == 0 && !muted {
                     let val = rnd.roll();
                     output.set_value(val);
-                    leds.set(0, Led::Top, LED_COLOR, (val / 16) as u8).await;
-                    leds.set(0, Led::Bottom, LED_COLOR, (255 - val / 16) as u8).await;
+                    leds.set(0, Led::Top, LED_COLOR, (val / 16) as u8);
+                    leds.set(0, Led::Bottom, LED_COLOR, (255 - val / 16) as u8);
                 }
             }
         }
@@ -62,12 +62,12 @@ pub async fn run(app: &App<CHANNELS>) {
             buttons.wait_for_any_down().await;
             let muted = glob_muted.toggle().await;
             if muted {
-                leds.reset(0, Led::Button).await;
+                leds.reset(0, Led::Button);
                 output.set_value(2047);
-                leds.reset(0, Led::Top).await;
-                leds.reset(0, Led::Bottom).await;
+                leds.reset(0, Led::Top);
+                leds.reset(0, Led::Bottom);
             } else {
-                leds.set(0, Led::Button, LED_COLOR, 75).await;
+                leds.set(0, Led::Button, LED_COLOR, 75);
             }
         }
     };

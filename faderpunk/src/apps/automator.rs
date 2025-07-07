@@ -51,7 +51,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
     let mut buffer = [0; 384];
     let mut length = 384;
 
-    leds.reset(0, Led::Button).await;
+    leds.reset(0, Led::Button);
 
     let fut1 = async {
         loop {
@@ -92,22 +92,19 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
                 }
 
                 midi.send_cc(0, buffer[index]).await;
-                leds.set(0, Led::Button, RGB8 { r: 255, g: 0, b: 0 }, 100)
-                    .await;
+                leds.set(0, Led::Button, RGB8 { r: 255, g: 0, b: 0 }, 100);
                 leds.set(
                     0,
                     Led::Top,
                     RGB8 { r: 255, g: 0, b: 0 },
                     (buffer[index] / 32) as u8,
-                )
-                .await;
+                );
                 leds.set(
                     0,
                     Led::Bottom,
                     RGB8 { r: 255, g: 0, b: 0 },
                     (255 - (buffer[index] / 16) as u8) / 2,
-                )
-                .await;
+                );
             }
 
             if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
@@ -126,20 +123,18 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
                     midi.send_cc(0, val).await;
                     last_midi = val;
                 }
-                leds.set(0, Led::Button, WHITE, 100).await;
-                leds.set(0, Led::Top, WHITE, ((buffer[index] + offset) / 16) as u8)
-                    .await;
+                leds.set(0, Led::Button, WHITE, 100);
+                leds.set(0, Led::Top, WHITE, ((buffer[index] + offset) / 16) as u8);
                 leds.set(
                     0,
                     Led::Bottom,
                     WHITE,
                     (255 - ((buffer[index] + offset) / 16) as u8) / 2,
-                )
-                .await;
+                );
             }
 
             if index == 0 {
-                leds.reset(0, Led::Button).await;
+                leds.reset(0, Led::Button);
             }
 
             if del_flag.get().await {

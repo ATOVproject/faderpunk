@@ -18,7 +18,7 @@ use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
-        leds::{LedMode, LedMsg, LedSender},
+        leds::{signal_led, LedMode, LedMsg},
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender,
     },
@@ -41,43 +41,41 @@ pub enum Range {
 
 #[derive(Clone, Copy)]
 pub struct Leds<const N: usize> {
-    led_sender: LedSender,
     start_channel: usize,
 }
 
 impl<const N: usize> Leds<N> {
-    pub fn new(start_channel: usize, led_sender: LedSender) -> Self {
-        Self {
-            led_sender,
-            start_channel,
+    pub fn new(start_channel: usize) -> Self {
+        Self { start_channel }
+    }
+
+    pub fn set(&self, chan: usize, position: Led, color: RGB8, brightness: u8) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        signal_led(
+            channel,
+            position,
+            LedMsg::Set(LedMode::Static(color.scale(brightness))),
+        );
+    }
+
+    pub fn reset(&self, chan: usize, position: Led) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        signal_led(channel, position, LedMsg::Reset);
+    }
+
+    pub fn reset_chan(&self, chan: usize) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        for position in [Led::Top, Led::Bottom, Led::Button] {
+            signal_led(channel, position, LedMsg::Reset);
         }
     }
 
-    pub async fn set(&self, chan: usize, position: Led, color: RGB8, brightness: u8) {
-        let channel = self.start_channel + chan.clamp(0, N - 1);
-        self.led_sender
-            .send(LedMsg::Set(
-                channel,
-                position,
-                LedMode::Static(color.scale(brightness)),
-            ))
-            .await;
-    }
-
-    pub async fn reset(&self, chan: usize, position: Led) {
-        let channel = self.start_channel + chan.clamp(0, N - 1);
-        self.led_sender.send(LedMsg::Reset(channel, position)).await;
-    }
-
-    pub async fn reset_chan(&self, chan: usize) {
-        let channel = self.start_channel + chan.clamp(0, N - 1);
-        self.led_sender.send(LedMsg::ResetAll(channel)).await;
-    }
-
-    pub async fn reset_all(&self) {
+    pub fn reset_all(&self) {
         for chan in 0..N {
             let channel = self.start_channel + chan.clamp(0, N - 1);
-            self.led_sender.send(LedMsg::ResetAll(channel)).await;
+            for position in [Led::Top, Led::Bottom, Led::Button] {
+                signal_led(channel, position, LedMsg::Reset);
+            }
         }
     }
 }
@@ -443,7 +441,6 @@ pub struct App<const N: usize> {
     pub app_id: u8,
     pub start_channel: usize,
     event_pubsub: &'static EventPubSubChannel,
-    led_sender: LedSender,
     max_sender: MaxSender,
     midi_sender: MidiSender,
 }
@@ -453,14 +450,12 @@ impl<const N: usize> App<N> {
         app_id: u8,
         start_channel: usize,
         event_pubsub: &'static EventPubSubChannel,
-        led_sender: LedSender,
         max_sender: MaxSender,
         midi_sender: MidiSender,
     ) -> Self {
         Self {
             app_id,
             start_channel,
-            led_sender,
             max_sender,
             midi_sender,
             event_pubsub,
@@ -537,7 +532,7 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_leds(&self) -> Leds<N> {
-        Leds::new(self.start_channel, self.led_sender)
+        Leds::new(self.start_channel)
     }
 
     pub fn use_die(&self) -> Die {
@@ -570,7 +565,7 @@ impl<const N: usize> App<N> {
 
     async fn reset(&self) {
         let leds = self.use_leds();
-        leds.reset_all().await;
+        leds.reset_all();
         for chan in 0..N {
             self.reconfigure_jack(chan, MaxConfig::Mode0).await;
         }

@@ -84,8 +84,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         Led::Button,
         LED_COLOR,
         if muted { 0 } else { BUTTON_BRIGHTNESS },
-    )
-    .await;
+    );
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
@@ -93,9 +92,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         if muted {
             jack.set_value(0);
             midi.send_cc(32 + app.start_channel as u8, 0).await;
-            leds.reset_all().await;
+            leds.reset_all();
         } else {
-            leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS).await;
+            leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
             let vals = faders.get_values();
             midi.send_cc(32 + app.start_channel as u8, vals[0]).await
         }
