@@ -253,7 +253,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     } else {
                         bright = intensity[1];
                     }
-                    led.set(n, Led::Button, colors[n / 2], bright).await;
+                    led.set(n, Led::Button, colors[n / 2], bright);
                 }
                 for n in 0..=15 {
                     if n < seq_length.at(page / 2) {
@@ -266,16 +266,14 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         bright = 0;
                     }
                     if n < 8 {
-                        led.set(n as usize, Led::Top, RGB8 { r: 255, g: 0, b: 0 }, bright)
-                            .await;
+                        led.set(n as usize, Led::Top, RGB8 { r: 255, g: 0, b: 0 }, bright);
                     } else {
                         led.set(
                             n as usize - 8,
                             Led::Bottom,
                             RGB8 { r: 255, g: 0, b: 0 },
                             bright,
-                        )
-                        .await;
+                        );
                     }
                 }
             }
@@ -310,16 +308,15 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 }
 
                 for n in 0..=7 {
-                    led.set(n, Led::Top, color, (seq.at(n + (page * 8)) / 16) as u8 / 2)
-                        .await;
+                    led.set(n, Led::Top, color, (seq.at(n + (page * 8)) / 16) as u8 / 2);
 
                     if gateseq.at(n + (page * 8)) {
-                        led.set(n, Led::Button, color, intensity[1]).await;
+                        led.set(n, Led::Button, color, intensity[1]);
 
                         //led.set(n, Led::Bottom , colour, 0);
                     }
                     if !gateseq.at(n + (page * 8)) {
-                        led.set(n, Led::Button, color, intensity[0]).await;
+                        led.set(n, Led::Button, color, intensity[0]);
                         //led.set(n, Led::Bottom , colour, 0);
                     }
 
@@ -327,14 +324,13 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     //info!("{}", index);
 
                     if n >= index || index > 16 {
-                        led.reset(n, Led::Button).await;
+                        led.reset(n, Led::Button);
                     }
 
                     if (clockn % seq_length.at(n / 2) as usize) % 16 - (n % 2) * 8 < 8 {
-                        led.set(n, Led::Bottom, RGB8 { r: 255, g: 0, b: 0 }, 100)
-                            .await;
+                        led.set(n, Led::Bottom, RGB8 { r: 255, g: 0, b: 0 }, 100);
                     } else {
-                        led.reset(n, Led::Bottom).await;
+                        led.reset(n, Led::Bottom);
                     }
                 }
                 //runing light on buttons
@@ -344,11 +340,10 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         Led::Button,
                         RGB8 { r: 255, g: 0, b: 0 },
                         100,
-                    )
-                    .await;
+                    );
                 }
 
-                led.set(page, Led::Bottom, color, 255).await;
+                led.set(page, Led::Bottom, color, 255);
             }
 
             led_flag_glob.set(false).await;

@@ -40,22 +40,22 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
     let mut cur: usize = 0;
     loop {
         if let ClockEvent::Tick = clock.wait_for_event(1).await {
-            leds.set(cur, Led::Button, LED_COLOR, 100).await;
+            leds.set(cur, Led::Button, LED_COLOR, 100);
             loop {
                 match clock.wait_for_event(6).await {
                     ClockEvent::Reset => {
-                        leds.set(cur, Led::Button, LED_COLOR, 0).await;
+                        leds.set(cur, Led::Button, LED_COLOR, 0);
                         cur = 0;
                         break;
                     }
                     ClockEvent::Tick => {
                         cur = (cur + 1) % 16;
-                        leds.set(cur, Led::Button, LED_COLOR, 100).await;
+                        leds.set(cur, Led::Button, LED_COLOR, 100);
                     }
                     _ => {}
                 }
                 let prev = if cur == 0 { 15 } else { cur - 1 };
-                leds.set(prev, Led::Button, LED_COLOR, 0).await;
+                leds.set(prev, Led::Button, LED_COLOR, 0);
             }
         }
     }

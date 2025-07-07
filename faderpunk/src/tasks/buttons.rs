@@ -13,7 +13,7 @@ use smart_leds::colors::{GREEN, RED};
 use crate::app::Led;
 use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
 
-use super::leds::{LedMode, LedMsg, LED_CHANNEL};
+use super::leds::{signal_led, LedMode, LedMsg};
 
 type Buttons = (
     PIN_6,
@@ -50,17 +50,13 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
             Timer::after_millis(1).await;
             match select(button.wait_for_rising_edge(), Timer::after_millis(1500)).await {
                 Either::First(_) => {
-                    LED_CHANNEL
-                        .send(LedMsg::SetOverlay(i, Led::Button, LedMode::Flash(GREEN, 2)))
-                        .await;
+                    signal_led(i, Led::Button, LedMsg::SetOverlay(LedMode::Flash(GREEN, 2)));
                     event_publisher
                         .publish(InputEvent::LoadScene(i as u8))
                         .await;
                 }
                 Either::Second(_) => {
-                    LED_CHANNEL
-                        .send(LedMsg::SetOverlay(i, Led::Button, LedMode::Flash(RED, 3)))
-                        .await;
+                    signal_led(i, Led::Button, LedMsg::SetOverlay(LedMode::Flash(RED, 3)));
                     event_publisher
                         .publish(InputEvent::SaveScene(i as u8))
                         .await;
