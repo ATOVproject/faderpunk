@@ -1,0 +1,181 @@
+name: Release Please and Deploy
+on:
+  push:
+    branches:
+      - main
+env:
+  CARGO_TERM_COLOR: always
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  pages: write
+  id-token: write
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      upload_url: ${{ steps.release.outputs.upload_url }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+  build_picotool_for_release:
+    name: Build Picotool for Release
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential pkg-config libusb-1.0-0-dev cmake git
+      - name: Clone pico-sdk repository
+        run: git clone --branch master https://github.com/raspberrypi/pico-sdk.git
+      - name: Clone picotool repository
+        run: git clone --branch master https://github.com/raspberrypi/picotool.git
+      - name: Get Git commit hashes for caching
+        id: hashes
+        run: |
+          picotool_hash=$(git -C picotool rev-parse HEAD)
+          pico_sdk_hash=$(git -C pico-sdk rev-parse HEAD)
+          echo "picotool_hash=${picotool_hash}" >> $GITHUB_ENV
+          echo "pico_sdk_hash=${pico_sdk_hash}" >> $GITHUB_ENV
+      - name: Cache picotool build outputs
+        uses: actions/cache@v4
+        with:
+          path: picotool/build
+          key: ${{ runner.os }}-picotool-${{ env.picotool_hash }}-${{ env.pico_sdk_hash }}
+      - name: Check if picotool already exists
+        id: check_picotool
+        run: |
+          if [ -f picotool/build/picotool ]; then
+            echo "picotool already exists. Skipping build."
+            echo "skip_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip_build=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Initialize pico-sdk submodules
+        if: steps.check_picotool.outputs.skip_build == 'false'
+        run: |
+          cd pico-sdk
+          git submodule update --init lib/mbedtls
+      - name: Set PICO_SDK_PATH
+        if: steps.check_picotool.outputs.skip_build == 'false'
+        run: echo "PICO_SDK_PATH=${{ github.workspace }}/pico-sdk" >> $GITHUB_ENV
+      - name: Build picotool
+        if: steps.check_picotool.outputs.skip_build == 'false'
+        run: |
+          cd picotool
+          mkdir -p build
+          cd build
+          cmake ..
+          make
+      - name: Upload picotool artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: picotool-artifact
+          path: picotool/build/picotool
+  build_firmware_for_release:
+    name: Build Firmware for Release
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install System Dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get clean && sudo apt-get update
+          sudo apt-get install -y libudev-dev
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: thumbv8m.main-none-eabihf
+      - run: cargo install flip-link
+      - run: cargo build --bin faderpunk --release --target thumbv8m.main-none-eabihf
+      - name: Upload firmware build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-artifact
+          path: target/thumbv8m.main-none-eabihf/release/faderpunk
+  package_and_release_firmware:
+    name: Package and Release Firmware
+    needs: [release-please, build_firmware_for_release, build_picotool_for_release]
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download picotool artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: picotool-artifact
+          path: picotool_executable
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-artifact
+          path: firmware_build
+      - name: Prepare release files
+        run: |
+          mkdir -p release_files
+          cp firmware_build/faderpunk release_files/faderpunk.elf
+          chmod +x picotool_executable/picotool
+          picotool_executable/picotool uf2 convert release_files/faderpunk.elf release_files/faderpunk.uf2
+      - name: Publish GitHub Release Artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
+          files: |
+            release_files/faderpunk.elf
+            release_files/faderpunk.uf2
+  build_configurator_for_release:
+    name: Build Configurator for Release
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - name: Setup rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Install dependencies (configurator)
+        run: pnpm install --frozen-lockfile
+        working-directory: ./configurator
+      - name: Generate postcard bindings (for configurator)
+        run: ./gen-bindings.sh
+      - name: Build configurator
+        run: pnpm run build
+        working-directory: ./configurator
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload configurator artifact for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'configurator/dist'
+  deploy_configurator_to_pages:
+    name: Deploy Configurator to GitHub Pages
+    needs: [release-please, build_configurator_for_release]
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

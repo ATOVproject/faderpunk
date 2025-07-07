@@ -1,0 +1,9 @@
+[package]
+name = "libfp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embassy-time = "0.4.0"
+midly = { version = "0.5.3", default-features = false }
+smart-leds = "0.4.0"

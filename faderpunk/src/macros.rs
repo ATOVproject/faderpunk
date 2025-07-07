@@ -1,0 +1,74 @@
+macro_rules! register_apps {
+    ($($id:literal => $app_mod:ident),+ $(,)?) => {
+        $(
+            mod $app_mod;
+        )*
+
+        use embassy_sync::{
+            blocking_mutex::raw::{NoopRawMutex},
+            signal::Signal,
+        };
+
+        use config::ConfigMeta;
+        use crate::{MAX_CHANNEL, MIDI_CHANNEL};
+        use crate::{app::App, events::EVENT_PUBSUB};
+        use embassy_executor::Spawner;
+
+        const _APP_COUNT: usize = {
+            let mut count = 0;
+            $(
+                // Use each ID to force expansion
+                let _ = $id;
+                count += 1;
+            )*
+            count
+        };
+
+        pub const REGISTERED_APP_IDS: [u8; _APP_COUNT] = [$($id),*];
+
+        // IDEA: Currently this doesn't need to be async
+        pub async fn spawn_app_by_id(
+            app_id: u8,
+            start_channel: usize,
+            spawner: Spawner,
+            exit_signals: &'static [Signal<NoopRawMutex, bool>; 16]
+        ) {
+            match app_id {
+                $(
+                    $id => {
+                        let app = App::<{ $app_mod::CHANNELS }>::new(
+                            app_id,
+                            start_channel,
+                            &EVENT_PUBSUB,
+                            MAX_CHANNEL.sender(),
+                            MIDI_CHANNEL.sender(),
+                        );
+
+                        spawner.spawn($app_mod::wrapper(app, &exit_signals[start_channel])).unwrap();
+                    },
+                )*
+                _ => panic!("Unknown app ID: {}", app_id),
+            }
+        }
+
+        pub fn get_channels(app_id: u8) -> Option<usize> {
+            match app_id {
+                $(
+                    $id => Some($app_mod::CHANNELS),
+                )*
+                _ => None,
+            }
+        }
+
+        pub fn get_config(app_id: u8) -> (u8, usize, ConfigMeta<'static>) {
+            match app_id {
+                $(
+                    $id => {
+                        (app_id, $app_mod::CHANNELS, $app_mod::CONFIG.get_meta())
+                    },
+                )*
+                _ => panic!("Unknown app ID: {}", app_id),
+            }
+        }
+    };
+}
