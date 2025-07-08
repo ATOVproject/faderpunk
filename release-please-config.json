@@ -1,14 +1,16 @@
 {
   "packages": {
     "faderpunk": {
-      "release-type": "rust",
-      "package-name": "faderpunk",
-      "pull-request-title-pattern": "chore(release): ${component} v${version}",
       "changelog-path": "CHANGELOG.md",
-      "bump-minor-pre-major": true
+      "release-type": "rust",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "draft": false,
+      "prerelease": false
     }
   },
   "plugins": [
     "cargo-workspace"
-  ]
+  ],
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
 }
