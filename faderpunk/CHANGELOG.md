@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.1.0...faderpunk-v0.1.1) (2025-07-08)
+
+
+### Bug Fixes
+
+* **leds:** add separate channel for led overlay effects ([88c5b8c](https://github.com/ATOVproject/faderpunk/commit/88c5b8cb9c473932d5836ea552df18d7d0a09fa9))
+
 ## 0.1.0 (2025-07-08)
 
 
