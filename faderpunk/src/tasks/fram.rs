@@ -1,4 +1,4 @@
-use core::mem::MaybeUninit;
+use core::{cmp::min, mem::MaybeUninit};
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_rp::{
@@ -62,16 +62,18 @@ static AVAILABLE_SIGNAL_INDICES: Channel<CriticalSectionRawMutex, usize, MAX_CON
 struct WriteOperation {
     address: Address,
     len: usize,
+    raw: bool,
 }
 
 impl WriteOperation {
-    fn new(address: Address, len: usize) -> Self {
-        Self { address, len }
+    fn new(address: Address, len: usize, raw: bool) -> Self {
+        Self { address, len, raw }
     }
 }
 
 pub struct Request {
     address: Address,
+    length: Option<usize>,
     signal_idx: usize,
     buffer_idx: usize,
 }
@@ -141,7 +143,8 @@ impl Drop for SignalIndexGuard {
     }
 }
 
-pub async fn read_data(address: u32) -> Result<ReadGuard, FramError> {
+// TODO: better API here
+pub async fn read_data(address: u32, length: Option<usize>) -> Result<ReadGuard, FramError> {
     let buffer_idx = match with_timeout(
         Duration::from_millis(TIMEOUT_MS),
         AVAILABLE_READ_BUFFER_INDICES.receive(),
@@ -161,6 +164,7 @@ pub async fn read_data(address: u32) -> Result<ReadGuard, FramError> {
 
     let req = Request {
         address,
+        length,
         signal_idx,
         buffer_idx,
     };
@@ -197,7 +201,8 @@ pub async fn read_data(address: u32) -> Result<ReadGuard, FramError> {
     }
 }
 
-pub async fn write_with<F>(address: u32, writer: F) -> Result<(), FramError>
+// TODO: better API here (we don't like raw)
+pub async fn write_with<F>(address: u32, raw: bool, writer: F) -> Result<(), FramError>
 where
     F: FnOnce(&mut [u8]) -> Result<usize, postcard::Error>,
 {
@@ -213,7 +218,7 @@ where
         return Err(FramError::BufferOverflow);
     }
 
-    let op = WriteOperation::new(address, len);
+    let op = WriteOperation::new(address, len, raw);
     WRITE_CHANNEL.send(op).await;
     // `run_fram` is now responsible for releasing the token.
     Ok(())
@@ -232,7 +237,36 @@ impl Storage {
         }
     }
 
-    /// Writes data to FRAM, prefixing it with a 2-byte little-endian length.
+    /// Writes data to FRAM, with no length prefix
+    pub async fn store_raw(&mut self, address: u32, data: &[u8]) -> Result<(), FramError> {
+        if data.len() > MAX_DATA_LEN {
+            return Err(FramError::BufferOverflow);
+        }
+        self.write_buf.clear();
+        // Resize buffer to data
+        if self.write_buf.resize(data.len(), 0).is_err() {
+            return Err(FramError::BufferOverflow);
+        }
+        self.write_buf.copy_from_slice(data);
+
+        self.fram
+            .write(address, &self.write_buf)
+            .await
+            .map_err(|_| FramError::I2c)
+    }
+
+    /// Reads data from FRAM into the provided buffer
+    pub async fn read_raw(&mut self, address: u32, data_buf: &mut [u8]) -> FramReadResult {
+        // Read the actual data into the provided buffer
+        self.fram
+            .read(address, data_buf)
+            .await
+            .map_err(|_| FramError::I2c)?;
+
+        Ok(data_buf.len())
+    }
+
+    /// Writes data to FRAM, prefixing it with a 2-byte little-endian length
     pub async fn store(&mut self, address: u32, data: &[u8]) -> Result<(), FramError> {
         if data.len() > MAX_DATA_LEN {
             return Err(FramError::BufferOverflow);
@@ -254,10 +288,10 @@ impl Storage {
             .map_err(|_| FramError::I2c)
     }
 
-    /// Reads length-prefixed data from FRAM into the provided buffer.
+    /// Reads length-prefixed data from FRAM into the provided buffer
     pub async fn read(&mut self, address: u32, data_buf: &mut [u8]) -> FramReadResult {
         let mut len_bytes: [u8; 2] = [0; 2];
-        // Read the 2-byte length prefix first.
+        // Read the 2-byte length prefix first
         self.fram
             .read(address, &mut len_bytes)
             .await
@@ -265,14 +299,14 @@ impl Storage {
         let data_length = u16::from_le_bytes(len_bytes) as usize;
 
         if data_length == 0 {
-            // No data to read.
+            // No data to read
             return Ok(0);
         }
         if data_length > data_buf.len() {
             return Err(FramError::BufferOverflow);
         }
 
-        // Read the actual data into the provided buffer.
+        // Read the actual data into the provided buffer
         let read_slice = &mut data_buf[..data_length];
         self.fram
             .read(address + 2, read_slice)
@@ -280,6 +314,29 @@ impl Storage {
             .map_err(|_| FramError::I2c)?;
 
         Ok(data_length)
+    }
+
+    /// Wipe the fram in the specified region
+    pub async fn wipe(&mut self, address: u32, len: u32) -> Result<(), FramError> {
+        let zeros = [0u8; MAX_DATA_LEN];
+
+        let mut offset: u32 = 0;
+        while offset < len {
+            let current_address = address + offset;
+            let remaining = len - offset;
+            let chunk_to_write = min(remaining as usize, MAX_DATA_LEN);
+
+            let slice_to_write = &zeros[..chunk_to_write];
+
+            self.fram
+                .write(current_address, slice_to_write)
+                .await
+                .map_err(|_| FramError::I2c)?;
+
+            offset += chunk_to_write as u32;
+        }
+
+        Ok(())
     }
 }
 
@@ -308,7 +365,11 @@ async fn run_fram(fram: Fram) {
                 // The caller is asleep until we signal a result
                 let buffer = unsafe { READ_BUFFERS[req.buffer_idx].assume_init_mut() };
 
-                let result = storage.read(req.address, buffer).await;
+                let result = if let Some(length) = req.length {
+                    storage.read_raw(req.address, &mut buffer[..length]).await
+                } else {
+                    storage.read(req.address, buffer).await
+                };
 
                 // Signal the caller with the result (Ok(len) or Err).
                 // The caller is now responsible for the buffer lease via its ReadGuard.
@@ -318,10 +379,17 @@ async fn run_fram(fram: Fram) {
             Either::Second(write_op) => {
                 let data_guard = WRITE_BUFFER.lock().await;
 
-                if let Err(e) = storage
-                    .store(write_op.address, &data_guard[..write_op.len])
-                    .await
-                {
+                let result = if write_op.raw {
+                    storage
+                        .store_raw(write_op.address, &data_guard[..write_op.len])
+                        .await
+                } else {
+                    storage
+                        .store(write_op.address, &data_guard[..write_op.len])
+                        .await
+                };
+
+                if let Err(e) = result {
                     defmt::error!("FRAM store failed: {:?}", e);
                 }
 
