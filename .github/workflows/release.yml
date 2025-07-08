@@ -1,4 +1,4 @@
-name: Release Please and Deploy
+name: Release faderpunk firmware
 on:
   push:
     branches:
@@ -25,20 +25,6 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-      - name: Debug step outputs
-        run: |
-          echo "All step outputs:"
-          echo '${{ toJSON(steps.release.outputs) }}'
-  debug:
-    name: Debug release-please outputs
-    runs-on: ubuntu-latest
-    needs: release-please
-    if: always()
-    steps:
-      - name: Print outputs
-        run: |
-          echo "Full outputs object:"
-          echo '${{ toJSON(needs.release-please.outputs) }}'
   build_picotool_for_release:
     name: Build Picotool for Release
     needs: release-please
@@ -149,48 +135,3 @@ jobs:
           files: |
             release_files/faderpunk.elf
             release_files/faderpunk.uf2
-  build_configurator_for_release:
-    name: Build Configurator for Release
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - name: Setup rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-      - name: Install dependencies (configurator)
-        run: pnpm install --frozen-lockfile
-        working-directory: ./configurator
-      - name: Generate postcard bindings (for configurator)
-        run: ./gen-bindings.sh
-      - name: Build configurator
-        run: pnpm run build
-        working-directory: ./configurator
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Upload configurator artifact for GitHub Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: 'configurator/dist'
-  deploy_configurator_to_pages:
-    name: Deploy Configurator to GitHub Pages
-    needs: [release-please, build_configurator_for_release]
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

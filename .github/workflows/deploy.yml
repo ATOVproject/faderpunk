@@ -1,0 +1,66 @@
+name: Deploy configurator to GitHub Pages
+on:
+  release:
+    types: [published]
+env:
+  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  build_configurator_for_release:
+    name: Build Configurator for Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Debug tag information
+        run: |
+          echo "Tag name: ${{ github.ref_name }}"
+          echo "Release tag: ${{ github.event.release.tag_name }}"
+          echo "Full ref: ${{ github.ref }}"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - name: Setup rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Install dependencies (configurator)
+        run: pnpm install --frozen-lockfile
+        working-directory: ./configurator
+      - name: Generate postcard bindings (for configurator)
+        run: ./gen-bindings.sh
+      - name: Build configurator
+        run: pnpm run build
+        working-directory: ./configurator
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload configurator artifact for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'configurator/dist'
+  deploy_configurator_to_pages:
+    name: Deploy Configurator to GitHub Pages
+    needs: build_configurator_for_release
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        env:
+          # Tag name is available as environment variable if needed
+          TAG_NAME: ${{ github.ref_name }}
+      - name: Display deployment info
+        run: |
+          echo "Deployed from tag: ${{ github.ref_name }}"
+          echo "Release tag: ${{ github.event.release.tag_name }}"
+          echo "Deployment URL: ${{ steps.deployment.outputs.page_url }}"
