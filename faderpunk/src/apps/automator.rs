@@ -7,7 +7,10 @@ use embassy_futures::{join::{join3, join4, join5}, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
-use crate::{app::{App, Arr, ClockEvent, Led, Range, SceneEvent}, storage::{ParamSlot, ParamStore}};
+use crate::{
+    app::{colors::WHITE, App, ClockEvent, Led, Range, RGB8},
+    storage::ParamStore,
+};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
@@ -93,7 +96,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let mut recording = false;
     let mut buffer = [0; 384];
     let mut length = 384;
-    let color = (255, 255, 255);
 
     let storage: Mutex<NoopRawMutex, Storage> =
     Mutex::new(app.load(None).await.unwrap_or(Storage::default()));
@@ -216,8 +218,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                 drop(stor);
             }
 
-            if index == 1 {
-                leds.set(0, Led::Button, (255, 255, 255), 0);
+            if index == 0 {
+                leds.reset(0, Led::Button);
             }
             
 

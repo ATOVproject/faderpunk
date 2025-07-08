@@ -1,0 +1,13 @@
+{
+  "packages": {
+    "faderpunk": {
+      "release-type": "rust",
+      "package-name": "faderpunk",
+      "component": "faderpunk"
+    }
+  },
+  "extra-files": [
+    "Cargo.lock"
+  ],
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+}

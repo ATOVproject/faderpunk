@@ -21,20 +21,24 @@ use max11300::{
 use portable_atomic::{AtomicU16, Ordering};
 use static_cell::StaticCell;
 
-use crate::{InputEvent, Irqs, EVENT_PUBSUB};
+use crate::{
+    events::{InputEvent, EVENT_PUBSUB},
+    Irqs,
+};
 
-const MIDI_CHANNEL_SIZE: usize = 16;
+const MAX_CHANNEL_SIZE: usize = 16;
 
 type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
 type MuxPins = (PIN_12, PIN_13, PIN_14, PIN_15);
 
-pub type MaxSender = Sender<'static, CriticalSectionRawMutex, (usize, MaxCmd), MIDI_CHANNEL_SIZE>;
+pub type MaxSender = Sender<'static, CriticalSectionRawMutex, (usize, MaxCmd), MAX_CHANNEL_SIZE>;
+pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, (usize, MaxCmd), MAX_CHANNEL_SIZE> =
+    Channel::new();
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
 pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, (usize, MaxCmd), 16> = Channel::new();
 
 #[derive(Clone, Copy)]
 pub enum MaxCmd {
@@ -178,10 +182,10 @@ async fn process_channel_values(max_driver: &'static SharedMax) {
     loop {
         // hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
-        let mut max = max_driver.lock().await;
 
         for i in 0..16 {
             let port = Port::try_from(i).unwrap();
+            let mut max = max_driver.lock().await;
             match max.get_mode(port) {
                 5 => {
                     let value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);

@@ -17,7 +17,10 @@ use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
 use midly::stream::MidiStream;
 use midly::MidiMessage;
 
-use crate::{tasks::clock::CLOCK_PUBSUB, CONFIG_CHANGE_WATCH};
+use crate::{
+    events::{InputEvent, CONFIG_CHANGE_WATCH, EVENT_PUBSUB},
+    tasks::clock::CLOCK_PUBSUB,
+};
 
 use super::clock::ClockEvent;
 
@@ -25,7 +28,6 @@ midly::stack_buffer! {
     struct UartRxBuffer([u8; 3]);
 }
 
-const RUNNING_STATUS_DEBOUNCE: Duration = Duration::from_millis(200);
 const MIDI_CHANNEL_SIZE: usize = 16;
 
 pub type MidiSender =
@@ -132,6 +134,7 @@ pub async fn start_midi_loops<'a>(
 
     let usb_rx = async {
         let mut buf = [0; 64];
+        let event_publisher = EVENT_PUBSUB.publisher().unwrap();
         loop {
             if let Ok(len) = usb_rx.read_packet(&mut buf).await {
                 if len == 0 {
@@ -164,7 +167,10 @@ pub async fn start_midi_loops<'a>(
                                 }
                                 _ => {}
                             },
-                            _ => {}
+                            _ => {
+                                event_publisher
+                                    .publish_immediate(InputEvent::MidiMsg(event.to_static()));
+                            }
                         }
                     }
                     Err(_err) => {
@@ -182,6 +188,7 @@ pub async fn start_midi_loops<'a>(
     let uart_rx = async {
         let mut uart_rx_buffer = [0u8; 16];
         let mut midi_stream = MidiStream::<UartRxBuffer>::default();
+        let event_publisher = EVENT_PUBSUB.publisher().unwrap();
         loop {
             if let Ok(bytes_read) = uart1_rx.read(&mut uart_rx_buffer).await {
                 let cfg = CONFIG_CHANGE_WATCH.try_get().unwrap();
@@ -206,7 +213,10 @@ pub async fn start_midi_loops<'a>(
                             }
                             _ => {}
                         },
-                        _ => {}
+                        _ => {
+                            event_publisher
+                                .publish_immediate(InputEvent::MidiMsg(event.to_static()));
+                        }
                     },
                 );
             }

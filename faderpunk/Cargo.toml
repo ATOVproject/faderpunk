@@ -1,6 +1,6 @@
 [package]
 name = "faderpunk"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 
 [dependencies]
@@ -30,7 +30,7 @@ embassy-rp = { version = "0.4", features = [
 ] }
 embassy-futures = { version = "0.1" }
 
-cobs = { version = "0.3.0", default-features = false }
+cobs = { version = "0.4.0", default-features = false }
 cortex-m = { version = "0.7", features = ["inline-asm"], optional = true }
 cortex-m-rt = "0.7"
 critical-section = "1.1"
@@ -52,7 +52,7 @@ postcard = "1.1"
 rand = { version = "0.8", default-features = false }
 serde = { version = "1", features = ["derive"], default-features = false }
 smart-leds = "0.4.0"
-static_cell = "2.1.0"
+static_cell = "2.1.1"
 array-init = "2.1"
 ws2812-async = "0.3"
 

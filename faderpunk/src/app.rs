@@ -1,45 +1,34 @@
 use embassy_rp::clocks::RoscRng;
-use embassy_sync::{
-    blocking_mutex::raw::NoopRawMutex, channel::Sender, mutex::Mutex, pubsub::Subscriber,
-    signal::Signal, watch::Receiver,
-};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::{Duration, Timer};
-use heapless::Vec;
 use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
-use postcard::{from_bytes, to_slice};
 use rand::Rng;
 
 use config::Curve;
 use libfp::{
-    constants::{CHAN_LED_MAP, CURVE_EXP, CURVE_LOG},
+    constants::{CURVE_EXP, CURVE_LOG},
+    ext::BrightnessExt,
     utils::scale_bits_12_7,
-};
-use serde::{
-    de::{DeserializeOwned, Error as DeError},
-    ser::Error as SerError,
-    Deserialize, Deserializer, Serialize, Serializer,
 };
 
 use crate::{
-    storage::AppStorageAddress,
+    events::{EventPubSubChannel, InputEvent},
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
-        fram::{request_data, write_data, ReadOperation, WriteOperation, FRAM_WRITE_BUF},
-        leds::LED_VALUES,
+        leds::{set_led_mode, LedMode, LedMsg},
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender,
     },
-    EventPubSubChannel, InputEvent,
 };
 
-pub use crate::tasks::clock::ClockEvent;
-
-// TODO: This will be refactored using an allocator
-const BYTES_PER_VALUE_SET: u32 = 1000;
-const SCENES_PER_APP: u32 = 3;
+pub use crate::{
+    storage::{AppStorage, Arr, ManagedStorage, ParamSlot, ParamStore},
+    tasks::{clock::ClockEvent, leds::Led},
+};
+pub use smart_leds::{colors, RGB8};
 
 pub enum Range {
     // 0 - 10V
@@ -48,62 +37,6 @@ pub enum Range {
     _0_5V,
     // -5 - 5V
     _Neg5_5V,
-}
-
-pub enum Led {
-    Top,
-    Bottom,
-    Button,
-}
-
-// TODO: Move to storage
-#[derive(Clone, Copy)]
-pub struct Arr<T: Sized + Copy + Default, const N: usize>(pub [T; N]);
-
-impl<T: Sized + Copy + Default, const N: usize> Default for Arr<T, N> {
-    fn default() -> Self {
-        Self([T::default(); N])
-    }
-}
-
-impl<T, const N: usize> Serialize for Arr<T, N>
-where
-    T: Serialize + Sized + Copy + Default,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let vec = Vec::<T, N>::from_slice(&self.0).unwrap();
-        vec.serialize(serializer)
-    }
-}
-
-impl<'de, T, const N: usize> Deserialize<'de> for Arr<T, N>
-where
-    T: Deserialize<'de> + Sized + Copy + Default,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let vec = Vec::<T, N>::deserialize(deserializer)?;
-        if vec.len() != N {
-            return Err(D::Error::invalid_length(
-                vec.len(),
-                &"an array of exact length N",
-            ));
-        }
-        let mut arr = [T::default(); N];
-        arr.copy_from_slice(vec.as_slice()); // Safe due to length check above
-        Ok(Arr(arr))
-    }
-}
-
-impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T, N> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -116,25 +49,33 @@ impl<const N: usize> Leds<N> {
         Self { start_channel }
     }
 
-    // TODO: Add effects
-    // TODO: add methods to set brightness/color independently
-    pub fn set(&self, chan: usize, position: Led, (r, g, b): (u8, u8, u8), brightness: u8) {
+    pub fn set(&self, chan: usize, position: Led, color: RGB8, brightness: u8) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
-        let led_no = match position {
-            Led::Top => CHAN_LED_MAP[0][channel],
-            Led::Bottom => CHAN_LED_MAP[1][channel],
-            Led::Button => CHAN_LED_MAP[2][channel],
-        };
-        let value =
-            ((brightness as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-        LED_VALUES[led_no].store(value, Ordering::Relaxed);
+        set_led_mode(
+            channel,
+            position,
+            LedMsg::Set(LedMode::Static(color.scale(brightness))),
+        );
+    }
+
+    pub fn reset(&self, chan: usize, position: Led) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        set_led_mode(channel, position, LedMsg::Reset);
+    }
+
+    pub fn reset_chan(&self, chan: usize) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        for position in [Led::Top, Led::Bottom, Led::Button] {
+            set_led_mode(channel, position, LedMsg::Reset);
+        }
     }
 
     pub fn reset_all(&self) {
         for chan in 0..N {
-            self.set(chan, Led::Button, (0, 0, 0), 0);
-            self.set(chan, Led::Bottom, (0, 0, 0), 0);
-            self.set(chan, Led::Top, (0, 0, 0), 0);
+            let channel = self.start_channel + chan.clamp(0, N - 1);
+            for position in [Led::Top, Led::Bottom, Led::Button] {
+                set_led_mode(channel, position, LedMsg::Reset);
+            }
         }
     }
 }
@@ -366,13 +307,19 @@ pub enum SceneEvent {
 
 #[derive(Clone, Copy)]
 pub struct Midi<const N: usize> {
+    event_pubsub: &'static EventPubSubChannel,
     midi_sender: MidiSender,
     midi_channel: u4,
 }
 
 impl<const N: usize> Midi<N> {
-    pub fn new(midi_channel: u4, midi_sender: MidiSender) -> Self {
+    pub fn new(
+        midi_channel: u4,
+        midi_sender: MidiSender,
+        event_pubsub: &'static EventPubSubChannel,
+    ) -> Self {
         Self {
+            event_pubsub,
             midi_sender,
             midi_channel,
         }
@@ -415,6 +362,16 @@ impl<const N: usize> Midi<N> {
     pub async fn send_msg(&self, msg: LiveEvent<'static>) {
         self.midi_sender.send(msg).await;
     }
+
+    pub async fn wait_for_message(&self) -> LiveEvent<'static> {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+
+        loop {
+            if let InputEvent::MidiMsg(msg) = subscriber.next_message_pure().await {
+                return msg;
+            }
+        }
+    }
 }
 
 pub struct Global<T: Sized> {
@@ -428,7 +385,6 @@ impl<T: Sized + Copy> Global<T> {
         }
     }
 
-    // TODO: implement something like replace (using a closure)
     pub async fn get(&self) -> T {
         let value = self.inner.lock().await;
         *value
@@ -437,6 +393,14 @@ impl<T: Sized + Copy> Global<T> {
     pub async fn set(&self, val: T) {
         let mut value = self.inner.lock().await;
         *value = val
+    }
+
+    pub async fn modify<F>(&self, modifier: F) -> T
+    where
+        F: FnOnce(&mut T) -> T,
+    {
+        let mut value = self.inner.lock().await;
+        modifier(&mut *value)
     }
 }
 
@@ -453,48 +417,6 @@ impl<T: Sized + Copy + Default> Default for Global<T> {
         Global {
             inner: Mutex::new(T::default()),
         }
-    }
-}
-
-impl<T> Serialize for Global<T>
-where
-    T: Sized + Copy + Serialize, // T must also be Serialize
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self.inner.try_lock() {
-            Ok(guard) => {
-                // Dereference the guard to get &T and serialize it.
-                // The Copy trait on T means *guard would yield T by value,
-                // but &*guard or simply guard (if it derefs to &T) is what serialize expects.
-                // (*guard) also works as serialize takes &self.
-                (*guard).serialize(serializer)
-            }
-            Err(_e) => {
-                // _e is typically embassy_sync::mutex::TryLockError
-                // If the lock can't be acquired synchronously, serialization fails.
-                Err(S::Error::custom("could not lock mutex for serialization"))
-            }
-        }
-    }
-}
-
-impl<'de, T> Deserialize<'de> for Global<T>
-where
-    T: Sized + Copy + Deserialize<'de>, // T must also be Deserialize
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Deserialize T directly.
-        let value = T::deserialize(deserializer)?;
-        // Create a new Mutex holding the deserialized T.
-        Ok(Global {
-            inner: Mutex::new(value),
-        })
     }
 }
 
@@ -518,18 +440,18 @@ pub enum AppError {
 pub struct App<const N: usize> {
     pub app_id: u8,
     pub start_channel: usize,
+    event_pubsub: &'static EventPubSubChannel,
     max_sender: MaxSender,
     midi_sender: MidiSender,
-    event_pubsub: &'static EventPubSubChannel,
 }
 
 impl<const N: usize> App<N> {
     pub fn new(
         app_id: u8,
         start_channel: usize,
+        event_pubsub: &'static EventPubSubChannel,
         max_sender: MaxSender,
         midi_sender: MidiSender,
-        event_pubsub: &'static EventPubSubChannel,
     ) -> Self {
         Self {
             app_id,
@@ -540,8 +462,6 @@ impl<const N: usize> App<N> {
         }
     }
 
-    // TODO: We should also probably make sure that people do not reconfigure the jacks within the
-    // app (throw error or something)
     async fn reconfigure_jack(&self, chan: usize, config: MaxConfig) {
         self.max_sender
             .send((self.start_channel + chan, MaxCmd::ConfigurePort(config)))
@@ -552,36 +472,6 @@ impl<const N: usize> App<N> {
         Global::new(initial)
     }
 
-    pub async fn load<T: DeserializeOwned>(&self, scene: Option<u8>) -> Result<T, AppError> {
-        let address = AppStorageAddress::new(self.start_channel, scene);
-        let op = ReadOperation::new(address.into());
-        if let Ok(data) = request_data(op).await {
-            if data.is_empty() {
-                return Err(AppError::DeserializeFailed);
-            }
-            if let Ok(val) = from_bytes::<T>(&data[1..]) {
-                if data[0] != self.app_id {
-                    return Err(AppError::DeserializeFailed);
-                }
-                return Ok(val);
-            }
-        }
-        Err(AppError::DeserializeFailed)
-    }
-
-    pub async fn save<T: Serialize>(&self, storage: &T, scene: Option<u8>) {
-        let mut data = FRAM_WRITE_BUF.lock().await;
-
-        data[0] = self.app_id;
-        let len = to_slice(&storage, &mut data[1..]).unwrap().len();
-
-        let address = AppStorageAddress::new(self.start_channel, scene);
-        if let Ok(op) = WriteOperation::try_new(address.into(), len + 1) {
-            write_data(op).await.unwrap();
-        }
-    }
-
-    // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
         let chan = chan.clamp(0, N - 1);
         let adc_range = match range {
@@ -601,7 +491,6 @@ impl<const N: usize> App<N> {
         InJack::new(self.start_channel + chan, range)
     }
 
-    // TODO: How can we prevent people from doing this multiple times?
     pub async fn make_out_jack(&self, chan: usize, range: Range) -> OutJack {
         let chan = chan.clamp(0, N - 1);
         let dac_range = match range {
@@ -650,13 +539,12 @@ impl<const N: usize> App<N> {
         Die { rng: RoscRng }
     }
 
-    // TODO: Make sure we can only create one clock per app
     pub fn use_clock(&self) -> Clock {
         Clock::new()
     }
 
     pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
-        Midi::new(midi_channel.into(), self.midi_sender)
+        Midi::new(midi_channel.into(), self.midi_sender, self.event_pubsub)
     }
 
     pub async fn wait_for_scene_event(&self) -> SceneEvent {

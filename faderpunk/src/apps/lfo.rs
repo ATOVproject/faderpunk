@@ -1,11 +1,8 @@
-use embassy_futures::{
-    join::{join3},
-    select::select,
-};
+use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
 use crate::{
-    app::{App, Led, Range},
+    app::{App, Led, Range, RGB8},
     storage::ParamStore,
 };
 use config::{Config, Waveform};
@@ -56,14 +53,31 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params) {
             output.set_value(val);
 
             let color = match wave {
-                Waveform::Sine => (243, 191, 78),
-                Waveform::Triangle => (188, 77, 216),
-                Waveform::Saw => (78, 243, 243),
-                Waveform::Rect => (250, 250, 250),
+                Waveform::Sine => RGB8 {
+                    r: 243,
+                    g: 191,
+                    b: 78,
+                },
+                Waveform::Triangle => RGB8 {
+                    r: 188,
+                    g: 77,
+                    b: 216,
+                },
+                Waveform::Saw => RGB8 {
+                    r: 78,
+                    g: 243,
+                    b: 243,
+                },
+                Waveform::Rect => RGB8 {
+                    r: 250,
+                    g: 250,
+                    b: 250,
+                },
             };
 
-            leds.set(0, Led::Button, color, 75); //75 is good for shooting
+            leds.set(0, Led::Button, color, 75);
             leds.set(0, Led::Top, color, ((val as f32 / 16.0) / 2.0) as u8);
+
             leds.set(
                 0,
                 Led::Bottom,

@@ -4,11 +4,14 @@ use config::{FromValue, GlobalConfig, Value, APP_MAX_PARAMS};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{
+    de::{DeserializeOwned, Error as DeError},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 
 use crate::tasks::{
     configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
-    fram::{request_data, write_data, ReadOperation, WriteOperation, FRAM_WRITE_BUF, MAX_DATA_LEN},
+    fram::{read_data, write_with},
 };
 
 const GLOBAL_CONFIG_RANGE: Range<u32> = 0..1_024;
@@ -16,28 +19,104 @@ const APP_STORAGE_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..122_880;
 const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..131_072;
 const APP_STORAGE_MAX_BYTES: u32 = 400;
 const APP_PARAMS_MAX_BYTES: u32 = 128;
-const SCENES_PER_APP: u32 = 3;
+const SCENES_PER_APP: u32 = 16;
 
 pub async fn store_global_config(config: &GlobalConfig) {
-    let mut buf = FRAM_WRITE_BUF.lock().await;
-    let len = to_slice(&config, &mut *buf).unwrap().len();
-    drop(buf);
-    match WriteOperation::try_new(GLOBAL_CONFIG_RANGE.start, len) {
-        Ok(op) => {
-            write_data(op).await.unwrap();
-        }
-        Err(_) => defmt::error!("Could not write GlobalConfig"),
+    let res = write_with(GLOBAL_CONFIG_RANGE.start, |buf| {
+        Ok(to_slice(&config, &mut *buf)?.len())
+    })
+    .await;
+
+    if res.is_err() {
+        defmt::error!("Could not save GlobalConfig");
     }
 }
 
 pub async fn load_global_config() -> GlobalConfig {
-    let address = GLOBAL_CONFIG_RANGE.start;
-    let op = ReadOperation::new(address);
-    request_data(op)
-        .await
-        .ok()
-        .and_then(|data| from_bytes::<GlobalConfig>(&data).ok())
-        .unwrap_or_else(GlobalConfig::new)
+    if let Ok(guard) = read_data(GLOBAL_CONFIG_RANGE.start).await {
+        let data = guard.data();
+        if !data.is_empty() {
+            if let Ok(config) = from_bytes::<GlobalConfig>(data) {
+                return config;
+            }
+        }
+    }
+    GlobalConfig::new()
+}
+
+#[derive(Clone, Copy)]
+pub struct Arr<T: Sized + Copy + Default, const N: usize>([T; N]);
+
+impl<T: Sized + Copy + Default, const N: usize> Default for Arr<T, N> {
+    fn default() -> Self {
+        Self([T::default(); N])
+    }
+}
+
+impl<T: Sized + Copy + Default, const N: usize> Arr<T, N> {
+    pub fn new(initial: [T; N]) -> Self {
+        Self(initial)
+    }
+
+    #[inline(always)]
+    pub fn at(&self, idx: usize) -> T {
+        self.0[idx]
+    }
+
+    #[inline(always)]
+    pub fn set_at(&mut self, idx: usize, value: T) {
+        self.0[idx] = value;
+    }
+
+    #[inline(always)]
+    pub fn get(&self) -> [T; N] {
+        self.0
+    }
+
+    #[inline(always)]
+    pub fn set(&mut self, value: [T; N]) {
+        self.0 = value;
+    }
+}
+
+impl<T, const N: usize> Serialize for Arr<T, N>
+where
+    T: Serialize + Sized + Copy + Default,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let vec = Vec::<T, N>::from_slice(&self.0).unwrap();
+        vec.serialize(serializer)
+    }
+}
+
+impl<'de, T, const N: usize> Deserialize<'de> for Arr<T, N>
+where
+    T: Deserialize<'de> + Sized + Copy + Default,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let vec = Vec::<T, N>::deserialize(deserializer)?;
+        if vec.len() != N {
+            return Err(D::Error::invalid_length(
+                vec.len(),
+                &"an array of exact length N",
+            ));
+        }
+        let mut arr = [T::default(); N];
+        arr.copy_from_slice(vec.as_slice()); // Safe due to length check above
+        Ok(Arr(arr))
+    }
+}
+
+impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -49,8 +128,13 @@ pub struct AppStorageAddress {
 
 impl From<AppStorageAddress> for u32 {
     fn from(key: AppStorageAddress) -> Self {
-        let scene_index = key.scene.unwrap_or(0) as u32;
-        let app_base_offset = (key.start_channel as u32) * SCENES_PER_APP * APP_STORAGE_MAX_BYTES;
+        let scene_index = match key.scene {
+            None => 0,
+            Some(s) => (s as u32) + 1,
+        };
+
+        let app_base_offset =
+            (key.start_channel as u32) * (SCENES_PER_APP + 1) * APP_STORAGE_MAX_BYTES;
         let scene_offset_in_app = scene_index * APP_STORAGE_MAX_BYTES;
         APP_STORAGE_RANGE.start + app_base_offset + scene_offset_in_app
     }
@@ -58,7 +142,7 @@ impl From<AppStorageAddress> for u32 {
 
 impl From<u32> for AppStorageAddress {
     fn from(address: u32) -> Self {
-        let bytes_per_app_block: u32 = SCENES_PER_APP * APP_STORAGE_MAX_BYTES;
+        let bytes_per_app_block: u32 = (SCENES_PER_APP + 1) * APP_STORAGE_MAX_BYTES;
         let app_storage_address = address - APP_STORAGE_RANGE.start;
 
         let start_channel_raw = app_storage_address / bytes_per_app_block;
@@ -67,12 +151,10 @@ impl From<u32> for AppStorageAddress {
         let offset_within_app_block = app_storage_address % bytes_per_app_block;
         let scene_index_raw = offset_within_app_block / APP_STORAGE_MAX_BYTES;
 
-        let scene_index = scene_index_raw as u8;
-
-        let scene = if scene_index == 0 {
+        let scene = if scene_index_raw == 0 {
             None
         } else {
-            Some(scene_index)
+            Some((scene_index_raw - 1) as u8)
         };
 
         Self {
@@ -137,44 +219,41 @@ where
         }
     }
 
-    async fn ser(&self, buf: &mut [u8]) -> usize {
-        let data = self.inner.lock().await;
-        // Prepend the app id to the serialized data for easy filtering
-        buf[0] = self.app_id;
-        // TODO: unwrap
-        to_slice(&*data, &mut buf[1..]).unwrap().len()
-    }
-
     async fn des(&self, data: &[u8]) -> Option<[Value; N]> {
         // First byte is app id
+        if data[0] != self.app_id {
+            return None;
+        }
         if let Ok(val) = from_bytes::<[Value; N]>(&data[1..]) {
-            if data[0] != self.app_id {
-                return None;
-            }
             return Some(val);
         }
         None
     }
 
     async fn save(&self) {
-        let mut buf = FRAM_WRITE_BUF.lock().await;
-        let len = self.ser(&mut *buf).await;
         let address = AppParamsAddress::new(self.start_channel);
-        if let Ok(op) = WriteOperation::try_new(address.into(), len) {
-            write_data(op).await.unwrap();
+        let inner = self.inner.lock().await;
+        let res = write_with(address.into(), |buf| {
+            buf[0] = self.app_id;
+            let len = to_slice(&*inner, &mut buf[1..])?.len();
+            Ok(len + 1)
+        })
+        .await;
+
+        if res.is_err() {
+            defmt::error!("Could not save ParamStore on app {}", self.app_id);
         }
     }
 
     pub async fn load(&self) {
         let address = AppParamsAddress::new(self.start_channel);
-        let op = ReadOperation::new(address.into());
-        if let Ok(data) = request_data(op).await {
-            if data.is_empty() {
-                return;
-            }
-            if let Some(val) = self.des(data.as_slice()).await {
-                let mut inner_val = self.inner.lock().await;
-                *inner_val = val;
+        if let Ok(guard) = read_data(address.into()).await {
+            let data = guard.data();
+            if !data.is_empty() {
+                if let Some(val) = self.des(data).await {
+                    let mut inner = self.inner.lock().await;
+                    *inner = val;
+                }
             }
         }
     }
@@ -249,5 +328,95 @@ where
     pub async fn get(&self) -> T {
         let value = self.values.get(self.index).await;
         T::from_value(value)
+    }
+}
+
+pub trait AppStorage:
+    Serialize + for<'de> Deserialize<'de> + Default + Send + Sync + 'static
+{
+}
+
+pub struct ManagedStorage<S: AppStorage> {
+    app_id: u8,
+    inner: Mutex<NoopRawMutex, S>,
+    start_channel: usize,
+}
+
+impl<S: AppStorage> ManagedStorage<S> {
+    pub fn new(app_id: u8, start_channel: usize) -> Self {
+        Self {
+            app_id,
+            inner: Mutex::new(S::default()),
+            start_channel,
+        }
+    }
+
+    pub async fn load(&self, scene: Option<u8>) {
+        let address = AppStorageAddress::new(self.start_channel, scene).into();
+        if let Ok(guard) = read_data(address).await {
+            let data = guard.data();
+            if !data.is_empty() && data[0] == self.app_id {
+                if let Ok(val) = from_bytes::<S>(&data[1..]) {
+                    let mut inner = self.inner.lock().await;
+                    *inner = val;
+                }
+            }
+        }
+    }
+
+    pub async fn save(&self, scene: Option<u8>) {
+        let address = AppStorageAddress::new(self.start_channel, scene).into();
+
+        let inner = self.inner.lock().await;
+
+        let res = write_with(address, |buf| {
+            buf[0] = self.app_id;
+            let len = to_slice(&*inner, &mut buf[1..])?.len();
+            Ok(len + 1)
+        })
+        .await;
+
+        if res.is_err() {
+            defmt::error!("Could not save ManagedStorage");
+        }
+    }
+
+    pub async fn query<F, R>(&self, accessor: F) -> R
+    where
+        F: FnOnce(&S) -> R,
+    {
+        let guard = self.inner.lock().await;
+        accessor(&*guard)
+    }
+
+    pub async fn modify<F, R>(&self, modifier: F) -> R
+    where
+        F: FnOnce(&mut S) -> R,
+    {
+        let mut guard = self.inner.lock().await;
+        modifier(&mut *guard)
+    }
+
+    pub async fn modify_and_save<F, R>(&self, modifier: F, scene: Option<u8>) -> R
+    where
+        F: FnOnce(&mut S) -> R,
+    {
+        let address = AppStorageAddress::new(self.start_channel, scene).into();
+
+        let mut inner = self.inner.lock().await;
+        let result = modifier(&mut *inner);
+
+        let res = write_with(address, |buf| {
+            buf[0] = self.app_id;
+            let len = to_slice(&*inner, &mut buf[1..])?.len();
+            Ok(len + 1)
+        })
+        .await;
+
+        if res.is_err() {
+            defmt::error!("Could not save ManagedStorage during modify_and_save");
+        }
+
+        result
     }
 }

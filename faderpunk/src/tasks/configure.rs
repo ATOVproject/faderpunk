@@ -15,13 +15,10 @@ use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
 use crate::storage::store_global_config;
 use crate::{CONFIG_CHANGE_WATCH, GLOBAL_CHANNELS};
 
-use super::transport::WebEndpoints;
+use super::transport::{WebEndpoints, USB_MAX_PACKET_SIZE};
 
-// TODO: Share this with USB implementation
-const USB_PACKET_SIZE: usize = 64;
-// TODO: We need to make this bigger for lots of apps with params
 const MAX_PAYLOAD_SIZE: usize = 256;
-// NOTE: cobs needs max 1 byte for every 254 bytes of payload
+// cobs needs max 1 byte for every 254 bytes of payload
 // cobs (2) + delimiter (1)
 const COBS_BYTES: usize = 3;
 // length (2)
@@ -96,14 +93,14 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             }
             ConfigMsgIn::GetAppParams { start_channel } => {
                 APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::RequestParamValues);
-                let transfer = async {
-                    let (start_channel, values) = APP_PARAM_CHANNEL.receive().await;
+                if let Ok((res_start_channel, values)) =
+                    with_timeout(Duration::from_secs(1), APP_PARAM_CHANNEL.receive()).await
+                {
                     proto
-                        .send_msg(ConfigMsgOut::AppState(start_channel, &values))
+                        .send_msg(ConfigMsgOut::AppState(res_start_channel, &values))
                         .await
                         .unwrap();
-                };
-                with_timeout(Duration::from_secs(1), transfer).await.ok();
+                }
             }
             ConfigMsgIn::SetAppParams {
                 start_channel,
@@ -150,13 +147,13 @@ impl<'a> ConfigProtocol<'a> {
         mut cursor: usize,
     ) -> Result<ConfigMsgIn, ProtocolError> {
         loop {
-            if cursor + USB_PACKET_SIZE > buf.len() {
+            if cursor + USB_MAX_PACKET_SIZE as usize > buf.len() {
                 return Err(ProtocolError::MessageTooLarge);
             }
 
             let bytes_read = self
                 .webusb_rx
-                .read(&mut buf[cursor..cursor + USB_PACKET_SIZE])
+                .read(&mut buf[cursor..cursor + USB_MAX_PACKET_SIZE as usize])
                 .await
                 .map_err(|_| ProtocolError::TransmissionError)?;
 
@@ -188,7 +185,7 @@ impl<'a> ConfigProtocol<'a> {
 
         let bytes_read = self
             .webusb_rx
-            .read(&mut buf[0..USB_PACKET_SIZE])
+            .read(&mut buf[0..USB_MAX_PACKET_SIZE as usize])
             .await
             .map_err(|_| ProtocolError::TransmissionError)?;
 
