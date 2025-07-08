@@ -18,7 +18,7 @@ use crate::{
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
-        leds::{signal_led, LedMode, LedMsg},
+        leds::{set_led_mode, LedMode, LedMsg},
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender,
     },
@@ -51,7 +51,7 @@ impl<const N: usize> Leds<N> {
 
     pub fn set(&self, chan: usize, position: Led, color: RGB8, brightness: u8) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
-        signal_led(
+        set_led_mode(
             channel,
             position,
             LedMsg::Set(LedMode::Static(color.scale(brightness))),
@@ -60,13 +60,13 @@ impl<const N: usize> Leds<N> {
 
     pub fn reset(&self, chan: usize, position: Led) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
-        signal_led(channel, position, LedMsg::Reset);
+        set_led_mode(channel, position, LedMsg::Reset);
     }
 
     pub fn reset_chan(&self, chan: usize) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
         for position in [Led::Top, Led::Bottom, Led::Button] {
-            signal_led(channel, position, LedMsg::Reset);
+            set_led_mode(channel, position, LedMsg::Reset);
         }
     }
 
@@ -74,7 +74,7 @@ impl<const N: usize> Leds<N> {
         for chan in 0..N {
             let channel = self.start_channel + chan.clamp(0, N - 1);
             for position in [Led::Top, Led::Bottom, Led::Button] {
-                signal_led(channel, position, LedMsg::Reset);
+                set_led_mode(channel, position, LedMsg::Reset);
             }
         }
     }

@@ -2,6 +2,7 @@ use embassy_executor::Spawner;
 use embassy_rp::peripherals::SPI1;
 use embassy_rp::spi::{Async, Spi};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
@@ -12,9 +13,16 @@ use ws2812_async::{Grb, Ws2812};
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
 const NUM_LEDS: usize = 50;
+const LED_OVERLAY_CHANNEL_SIZE: usize = 16;
 
 static LED_SIGNALS: [Signal<CriticalSectionRawMutex, LedMsg>; NUM_LEDS] =
     [const { Signal::new() }; NUM_LEDS];
+
+static LED_OVERLAY_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    (usize, LedMode),
+    LED_OVERLAY_CHANNEL_SIZE,
+> = Channel::new();
 
 pub async fn start_leds(spawner: &Spawner, spi1: Spi<'static, SPI1, Async>) {
     spawner.spawn(run_leds(spi1)).unwrap();
@@ -24,7 +32,6 @@ pub async fn start_leds(spawner: &Spawner, spi1: Spi<'static, SPI1, Async>) {
 pub enum LedMsg {
     Reset,
     Set(LedMode),
-    SetOverlay(LedMode),
 }
 
 #[derive(Clone, Copy)]
@@ -153,9 +160,14 @@ fn get_no(channel: usize, position: Led) -> usize {
     }
 }
 
-pub fn signal_led(channel: usize, position: Led, msg: LedMsg) {
+pub fn set_led_mode(channel: usize, position: Led, msg: LedMsg) {
     let no = get_no(channel, position);
     LED_SIGNALS[no].signal(msg);
+}
+
+pub async fn set_led_overlay_mode(channel: usize, position: Led, mode: LedMode) {
+    let no = get_no(channel, position);
+    LED_OVERLAY_CHANNEL.send((no, mode)).await;
 }
 
 #[embassy_executor::task]
@@ -196,9 +208,6 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
                     LedMsg::Set(mode) => {
                         leds.base_layer[i] = mode.into_effect();
                     }
-                    LedMsg::SetOverlay(mode) => {
-                        leds.overlay_layer[i] = mode.into_effect();
-                    }
                     LedMsg::Reset => {
                         if let LedEffect::Static { color } = leds.base_layer[i] {
                             leds.base_layer[i] = LedMode::FadeOut(color).into_effect();
@@ -206,6 +215,10 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
                     }
                 }
             }
+        }
+
+        while let Ok((no, mode)) = LED_OVERLAY_CHANNEL.try_receive() {
+            leds.overlay_layer[no] = mode.into_effect();
         }
 
         leds.process().await;
