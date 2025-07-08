@@ -15,19 +15,34 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      upload_url: ${{ steps.release.outputs.upload_url }}
+      release_created: ${{ steps.release.outputs['faderpunk--release_created'] }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
+      tag_name: ${{ steps.release.outputs['faderpunk--tag_name'] }}
+      upload_url: ${{ steps.release.outputs['faderpunk--upload_url'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      - name: Debug step outputs
+        run: |
+          echo "All step outputs:"
+          echo '${{ toJSON(steps.release.outputs) }}'
+  debug:
+    name: Debug release-please outputs
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: always()
+    steps:
+      - name: Print outputs
+        run: |
+          echo "Full outputs object:"
+          echo '${{ toJSON(needs.release-please.outputs) }}'
   build_picotool_for_release:
     name: Build Picotool for Release
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -85,7 +100,7 @@ jobs:
   build_firmware_for_release:
     name: Build Firmware for Release
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,7 +123,7 @@ jobs:
   package_and_release_firmware:
     name: Package and Release Firmware
     needs: [release-please, build_firmware_for_release, build_picotool_for_release]
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Download picotool artifact
@@ -137,7 +152,7 @@ jobs:
   build_configurator_for_release:
     name: Build Configurator for Release
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,7 +185,7 @@ jobs:
   deploy_configurator_to_pages:
     name: Deploy Configurator to GitHub Pages
     needs: [release-please, build_configurator_for_release]
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
