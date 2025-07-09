@@ -146,15 +146,6 @@ impl OutJack {
         };
         MAX_VALUES_DAC[self.channel].store(val, Ordering::Relaxed);
     }
-
-    pub fn set_value_with_curve(&self, curve: Curve, value: u16) {
-        let transformed = match curve {
-            Curve::Linear => value,
-            Curve::Logarithmic => CURVE_LOG[value as usize],
-            Curve::Exponential => CURVE_EXP[value as usize],
-        };
-        self.set_value(transformed);
-    }
 }
 
 #[derive(Clone, Copy)]
