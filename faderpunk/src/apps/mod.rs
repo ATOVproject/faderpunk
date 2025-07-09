@@ -5,5 +5,6 @@ register_apps!(
     4 => seq8,
     5 => automator,
     6 => clkcvrnd,
+    7 => probatrigger,
     255 => calibrator,
 );
