@@ -9,5 +9,6 @@ register_apps!(
     8 => turing,
     9 => clkturing,
     10 => slew,
+    11 => follower,
     255 => calibrator,
 );
