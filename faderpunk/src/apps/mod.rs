@@ -7,5 +7,6 @@ register_apps!(
     6 => clkcvrnd,
     7 => probatrigger,
     8 => turing,
+    9 => clkturing,
     255 => calibrator,
 );
