@@ -4,7 +4,8 @@ use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
 use libfp::constants::{
-    GLOBAL_CHANNELS, WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SINE, WAVEFORM_TRIANGLE,
+    CURVE_EXP, CURVE_LOG, GLOBAL_CHANNELS, WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SINE,
+    WAVEFORM_TRIANGLE,
 };
 
 /// Maximum number of params per app
@@ -152,6 +153,17 @@ pub enum Curve {
     Linear,
     Exponential,
     Logarithmic,
+}
+
+impl Curve {
+    pub fn at(&self, index: usize) -> u16 {
+        let index = index.clamp(0, 4095);
+        match self {
+            Curve::Linear => index as u16,
+            Curve::Logarithmic => CURVE_LOG[index],
+            Curve::Exponential => CURVE_EXP[index],
+        }
+    }
 }
 
 impl FromValue for Curve {

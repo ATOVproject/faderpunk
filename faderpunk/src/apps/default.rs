@@ -107,7 +107,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let curve = params.curve.get().await;
             if !muted {
                 let vals = faders.get_values();
-                jack.set_value_with_curve(curve, vals[0]);
+                jack.set_value(curve.at(vals[0].into()));
             }
         }
     };
