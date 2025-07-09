@@ -8,5 +8,6 @@ register_apps!(
     7 => probatrigger,
     8 => turing,
     9 => clkturing,
+    10 => slew,
     255 => calibrator,
 );
