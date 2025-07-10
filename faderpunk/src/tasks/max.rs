@@ -19,6 +19,7 @@ use max11300::{
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
 use portable_atomic::{AtomicU16, Ordering};
+use serde::{Deserialize, Serialize};
 use static_cell::StaticCell;
 
 use crate::{
@@ -55,12 +56,21 @@ pub enum MaxConfig {
     Mode7(ConfigMode7),
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize, Default)]
+pub struct MaxCalibration {
+    // (slope, intercept)
+    inputs: (f32, f32),
+    // (slope, intercept)
+    outputs: [(f32, f32); 19],
+}
+
 pub async fn start_max(
     spawner: &Spawner,
     spi0: Spi<'static, SPI0, spi::Async>,
     pio0: PIO0,
     mux_pins: MuxPins,
     cs: PIN_17,
+    calibration_data: MaxCalibration,
 ) {
     let device_config = DeviceConfig {
         thshdn: THSHDN::Enabled,
@@ -100,7 +110,9 @@ pub async fn start_max(
         .spawn(read_fader(pio0, mux_pins, ports.port16))
         .unwrap();
 
-    spawner.spawn(process_channel_values(max)).unwrap();
+    spawner
+        .spawn(process_channel_values(max, calibration_data))
+        .unwrap();
 
     spawner.spawn(message_loop(max)).unwrap();
 }
@@ -176,7 +188,7 @@ async fn read_fader(
 
 // TODO: Should we make this message based?
 #[embassy_executor::task]
-async fn process_channel_values(max_driver: &'static SharedMax) {
+async fn process_channel_values(max_driver: &'static SharedMax, calibration_data: MaxCalibration) {
     loop {
         // hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
@@ -187,11 +199,17 @@ async fn process_channel_values(max_driver: &'static SharedMax) {
             match max.get_mode(port) {
                 5 => {
                     let value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
-                    max.dac_set_value(port, value).await.unwrap();
+                    let (slope, intercept) = calibration_data.outputs[i];
+                    let calibrated_value =
+                        ((value as f32 * (1.0 + slope) + intercept) as u16).clamp(0, 4095);
+                    max.dac_set_value(port, calibrated_value).await.unwrap();
                 }
                 7 => {
                     let value = max.adc_get_value(port).await.unwrap();
-                    MAX_VALUES_ADC[i].store(value, Ordering::Relaxed);
+                    let (slope, intercept) = calibration_data.inputs;
+                    let calibrated_value =
+                        ((value as f32 * (1.0 + slope) + intercept) as u16).clamp(0, 4095);
+                    MAX_VALUES_ADC[i].store(calibrated_value, Ordering::Relaxed);
                 }
                 _ => {}
             }

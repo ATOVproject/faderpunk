@@ -12,10 +12,12 @@ use serde::{
 use crate::tasks::{
     configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
     fram::{read_data, write_with},
+    max::MaxCalibration,
 };
 
-const GLOBAL_CONFIG_RANGE: Range<u32> = 0..1_024;
-const APP_STORAGE_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..122_880;
+const GLOBAL_CONFIG_RANGE: Range<u32> = 0..512;
+const CALIBRATION_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..1024;
+const APP_STORAGE_RANGE: Range<u32> = CALIBRATION_RANGE.end..122_880;
 const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..131_072;
 const APP_STORAGE_MAX_BYTES: u32 = 400;
 const APP_PARAMS_MAX_BYTES: u32 = 128;
@@ -42,6 +44,29 @@ pub async fn load_global_config() -> GlobalConfig {
         }
     }
     GlobalConfig::new()
+}
+
+pub async fn store_calibration_data(data: &MaxCalibration) {
+    let res = write_with(CALIBRATION_RANGE.start, |buf| {
+        Ok(to_slice(&data, &mut *buf)?.len())
+    })
+    .await;
+
+    if res.is_err() {
+        defmt::error!("Could not save MaxCalibration");
+    }
+}
+
+pub async fn load_calibration_data() -> Option<MaxCalibration> {
+    if let Ok(guard) = read_data(CALIBRATION_RANGE.start).await {
+        let data = guard.data();
+        if !data.is_empty() {
+            if let Ok(calibration_data) = from_bytes::<MaxCalibration>(data) {
+                return Some(calibration_data);
+            }
+        }
+    }
+    None
 }
 
 #[derive(Clone, Copy)]

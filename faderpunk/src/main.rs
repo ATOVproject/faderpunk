@@ -27,13 +27,14 @@ use embassy_rp::{
 use embassy_time::Timer;
 use fm24v10::{Address, Fm24v10};
 use static_cell::StaticCell;
+use tasks::max::MaxCalibration;
 use {defmt_rtt as _, panic_probe as _};
 
 use libfp::constants::GLOBAL_CHANNELS;
 
 use events::CONFIG_CHANGE_WATCH;
 use layout::{LayoutManager, LAYOUT_MANAGER};
-use storage::load_global_config;
+use storage::{load_calibration_data, load_global_config};
 use tasks::{fram::MAX_DATA_LEN, max::MAX_CHANNEL, midi::MIDI_CHANNEL};
 
 // Program metadata for `picotool info`.
@@ -164,7 +165,16 @@ async fn main(spawner: Spawner) {
     // AUX inputs
     let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
 
-    tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17).await;
+    tasks::fram::start_fram(&spawner, fram).await;
+
+    let calibration_data = if let Some(data) = load_calibration_data().await {
+        data
+    } else {
+        // TODO: Do calibration here
+        MaxCalibration::default()
+    };
+
+    tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
 
     tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
 
@@ -173,8 +183,6 @@ async fn main(spawner: Spawner) {
     tasks::buttons::start_buttons(&spawner, buttons).await;
 
     tasks::clock::start_clock(&spawner, aux_inputs).await;
-
-    tasks::fram::start_fram(&spawner, fram).await;
 
     spawn_core1(
         p.CORE1,
@@ -188,9 +196,6 @@ async fn main(spawner: Spawner) {
     );
 
     let config_sender = CONFIG_CHANGE_WATCH.sender();
-
-    Timer::after_millis(100).await;
-
     let global_config = load_global_config().await;
     config_sender.send(global_config);
 }
