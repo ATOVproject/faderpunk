@@ -18,19 +18,18 @@ use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::spi::{self, Spi};
 use embassy_rp::uart::{self, Async as UartAsync, BufferedUart, Config as UartConfig, UartTx};
-use embassy_rp::usb;
 use embassy_rp::{
     bind_interrupts, i2c,
-    peripherals::{I2C1, PIO0},
+    peripherals::{I2C0, I2C1, PIO0},
     pio,
 };
-use embassy_time::Timer;
+use embassy_rp::{i2c_slave, usb};
 use fm24v10::{Address, Fm24v10};
 use static_cell::StaticCell;
 use tasks::max::MaxCalibration;
 use {defmt_rtt as _, panic_probe as _};
 
-use libfp::constants::GLOBAL_CHANNELS;
+use libfp::constants::{GLOBAL_CHANNELS, I2C_ADDRESS};
 
 use events::CONFIG_CHANGE_WATCH;
 use layout::{LayoutManager, LAYOUT_MANAGER};
@@ -51,6 +50,7 @@ pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
 ];
 
 bind_interrupts!(struct Irqs {
+    I2C0_IRQ => i2c::InterruptHandler<I2C0>;
     I2C1_IRQ => i2c::InterruptHandler<I2C1>;
     PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
     USBCTRL_IRQ => usb::InterruptHandler<USB>;
@@ -125,7 +125,12 @@ async fn main(spawner: Spawner) {
     spi1_config.frequency = 3_800_000;
     let spi1 = Spi::new_txonly(p.SPI1, p.PIN_10, p.PIN_11, p.DMA_CH5, spi1_config);
 
-    // I2C1 (EEPROM)
+    // I2C0 (external I2C)
+    let mut i2c0_config = i2c_slave::Config::default();
+    i2c0_config.addr = I2C_ADDRESS;
+    let i2c0 = i2c_slave::I2cSlave::new(p.I2C0, p.PIN_21, p.PIN_20, Irqs, i2c0_config);
+
+    // I2C1 (FRAM)
     let mut i2c1_config = i2c::Config::default();
     i2c1_config.frequency = 1_000_000;
     let i2c1 = i2c::I2c::new_async(p.I2C1, p.PIN_27, p.PIN_26, Irqs, i2c1_config);
@@ -183,6 +188,8 @@ async fn main(spawner: Spawner) {
     tasks::buttons::start_buttons(&spawner, buttons).await;
 
     tasks::clock::start_clock(&spawner, aux_inputs).await;
+
+    tasks::i2c::start_i2c(&spawner, i2c0).await;
 
     spawn_core1(
         p.CORE1,
