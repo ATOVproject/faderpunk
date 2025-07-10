@@ -58,6 +58,8 @@ ws2812-async = "0.3"
 
 libm = "0.2.15"
 
+linreg = { git = "https://github.com/ATOVproject/linreg-rs" }
+
 config = { path = "../config" }
 libfp = { path = "../libfp" }
 

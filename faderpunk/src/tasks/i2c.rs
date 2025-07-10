@@ -74,6 +74,7 @@ async fn run_i2c(mut _i2c_device: I2cDevice) {
 }
 
 pub async fn run_calibration(i2c_device: &mut I2cDevice) {
+    // TODO: This is for when the calibrator actually works
     let mut buf = [0u8; MAX_MESSAGE_SIZE];
 
     loop {
