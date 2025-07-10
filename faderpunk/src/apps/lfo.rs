@@ -118,15 +118,34 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             let val = attenuate(wave.at(next_pos as usize), att);
 
             output.set_value(val);
+            let led = split_unsigned_value(val);
+
+            let color = match wave {
+                Waveform::Sine => RGB8 {
+                    r: 243,
+                    g: 191,
+                    b: 78,
+                },
+                Waveform::Triangle => RGB8 {
+                    r: 188,
+                    g: 77,
+                    b: 216,
+                },
+                Waveform::Saw => RGB8 {
+                    r: 78,
+                    g: 243,
+                    b: 243,
+                },
+                Waveform::Rect => RGB8 {
+                    r: 250,
+                    g: 250,
+                    b: 250,
+                },
+            };
 
             if !buttons.is_shift_pressed() {
-                leds.set(0, Led::Top, color, ((val as f32 / 16.0) / 2.0) as u8);
-                leds.set(
-                    0,
-                    Led::Bottom,
-                    color,
-                    ((255.0 - (val as f32) / 16.0) / 2.0) as u8,
-                );
+                leds.set(0, Led::Top, color, led[0]);
+                leds.set(0,Led::Bottom,color,led[1]);
             } else {
                 leds.set(0, Led::Top, RED, ((att / 16) / 2) as u8);
                 leds.set(0, Led::Bottom, RED, 0);
@@ -301,4 +320,16 @@ fn attenuate(signal: u16, level: u16) -> u16 {
 
 fn is_close(a: u16, b: u16) -> bool {
     a.abs_diff(b) < 75
+}
+
+
+fn split_unsigned_value(input: u16) -> [u8; 2] {
+    let clamped = input.min(4095);
+    if clamped <= 2047 {
+        let neg = ((2047 - clamped)/8 ).min(255) as u8;
+        [0, neg]
+    } else {
+        let pos = ((clamped - 2047)/8).min(255) as u8;
+        [pos, 0]
+    }
 }
