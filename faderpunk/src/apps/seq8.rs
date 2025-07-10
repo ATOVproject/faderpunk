@@ -192,7 +192,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
         loop {
             let chan = faders.wait_for_any_change().await;
-            let vals = faders.get_values();
+            let vals = faders.get_all_values();
             let page = page_glob.get().await;
 
             let mut seq = seq_glob.get().await;

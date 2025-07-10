@@ -222,7 +222,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         loop {
             let chan: usize = faders.wait_for_any_change().await;
             let mut latched = latched_glob.get().await;
-            let vals = faders.get_values();
+            let vals = faders.get_all_values();
 
             if !buttons.is_shift_pressed() {
                 let mut times = times_glob.get().await;

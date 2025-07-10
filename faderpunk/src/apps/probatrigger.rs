@@ -22,7 +22,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
 pub async fn run(app: &App<CHANNELS>) {
     let buttons = app.use_buttons();
-    let faders = app.use_faders();
+    let fader = app.use_faders();
     let leds = app.use_leds();
     //let midi = app.use_midi(10);
     let mut clock = app.use_clock();
@@ -31,7 +31,7 @@ pub async fn run(app: &App<CHANNELS>) {
     let jack = app.make_gate_jack(0, 2048).await;
 
     let glob_muted = app.make_global(false);
-    let fad_init = faders.get_values();
+    let fad_init = fader.get_value();
     let fad_glob = app.make_global(fad_init);
     leds.set(0, Led::Button, LED_COLOR, 75);
 
@@ -40,7 +40,7 @@ pub async fn run(app: &App<CHANNELS>) {
             if let ClockEvent::Tick = clock.wait_for_event(1).await {
                 let val = fad_glob.get().await;
                 let rndval = die.roll();
-                if val[0] >= rndval && !glob_muted.get().await {
+                if val >= rndval && !glob_muted.get().await {
                     jack.set_high().await;
                     leds.set(0, Led::Top, LED_COLOR, 75);
                     //midi.send_note_on(75 ,4095);
@@ -68,8 +68,8 @@ pub async fn run(app: &App<CHANNELS>) {
 
     let fut3 = async {
         loop {
-            faders.wait_for_change(0).await;
-            let val = faders.get_values();
+            fader.wait_for_change().await;
+            let val = fader.get_value();
             fad_glob.set(val).await;
         }
     };

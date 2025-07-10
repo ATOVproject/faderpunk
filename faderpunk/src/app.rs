@@ -243,7 +243,7 @@ impl<const N: usize> Faders<N> {
         }
     }
 
-    pub async fn wait_for_change(&self, chan: usize) {
+    pub async fn wait_for_change_at(&self, chan: usize) {
         let chan = chan.clamp(0, N - 1);
         loop {
             let channel = self.wait_for_any_change().await;
@@ -253,12 +253,27 @@ impl<const N: usize> Faders<N> {
         }
     }
 
-    pub fn get_values(&self) -> [u16; N] {
+    pub fn get_value_at(&self, chan: usize) -> u16 {
+        let chan = chan.clamp(0, N - 1);
+        MAX_VALUES_FADER[self.start_channel + chan].load(Ordering::Relaxed)
+    }
+
+    pub fn get_all_values(&self) -> [u16; N] {
         let mut buf = [0_u16; N];
         for i in 0..N {
             buf[i] = MAX_VALUES_FADER[self.start_channel + i].load(Ordering::Relaxed);
         }
         buf
+    }
+}
+
+impl Faders<1> {
+    pub fn get_value(&self) -> u16 {
+        MAX_VALUES_FADER[self.start_channel].load(Ordering::Relaxed)
+    }
+
+    pub async fn wait_for_change(&self) {
+        self.wait_for_any_change().await;
     }
 }
 

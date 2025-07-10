@@ -73,7 +73,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
     let buttons = app.use_buttons();
-    let faders = app.use_faders();
+    let fader = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
     let mut die = app.use_die();
@@ -114,14 +114,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
 
     let fut2 = async {
         loop {
-            faders.wait_for_change(0).await;
-            let vals = faders.get_values();
+            fader.wait_for_change().await;
+            let val = fader.get_value();
             let length = length_glob.get().await;
             let amp = amp_glob.get().await;
             let prob = prob_glob.get().await;
 
             if buttons.is_shift_pressed() {
-                let val = return_if_close(length as u16, vals[0] / 273 + 1);
+                let val = return_if_close(length as u16, val / 273 + 1);
                 if val.1 {
                     latched_glob.set(true).await;
                 }
@@ -131,7 +131,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                 }
             }
             if buttons.is_button_pressed(0) {
-                let val = return_if_close(amp as u16, vals[0]);
+                let val = return_if_close(amp as u16, val);
                 if val.1 {
                     latched_glob.set(true).await;
                 }
@@ -141,7 +141,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>) {
                     info! {"{}", val.0}
                 }
             } else {
-                let val = return_if_close(prob, vals[0]);
+                let val = return_if_close(prob, val);
 
                 if val.1 {
                     latched_glob.set(true).await;

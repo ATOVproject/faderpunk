@@ -90,7 +90,7 @@ pub async fn run(app: &App<CHANNELS>) {
     let fut2 = async {
         loop {
             let chan = faders.wait_for_any_change().await;
-            let vals = faders.get_values();
+            let vals = faders.get_all_values();
             let length = length_glob.get().await;
             let prob = prob_glob.get().await;
 
