@@ -5,6 +5,7 @@ use config::{Config, Param, Value};
 use embassy_futures::{join::{join4, join5}, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
+use smart_leds::colors::RED;
 
 use crate::{
     app::{
@@ -133,8 +134,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 midi.send_cc(cc as u8, val).await;
                 last_midi = val;
             }
-            leds.set(0, Led::Top, WHITE, (val / 32) as u8);
-            leds.set(0, Led::Bottom, WHITE, (255 - (val / 16) as u8) / 2);
+            leds.set(0, Led::Top, WHITE, (val / 16) as u8);
             if recording_glob.get().await {
                 leds.set(0, Led::Top, RGB8 { r: 255, g: 0, b: 0 }, (val / 32) as u8);
                 leds.set(
@@ -196,9 +196,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             }
 
             if recording {
+<<<<<<< Updated upstream
                 let val = fader.get_value();
                 buffer[index] = val;
                 leds.set(0, Led::Button, RGB8 { r: 255, g: 0, b: 0 }, 100);
+=======
+                let val = faders.get_values();
+                buffer[index] = val[0];
+                leds.set(0, Led::Button, RED, 100);
+>>>>>>> Stashed changes
             } else {
                 leds.set(0, Led::Button, WHITE, 100);
             }
