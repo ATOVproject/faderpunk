@@ -34,7 +34,7 @@ pub async fn run(app: &App<CHANNELS>) {
 
     let output = app.make_out_jack(0, Range::_Neg5_5V).await;
 
-    let mut div: [u16; 1] = [24];
+    let mut div: u16 = 24;
 
     let mut clkn = 0;
 
@@ -45,9 +45,8 @@ pub async fn run(app: &App<CHANNELS>) {
             if let ClockEvent::Tick = clock.wait_for_event(1).await {
                 clkn += 1;
                 let muted = glob_muted.get().await;
-                div = fader.get_values();
-                div[0] = (25 - (((div[0] as u32 * 24) / 4095) + 1)) as u16;
-                if clkn % div[0] == 0 && !muted {
+                div = (25 - (((fader.get_value() as u32 * 24) / 4095) + 1)) as u16;
+                if clkn % div == 0 && !muted {
                     let val = rnd.roll();
                     output.set_value(val);
                     leds.set(0, Led::Top, LED_COLOR, (val / 16) as u8);
@@ -74,7 +73,8 @@ pub async fn run(app: &App<CHANNELS>) {
 
     let fut3 = async {
         loop {
-            fader.wait_for_change(0).await;
+            // TODO: This isn't doing anything
+            fader.wait_for_change().await;
         }
     };
 

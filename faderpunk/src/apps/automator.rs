@@ -76,7 +76,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
     let buttons = app.use_buttons();
-    let faders = app.use_faders();
+    let fader = app.use_faders();
     let leds = app.use_leds();
 
     let midi_chan = params.midi_channel.get().await;
@@ -196,8 +196,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             }
 
             if recording {
-                let val = faders.get_values();
-                buffer[index] = val[0];
+                let val = fader.get_value();
+                buffer[index] = val;
                 leds.set(0, Led::Button, RGB8 { r: 255, g: 0, b: 0 }, 100);
             } else {
                 leds.set(0, Led::Button, WHITE, 100);
@@ -228,14 +228,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let fut2 = async {
         loop {
-            faders.wait_for_change(0).await;
-            let val = faders.get_values();
+            fader.wait_for_change().await;
+            let val = fader.get_value();
 
-            if is_close(val[0], offset_glob.get().await) && !latched.get().await {
+            if is_close(val, offset_glob.get().await) && !latched.get().await {
                 latched.set(true).await
             }
             if latched.get().await {
-                offset_glob.set(val[0]).await;
+                offset_glob.set(val).await;
             }
         }
     };

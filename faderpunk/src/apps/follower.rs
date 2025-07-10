@@ -90,7 +90,7 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
     let fut2 = async {
         loop {
             let chan = faders.wait_for_any_change().await;
-            let mut vals = faders.get_values();
+            let mut vals = faders.get_all_values();
             if chan == 0 {
                 let slew_mult = slew_mult_glob.get().await;
                 vals[chan] = vals[chan] / (2 + (slew_mult * 2)) + 1;

@@ -63,7 +63,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let latched_glob = app.make_global(false);
 
     let output = app.make_out_jack(0, Range::_Neg5_5V).await;
-    let faders = app.use_faders();
+    let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
 
@@ -148,22 +148,22 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let fut2 = async {
         loop {
-            faders.wait_for_change(0).await;
-            let [fader] = faders.get_values();
+            fader.wait_for_change().await;
+            let fader_val = fader.get_value();
             let stored_faders = storage.query(|s| s.fader_saved).await;
 
             if !buttons.is_shift_pressed() {
-                if !latched_glob.get().await && is_close(fader, stored_faders) {
+                if !latched_glob.get().await && is_close(fader_val, stored_faders) {
                     latched_glob.set(true).await;
                 }
                 if latched_glob.get().await {
                     glob_lfo_speed
-                        .set(CURVE_LOG[fader as usize] as f32 * 0.015 + 0.0682)
+                        .set(CURVE_LOG[fader_val as usize] as f32 * 0.015 + 0.0682)
                         .await;
                     storage
                         .modify_and_save(
                             |s| {
-                                s.fader_saved = fader;
+                                s.fader_saved = fader_val;
                                 s.fader_saved
                             },
                             None,
@@ -171,15 +171,15 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         .await;
                 }
             } else {
-                if !latched_glob.get().await && is_close(fader, att_glob.get().await) {
+                if !latched_glob.get().await && is_close(fader_val, att_glob.get().await) {
                     latched_glob.set(true).await;
                 }
                 if latched_glob.get().await {
-                    att_glob.set(fader).await;
+                    att_glob.set(fader_val).await;
                     storage
                         .modify_and_save(
                             |s| {
-                                s.att_saved = fader;
+                                s.att_saved = fader_val;
                                 s.att_saved
                             },
                             None,

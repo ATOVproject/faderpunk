@@ -70,7 +70,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
     let buttons = app.use_buttons();
-    let faders = app.use_faders();
+    let fader = app.use_faders();
     let leds = app.use_leds();
 
     let midi_chan = params.midi_channel.get().await;
@@ -95,8 +95,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             leds.reset_all();
         } else {
             leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
-            let vals = faders.get_values();
-            midi.send_cc(32 + app.start_channel as u8, vals[0]).await
+            midi.send_cc(32 + app.start_channel as u8, fader.get_value())
+                .await
         }
     };
 
@@ -106,19 +106,18 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let muted = storage.query(|s| s.muted).await;
             let curve = params.curve.get().await;
             if !muted {
-                let vals = faders.get_values();
-                jack.set_value(curve.at(vals[0].into()));
+                jack.set_value(curve.at(fader.get_value().into()));
             }
         }
     };
 
     let fut2 = async {
         loop {
-            faders.wait_for_change(0).await;
+            fader.wait_for_change().await;
             let muted = storage.query(|s| s.muted).await;
             if !muted {
-                let [fader] = faders.get_values();
-                midi.send_cc(32 + app.start_channel as u8, fader).await;
+                midi.send_cc(32 + app.start_channel as u8, fader.get_value())
+                    .await;
             }
         }
     };
