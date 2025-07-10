@@ -1,3 +1,9 @@
+// TODO: 
+// Add midi
+// Add resolution
+// Add Saving
+// Add Params
+
 use config::Config;
 use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -7,7 +13,7 @@ use crate::app::{App, ClockEvent, Led, RGB8};
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("LFO", "Wooooosh");
+pub static CONFIG: Config<PARAMS> = Config::new("Random Trigger", "");
 
 const LED_COLOR: RGB8 = RGB8 {
     r: 78,
