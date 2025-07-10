@@ -1,4 +1,4 @@
-use core::mem::MaybeUninit;
+use core::{mem::MaybeUninit, slice::from_raw_parts};
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_rp::{
@@ -91,7 +91,10 @@ impl ReadGuard {
         // on this buffer index, obtained from `AVAILABLE_READ_BUFFER_INDICES`.
         // No other task can be accessing this buffer. The slice is bounded by `len`,
         // which is the actual amount of data read by the driver.
-        unsafe { &(*READ_BUFFERS[self.index].as_ptr())[..self.len] }
+        unsafe {
+            let buffer_ptr = READ_BUFFERS[self.index].as_ptr();
+            from_raw_parts(buffer_ptr as *const u8, self.len)
+        }
     }
 }
 
