@@ -196,15 +196,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             }
 
             if recording {
-<<<<<<< Updated upstream
                 let val = fader.get_value();
                 buffer[index] = val;
-                leds.set(0, Led::Button, RGB8 { r: 255, g: 0, b: 0 }, 100);
-=======
-                let val = faders.get_values();
-                buffer[index] = val[0];
                 leds.set(0, Led::Button, RED, 100);
->>>>>>> Stashed changes
             } else {
                 leds.set(0, Led::Button, WHITE, 100);
             }
