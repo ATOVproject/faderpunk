@@ -11,6 +11,9 @@ mod layout;
 mod storage;
 mod tasks;
 
+use core::sync::atomic::Ordering;
+
+use config::{GlobalConfig, Layout};
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::ClockConfig;
 use embassy_rp::config::Config;
@@ -26,6 +29,9 @@ use embassy_rp::{
 use embassy_rp::{i2c_slave, usb};
 use fm24v10::{Address, Fm24v10};
 use static_cell::StaticCell;
+
+use crate::tasks::buttons::BUTTON_PRESSED;
+
 use {defmt_rtt as _, panic_probe as _};
 
 use libfp::constants::{GLOBAL_CHANNELS, I2C_ADDRESS};
@@ -127,7 +133,7 @@ async fn main(spawner: Spawner) {
     // I2C0 (external I2C)
     let mut i2c0_config = i2c_slave::Config::default();
     i2c0_config.addr = I2C_ADDRESS;
-    let mut i2c0 = i2c_slave::I2cSlave::new(p.I2C0, p.PIN_21, p.PIN_20, Irqs, i2c0_config);
+    let i2c0 = i2c_slave::I2cSlave::new(p.I2C0, p.PIN_21, p.PIN_20, Irqs, i2c0_config);
 
     // I2C1 (FRAM)
     let mut i2c1_config = i2c::Config::default();
@@ -179,10 +185,6 @@ async fn main(spawner: Spawner) {
 
     tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
 
-    if calibration_data.is_none() {
-        tasks::i2c::run_calibration(&mut i2c0).await;
-    }
-
     tasks::i2c::start_i2c(&spawner, i2c0).await;
 
     tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
@@ -201,6 +203,17 @@ async fn main(spawner: Spawner) {
     );
 
     let config_sender = CONFIG_CHANGE_WATCH.sender();
-    let global_config = load_global_config().await;
+
+    let mut global_config = GlobalConfig::new();
+
+    // Load calibration app if there is no calibration data or
+    // when scene + shift are pressed during startup
+    if calibration_data.is_none() || BUTTON_PRESSED[16].load(Ordering::Relaxed) {
+        global_config.layout = Layout::new();
+        global_config.layout.0[0] = Some((255, 16));
+    } else {
+        global_config = load_global_config().await;
+    }
+
     config_sender.send(global_config);
 }

@@ -362,6 +362,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "displaydoc"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adc2ab4d5a16117f9029e9a6b5e4e79f4c67f6519bc134210d4d4a04ba31f41b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "document-features"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -695,6 +706,7 @@ dependencies = [
  "heapless 0.7.17",
  "libfp",
  "libm",
+ "linreg",
  "log",
  "max11300",
  "midly",
@@ -971,6 +983,15 @@ name = "libm"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
+
+[[package]]
+name = "linreg"
+version = "0.2.0"
+source = "git+https://github.com/ATOVproject/linreg-rs#b3db9c1730cb2db321e7563d1e215ea01c229383"
+dependencies = [
+ "displaydoc",
+ "num-traits",
+]
 
 [[package]]
 name = "litrs"

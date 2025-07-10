@@ -8,4 +8,6 @@ register_apps!(
     7 => clkcvrnd,
     8 => midi_clock_test,
     9 => midi_note_test,
+    10 => calibrator_test,
+    255 => calibrator,
 );

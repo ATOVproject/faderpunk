@@ -11,7 +11,7 @@ use embassy_sync::{
     mutex::Mutex,
 };
 use embassy_time::Timer;
-use libfp::types::RegressionValues;
+use libfp::{constants::CHAN_LED_MAP, types::RegressionValues};
 use libm::roundf;
 use max11300::{
     config::{
@@ -20,7 +20,7 @@ use max11300::{
     },
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
-use portable_atomic::{AtomicU16, Ordering};
+use portable_atomic::{AtomicBool, AtomicU16, Ordering};
 use serde::{Deserialize, Serialize};
 use static_cell::StaticCell;
 
@@ -42,6 +42,7 @@ static MAX: StaticCell<SharedMax> = StaticCell::new();
 pub static MAX_VALUES_DAC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
 pub static MAX_VALUES_ADC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
+pub static CALIBRATING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy)]
 pub enum MaxCmd {
@@ -195,7 +196,7 @@ async fn process_channel_values(
     calibration_data: Option<MaxCalibration>,
 ) {
     loop {
-        // hopefully we can write it at about 2kHz
+        // Hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
 
         // Do not process channel 16 (faders)
@@ -208,11 +209,18 @@ async fn process_channel_values(
                     let calibrated_dac_value = if target_dac_value == 0 {
                         // If the target is 0, the output MUST be 0
                         0
+                    // TODO: Is this fast enough, can we safely do that in this tight loop?
+                    } else if CALIBRATING.load(Ordering::Relaxed) {
+                        target_dac_value
                     } else if let Some(data) = calibration_data {
-                        // For any non-zero target, apply the pre-calculated coefficients
-                        let (m, c) = data.outputs[i];
+                        // For any non-zero target, apply the pre-correction formula
+                        let (slope, intercept) = data.outputs[i];
+                        let target_f32 = target_dac_value as f32;
 
-                        roundf(target_dac_value as f32 * m + c).clamp(0.0, 4095.0) as u16
+                        let raw_f32 = (target_f32 - intercept) / (1.0 + slope);
+
+                        // Round and clamp to the valid DAC range
+                        roundf(raw_f32).clamp(0.0, 4095.0) as u16
                     } else {
                         target_dac_value
                     };
@@ -221,9 +229,11 @@ async fn process_channel_values(
                 }
                 7 => {
                     let value = max.adc_get_value(port).await.unwrap();
-                    let calibrated_value = if let Some(data) = calibration_data {
+                    let calibrated_value = if CALIBRATING.load(Ordering::Relaxed) {
+                        value
+                    } else if let Some(data) = calibration_data {
                         let (slope, intercept) = data.inputs;
-                        ((value as f32 * (1.0 + slope) + intercept) as u16).clamp(0, 4095)
+                        roundf(value as f32 * slope + intercept).clamp(0.0, 4095.0) as u16
                     } else {
                         value
                     };

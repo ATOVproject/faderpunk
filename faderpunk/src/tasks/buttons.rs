@@ -78,6 +78,12 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
 }
 
 async fn process_modifier_button(i: usize, mut button: Input<'_>) {
+    // To detect a press on startup
+    if button.is_low() {
+        BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
+        button.wait_for_rising_edge().await;
+        BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
+    }
     loop {
         button.wait_for_falling_edge().await;
         BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
