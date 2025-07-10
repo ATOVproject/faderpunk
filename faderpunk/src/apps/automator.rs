@@ -2,7 +2,7 @@
 // No midi out when recording
 
 use config::{Config, Param, Value};
-use embassy_futures::{join::join5, select::select};
+use embassy_futures::{join::{join4, join5}, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
@@ -101,11 +101,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut buffer = [0; 384];
     let mut length = 384;
 
-    let (buffer_saved, length_saved) = storage
-        .query(|s| (s.buffer_saved.get(), s.length_saved))
-        .await;
-    buffer_glob.set(buffer_saved).await;
-    length_glob.set(length_saved).await;
+    // let (buffer_saved, length_saved) = storage
+    //     .query(|s| (s.buffer_saved.get(), s.length_saved))
+    //     .await;
+    // buffer_glob.set(buffer_saved).await;
+    // length_glob.set(length_saved).await;
 
     leds.set(0, Led::Button, WHITE, 100);
 
@@ -177,12 +177,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 buffer_glob.set(buffer).await;
                 offset_glob.set(0).await;
                 latched.set(false).await;
-                storage
-                    .modify(|s| {
-                        s.buffer_saved.set(buffer);
-                        s.length_saved = length;
-                    })
-                    .await;
+                // storage
+                //     .modify(|s| {
+                //         s.buffer_saved.set(buffer);
+                //         s.length_saved = length;
+                //     })
+                //     .await;
             }
 
             if rec_flag.get().await && index % 96 == 0 {
@@ -212,12 +212,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 buffer_glob.set(buffer).await;
                 offset_glob.set(0).await;
                 latched.set(false).await;
-                storage
-                    .modify(|s| {
-                        s.buffer_saved.set(buffer);
-                        s.length_saved = length;
-                    })
-                    .await;
+                // storage
+                //     .modify(|s| {
+                //         s.buffer_saved.set(buffer);
+                //         s.length_saved = length;
+                //     })
+                //     .await;
             }
 
             if index == 0 {
@@ -255,27 +255,27 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         }
     };
 
-    let scene_handler = async {
-        loop {
-            match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
-                    let (buffer_saved, length_saved) = storage
-                        .query(|s| (s.buffer_saved.get(), s.length_saved))
-                        .await;
-                    buffer_glob.set(buffer_saved).await;
-                    length_glob.set(length_saved).await;
-                    latched.set(false).await;
-                    offset_glob.set(0).await;
-                }
-                SceneEvent::SaveScene(scene) => {
-                    storage.save(Some(scene)).await;
-                }
-            }
-        }
-    };
+    // let scene_handler = async {
+    //     loop {
+    //         match app.wait_for_scene_event().await {
+    //             SceneEvent::LoadSscene(scene) => {
+    //                 storage.load(Some(scene)).await;
+    //                 let (buffer_saved, length_saved) = storage
+    //                     .query(|s| (s.buffer_saved.get(), s.length_saved))
+    //                     .await;
+    //                 buffer_glob.set(buffer_saved).await;
+    //                 length_glob.set(length_saved).await;
+    //                 latched.set(false).await;
+    //                 offset_glob.set(0).await;
+    //             }
+    //             SceneEvent::SaveScene(scene) => {
+    //                 storage.save(Some(scene)).await;
+    //             }
+    //         }
+    //     }
+    // };
 
-    join5(update_output, fut1, fut2, fut3, scene_handler).await;
+    join4(update_output, fut1, fut2, fut3).await;
 }
 
 fn is_close(a: u16, b: u16) -> bool {
