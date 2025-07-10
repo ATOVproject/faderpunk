@@ -154,10 +154,8 @@ async fn read_fader(
         // send the channel value to the PIO state machine to trigger the program
         sm0.tx().wait_push(chan as u32).await;
 
-        // this translates to ~30Hz refresh rate for the faders (1000 / (2 * 16) = 31.25)
-        // TODO: Why is this sometimes too short?
-        // Like with scene_sender.send(&[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
-        Timer::after_micros(3000).await;
+        // this translates to ~60Hz refresh rate for the faders (1000 / (1 * 16) = 62.5)
+        Timer::after_millis(1).await;
 
         let val = fader_port.get_value().await.unwrap();
         let diff = (val as i16 - prev_values[channel] as i16).unsigned_abs();
