@@ -13,8 +13,8 @@ pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
-    "Turing",
-    "Classic turing machine, synched to internal clock",
+    "Turing+",
+    "Classic turing machine, with clock input",
 );
 
 const LED_COLOR: RGB8 = RGB8 {
