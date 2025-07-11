@@ -3,31 +3,32 @@
 // Add attenuator (shift + fader)
 
 use config::{Config, Param, Value};
-use embassy_futures::{join::{join5}, select::select};
+use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 use smart_leds::{RGB, RGB8};
 
-use crate::app::{App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent};
+use crate::app::{
+    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
+};
 
-use libfp::utils::{attenuate, attenuate_bipolar, is_close, scale_bits_12_7, split_unsigned_value};
+use libfp::utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
 
-pub static CONFIG: config::Config<PARAMS> = Config::new("Random CC/CV", "Generate random values on clock")
-    .add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI CC",
-        min: 1,
-        max: 128,
-    });
-
-
+pub static CONFIG: config::Config<PARAMS> =
+    Config::new("Random CC/CV", "Generate random values on clock")
+        .add_param(Param::i32 {
+            name: "MIDI Channel",
+            min: 1,
+            max: 16,
+        })
+        .add_param(Param::i32 {
+            name: "MIDI CC",
+            min: 1,
+            max: 128,
+        });
 
 pub struct Params<'a> {
     midi_channel: ParamSlot<'a, i32, PARAMS>,
@@ -38,7 +39,7 @@ pub struct Params<'a> {
 pub struct Storage {
     fader_saved: u16,
     mute_save: bool,
-    att_saved: u16
+    att_saved: u16,
 }
 
 impl Default for Storage {
@@ -47,12 +48,10 @@ impl Default for Storage {
             fader_saved: 3000,
             mute_save: false,
             att_saved: 4096,
-
         }
     }
 }
 impl AppStorage for Storage {}
-
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
@@ -97,22 +96,20 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let resolution = [368, 184, 92, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-   
-
     let mut clkn = 0;
     let mut val = 2048;
 
     const LED_COLOR: RGB<u8> = RGB8 {
         r: 243,
         g: 191,
-        b: 78,};
+        b: 78,
+    };
 
     storage.load(None).await;
 
-    let (res, mute, att) =
-        storage
-            .query(|s| (s.fader_saved, s.mute_save, s.att_saved))
-            .await;
+    let (res, mute, att) = storage
+        .query(|s| (s.fader_saved, s.mute_save, s.att_saved))
+        .await;
 
     att_glob.set(att).await;
     glob_muted.set(mute).await;
@@ -125,14 +122,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         leds.set(0, Led::Bottom, LED_COLOR, 0);
     } else {
         leds.set(0, Led::Button, LED_COLOR, 75);
-    }  
-
+    }
 
     let fut1 = async {
         loop {
-            
-            
-
             match clock.wait_for_event(1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
@@ -148,16 +141,19 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         output.set_value(jackval);
                         midi.send_cc(cc as u8, midival).await;
                         let ledj = split_unsigned_value(jackval);
-                        leds.set(0, Led::Top, LED_COLOR, ledj[0]);
-                        leds.set(0, Led::Bottom, LED_COLOR, ledj[1]);
+                        let r = (rnd.roll() / 16) as u8;
+                        let g = (rnd.roll() / 16) as u8;
+                        let b = (rnd.roll() / 16) as u8;
+
+                        let color: RGB<u8> = RGB8 { r: r, g: g, b: b };
+                        leds.set(0, Led::Top, color, ledj[0]);
+                        leds.set(0, Led::Bottom, color, ledj[1]);
+                        leds.set(0, Led::Button, color, 125);
                         val = rnd.roll();
                     }
                 }
                 _ => {}
             }
-            
-
-        
         }
     };
 
@@ -165,23 +161,21 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             buttons.wait_for_any_down().await;
             let muted = glob_muted.toggle().await;
-            
+
             storage
-            .modify_and_save(
-                |s| {
-                    s.mute_save = muted;
-                    s.mute_save
-                },
-                None,
-            )
-            .await;
-            
+                .modify_and_save(
+                    |s| {
+                        s.mute_save = muted;
+                        s.mute_save
+                    },
+                    None,
+                )
+                .await;
+
             if muted {
-                leds.set(0, Led::Button, LED_COLOR, 0);
                 output.set_value(2047);
                 midi.send_cc(cc as u8, 0).await;
-                leds.set(0, Led::Top, LED_COLOR, 0);
-                leds.set(0, Led::Bottom, LED_COLOR, 0);
+                leds.reset_all();
             } else {
                 leds.set(0, Led::Button, LED_COLOR, 75);
             }
@@ -193,27 +187,22 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             fader.wait_for_change_at(0).await;
             storage.load(None).await;
             let fad = fader.get_value();
-            
-            
+
             if !buttons.is_shift_pressed() {
                 let fad_saved = storage.query(|s| s.fader_saved).await;
-                if is_close(fad, fad_saved){
+                if is_close(fad, fad_saved) {
                     latched_glob.set(true).await;
                 }
                 if latched_glob.get().await {
                     div_glob.set(resolution[fad as usize / 345]).await;
                     storage.modify_and_save(|s| s.fader_saved = fad, None).await;
-
                 }
-                
-                
-            }
-            else {
+            } else {
                 let att = att_glob.get().await;
-                if is_close(fad, att){
+                if is_close(fad, att) {
                     latched_glob.set(true).await;
                 }
-                if latched_glob.get().await{
+                if latched_glob.get().await {
                     att_glob.set(fad).await;
                     storage.modify_and_save(|s| s.att_saved = fad, None).await;
                 }
@@ -226,10 +215,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let (res, mute, att) =
-                        storage
-                            .query(|s| (s.fader_saved, s.mute_save, s.att_saved))
-                            .await;
+                    let (res, mute, att) = storage
+                        .query(|s| (s.fader_saved, s.mute_save, s.att_saved))
+                        .await;
 
                     att_glob.set(att).await;
                     glob_muted.set(mute).await;
@@ -242,15 +230,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         leds.set(0, Led::Bottom, LED_COLOR, 0);
                     } else {
                         leds.set(0, Led::Button, LED_COLOR, 75);
-                    }                   
+                    }
+                    latched_glob.set(false).await;
                 }
-
-
 
                 SceneEvent::SaveScene(scene) => {
                     storage.save(Some(scene)).await;
-
-                
                 }
             }
         }
@@ -274,8 +259,5 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         }
     };
 
-    
-
     join5(fut1, fut2, fut3, scene_handler, shift).await;
 }
-
