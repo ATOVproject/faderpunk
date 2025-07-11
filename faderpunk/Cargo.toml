@@ -31,7 +31,7 @@ embassy-rp = { version = "0.4", features = [
 embassy-futures = { version = "0.1" }
 
 cobs = { version = "0.4.0", default-features = false }
-cortex-m = { version = "0.7", features = ["inline-asm"], optional = true }
+cortex-m = { version = "0.7", features = ["inline-asm"] }
 cortex-m-rt = "0.7"
 critical-section = "1.1"
 defmt = "1.0"
@@ -55,6 +55,8 @@ smart-leds = "0.4.0"
 static_cell = "2.1.1"
 array-init = "2.1"
 ws2812-async = "0.3"
+
+libm = "0.2.15"
 
 config = { path = "../config" }
 libfp = { path = "../libfp" }

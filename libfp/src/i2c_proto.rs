@@ -1,24 +1,38 @@
 use defmt::Format;
 use serde::{Deserialize, Serialize};
 
+use crate::types::RegressionValues;
+
 /// Maximum size of a serialized message in bytes.
 /// This must be large enough for the largest possible message.
-pub const MAX_MESSAGE_SIZE: usize = 64;
+pub const MAX_MESSAGE_SIZE: usize = 192;
 
-/// Commands sent from the calibrator to the device.
+/// WriteReadCommands sent from the calibrator to the device.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Format)]
-pub enum Command {
-    /// Request a measurement from a specific channel.
-    ReadChannel(u8),
+pub enum WriteReadCommand {
+    /// Request to set an output port to a certain value
+    /// (channel, bipolar_range, value)
+    CalibSetVoltage(usize, bool, u16),
+    /// Set the calculated regression values for output voltages
+    CalibSetRegressionValues(RegressionValues),
     /// Get the device's current status.
     GetStatus,
+    /// Reset the device
+    SysReset,
+}
+
+/// WriteCommands sent from the calibrator to the device.
+#[derive(Serialize, Deserialize, Debug, PartialEq, Format)]
+pub enum WriteCommand {
+    /// Reset the device
+    SysReset,
 }
 
 /// Responses sent from the device to the calibrator.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Format)]
 pub enum Response {
-    /// The value read from a channel.
-    ChannelValue(f32),
+    // Tell the calibrator that we set the value
+    CalibVoltageSet(usize),
     /// The current status of the device.
     Status(DeviceStatus),
     /// Acknowledgment of a command that doesn't return data.
