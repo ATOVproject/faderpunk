@@ -19,10 +19,10 @@ pub fn is_close(a: u16, b: u16) -> bool {
 pub fn split_unsigned_value(input: u16) -> [u8; 2] {
     let clamped = input.min(4095);
     if clamped <= 2047 {
-        let neg = ((2047 - clamped)/8 ).min(255) as u8;
+        let neg = ((2047 - clamped) / 8).clamp(0, 255) as u8;
         [0, neg]
     } else {
-        let pos = ((clamped - 2047)/8).min(255) as u8;
+        let pos = ((clamped - 2047) / 8).clamp(0, 255) as u8;
         [pos, 0]
     }
 }
@@ -31,17 +31,16 @@ pub fn split_unsigned_value(input: u16) -> [u8; 2] {
 pub fn split_signed_value(input: i32) -> [u8; 2] {
     let clamped = input.clamp(-2047, 2047);
     if clamped >= 0 {
-        let pos = ((clamped * 255 + 1023) / 2047) as u8;
+        let pos = ((clamped * 255 + 1023) / 2047).clamp(0, 255) as u8;
         [pos, 0]
     } else {
-        let neg = (((-clamped) * 255 + 1023) / 2047) as u8;
+        let neg = (((-clamped) * 255 + 1023) / 2047).clamp(0, 255) as u8;
         [0, neg]
     }
 }
 
 ///attenuate a u12 by another u12
 pub fn attenuate(signal: u16, level: u16) -> u16 {
-
     let attenuated = (signal as u32 * level as u32) / 4095;
 
     attenuated as u16
