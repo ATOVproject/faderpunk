@@ -1,9 +1,8 @@
 // todo
-// Add SAVING
-// add latching
 
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use libfp::{constants::CURVE_LOG, utils::{attenuate_bipolar, is_close, split_unsigned_value}};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -11,7 +10,7 @@ use crate::{
     storage::ParamStore,
 };
 use config::{Config, Waveform};
-use libfp::constants::CURVE_LOG;
+
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 0;
@@ -115,7 +114,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             let next_pos = (lfo_pos + lfo_speed) % 4096.0;
             let att = att_glob.get().await;
 
-            let val = attenuate(wave.at(next_pos as usize), att);
+            let val = attenuate_bipolar(wave.at(next_pos as usize), att);
 
             output.set_value(val);
             let led = split_unsigned_value(val);
@@ -295,6 +294,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         },
                     };
                     leds.set(0, Led::Button, color, 75);
+                    latched_glob.set(false).await;
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }
@@ -302,34 +302,4 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     };
 
     join4(fut1, fut2, fut3, scene_handler).await;
-}
-
-fn attenuate(signal: u16, level: u16) -> u16 {
-    let center = 2048u32;
-
-    // Convert to signed deviation from center
-    let deviation = signal as i32 - center as i32;
-
-    // Apply attenuation as fixed-point scaling
-    let scaled = (deviation as i64 * level as i64) / 4095;
-
-    // Add back the center and clamp to 0..=4095
-    let result = center as i64 + scaled;
-    result.clamp(0, 4095) as u16
-}
-
-fn is_close(a: u16, b: u16) -> bool {
-    a.abs_diff(b) < 75
-}
-
-
-fn split_unsigned_value(input: u16) -> [u8; 2] {
-    let clamped = input.min(4095);
-    if clamped <= 2047 {
-        let neg = ((2047 - clamped)/8 ).min(255) as u8;
-        [0, neg]
-    } else {
-        let pos = ((clamped - 2047)/8).min(255) as u8;
-        [pos, 0]
-    }
 }
