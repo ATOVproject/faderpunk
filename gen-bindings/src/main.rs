@@ -14,15 +14,15 @@ fn main() {
         },
         javascript::GenerationSettings::enable_all(),
         generate_bindings!(
-            config::ConfigMsgIn,
-            config::ConfigMsgOut,
-            config::Param,
-            config::Curve,
-            config::Waveform,
-            config::ClockSrc,
-            config::Value,
-            config::GlobalConfig,
-            config::Layout
+            libfp::ConfigMsgIn,
+            libfp::ConfigMsgOut,
+            libfp::Param,
+            libfp::Curve,
+            libfp::Waveform,
+            libfp::ClockSrc,
+            libfp::Value,
+            libfp::GlobalConfig,
+            libfp::Layout
         ),
     )
     .unwrap();

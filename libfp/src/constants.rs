@@ -1,6 +1,3 @@
-pub const GLOBAL_CHANNELS: usize = 16;
-pub const I2C_ADDRESS: u16 = 0x56;
-
 pub static CHAN_LED_MAP: [[usize; 16]; 3] = [
     // Top LEDs
     [

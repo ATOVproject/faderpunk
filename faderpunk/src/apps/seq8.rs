@@ -6,7 +6,6 @@
 //add latching to clock res
 //add latching to gatelength
 
-use config::{Config, Param, Value};
 use defmt::info;
 use embassy_futures::{
     join::{join, join5},
@@ -14,6 +13,8 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
+
+use libfp::{Config, Param, Value};
 
 use crate::{
     app::{App, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, Range, SceneEvent, RGB8},

@@ -1,6 +1,5 @@
 use core::{marker::PhantomData, ops::Range};
 
-use config::{FromValue, GlobalConfig, Value, APP_MAX_PARAMS};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
@@ -8,6 +7,8 @@ use serde::{
     de::{DeserializeOwned, Error as DeError},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+
+use libfp::{FromValue, GlobalConfig, Value, APP_MAX_PARAMS};
 
 use crate::tasks::{
     configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},

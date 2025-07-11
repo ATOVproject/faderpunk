@@ -1,26 +1,28 @@
 // TODO :
 // add saving to modes
 
-use crate::{
-    app::{
-        colors::{RED, WHITE},
-        App, Led, Range, RGB8,
-    },
-    storage::ParamStore,
-};
-use config::Config;
 use defmt::info;
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::constants::{CURVE_EXP, CURVE_LOG};
 use serde::{Deserialize, Serialize};
 
-use crate::app::{AppStorage, ManagedStorage, SceneEvent};
+use libfp::{
+    constants::{CURVE_EXP, CURVE_LOG},
+    Config,
+};
+
+use crate::{
+    app::{
+        colors::{RED, WHITE},
+        App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8,
+    },
+    storage::ParamStore,
+};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;
 
-pub static CONFIG: config::Config<PARAMS> =
+pub static CONFIG: Config<PARAMS> =
     Config::new("AD Envelope", "variable curve AD, ASR or looping AD");
 
 #[derive(Serialize, Deserialize)]

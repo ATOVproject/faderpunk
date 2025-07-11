@@ -9,7 +9,7 @@ macro_rules! register_apps {
             signal::Signal,
         };
 
-        use config::ConfigMeta;
+        use libfp::ConfigMeta;
         use crate::{MAX_CHANNEL, MIDI_CHANNEL};
         use crate::{app::App, events::EVENT_PUBSUB};
         use embassy_executor::Spawner;

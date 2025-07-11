@@ -13,7 +13,6 @@ mod tasks;
 
 use core::sync::atomic::Ordering;
 
-use config::{GlobalConfig, Layout};
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::ClockConfig;
 use embassy_rp::config::Config;
@@ -29,12 +28,11 @@ use embassy_rp::{
 use embassy_rp::{i2c_slave, usb};
 use fm24v10::{Address, Fm24v10};
 use static_cell::StaticCell;
-
-use crate::tasks::buttons::BUTTON_PRESSED;
-
 use {defmt_rtt as _, panic_probe as _};
 
-use libfp::constants::{GLOBAL_CHANNELS, I2C_ADDRESS};
+use libfp::{GlobalConfig, Layout, GLOBAL_CHANNELS, I2C_ADDRESS};
+
+use crate::tasks::buttons::BUTTON_PRESSED;
 
 use events::CONFIG_CHANGE_WATCH;
 use layout::{LayoutManager, LAYOUT_MANAGER};

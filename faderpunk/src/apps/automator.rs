@@ -1,14 +1,12 @@
 //Bug :
 // No midi out when recording
 
-use config::{Config, Param, Value};
-use embassy_futures::{
-    join::{join4, join5},
-    select::select,
-};
+use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
+
+use libfp::{Config, Param, Value};
 
 use crate::{
     app::{
@@ -21,7 +19,7 @@ use crate::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
 
-pub static CONFIG: config::Config<PARAMS> = Config::new("Automator", "Fader movement recording")
+pub static CONFIG: Config<PARAMS> = Config::new("Automator", "Fader movement recording")
     .add_param(Param::i32 {
         name: "MIDI Channel",
         min: 1,

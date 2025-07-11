@@ -169,16 +169,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "config"
-version = "0.1.0"
-dependencies = [
- "heapless 0.7.17",
- "libfp",
- "postcard-bindgen",
- "serde",
-]
-
-[[package]]
 name = "convert_case"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -685,7 +675,6 @@ version = "0.1.2"
 dependencies = [
  "array-init",
  "cobs 0.4.0",
- "config",
  "cortex-m",
  "cortex-m-rt",
  "critical-section",
@@ -971,9 +960,11 @@ version = "0.1.0"
 dependencies = [
  "defmt 1.0.1",
  "embassy-time",
+ "heapless 0.7.17",
  "max11300",
  "midly",
  "postcard",
+ "postcard-bindgen",
  "serde",
  "smart-leds",
 ]

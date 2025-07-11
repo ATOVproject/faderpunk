@@ -1,9 +1,9 @@
-use config::Layout;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::Timer;
-use libfp::constants::GLOBAL_CHANNELS;
 use static_cell::StaticCell;
+
+use libfp::{Layout, GLOBAL_CHANNELS};
 
 use crate::apps::spawn_app_by_id;
 
