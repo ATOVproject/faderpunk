@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 defmt = "1.0"
 embassy-time = "0.4.0"
+max11300 = "0.4.2"
 midly = { version = "0.5.3", default-features = false }
 postcard = "1.1.2"
 serde = { version = "1.0.219", features = ["derive"], default-features = false }

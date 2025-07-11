@@ -11,6 +11,8 @@ use embassy_sync::{
     mutex::Mutex,
 };
 use embassy_time::Timer;
+use libfp::types::RegressionValues;
+use libm::roundf;
 use max11300::{
     config::{
         ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, DeviceConfig, Port, ADCCTL, ADCRANGE,
@@ -37,9 +39,9 @@ pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, (usize, MaxCmd), MAX_CH
     Channel::new();
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
-pub static MAX_VALUES_DAC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
+pub static MAX_VALUES_DAC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-pub static MAX_VALUES_ADC: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
+pub static MAX_VALUES_ADC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 
 #[derive(Clone, Copy)]
 pub enum MaxCmd {
@@ -59,9 +61,9 @@ pub enum MaxConfig {
 #[derive(Clone, Copy, Serialize, Deserialize, Default)]
 pub struct MaxCalibration {
     // (slope, intercept)
-    inputs: (f32, f32),
+    pub inputs: (f32, f32),
     // (slope, intercept)
-    outputs: [(f32, f32); 19],
+    pub outputs: RegressionValues,
 }
 
 pub async fn start_max(
@@ -70,7 +72,7 @@ pub async fn start_max(
     pio0: PIO0,
     mux_pins: MuxPins,
     cs: PIN_17,
-    calibration_data: MaxCalibration,
+    calibration_data: Option<MaxCalibration>,
 ) {
     let device_config = DeviceConfig {
         thshdn: THSHDN::Enabled,
@@ -188,27 +190,43 @@ async fn read_fader(
 
 // TODO: Should we make this message based?
 #[embassy_executor::task]
-async fn process_channel_values(max_driver: &'static SharedMax, calibration_data: MaxCalibration) {
+async fn process_channel_values(
+    max_driver: &'static SharedMax,
+    calibration_data: Option<MaxCalibration>,
+) {
     loop {
         // hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
 
-        for i in 0..16 {
+        // Do not process channel 16 (faders)
+        for i in (0..16).chain(17..20) {
             let port = Port::try_from(i).unwrap();
             let mut max = max_driver.lock().await;
             match max.get_mode(port) {
                 5 => {
-                    let value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
-                    let (slope, intercept) = calibration_data.outputs[i];
-                    let calibrated_value =
-                        ((value as f32 * (1.0 + slope) + intercept) as u16).clamp(0, 4095);
-                    max.dac_set_value(port, calibrated_value).await.unwrap();
+                    let target_dac_value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
+                    let calibrated_dac_value = if target_dac_value == 0 {
+                        // If the target is 0, the output MUST be 0
+                        0
+                    } else if let Some(data) = calibration_data {
+                        // For any non-zero target, apply the pre-calculated coefficients
+                        let (m, c) = data.outputs[i];
+
+                        roundf(target_dac_value as f32 * m + c).clamp(0.0, 4095.0) as u16
+                    } else {
+                        target_dac_value
+                    };
+
+                    max.dac_set_value(port, calibrated_dac_value).await.unwrap();
                 }
                 7 => {
                     let value = max.adc_get_value(port).await.unwrap();
-                    let (slope, intercept) = calibration_data.inputs;
-                    let calibrated_value =
-                        ((value as f32 * (1.0 + slope) + intercept) as u16).clamp(0, 4095);
+                    let calibrated_value = if let Some(data) = calibration_data {
+                        let (slope, intercept) = data.inputs;
+                        ((value as f32 * (1.0 + slope) + intercept) as u16).clamp(0, 4095)
+                    } else {
+                        value
+                    };
                     MAX_VALUES_ADC[i].store(calibrated_value, Ordering::Relaxed);
                 }
                 _ => {}
@@ -222,6 +240,10 @@ async fn message_loop(max_driver: &'static SharedMax) {
     // TODO: Put ports 17-19 in hi-impedance mode when using the internal GPIO interrupts
     loop {
         let (chan, msg) = MAX_CHANNEL.receive().await;
+        if chan == 16 {
+            // Do not process channel 16 (faders)
+            continue;
+        }
         let port = Port::try_from(chan).unwrap();
         let mut max = max_driver.lock().await;
 
