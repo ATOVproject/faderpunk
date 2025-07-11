@@ -160,9 +160,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     gateseq_glob.set(gateseq_saved.get()).await;
     seq_length_glob.set(seq_length_saved).await;
 
-    let mut clockres: [usize; 4] = [4; 4];
-    let mut gatel: [u8; 4] = [128; 4];
-
     for n in 0..4 {
         clockres[n] = resolution[clockres[n]];
         gatel[n] = (clockres[n] * gatel[n] as usize / 256) as u8;
@@ -549,6 +546,21 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         storage
                             .query(|s| (s.seq, s.gateseq, s.seq_length, s.seqres, s.gate_length))
                             .await;
+
+                    // storage
+                    //     .modify_and_save(
+                    //         |s| {
+                    //             (
+                    //                 s.seq.set(seq_saved.get()),
+                    //                 s.gateseq.set(gateseq_saved.get()),
+                    //                 s.seq_length = seq_length_saved,
+                    //                 s.seqres = clockres,
+                    //                 s.gate_length = gatel,
+                    //             )
+                    //         },
+                    //         None,
+                    //     )
+                    //     .await;
 
                     seq_glob.set(seq_saved.get()).await;
                     gateseq_glob.set(gateseq_saved.get()).await;
