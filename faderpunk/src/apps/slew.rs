@@ -1,11 +1,20 @@
 // todo
 // find what to do with the buttons
 
-
 use config::Config;
 use defmt::info;
-use embassy_futures::{join::{join3, join4}, select::select};
+use embassy_futures::{
+    join::{join3, join4},
+    select::select,
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use libfp::{
+    constants::CURVE_EXP,
+    utils::{
+        attenuate_bipolar, attenuverter, is_close, slew_limiter, split_signed_value,
+        split_unsigned_value,
+    },
+};
 use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
 
@@ -14,7 +23,8 @@ use crate::app::{App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8};
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Slew Limiter", "slow");
+pub static CONFIG: Config<PARAMS> = Config::new("Slew Limiter", "slows CV changes");
+// pub static CONFIG: Config<PARAMS> = Config::new("Envelope Follower", "audio amplitude to CV");
 
 const LED_COLOR: RGB8 = RGB8 {
     r: 188,
@@ -67,7 +77,7 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
     let attack_glob = app.make_global(1);
     let decay_glob = app.make_global(1);
     let att_glob = app.make_global(4095);
-    let latched_glob = app.make_global(false);
+    let latched_glob = app.make_global([false; 2]);
     let offset_glob = app.make_global(0);
 
     let mut oldval = 0.;
@@ -80,8 +90,8 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
 
     offset_glob.set(offset).await;
     att_glob.set(att).await;
-    attack_glob.set(stored_faders[0]).await;
-    decay_glob.set(stored_faders[1]).await;
+    attack_glob.set(CURVE_EXP[stored_faders[0] as usize]).await;
+    decay_glob.set(CURVE_EXP[stored_faders[1] as usize]).await;
 
     leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
     leds.set(1, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
@@ -89,22 +99,24 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
     let fut1 = async {
         loop {
             app.delay_millis(1).await;
-            let inval = _input.get_value();
-
+            let mut inval = _input.get_value();
+            // inval = rectify(inval);
 
             oldval = slew_limiter(
                 oldval,
                 inval,
                 attack_glob.get().await,
                 decay_glob.get().await,
-            ).clamp(0., 4095.);
+            )
+            .clamp(0., 4095.);
 
             let att = att_glob.get().await;
             let offset = offset_glob.get().await;
 
-            let outval = ((attenuate(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
+            let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
+            // info!("{}", attack_glob.get().await);
 
-            _output.set_value(oldval as u16);
+            _output.set_value(outval as u16);
 
             if !buttons.is_shift_pressed() {
                 let slew_led = split_unsigned_value(oldval as u16);
@@ -124,13 +136,13 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
             }
 
             if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set([false; 2]).await;
                 shift_old = true;
                 leds.reset(0, Led::Button);
                 leds.reset(1, Led::Button);
             }
             if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set([false; 2]).await;
                 shift_old = false;
 
                 leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
@@ -143,58 +155,77 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
         loop {
             let chan = faders.wait_for_any_change().await;
             let vals = faders.get_all_values();
-            
+            let mut latched = latched_glob.get().await;
+
             if !buttons.is_shift_pressed() {
                 storage.load(None).await;
                 let mut stored_faders = storage.query(|s| s.fader_saved).await;
-                if chan == 0 {
-                    attack_glob.set(vals[chan]).await;
-                    stored_faders[chan] = vals[chan];
+                if is_close(stored_faders[chan], vals[chan]) {
+                    latched[chan] = true;
+                    latched_glob.set(latched).await;
                 }
+                if latched[chan] == true {
+                    if chan == 0 {
+                        attack_glob.set(CURVE_EXP[vals[chan] as usize]).await;
+                        stored_faders[chan] = vals[chan];
+                    }
 
-                if chan == 1 {
-                    decay_glob.set(vals[chan]).await;
-                    stored_faders[chan] = vals[chan];  
+                    if chan == 1 {
+                        decay_glob.set(CURVE_EXP[vals[chan] as usize]).await;
+                        stored_faders[chan] = vals[chan];
+                    }
+
+                    storage
+                        .modify_and_save(
+                            |s| {
+                                s.fader_saved = stored_faders;
+                                s.fader_saved
+                            },
+                            None,
+                        )
+                        .await;
                 }
-
-            storage
-                    .modify_and_save(
-                        |s| {
-                            s.fader_saved = stored_faders;
-                            s.fader_saved
-                        },
-                        None,
-                    )
-                    .await;
-
             } else {
                 if chan == 0 {
-                    let offset = vals[chan] as i32 - 2047;
-                    offset_glob.set(offset).await;
+                    let offset = offset_glob.get().await;
+                    if is_close((offset + 2047) as u16, vals[chan]) {
+                        latched[chan] = true;
+                        latched_glob.set(latched).await;
+                    }
 
-                    storage
-                    .modify_and_save(
-                        |s| {
-                            s.offset_saved = offset;
-                            s.offset_saved
-                        },
-                        None,
-                    )
-                    .await;
+                    if latched[chan] == true {
+                        offset_glob.set(vals[chan] as i32 - 2047).await;
+                        storage
+                            .modify_and_save(
+                                |s| {
+                                    s.offset_saved = offset;
+                                    s.offset_saved
+                                },
+                                None,
+                            )
+                            .await;
+                    }
                 }
 
                 if chan == 1 {
-                    att_glob.set(vals[chan]).await;
+                    let att = att_glob.get().await;
+                    if is_close(att, vals[chan]) {
+                        latched[chan] = true;
+                        latched_glob.set(latched).await;
+                    }
+                    if latched[chan] == true {
+                        att_glob.set(vals[chan]).await;
 
-                    storage
-                    .modify_and_save(
-                        |s: &mut Storage| {
-                            s.att_saved = vals[chan];
-                            s.att_saved
-                        },
-                        None,
-                    )
-                    .await;
+                        storage
+                            .modify_and_save(
+                                |s: &mut Storage| {
+                                    s.att_saved = vals[chan];
+                                    s.att_saved
+                                },
+                                None,
+                            )
+                            .await;
+                    }
                 }
             }
         }
@@ -204,31 +235,56 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
         loop {
             let chan = buttons.wait_for_any_down().await;
             if !buttons.is_shift_pressed() {
-                if chan == 0 {}
+                // if chan == 0 {
+                //     leds.reset(0, Led::Button);
+                //     attack_glob.set(0).await;
+                //     storage
+                //         .modify_and_save(
+                //             |s| {
+                //                 s.fader_saved[chan] = 0;
+                //                 s.fader_saved
+                //             },
+                //             None,
+                //         )
+                //         .await;
+                // }
+                // if chan == 1 {
+                //     leds.reset(1, Led::Button);
+                //     decay_glob.set(0).await;
+                //     storage
+                //         .modify_and_save(
+                //             |s| {
+                //                 s.fader_saved[chan] = 0;
+                //                 s.fader_saved
+                //             },
+                //             None,
+                //         )
+                //         .await;
+                // }
             } else {
                 if chan == 0 {
                     offset_glob.set(0).await;
                     storage
-                    .modify_and_save(
-                        |s| {
-                            s.offset_saved = 0;
-                            s.offset_saved
-                        },
-                        None,
-                    )
-                    .await;
+                        .modify_and_save(
+                            |s| {
+                                s.offset_saved = 0;
+                                s.offset_saved
+                            },
+                            None,
+                        )
+                        .await;
                 }
                 if chan == 1 {
                     att_glob.set(4095).await;
                     storage
-                    .modify_and_save(
-                        |s| {
-                            s.att_saved = 4095;
-                            s.att_saved
-                        },
-                        None,
-                    )
-                    .await;
+                        .modify_and_save(
+                            |s| {
+                                s.att_saved = 4095;
+                                s.att_saved
+                            },
+                            None,
+                        )
+                        .await;
                 }
             }
         }
@@ -246,10 +302,8 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
 
                     offset_glob.set(offset).await;
                     att_glob.set(att).await;
-                    attack_glob.set(stored_faders[0]).await;
-                    decay_glob.set(stored_faders[1]).await;
-                    
-
+                    attack_glob.set(CURVE_EXP[stored_faders[0] as usize]).await;
+                    decay_glob.set(CURVE_EXP[stored_faders[1] as usize]).await;
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }
@@ -263,60 +317,3 @@ fn rectify(value: u16) -> u16 {
     let result = value.abs_diff(2047) + 2047;
     result
 }
-
-fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f32 {
-    let delta = input as i32 - prev as i32;
-    if delta > 0 {
-        let step = (4095 - rise_rate) as f32 / 100. + 1.;
-        prev + step
-    } else if delta < 0 {
-        let step = (4095 - fall_rate) as f32 / 100. + 1.;
-        prev - step
-    } else {
-        input.clamp(0, 4095) as f32
-    }
-}
-
-fn attenuate(input: u16, modulation: u16) -> u16 {
-    let input = input as i32;
-    let mod_val = modulation as i32;
-
-    // Map modulation (0..=4095) to a blend factor from -1.0 (invert) to +1.0 (normal)
-    let blend = (mod_val - 2047) as f32 / 2048.0;
-
-    // Normal = input, Inverted = 4095 - input
-    let normal = input as f32;
-    let inverted = (4095 - input) as f32;
-
-    // Interpolate between inverted and normal
-    let result = inverted * (1.0 - blend) / 2.0 + normal * (1.0 + blend) / 2.0;
-
-    result.clamp(0.0, 4095.0) as u16
-}
-
-fn split_unsigned_value(input: u16) -> [u8; 2] {
-    let clamped = input.min(4095);
-    if clamped <= 2047 {
-        let neg = ((2047 - clamped)/8 ).min(255) as u8;
-        [0, neg]
-    } else {
-        let pos = ((clamped - 2047)/8).min(255) as u8;
-        [pos, 0]
-    }
-}
-
-
-fn split_signed_value(input: i32) -> [u8; 2] {
-    let clamped = input.clamp(-2047, 2047);
-    if clamped >= 0 {
-        let pos = ((clamped * 255 + 1023) / 2047) as u8;
-        [pos, 0]
-    } else {
-        let neg = (((-clamped) * 255 + 1023) / 2047) as u8;
-        [0, neg]
-    }
-}
-
-
-
-    
