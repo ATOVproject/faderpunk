@@ -159,16 +159,13 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     outval = CURVE_LOG[vals as usize];
                 }
 
-                leds.set(0, Led::Bottom, WHITE, 255 - (outval / 16) as u8);
                 leds.set(0, Led::Top, WHITE, (outval / 16) as u8);
                 leds.reset(1, Led::Top);
-                leds.reset(1, Led::Bottom);
             }
 
             if env_state == 2 {
                 vals -= 4095.0 / times[1];
                 leds.reset(0, Led::Top);
-                leds.reset(0, Led::Bottom);
                 if vals < 0.0 {
                     env_state = 0;
                     vals = 0.0;
@@ -182,11 +179,10 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 if curve_setting[1] == 2 {
                     outval = CURVE_LOG[vals as usize];
                 }
-                leds.set(1, Led::Bottom, WHITE, 255 - (outval / 16) as u8);
-                leds.set(1, Led::Top, WHITE, ((outval / 16) as u8));
+
+                leds.set(1, Led::Top, WHITE, (outval / 16) as u8);
 
                 if vals == 0.0 {
-                    leds.reset(1, Led::Bottom);
                     if mode == 2 && inputval > 406 {
                         env_state = 1;
                     }
@@ -198,8 +194,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 leds.set(0, Led::Button, color[mode as usize], 75);
                 leds.set(1, Led::Button, color[0], 0);
                 let att = att_glob.get().await;
-                leds.set(1, Led::Bottom, RED, 255 - (att / 16) as u8);
-                leds.set(1, Led::Top, RED, ((att / 16) as u8));
+                leds.set(1, Led::Top, RED, (att / 16) as u8)
             } else {
                 for n in 0..2 {
                     leds.set(n, Led::Button, color[curve_setting[n] as usize], 75);
@@ -226,7 +221,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
             if !buttons.is_shift_pressed() {
                 let mut times = times_glob.get().await;
-
                 let mut stored_faders = storage.query(|s| s.fader_saved).await;
 
                 if is_close(vals[chan], stored_faders[chan]) {
@@ -333,6 +327,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         times[n] = CURVE_LOG[stored_faders[n] as usize] as f32 + minispeed;
                     }
                     times_glob.set(times).await;
+                    latched_glob.set([false; 2]).await;
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }
