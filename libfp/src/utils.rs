@@ -60,3 +60,44 @@ pub fn attenuate_bipolar(signal: u16, level: u16) -> u16 {
     let result = center as i64 + scaled;
     result.clamp(0, 4095) as u16
 }
+
+///attenuverter
+pub fn attenuverter(input: u16, modulation: u16) -> u16 {
+    let input = input as i32;
+    let mod_val = modulation as i32;
+
+    // Map modulation (0..=4095) to a blend factor from -1.0 (invert) to +1.0 (normal)
+    let blend = (mod_val - 2047) as f32 / 2048.0;
+
+    // Normal = input, Inverted = 4095 - input
+    let normal = input as f32;
+    let inverted = (4095 - input) as f32;
+
+    // Interpolate between inverted and normal
+    let result = inverted * (1.0 - blend) / 2.0 + normal * (1.0 + blend) / 2.0;
+
+    result.clamp(0.0, 4095.0) as u16
+}
+
+pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f32 {
+    let min_slew = 200.;
+    let max_slew = 0.5;
+    let delta = input as i32 - prev as i32;
+    if delta > 0 {
+        let step = (4095 - rise_rate) as f32 / min_slew + max_slew;
+        if prev + step < input as f32 {
+            prev + step
+        } else {
+            input as f32
+        }
+    } else if delta < 0 {
+        let step = (4095 - fall_rate) as f32 / min_slew + max_slew;
+        if prev - step > input as f32 {
+            prev - step
+        } else {
+            input as f32
+        }
+    } else {
+        input.clamp(0, 4095) as f32
+    }
+}
