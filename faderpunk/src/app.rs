@@ -6,11 +6,11 @@ use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
 use rand::Rng;
 
-use config::Curve;
 use libfp::{
     constants::{CURVE_EXP, CURVE_LOG},
     ext::BrightnessExt,
     utils::scale_bits_12_7,
+    Curve,
 };
 
 use crate::{

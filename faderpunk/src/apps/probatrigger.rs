@@ -1,7 +1,6 @@
-use config::{Config, Param, Value};
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::utils::is_close;
+use libfp::{utils::is_close, Config, Param, Value};
 use serde::{Deserialize, Serialize};
 use smart_leds::{colors::RED, RGB, RGB8};
 
@@ -12,7 +11,7 @@ use crate::app::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 3;
 
-pub static CONFIG: config::Config<PARAMS> =
+pub static CONFIG: Config<PARAMS> =
     Config::new("Random Triggers", "Generate random triggers on clock")
         .add_param(Param::i32 {
             name: "MIDI Channel",

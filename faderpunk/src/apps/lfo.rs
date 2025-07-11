@@ -2,20 +2,23 @@
 
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{constants::CURVE_LOG, utils::{attenuate_bipolar, is_close, split_unsigned_value}};
+use libfp::{
+    utils::{attenuate_bipolar, is_close, split_unsigned_value},
+    Curve,
+};
 use serde::{Deserialize, Serialize};
+
+use libfp::{Config, Waveform};
 
 use crate::{
     app::{colors::RED, App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8},
     storage::ParamStore,
 };
-use config::{Config, Waveform};
-
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 0;
 
-pub static CONFIG: config::Config<PARAMS> = Config::new("LFO", "Wooooosh");
+pub static CONFIG: Config<PARAMS> = Config::new("LFO", "Wooooosh");
 
 #[derive(Serialize, Deserialize)]
 
@@ -66,6 +69,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let buttons = app.use_buttons();
     let leds = app.use_leds();
 
+    let curve = Curve::Logarithmic;
+
     let mut shift_old = false;
 
     storage.load(None).await;
@@ -101,7 +106,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     leds.set(0, Led::Button, color, 75);
 
     glob_lfo_speed
-        .set(CURVE_LOG[fader_saved as usize] as f32 * 0.015 + 0.0682)
+        .set(curve.at(fader_saved as usize) as f32 * 0.015 + 0.0682)
         .await;
 
     let fut1 = async {
@@ -144,7 +149,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
             if !buttons.is_shift_pressed() {
                 leds.set(0, Led::Top, color, led[0]);
-                leds.set(0,Led::Bottom,color,led[1]);
+                leds.set(0, Led::Bottom, color, led[1]);
             } else {
                 leds.set(0, Led::Top, RED, ((att / 16) / 2) as u8);
                 leds.set(0, Led::Bottom, RED, 0);
@@ -176,7 +181,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 }
                 if latched_glob.get().await {
                     glob_lfo_speed
-                        .set(CURVE_LOG[fader_val as usize] as f32 * 0.015 + 0.0682)
+                        .set(curve.at(fader_val as usize) as f32 * 0.015 + 0.0682)
                         .await;
                     storage
                         .modify_and_save(
@@ -268,7 +273,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     glob_wave.set(wave_saved).await;
 
                     glob_lfo_speed
-                        .set(CURVE_LOG[fader_saved as usize] as f32 * 0.015 + 0.0682)
+                        .set(curve.at(fader_saved as usize) as f32 * 0.015 + 0.0682)
                         .await;
 
                     let color = match wave_saved {

@@ -11,9 +11,9 @@ use embassy_sync::{
 };
 use embassy_time::Ticker;
 
+use libfp::{utils::bpm_to_clock_duration, ClockSrc};
+
 use crate::{Spawner, CONFIG_CHANGE_WATCH};
-use config::ClockSrc;
-use libfp::utils::bpm_to_clock_duration;
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
 

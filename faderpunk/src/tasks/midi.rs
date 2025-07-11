@@ -1,21 +1,26 @@
-use config::{ClockSrc, GlobalConfig};
 use defmt::info;
 use embassy_futures::join::{join, join4};
-use embassy_rp::peripherals::USB;
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
-use embassy_sync::channel::{Channel, Sender};
-use embassy_sync::mutex::Mutex;
+use embassy_rp::{
+    peripherals::{UART0, UART1, USB},
+    uart::{Async, BufferedUart, BufferedUartTx, Error as UartError, UartTx},
+    usb::Driver,
+};
+use embassy_sync::{
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    channel::{Channel, Sender},
+    mutex::Mutex,
+};
 use embassy_time::{with_timeout, Duration, TimeoutError};
 use embassy_usb::class::midi::{MidiClass, Sender as UsbSender};
 use embedded_io_async::{Read, Write};
+use midly::{
+    io::Cursor,
+    live::{LiveEvent, SystemCommon, SystemRealtime},
+    stream::MidiStream,
+    MidiMessage,
+};
 
-use embassy_rp::peripherals::{UART0, UART1};
-use embassy_rp::uart::{Async, BufferedUart, BufferedUartTx, Error as UartError, UartTx};
-use embassy_rp::usb::Driver;
-use midly::io::Cursor;
-use midly::live::{LiveEvent, SystemCommon, SystemRealtime};
-use midly::stream::MidiStream;
-use midly::MidiMessage;
+use libfp::{ClockSrc, GlobalConfig};
 
 use crate::{
     events::{InputEvent, CONFIG_CHANGE_WATCH, EVENT_PUBSUB},

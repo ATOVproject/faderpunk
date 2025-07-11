@@ -9,11 +9,11 @@ use embassy_usb::driver::{Endpoint, EndpointIn, EndpointOut};
 use heapless::Vec;
 use postcard::{from_bytes, to_vec};
 
-use config::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS};
+use libfp::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS};
 
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
 use crate::storage::store_global_config;
-use crate::{CONFIG_CHANGE_WATCH, GLOBAL_CHANNELS};
+use crate::CONFIG_CHANGE_WATCH;
 
 use super::transport::{WebEndpoints, USB_MAX_PACKET_SIZE};
 

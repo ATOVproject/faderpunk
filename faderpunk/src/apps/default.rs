@@ -1,7 +1,8 @@
-use config::{Config, Curve, Param, Value};
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
+
+use libfp::{Config, Curve, Param, Value};
 
 use crate::app::{
     App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent, RGB8,
@@ -10,7 +11,7 @@ use crate::app::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
 
-pub static CONFIG: config::Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
+pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
     .add_param(Param::Curve {
         name: "Curve",
         variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],

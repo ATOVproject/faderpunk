@@ -1,19 +1,12 @@
 // todo
 // find what to do with the buttons
 
-use config::Config;
-use defmt::info;
-use embassy_futures::{
-    join::{join3, join4},
-    select::select,
-};
+use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::CURVE_EXP,
-    utils::{
-        attenuate_bipolar, attenuverter, is_close, slew_limiter, split_signed_value,
-        split_unsigned_value,
-    },
+    utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
+    Config,
 };
 use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;

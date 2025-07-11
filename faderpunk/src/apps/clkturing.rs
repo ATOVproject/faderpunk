@@ -1,20 +1,14 @@
 // Todo
 // Quantizer
 
-use config::{Config, Curve, Param, Value};
-use defmt::info;
-use embassy_futures::{
-    join::{join4, join5},
-    select::select,
-};
+use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::utils::is_close;
+use libfp::{utils::is_close, Config, Param, Value};
 use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
 
 use crate::app::{
-    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
-    RGB8,
+    App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent, RGB8,
 };
 
 pub const CHANNELS: usize = 2;

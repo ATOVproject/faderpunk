@@ -2,33 +2,34 @@
 // Save div, mute, attenuation - Added the saving slots, need to add write/read in the app.
 // Add attenuator (shift + fader)
 
-use config::{Config, Param, Value};
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
-use smart_leds::{RGB, RGB8};
 
 use crate::app::{
     App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
+    RGB8,
 };
 
-use libfp::utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value};
+use libfp::{
+    utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
+    Config, Param, Value,
+};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
 
-pub static CONFIG: config::Config<PARAMS> =
-    Config::new("Random CC/CV", "Generate random values on clock")
-        .add_param(Param::i32 {
-            name: "MIDI Channel",
-            min: 1,
-            max: 16,
-        })
-        .add_param(Param::i32 {
-            name: "MIDI CC",
-            min: 1,
-            max: 128,
-        });
+pub static CONFIG: Config<PARAMS> = Config::new("Random CC/CV", "Generate random values on clock")
+    .add_param(Param::i32 {
+        name: "MIDI Channel",
+        min: 1,
+        max: 16,
+    })
+    .add_param(Param::i32 {
+        name: "MIDI CC",
+        min: 1,
+        max: 128,
+    });
 
 pub struct Params<'a> {
     midi_channel: ParamSlot<'a, i32, PARAMS>,
@@ -99,7 +100,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut clkn = 0;
     let mut val = 2048;
 
-    const LED_COLOR: RGB<u8> = RGB8 {
+    const LED_COLOR: RGB8 = RGB8 {
         r: 243,
         g: 191,
         b: 78,
@@ -144,7 +145,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         let g = (rnd.roll() / 16) as u8;
                         let b = (rnd.roll() / 16) as u8;
 
-                        let color: RGB<u8> = RGB8 { r: r, g: g, b: b };
+                        let color: RGB8 = RGB8 { r, g, b };
                         leds.set(0, Led::Top, color, ledj[0]);
                         leds.set(0, Led::Bottom, color, ledj[1]);
                         leds.set(0, Led::Button, color, 125);

@@ -1,3 +1,12 @@
+use embassy_futures::select::select;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use linreg::linear_regression;
+use max11300::config::{ConfigMode5, DACRANGE};
+use portable_atomic::Ordering;
+use smart_leds::colors::{BLUE, GREEN, RED};
+
+use libfp::Config;
+
 use crate::{
     app::{App, Led, Range},
     storage::store_calibration_data,
@@ -9,18 +18,11 @@ use crate::{
         },
     },
 };
-use config::Config;
-use embassy_futures::select::select;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use linreg::linear_regression;
-use max11300::config::{ConfigMode5, DACRANGE};
-use portable_atomic::Ordering;
-use smart_leds::colors::{BLUE, GREEN, RED};
 
 pub const CHANNELS: usize = 16;
 pub const PARAMS: usize = 0;
 
-pub static CONFIG: config::Config<PARAMS> = Config::new("Calibrator", "Calibrate your device");
+pub static CONFIG: Config<PARAMS> = Config::new("Calibrator", "Calibrate your device");
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
