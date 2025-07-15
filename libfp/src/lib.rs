@@ -126,6 +126,15 @@ impl FromValue for i32 {
     }
 }
 
+impl FromValue for usize {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::Enum(i) => i,
+            _ => Self::default(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum ClockSrc {
     None,
@@ -268,6 +277,12 @@ impl From<i32> for Value {
 impl From<bool> for Value {
     fn from(value: bool) -> Self {
         Value::bool(value)
+    }
+}
+
+impl From<usize> for Value {
+    fn from(value: usize) -> Self {
+        Value::Enum(value)
     }
 }
 
