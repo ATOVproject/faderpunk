@@ -140,7 +140,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     jack.set_low().await;
                 }
                 ClockEvent::Tick => {
-                    clkn += 1;
                     let muted = glob_muted.get().await;
                     let val = prob_glob.get().await;
                     let div = div_glob.get().await;
@@ -154,7 +153,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         }
 
                         if buttons.is_shift_pressed() {
-                            leds.set(0, Led::Top, RED, LED_BRIGHTNESS);
+                            leds.set(0, Led::Bottom, RED, LED_BRIGHTNESS);
                         }
                         rndval = die.roll();
                     }
@@ -166,10 +165,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             note_on = false;
                             jack.set_low().await;
                         }
-                        if buttons.is_shift_pressed() {
-                            leds.set(0, Led::Top, RED, 0);
-                        }
+
+                        leds.set(0, Led::Bottom, RED, 0);
                     }
+                    clkn += 1;
                 }
                 _ => {}
             }

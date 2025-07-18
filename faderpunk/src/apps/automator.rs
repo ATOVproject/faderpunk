@@ -2,7 +2,10 @@
 // No midi out when recording
 
 use config::{Config, Param, Value};
-use embassy_futures::{join::{join4, join5}, select::select};
+use embassy_futures::{
+    join::{join4, join5},
+    select::select,
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
@@ -133,16 +136,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if last_midi / 16 != (val) / 16 {
                 midi.send_cc(cc as u8, val).await;
                 last_midi = val;
-            }
-            leds.set(0, Led::Top, WHITE, (val / 16) as u8);
+            };
             if recording_glob.get().await {
-                leds.set(0, Led::Top, RGB8 { r: 255, g: 0, b: 0 }, (val / 32) as u8);
-                leds.set(
-                    0,
-                    Led::Bottom,
-                    RGB8 { r: 255, g: 0, b: 0 },
-                    (255 - (val / 16) as u8) / 2,
-                )
+                leds.set(0, Led::Top, RED, (val / 16) as u8);
+            } else {
+                leds.set(0, Led::Top, WHITE, (val / 16) as u8)
             }
         }
     };
@@ -156,72 +154,72 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     recording_glob.set(recording).await;
                 }
                 ClockEvent::Tick => {
+                    length = length_glob.get().await;
+
+                    index %= length;
+
+                    index_glob.set(index).await;
+                    recording = recording_glob.get().await;
+
+                    if index == 0 && recording {
+                        //stop recording at max length
+                        recording = false;
+                        recording_glob.set(recording).await;
+                        length = 384;
+                        length_glob.set(length).await;
+                        buffer_glob.set(buffer).await;
+                        offset_glob.set(0).await;
+                        latched.set(false).await;
+                        // storage
+                        //     .modify(|s| {
+                        //         s.buffer_saved.set(buffer);
+                        //         s.length_saved = length;
+                        //     })
+                        //     .await;
+                    }
+
+                    if rec_flag.get().await && index % 96 == 0 {
+                        index = 0;
+                        recording = true;
+                        recording_glob.set(recording).await;
+                        rec_flag.set(false).await;
+                        length = 384;
+                        length_glob.set(length).await;
+                        latched.set(true).await
+                    }
+
+                    if recording {
+                        let val = fader.get_value();
+                        buffer[index] = val;
+                        leds.set(0, Led::Button, RED, 100);
+                    } else {
+                        leds.set(0, Led::Button, WHITE, 100);
+                    }
+
+                    if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
+                        //finish recording
+                        recording = !recording;
+                        recording_glob.set(recording).await;
+                        length = index;
+                        length_glob.set(length).await;
+                        buffer_glob.set(buffer).await;
+                        offset_glob.set(0).await;
+                        latched.set(false).await;
+                        // storage
+                        //     .modify(|s| {
+                        //         s.buffer_saved.set(buffer);
+                        //         s.length_saved = length;
+                        //     })
+                        //     .await;
+                    }
+
+                    if index == 0 {
+                        leds.reset(0, Led::Button);
+                    }
+
                     index += 1;
                 }
                 _ => {}
-            }
-
-            length = length_glob.get().await;
-
-            index %= length;
-
-            index_glob.set(index).await;
-            recording = recording_glob.get().await;
-
-            if index == 0 && recording {
-                //stop recording at max length
-                recording = false;
-                recording_glob.set(recording).await;
-                length = 384;
-                length_glob.set(length).await;
-                buffer_glob.set(buffer).await;
-                offset_glob.set(0).await;
-                latched.set(false).await;
-                // storage
-                //     .modify(|s| {
-                //         s.buffer_saved.set(buffer);
-                //         s.length_saved = length;
-                //     })
-                //     .await;
-            }
-
-            if rec_flag.get().await && index % 96 == 0 {
-                index = 0;
-                recording = true;
-                recording_glob.set(recording).await;
-                rec_flag.set(false).await;
-                length = 384;
-                length_glob.set(length).await;
-                latched.set(true).await
-            }
-
-            if recording {
-                let val = fader.get_value();
-                buffer[index] = val;
-                leds.set(0, Led::Button, RED, 100);
-            } else {
-                leds.set(0, Led::Button, WHITE, 100);
-            }
-
-            if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
-                //finish recording
-                recording = !recording;
-                recording_glob.set(recording).await;
-                length = index;
-                length_glob.set(length).await;
-                buffer_glob.set(buffer).await;
-                offset_glob.set(0).await;
-                latched.set(false).await;
-                // storage
-                //     .modify(|s| {
-                //         s.buffer_saved.set(buffer);
-                //         s.length_saved = length;
-                //     })
-                //     .await;
-            }
-
-            if index == 0 {
-                leds.reset(0, Led::Button);
             }
         }
     };
