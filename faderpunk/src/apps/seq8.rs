@@ -502,7 +502,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     }
                 }
                 ClockEvent::Tick => {
-                    clockn += 1;
                     for n in 0..=3 {
                         if clockn % clockres[n] == 0 {
                             let clkindex =
@@ -528,6 +527,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             }
                         }
                     }
+                    clockn += 1;
                 }
                 _ => {}
             }

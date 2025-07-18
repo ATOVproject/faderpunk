@@ -131,7 +131,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     clkn = 0;
                 }
                 ClockEvent::Tick => {
-                    clkn += 1;
                     let muted = glob_muted.get().await;
                     let att = att_glob.get().await;
                     let div = div_glob.get().await;
@@ -151,6 +150,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         leds.set(0, Led::Button, color, 125);
                         val = rnd.roll();
                     }
+                    clkn += 1;
                 }
                 _ => {}
             }
