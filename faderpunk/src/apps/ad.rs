@@ -9,6 +9,7 @@ use crate::{
     storage::ParamStore,
 };
 use config::Config;
+use defmt::info;
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::constants::{CURVE_EXP, CURVE_LOG};
@@ -175,6 +176,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 }
                 if curve_setting[1] == 1 {
                     outval = CURVE_EXP[vals as usize];
+                    info!("here!");
                 }
                 if curve_setting[1] == 2 {
                     outval = CURVE_LOG[vals as usize];
@@ -188,7 +190,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     }
                 }
             }
-            outval = attenuate(vals as u16, att_glob.get().await);
+            outval = attenuate(outval as u16, att_glob.get().await);
             output.set_value(outval);
             if shift_old {
                 leds.set(0, Led::Button, color[mode as usize], 75);
