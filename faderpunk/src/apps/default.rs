@@ -107,6 +107,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let curve = params.curve.get().await;
             if !muted {
                 jack.set_value(curve.at(fader.get_value().into()));
+                leds.set(0, Led::Top, LED_COLOR, (fader.get_value() / 16) as u8);
             }
         }
     };
