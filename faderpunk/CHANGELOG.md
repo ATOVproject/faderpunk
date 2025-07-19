@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.2.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.1.1...faderpunk-v0.2.0) (2025-07-19)
+
+
+### Features
+
+* **ad:** add latest ad version ([08029de](https://github.com/ATOVproject/faderpunk/commit/08029de8927f087996ce5a1e1eb0737b59350069))
+* **app:** improve Curve api ([493f4b7](https://github.com/ATOVproject/faderpunk/commit/493f4b7aaaee73a0f5a4a2f558e11a919fe253c4))
+* **apps:** improve fader api ([e54c554](https://github.com/ATOVproject/faderpunk/commit/e54c5544da87b0497a59db03bde5d2363272e81e))
+* **apps:** remove test apps ([a9b9373](https://github.com/ATOVproject/faderpunk/commit/a9b9373ebd1b580123bc70955044394cc6096438))
+* **automator:** add latest automator version ([99c8a6b](https://github.com/ATOVproject/faderpunk/commit/99c8a6be7f906cfc426d696b81d6c96e51652244))
+* **calibration:** add output calibration over i2c ([d8b25a1](https://github.com/ATOVproject/faderpunk/commit/d8b25a1d09294f39396d8960110223bdc71d24a6))
+* **calibration:** i2c proto ping pong ([2c1d190](https://github.com/ATOVproject/faderpunk/commit/2c1d190ccb7a76c5bc61cc96cae9749a6277a833))
+* **calibrator:** add manual calibration app ([98db6fc](https://github.com/ATOVproject/faderpunk/commit/98db6fcda9af6157009d4bcc2f3eaecbfb781e56))
+* **clkturing:** add latest version of clkturing app ([b3972fe](https://github.com/ATOVproject/faderpunk/commit/b3972fe40eb2d464d243dcca9231184fc6b5f463))
+* **follower:** add latest version of follower app ([853496f](https://github.com/ATOVproject/faderpunk/commit/853496f8cf899c744d741bef35743823faabb391))
+* **leds:** add ability to use effects in apps ([a0298a8](https://github.com/ATOVproject/faderpunk/commit/a0298a8929d1151b68ba762c855df3c4d4a2ac8c))
+* **lfo:** add latest lfo version ([b6a5a1e](https://github.com/ATOVproject/faderpunk/commit/b6a5a1e2073ea57d645d03c505b76f12341dfcf1))
+* **max:** load calibration data, use it in max task ([12018b6](https://github.com/ATOVproject/faderpunk/commit/12018b64f5f810e5b8ceff44954f93dec5c30895))
+* **max:** set fader refresh rate to 1ms ([dc09296](https://github.com/ATOVproject/faderpunk/commit/dc09296c366af785a32c3a8566038ff179eb5ed1))
+* **probatrigger:** add latest version of probatrigger app ([a02d8ba](https://github.com/ATOVproject/faderpunk/commit/a02d8ba83d92a372209596ef736c046bf4f33d1a))
+* **seq8:** add latest seq8 version ([f6518a2](https://github.com/ATOVproject/faderpunk/commit/f6518a25b851f14cd243ecd9baed1f17265e5c71))
+* **slew:** add latest version of slew app ([4bb9cd7](https://github.com/ATOVproject/faderpunk/commit/4bb9cd7282a71060f10fbb9017527ab69c95e972))
+* **turing:** add latest version of turing app ([0bae27b](https://github.com/ATOVproject/faderpunk/commit/0bae27b1c4f0a6d6dc54687b54f3d97638ee059b))
+
+
+### Bug Fixes
+
+* **ad:** fix bug where curve was not properly applied ([0727b48](https://github.com/ATOVproject/faderpunk/commit/0727b480bd0372bfbcbacbf923857ec21c355a08))
+* **ad:** fix led and latching bug ([8d83615](https://github.com/ATOVproject/faderpunk/commit/8d8361598964e5927e9086983434fc94c7ae396f))
+* **automator:** full rework ([e6956bb](https://github.com/ATOVproject/faderpunk/commit/e6956bb6bae6ba4fb84d59aa7be89736363537e5))
+* **automator:** remove saving ([169a4f9](https://github.com/ATOVproject/faderpunk/commit/169a4f9555e7790853e3ad9131c32d0e7e4d09e6))
+* **calibration:** correct input value properly ([f62b92f](https://github.com/ATOVproject/faderpunk/commit/f62b92fa9a1b5ce44c9593212122055e7582d13b))
+* **clkcvrnd:** add attenuation fix leds ([6202e8f](https://github.com/ATOVproject/faderpunk/commit/6202e8ff60da6fc0fdc13bf24125077d97f84e67))
+* **clkcvrnd:** fix  a little LED bug ([2787163](https://github.com/ATOVproject/faderpunk/commit/2787163f41198fb19ea44266691ed45f59f89547))
+* **clkcvrnd:** full rework ([cacfa73](https://github.com/ATOVproject/faderpunk/commit/cacfa737a380bcd60da9745f6c43662189d139bd))
+* **clkturing:** full rework ([1ed6531](https://github.com/ATOVproject/faderpunk/commit/1ed6531656f891f0d4bb5b3ee723509397737884))
+* **clkturing:** rename ([176a0f0](https://github.com/ATOVproject/faderpunk/commit/176a0f00376810fb6b498721707eb3aa27c3e829))
+* **default:** add led feedback ([7c785c0](https://github.com/ATOVproject/faderpunk/commit/7c785c07ec38fe43fe5ca36b4ff51f2e886a72c6))
+* fix recurring mistake when using ticks ([f084c50](https://github.com/ATOVproject/faderpunk/commit/f084c501d1c5d324e845c612dcb71d51fc043cae))
+* **follower:** refine ([009f80b](https://github.com/ATOVproject/faderpunk/commit/009f80b681b45133fd6df6e6b39b0f8b99fb9f54))
+* **lfo:** some led changes ([fc62eac](https://github.com/ATOVproject/faderpunk/commit/fc62eacd229e42e7665d30a94503777c10164e63))
+* **lfo:** use utils functions ([30c51bd](https://github.com/ATOVproject/faderpunk/commit/30c51bd637ac300e617c2d18395e394641164b87))
+* **probatrigger:** change name and description ([ab0a827](https://github.com/ATOVproject/faderpunk/commit/ab0a827480f6bed74c6cf98867ae07322c3c8b6a))
+* **probatrigger:** full rework ([20669b1](https://github.com/ATOVproject/faderpunk/commit/20669b14ed7c2056a36fcbbe5cda761b3a40b8db))
+* **seq8:** make it recall resolution and gate length on boot ([0e6b6c1](https://github.com/ATOVproject/faderpunk/commit/0e6b6c1b84c977889cba0468fcb08fc180d0cf58))
+* **slew:** full rework ([5686a04](https://github.com/ATOVproject/faderpunk/commit/5686a040b7367518e441d88d9a9c48393f8567d5))
+* **slew:** refine ([f7e0fc1](https://github.com/ATOVproject/faderpunk/commit/f7e0fc11c33164ee70722ad88ece3e6f33344b00))
+* **turing:** added param, saving and led feedback ([5e3fe40](https://github.com/ATOVproject/faderpunk/commit/5e3fe407a9b091d337a7d73e91a0c2a0db4cfe55))
+
 ## [0.1.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.1.0...faderpunk-v0.1.1) (2025-07-08)
 
 
