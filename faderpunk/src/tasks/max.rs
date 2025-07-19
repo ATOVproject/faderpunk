@@ -1,3 +1,4 @@
+use defmt::Format;
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
@@ -59,7 +60,7 @@ pub enum MaxConfig {
     Mode7(ConfigMode7),
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Serialize, Deserialize, Default, Format)]
 pub struct MaxCalibration {
     // (slope, intercept)
     pub inputs: (f32, f32),
@@ -206,7 +207,7 @@ async fn process_channel_values(
             match max.get_mode(port) {
                 5 => {
                     let target_dac_value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
-                    let calibrated_dac_value = if target_dac_value == 0 {
+                    let calibrated_value = if target_dac_value == 0 {
                         // If the target is 0, the output MUST be 0
                         0
                     // TODO: Is this fast enough, can we safely do that in this tight loop?
@@ -216,7 +217,6 @@ async fn process_channel_values(
                         // For any non-zero target, apply the pre-correction formula
                         let (slope, intercept) = data.outputs[i];
                         let target_f32 = target_dac_value as f32;
-
                         let raw_f32 = (target_f32 - intercept) / (1.0 + slope);
 
                         // Round and clamp to the valid DAC range
@@ -225,7 +225,7 @@ async fn process_channel_values(
                         target_dac_value
                     };
 
-                    max.dac_set_value(port, calibrated_dac_value).await.unwrap();
+                    max.dac_set_value(port, calibrated_value).await.unwrap();
                 }
                 7 => {
                     let value = max.adc_get_value(port).await.unwrap();
@@ -233,7 +233,10 @@ async fn process_channel_values(
                         value
                     } else if let Some(data) = calibration_data {
                         let (slope, intercept) = data.inputs;
-                        roundf(value as f32 * slope + intercept).clamp(0.0, 4095.0) as u16
+                        let raw_value_f32 = value as f32;
+                        let corrected_f32 = raw_value_f32 * (1.0 + slope) + intercept;
+
+                        roundf(corrected_f32).clamp(0.0, 4095.0) as u16
                     } else {
                         value
                     };
