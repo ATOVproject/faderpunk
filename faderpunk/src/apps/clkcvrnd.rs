@@ -228,8 +228,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         midi.send_cc(cc as u8, 0).await;
                         leds.set(0, Led::Top, LED_COLOR, 0);
                         leds.set(0, Led::Bottom, LED_COLOR, 0);
-                    } else {
-                        leds.set(0, Led::Button, LED_COLOR, 75);
                     }
                     latched_glob.set(false).await;
                 }
