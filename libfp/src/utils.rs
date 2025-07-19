@@ -10,12 +10,12 @@ pub fn scale_bits_12_7(value: u16) -> u7 {
     u7::new(((value as u32 * 127) / 4095) as u8)
 }
 
-///return bool of values are close
+/// Return bool of values are close
 pub fn is_close(a: u16, b: u16) -> bool {
     a.abs_diff(b) < 100
 }
 
-///split 0 to 4095 value to two 0-255 u8 used for LEDs
+/// Split 0 to 4095 value to two 0-255 u8 used for LEDs
 pub fn split_unsigned_value(input: u16) -> [u8; 2] {
     let clamped = input.min(4095);
     if clamped <= 2047 {
@@ -27,7 +27,7 @@ pub fn split_unsigned_value(input: u16) -> [u8; 2] {
     }
 }
 
-///split -2047 2047 value to two 0-255 u8 used for LEDs
+/// Split -2047 2047 value to two 0-255 u8 used for LEDs
 pub fn split_signed_value(input: i32) -> [u8; 2] {
     let clamped = input.clamp(-2047, 2047);
     if clamped >= 0 {
@@ -39,14 +39,14 @@ pub fn split_signed_value(input: i32) -> [u8; 2] {
     }
 }
 
-///attenuate a u12 by another u12
+/// Attenuate a u12 by another u12
 pub fn attenuate(signal: u16, level: u16) -> u16 {
     let attenuated = (signal as u32 * level as u32) / 4095;
 
     attenuated as u16
 }
 
-///use to attenuate 0-4095 representing a bipolar value
+/// Use to attenuate 0-4095 representing a bipolar value
 pub fn attenuate_bipolar(signal: u16, level: u16) -> u16 {
     let center = 2048u32;
 
@@ -61,7 +61,7 @@ pub fn attenuate_bipolar(signal: u16, level: u16) -> u16 {
     result.clamp(0, 4095) as u16
 }
 
-///attenuverter
+/// Attenuverter
 pub fn attenuverter(input: u16, modulation: u16) -> u16 {
     let input = input as i32;
     let mod_val = modulation as i32;
@@ -79,6 +79,7 @@ pub fn attenuverter(input: u16, modulation: u16) -> u16 {
     result.clamp(0.0, 4095.0) as u16
 }
 
+/// Slew limiter
 pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f32 {
     let min_slew = 200.;
     let max_slew = 0.5;
