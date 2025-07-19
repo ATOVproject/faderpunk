@@ -57,6 +57,10 @@ impl<const N: usize> Leds<N> {
             LedMsg::Set(LedMode::Static(color.scale(brightness))),
         );
     }
+    pub fn set_mode(&self, chan: usize, position: Led, mode: LedMode) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        set_led_mode(channel, position, LedMsg::Set(mode));
+    }
 
     pub fn reset(&self, chan: usize, position: Led) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
