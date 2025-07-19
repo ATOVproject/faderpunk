@@ -45,7 +45,7 @@ pub enum Led {
 pub enum LedMode {
     Static(RGB8),
     FadeOut(RGB8),
-    Flash(RGB8, usize),
+    Flash(RGB8, Option<usize>),
 }
 
 impl LedMode {
@@ -65,9 +65,18 @@ impl LedMode {
 #[derive(Clone, Copy)]
 enum LedEffect {
     Off,
-    Static { color: RGB8 },
-    FadeOut { from: RGB8, step: u8 },
-    Flash { color: RGB8, times: usize, step: u8 },
+    Static {
+        color: RGB8,
+    },
+    FadeOut {
+        from: RGB8,
+        step: u8,
+    },
+    Flash {
+        color: RGB8,
+        times: Option<usize>,
+        step: u8,
+    },
 }
 
 impl LedEffect {
@@ -85,7 +94,7 @@ impl LedEffect {
                 new_color
             }
             LedEffect::Flash { color, times, step } => {
-                if *times == 0 {
+                if let Some(0) = *times {
                     *self = LedEffect::Off;
                     return BLACK;
                 }
@@ -103,10 +112,14 @@ impl LedEffect {
 
                 *step += 1;
                 if *step >= 16 {
-                    *times -= 1;
-                    *step = 0;
-                    if *times == 0 {
-                        *self = LedEffect::Off;
+                    if let Some(t) = times {
+                        *t -= 1;
+                        *step = 0;
+                        if *t == 0 {
+                            *self = LedEffect::Off;
+                        }
+                    } else {
+                        *step = 0;
                     }
                 }
 
@@ -211,6 +224,8 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
                     LedMsg::Reset => {
                         if let LedEffect::Static { color } = leds.base_layer[i] {
                             leds.base_layer[i] = LedMode::FadeOut(color).into_effect();
+                        } else {
+                            leds.base_layer[i] = LedEffect::Off;
                         }
                     }
                 }

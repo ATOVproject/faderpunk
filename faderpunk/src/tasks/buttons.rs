@@ -50,13 +50,13 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
             Timer::after_millis(1).await;
             match select(button.wait_for_rising_edge(), Timer::after_millis(1500)).await {
                 Either::First(_) => {
-                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(GREEN, 2)).await;
+                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(GREEN, Some(2))).await;
                     event_publisher
                         .publish(InputEvent::LoadScene(i as u8))
                         .await;
                 }
                 Either::Second(_) => {
-                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(RED, 3)).await;
+                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(RED, Some(3))).await;
                     event_publisher
                         .publish(InputEvent::SaveScene(i as u8))
                         .await;
