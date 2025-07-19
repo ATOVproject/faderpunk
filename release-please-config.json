@@ -4,10 +4,22 @@
       "release-type": "rust",
       "package-name": "faderpunk",
       "component": "faderpunk"
+    },
+    "config": {
+      "release-type": "rust",
+      "package-name": "config",
+      "component": "config"
+    },
+    "libfp": {
+      "release-type": "rust",
+      "package-name": "libfp",
+      "component": "libfp"
     }
   },
-  "extra-files": [
-    "Cargo.lock"
+  "plugins": [
+    {
+      "type": "cargo-workspace"
+    }
   ],
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
 }
