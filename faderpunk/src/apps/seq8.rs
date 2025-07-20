@@ -307,13 +307,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         //button handling
 
         loop {
-            let chan = buttons.wait_for_any_down().await;
+            let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             let mut gateseq = gateseq_glob.get().await;
 
             // let mut gateseq = gateseq_glob.get_array().await;
-            let _shift = buttons.is_shift_pressed();
             let page = page_glob.get().await;
-            if !_shift {
+            if !is_shift_pressed {
                 gateseq[chan + (page * 8)] = !gateseq[chan + (page * 8)];
                 gateseq_glob.set(gateseq).await;
 
@@ -324,9 +323,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 // gateseq_glob.set_array(gateseq).await;
                 // gateseq_glob.save().await;
                 led_flag_glob.set(true).await;
-            }
-
-            if _shift {
+            } else {
                 page_glob.set(chan).await;
                 latched_glob.set([false; 8]).await
             }

@@ -275,8 +275,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let fut3 = async {
         loop {
-            let chan = buttons.wait_for_any_down().await;
-            if !buttons.is_shift_pressed() {
+            let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
+            if !is_shift_pressed {
                 let mut curve_setting = storage.query(|s| s.curve_saved).await;
 
                 curve_setting[chan] = (curve_setting[chan] + 1) % 3;
@@ -291,9 +291,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         None,
                     )
                     .await;
-            }
-
-            if buttons.is_shift_pressed() && chan == 0 {
+            } else if chan == 0 {
                 let mut mode = mode_glob.get().await;
                 mode = (mode + 1) % 3;
                 mode_glob.set(mode).await;
