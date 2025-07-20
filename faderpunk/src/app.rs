@@ -163,13 +163,13 @@ impl<const N: usize> Buttons<N> {
     }
 
     /// Returns the number of the button that was pressed
-    pub async fn wait_for_any_down(&self) -> usize {
+    pub async fn wait_for_any_down(&self) -> (usize, bool) {
         let mut subscriber = self.event_pubsub.subscriber().unwrap();
 
         loop {
             if let InputEvent::ButtonDown(channel) = subscriber.next_message_pure().await {
                 if (self.start_channel..self.start_channel + N).contains(&channel) {
-                    return channel - self.start_channel;
+                    return (channel - self.start_channel, self.is_shift_pressed());
                 }
             }
         }
@@ -179,19 +179,19 @@ impl<const N: usize> Buttons<N> {
     pub async fn wait_for_down(&self, chan: usize) -> bool {
         let chan = chan.clamp(0, N - 1);
         loop {
-            let channel = self.wait_for_any_down().await;
+            let (channel, is_shift_pressed) = self.wait_for_any_down().await;
             if chan == channel {
-                return self.is_shift_pressed();
+                return is_shift_pressed;
             }
         }
     }
 
-    pub async fn wait_for_any_long_press(&self, duration: Duration) -> usize {
+    pub async fn wait_for_any_long_press(&self, duration: Duration) -> (usize, bool) {
         loop {
-            let channel = self.wait_for_any_down().await;
+            let (channel, is_shift_pressed) = self.wait_for_any_down().await;
             Timer::after(duration).await;
             if BUTTON_PRESSED[self.start_channel + channel].load(Ordering::Relaxed) {
-                return channel;
+                return (channel, is_shift_pressed);
             }
         }
     }
@@ -199,9 +199,9 @@ impl<const N: usize> Buttons<N> {
     pub async fn wait_for_long_press(&self, chan: usize, duration: Duration) -> bool {
         let chan = chan.clamp(0, N - 1);
         loop {
-            let channel = self.wait_for_any_long_press(duration).await;
+            let (channel, is_shift_pressed) = self.wait_for_any_long_press(duration).await;
             if chan == channel {
-                return self.is_shift_pressed();
+                return is_shift_pressed;
             }
         }
     }

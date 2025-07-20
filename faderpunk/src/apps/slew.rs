@@ -226,8 +226,8 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
 
     let fut3 = async {
         loop {
-            let chan = buttons.wait_for_any_down().await;
-            if !buttons.is_shift_pressed() {
+            let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
+            if !is_shift_pressed {
                 // if chan == 0 {
                 //     leds.reset(0, Led::Button);
                 //     attack_glob.set(0).await;
