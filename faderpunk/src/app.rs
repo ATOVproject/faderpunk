@@ -4,14 +4,8 @@ use embassy_time::{Duration, Timer};
 use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
-use rand::Rng;
 
-use libfp::{
-    constants::{CURVE_EXP, CURVE_LOG},
-    ext::BrightnessExt,
-    utils::scale_bits_12_7,
-    Curve,
-};
+use libfp::{ext::BrightnessExt, utils::scale_bits_12_7};
 
 use crate::{
     events::{EventPubSubChannel, InputEvent},
@@ -430,14 +424,19 @@ impl<T: Sized + Copy + Default> Default for Global<T> {
     }
 }
 
-pub struct Die {
-    rng: RoscRng,
-}
+#[derive(Clone, Copy)]
+pub struct Die;
 
 impl Die {
-    /// Returns a random number between 0 and 4095
-    pub fn roll(&mut self) -> u16 {
-        self.rng.gen_range(0..=4095)
+    pub fn new() -> Self {
+        Self
+    }
+    /// Returns a random number between 0 and 4095.
+    pub fn roll(&self) -> u16 {
+        let b1 = RoscRng::next_u8();
+        let b2 = RoscRng::next_u8();
+        let random_u16 = u16::from_le_bytes([b1, b2]);
+        random_u16 % 4096
     }
 }
 
@@ -546,7 +545,7 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_die(&self) -> Die {
-        Die { rng: RoscRng }
+        Die::new()
     }
 
     pub fn use_clock(&self) -> Clock {
