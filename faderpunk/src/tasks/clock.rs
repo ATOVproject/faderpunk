@@ -2,6 +2,7 @@ use embassy_futures::join::join5;
 use embassy_rp::{
     gpio::{Input, Pull},
     peripherals::{PIN_1, PIN_2, PIN_3},
+    Peri,
 };
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
@@ -17,7 +18,11 @@ use crate::{Spawner, CONFIG_CHANGE_WATCH};
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
 
-type AuxInputs = (PIN_1, PIN_2, PIN_3);
+type AuxInputs = (
+    Peri<'static, PIN_1>,
+    Peri<'static, PIN_2>,
+    Peri<'static, PIN_3>,
+);
 // 5 Publishers: 3 Ext clocks, internal clock, midi
 pub type ClockSubscriber =
     Subscriber<'static, CriticalSectionRawMutex, ClockEvent, CLOCK_PUBSUB_SIZE, 16, 5>;

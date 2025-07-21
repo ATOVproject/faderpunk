@@ -1,15 +1,13 @@
 use embassy_executor::Spawner;
-use embassy_futures::join::join4;
+use embassy_futures::join::join3;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
-use embassy_usb::class::cdc_acm::{CdcAcmClass, State as CdcAcmState};
 use embassy_usb::class::midi::MidiClass;
 use embassy_usb::class::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
 use embassy_usb::driver::Driver;
 use embassy_usb::msos::{self, windows_version};
 use embassy_usb::{Builder, Config as UsbConfig};
 
-use embassy_rp::peripherals::{UART0, UART1};
 use embassy_rp::uart::{Async, BufferedUart, UartTx};
 
 use super::configure::start_webusb_loop;
@@ -34,8 +32,8 @@ impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
         let mut iface = func.interface();
         let mut alt = iface.alt_setting(0xFF, 0x00, 0x00, None);
 
-        let write_ep = alt.endpoint_bulk_in(config.max_packet_size);
-        let read_ep = alt.endpoint_bulk_out(config.max_packet_size);
+        let write_ep = alt.endpoint_bulk_in(None, config.max_packet_size);
+        let read_ep = alt.endpoint_bulk_out(None, config.max_packet_size);
 
         WebEndpoints { write_ep, read_ep }
     }
@@ -48,8 +46,8 @@ impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
 pub async fn start_transports(
     spawner: &Spawner,
     usb_driver: usb::Driver<'static, USB>,
-    uart0: UartTx<'static, UART0, Async>,
-    uart1: BufferedUart<'static, UART1>,
+    uart0: UartTx<'static, Async>,
+    uart1: BufferedUart,
 ) {
     spawner
         .spawn(run_transports(usb_driver, uart0, uart1))
@@ -59,8 +57,8 @@ pub async fn start_transports(
 #[embassy_executor::task]
 async fn run_transports(
     usb_driver: usb::Driver<'static, USB>,
-    uart0: UartTx<'static, UART0, Async>,
-    uart1: BufferedUart<'static, UART1>,
+    uart0: UartTx<'static, Async>,
+    uart1: BufferedUart,
 ) {
     let mut usb_config = UsbConfig::new(USB_VENDOR_ID, USB_PRODUCT_ID);
     usb_config.manufacturer = Some(USB_VENDOR_NAME);
@@ -88,7 +86,6 @@ async fn run_transports(
     };
 
     let mut webusb_state = WebUsbState::new();
-    let mut logger_state = CdcAcmState::new();
 
     let mut usb_builder = Builder::new(
         usb_driver,
@@ -114,16 +111,10 @@ async fn run_transports(
     // Create classes on the builder.
     let usb_midi = MidiClass::new(&mut usb_builder, 1, 1, USB_MAX_PACKET_SIZE);
 
-    // Create USB logger
-    let usb_logger = CdcAcmClass::new(&mut usb_builder, &mut logger_state, USB_MAX_PACKET_SIZE);
-    let log_fut = embassy_usb_logger::with_class!(1024, log::LevelFilter::Info, usb_logger);
-
     let mut usb = usb_builder.build();
 
-    // TODO: Can/should this be a task?
-    // Maybe make all the other futs a task, then return midi_fut from here
     let midi_fut = start_midi_loops(usb_midi, uart0, uart1);
     let webusb_fut = start_webusb_loop(webusb);
 
-    join4(usb.run(), log_fut, midi_fut, webusb_fut).await;
+    join3(usb.run(), midi_fut, webusb_fut).await;
 }

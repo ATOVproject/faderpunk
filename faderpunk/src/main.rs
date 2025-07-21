@@ -14,7 +14,7 @@ mod tasks;
 use core::sync::atomic::Ordering;
 
 use embassy_executor::{Executor, Spawner};
-use embassy_rp::clocks::ClockConfig;
+use embassy_rp::clocks::{ClockConfig, CoreVoltage};
 use embassy_rp::config::Config;
 use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
@@ -30,7 +30,7 @@ use fm24v10::{Address, Fm24v10};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-use libfp::{GlobalConfig, Layout, GLOBAL_CHANNELS, I2C_ADDRESS};
+use libfp::{GlobalConfig, Layout, I2C_ADDRESS};
 
 use crate::tasks::buttons::BUTTON_PRESSED;
 
@@ -84,28 +84,8 @@ async fn main_core1(spawner: Spawner) {
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     // Overclock to 250Mhz
-    let mut clock_config = ClockConfig::crystal(12_000_000);
-    if let Some(ref mut xosc) = clock_config.xosc {
-        if let Some(ref mut sys_pll) = xosc.sys_pll {
-            // Calculation for 250MHz system clock from 12MHz crystal:
-            // SYS_CLK = (FREF / REFDIV * FBDIV) / (POSTDIV1 * POSTDIV2)
-            // FREF (crystal) = 12_000_000 Hz
-            // REFDIV = 1 (typical for crystal)
-            // POSTDIV1 = 3 (value changed below)
-            // POSTDIV2 = 2 (ensures POSTDIV1 >= POSTDIV2)
-            // Target SYS_CLK = 250_000_000 Hz
-            // So, FBDIV = (SYS_CLK * POSTDIV1 * POSTDIV2 * REFDIV) / FREF
-            // FBDIV = (250_000_000 * 3 * 2 * 1) / 12_000_000
-            // FBDIV = 1_500_000_000 / 12_000_000 = 125
-            // VCO frequency = FREF * FBDIV / REFDIV = 12MHz * 125 / 1 = 1500MHz (Range: 750-1600MHz)
-
-            // Changed from 5 to 3
-            sys_pll.post_div1 = 3;
-        }
-    }
-
-    let mut config = Config::default();
-    config.clocks = clock_config;
+    let mut config = Config::new(ClockConfig::system_freq(250_000_000).unwrap());
+    config.clocks.core_voltage = CoreVoltage::V1_15;
 
     let p = embassy_rp::init(config);
 
@@ -143,15 +123,15 @@ async fn main(spawner: Spawner) {
     // Classic MIDI baud rate
     uart_config.baudrate = 31250;
     // MIDI Thru
-    let uart0: UartTx<'_, _, UartAsync> = UartTx::new(p.UART0, p.PIN_0, p.DMA_CH2, uart_config);
+    let uart0: UartTx<'_, UartAsync> = UartTx::new(p.UART0, p.PIN_0, p.DMA_CH2, uart_config);
     // MIDI In/Out
     let uart1_tx_buffer = BUF_UART1_TX.init([0; 64]);
     let uart1_rx_buffer = BUF_UART1_RX.init([0; 64]);
     let uart1 = BufferedUart::new(
         p.UART1,
-        Irqs,
         p.PIN_8,
         p.PIN_9,
+        Irqs,
         uart1_tx_buffer,
         uart1_rx_buffer,
         uart_config,
