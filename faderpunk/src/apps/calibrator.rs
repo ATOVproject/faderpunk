@@ -143,8 +143,8 @@ pub async fn run(app: &App<CHANNELS>) {
                         app.delay_millis(10).await;
                         // Psst, secret API
                         let offset = ((MAX_VALUES_FADER[ui_no].load(Ordering::Relaxed) as f32)
-                            / 200.0) as u16;
-                        let base = target_value - 10;
+                            / 152.0) as u16;
+                        let base = target_value - 13;
                         value = base + offset;
                         MAX_VALUES_DAC[chan].store(value, Ordering::Relaxed);
                     }
