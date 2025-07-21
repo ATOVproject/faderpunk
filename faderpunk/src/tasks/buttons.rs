@@ -6,6 +6,7 @@ use embassy_rp::peripherals::{
     PIN_23, PIN_24, PIN_25, PIN_28, PIN_29, PIN_30, PIN_31, PIN_32, PIN_33, PIN_34, PIN_35, PIN_36,
     PIN_37, PIN_38, PIN_4, PIN_5, PIN_6, PIN_7,
 };
+use embassy_rp::Peri;
 use embassy_time::Timer;
 use portable_atomic::{AtomicBool, Ordering};
 use smart_leds::colors::{GREEN, RED};
@@ -16,24 +17,24 @@ use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
 use super::leds::{set_led_overlay_mode, LedMode};
 
 type Buttons = (
-    PIN_6,
-    PIN_7,
-    PIN_38,
-    PIN_32,
-    PIN_33,
-    PIN_34,
-    PIN_35,
-    PIN_36,
-    PIN_23,
-    PIN_24,
-    PIN_25,
-    PIN_29,
-    PIN_30,
-    PIN_31,
-    PIN_37,
-    PIN_28,
-    PIN_4,
-    PIN_5,
+    Peri<'static, PIN_6>,
+    Peri<'static, PIN_7>,
+    Peri<'static, PIN_38>,
+    Peri<'static, PIN_32>,
+    Peri<'static, PIN_33>,
+    Peri<'static, PIN_34>,
+    Peri<'static, PIN_35>,
+    Peri<'static, PIN_36>,
+    Peri<'static, PIN_23>,
+    Peri<'static, PIN_24>,
+    Peri<'static, PIN_25>,
+    Peri<'static, PIN_29>,
+    Peri<'static, PIN_30>,
+    Peri<'static, PIN_31>,
+    Peri<'static, PIN_37>,
+    Peri<'static, PIN_28>,
+    Peri<'static, PIN_4>,
+    Peri<'static, PIN_5>,
 );
 
 pub static BUTTON_PRESSED: [AtomicBool; 18] = [const { AtomicBool::new(false) }; 18];

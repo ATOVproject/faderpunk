@@ -95,7 +95,7 @@ async fn write_msg_to_usb<'a>(
 }
 
 async fn write_msg_to_uart(
-    uart1_tx: &mut BufferedUartTx<'static, UART1>,
+    uart1_tx: &mut BufferedUartTx,
     midi_ev: LiveEvent<'_>,
 ) -> Result<(), UartError> {
     let mut ser_buf = [0_u8; 3];
@@ -109,11 +109,11 @@ async fn write_msg_to_uart(
 
 pub async fn start_midi_loops<'a>(
     usb_midi: MidiClass<'a, Driver<'a, USB>>,
-    uart0: UartTx<'static, UART0, Async>,
-    uart1: BufferedUart<'static, UART1>,
+    uart0: UartTx<'static, Async>,
+    uart1: BufferedUart,
 ) {
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
-    let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, UART0, Async>> = Mutex::new(uart0);
+    let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, Async>> = Mutex::new(uart0);
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
     let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
     let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();

@@ -5,6 +5,7 @@ use embassy_rp::{
     peripherals::{PIN_12, PIN_13, PIN_14, PIN_15, PIN_17, PIO0, SPI0},
     pio::{Config as PioConfig, Direction as PioDirection, Pio},
     spi::{self, Async, Spi},
+    Peri,
 };
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
@@ -12,7 +13,7 @@ use embassy_sync::{
     mutex::Mutex,
 };
 use embassy_time::Timer;
-use libfp::{constants::CHAN_LED_MAP, types::RegressionValues};
+use libfp::types::RegressionValues;
 use libm::roundf;
 use max11300::{
     config::{
@@ -33,7 +34,12 @@ use crate::{
 const MAX_CHANNEL_SIZE: usize = 16;
 
 type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
-type MuxPins = (PIN_12, PIN_13, PIN_14, PIN_15);
+type MuxPins = (
+    Peri<'static, PIN_12>,
+    Peri<'static, PIN_13>,
+    Peri<'static, PIN_14>,
+    Peri<'static, PIN_15>,
+);
 
 pub type MaxSender = Sender<'static, CriticalSectionRawMutex, (usize, MaxCmd), MAX_CHANNEL_SIZE>;
 pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, (usize, MaxCmd), MAX_CHANNEL_SIZE> =
@@ -71,9 +77,9 @@ pub struct MaxCalibration {
 pub async fn start_max(
     spawner: &Spawner,
     spi0: Spi<'static, SPI0, spi::Async>,
-    pio0: PIO0,
+    pio0: Peri<'static, PIO0>,
     mux_pins: MuxPins,
-    cs: PIN_17,
+    cs: Peri<'static, PIN_17>,
     calibration_data: Option<MaxCalibration>,
 ) {
     let device_config = DeviceConfig {
@@ -123,7 +129,7 @@ pub async fn start_max(
 
 #[embassy_executor::task]
 async fn read_fader(
-    pio0: PIO0,
+    pio0: Peri<'static, PIO0>,
     mux_pins: MuxPins,
     max_port: Mode0Port<Spi<'static, SPI0, spi::Async>, Output<'static>, NoopRawMutex>,
 ) {
