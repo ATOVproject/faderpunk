@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub mod constants;
 pub mod ext;
 pub mod i2c_proto;
+pub mod quantizer;
 pub mod types;
 pub mod utils;
 
