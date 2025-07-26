@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 defmt = "1.0.1"
 embassy-time = "0.4.0"
-heapless = "0.7.17"
+heapless = "0.8.0"
 max11300 = "0.4.2"
 midly = { version = "0.5.3", default-features = false }
 postcard = "1.1.3"
