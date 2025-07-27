@@ -319,7 +319,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 }
 
 fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
-    let bit_index = bit_index.clamp(0, 15);
+    let bit_index = (15 - bit_index).clamp(0, 15);
 
     // Extract the original bit
     let original_bit = ((x >> bit_index) & 1) as u8;
@@ -330,13 +330,13 @@ fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
         bit ^= 1;
     }
 
-    // Shift x left by 1, and keep it within 16 bits
-    let shifted = x << 1;
+    // Shift x right by 1
+    let shifted = x >> 1;
 
-    // Insert the (possibly inverted) bit into the LSB
-    let result = shifted | (bit as u16);
+    // Insert the (possibly inverted) bit into the MSB
+    let result = shifted | ((bit as u16) << 15);
 
-    // Return the new value and whether the bit that was shifted
+    // Return the new value and whether the bit was flipped
     let flipped = bit != original_bit;
     (result, flipped)
 }
