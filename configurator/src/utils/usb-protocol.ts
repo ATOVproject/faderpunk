@@ -8,8 +8,9 @@ import {
 const FRAME_DELIMITER = 0;
 const FADERPUNK_VENDOR_ID = 0xf569;
 const FADERPUNK_PRODUCT_ID = 0x1;
-const USB_INTERFACE = 1;
 const USB_TRANSFER_SIZE = 512;
+
+// TODO: use variable function style everywhere
 
 export function cobsEncode(data: Uint8Array): Uint8Array {
   const maxSize = data.length + Math.ceil(data.length / 254) + 1;
@@ -89,15 +90,35 @@ function createMessageBuffer(msg: ConfigMsgIn): Uint8Array {
   return cobsEncoded;
 }
 
+const getInterface = async (usbDevice: USBDevice) => {
+  const iface = usbDevice.configuration?.interfaces.find((i) =>
+    i.alternates.some((a) => a.interfaceClass === 0xff),
+  );
+
+  if (!iface) throw new Error("No webusb interface found");
+
+  return iface;
+};
+
 export async function connectToFaderPunk(): Promise<USBDevice> {
   const usbDevice = await navigator.usb.requestDevice({
     filters: [
-      { vendorId: FADERPUNK_VENDOR_ID, productId: FADERPUNK_PRODUCT_ID },
+      {
+        classCode: 0xff,
+        vendorId: FADERPUNK_VENDOR_ID,
+        productId: FADERPUNK_PRODUCT_ID,
+      },
     ],
   });
 
   await usbDevice.open();
-  await usbDevice.claimInterface(USB_INTERFACE);
+  if (!usbDevice.configuration) {
+    await usbDevice.selectConfiguration(1);
+  }
+
+  const iface = await getInterface(usbDevice);
+
+  await usbDevice.claimInterface(iface.interfaceNumber);
 
   return usbDevice;
 }
@@ -107,14 +128,19 @@ export async function sendMessage(
   msg: ConfigMsgIn,
 ): Promise<void> {
   const messageBuffer = createMessageBuffer(msg);
+  const iface = await getInterface(usbDevice);
 
-  await usbDevice.transferOut(USB_INTERFACE, messageBuffer);
+  await usbDevice.transferOut(iface.interfaceNumber, messageBuffer);
 }
 
 export async function receiveMessage(
   usbDevice: USBDevice,
 ): Promise<ConfigMsgOut> {
-  const data = await usbDevice.transferIn(USB_INTERFACE, USB_TRANSFER_SIZE);
+  const iface = await getInterface(usbDevice);
+  const data = await usbDevice.transferIn(
+    iface.interfaceNumber,
+    USB_TRANSFER_SIZE,
+  );
 
   if (!data?.data?.buffer) {
     throw new Error("No data received from device");
@@ -160,4 +186,3 @@ export async function receiveBatchMessages(
 export function getDeviceName(usbDevice: USBDevice): string {
   return `${usbDevice.manufacturerName} ${usbDevice.productName} v${usbDevice.deviceVersionMajor}.${usbDevice.deviceVersionMinor}.${usbDevice.deviceVersionSubminor}`;
 }
-
