@@ -18,8 +18,10 @@ embassy-time = { version = "0.4.0", features = [
   "defmt",
   "defmt-timestamp-uptime",
 ] }
-embassy-usb = { version = "0.5.0", features = ["defmt", "max-interface-count-5"] }
-embassy-usb-logger = { version = "0.4.0" }
+embassy-usb = { version = "0.5.0", features = [
+  "defmt",
+  "max-interface-count-5",
+] }
 embassy-rp = { version = "0.6.0", features = [
   "defmt",
   "unstable-pac",
