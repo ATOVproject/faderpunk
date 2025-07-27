@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.2.0...faderpunk-v0.3.0) (2025-07-27)
+
+
+### Features
+
+* **app:** return is_shift_pressed from any button press ([2480dd1](https://github.com/ATOVproject/faderpunk/commit/2480dd1ea2d85ffe87ea43748be72870ca220775))
+* **calibration:** add undo for the last calibration step ([463cfd7](https://github.com/ATOVproject/faderpunk/commit/463cfd72f71fa1444b549976448bdfd0b9b6c5fd))
+* **die:** improve die roll function signature ([a337680](https://github.com/ATOVproject/faderpunk/commit/a33768009cdb4d9f999c0495b9c15bc755742a5c))
+* update all dependencies ([6d941bb](https://github.com/ATOVproject/faderpunk/commit/6d941bb183164367aa34550fb642c4efc6522556))
+* **usb:** fix webusb windows compatibility ([fb01f98](https://github.com/ATOVproject/faderpunk/commit/fb01f981c64beb133b50f6072ae73fe30f113e3b))
+* **usb:** remove usb logging for now ([7ebe4ae](https://github.com/ATOVproject/faderpunk/commit/7ebe4aedf8f0f50138c2f1c44358c1270b5bcf66))
+* **usb:** use auto-generated device version ([a0e79f5](https://github.com/ATOVproject/faderpunk/commit/a0e79f555537dc3c823c108ae441e3949f5b4cec))
+
+
+### Bug Fixes
+
+* **calibration:** add a little more leeway for the calibration range ([7a8f3f2](https://github.com/ATOVproject/faderpunk/commit/7a8f3f2b232e07071a7abefe8433d7553acec755))
+* **fram:** make READ_BUFFERS pointer cast a bit more ideomatic ([7ab304e](https://github.com/ATOVproject/faderpunk/commit/7ab304e13c230423620c68b9a7a2bb360b2cac42))
+
 ## [0.2.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.1.1...faderpunk-v0.2.0) (2025-07-19)
 
 
