@@ -179,6 +179,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if rec_flag.get().await && index % 96 == 0 {
                         index = 0;
                         recording = true;
+                        buffer = [0; 384];
+                        buffer_glob.set(buffer).await;
                         recording_glob.set(recording).await;
                         rec_flag.set(false).await;
                         length = 384;
