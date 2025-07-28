@@ -3,8 +3,8 @@
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
+    constants::CURVE_LOG,
     utils::{attenuate_bipolar, is_close, split_unsigned_value},
-    Curve,
 };
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,7 @@ use crate::{
     app::{colors::RED, App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8},
     storage::ParamStore,
 };
+use config::{Config, Waveform};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 0;
@@ -68,8 +69,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
-
-    let curve = Curve::Logarithmic;
 
     let mut shift_old = false;
 
