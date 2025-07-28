@@ -3,6 +3,7 @@
 
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use libfp::utils::slew_limiter;
 use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
 
@@ -13,6 +14,7 @@ use crate::{
         colors::WHITE, App, AppStorage, Arr, ClockEvent, Led, ManagedStorage, ParamSlot, Range,
         SceneEvent, RGB8,
     },
+    apps::slew,
     storage::ParamStore,
 };
 
@@ -102,6 +104,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut recording = false;
     let mut buffer = [0; 384];
     let mut length = 384;
+    let slew_rate = 1000;
 
     // let (buffer_saved, length_saved) = storage
     //     .query(|s| (s.buffer_saved.get(), s.length_saved))
@@ -112,11 +115,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     leds.set(0, Led::Button, WHITE, 100);
 
     let update_output = async {
+        let mut outval = 0.;
         loop {
             app.delay_millis(1).await;
             let index = index_glob.get().await;
             let buffer = buffer_glob.get().await;
-            let offset = offset_glob.get().await;
+            let mut offset = offset_glob.get().await;
+            if latched.get().await {
+                offset = fader.get_value();
+            }
 
             // if recording_glob.get().await {
             //     jack.set_value(offset);
@@ -128,17 +135,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             //     leds.set(0, Led::Top, (255, 0, 0), (offset / 32) as u8);
             //     leds.set( 0,Led::Bottom,(255, 0, 0),(255 - (offset/ 16) as u8) / 2)
 
-            let mut val = buffer[index] + offset;
-            val = val.clamp(0, 4095);
-            jack.set_value(val);
+            let val = buffer[index] + offset;
+            outval = slew_limiter(outval, val, slew_rate, slew_rate);
+            jack.set_value(outval as u16);
             if last_midi / 16 != (val) / 16 {
-                midi.send_cc(cc as u8, val).await;
-                last_midi = val;
+                midi.send_cc(cc as u8, outval as u16).await;
+                last_midi = outval as u16;
             };
             if recording_glob.get().await {
-                leds.set(0, Led::Top, RED, (val / 16) as u8);
+                leds.set(0, Led::Top, RED, (outval / 16.) as u8);
             } else {
-                leds.set(0, Led::Top, WHITE, (val / 16) as u8)
+                leds.set(0, Led::Top, WHITE, (outval / 16.) as u8)
             }
         }
     };
@@ -232,9 +239,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if is_close(val, offset_glob.get().await) && !latched.get().await {
                 latched.set(true).await
             }
-            if latched.get().await {
-                offset_glob.set(val).await;
-            }
+            // if latched.get().await {
+            //     offset_glob.set(val).await;
+            // }
         }
     };
 
