@@ -9,7 +9,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 2;
+pub const PARAMS: usize = 3;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
     .add_param(Param::Curve {
@@ -18,8 +18,13 @@ pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute 
     })
     .add_param(Param::i32 {
         name: "MIDI Channel",
-        min: 0,
-        max: 15,
+        min: 1,
+        max: 16,
+    })
+    .add_param(Param::i32 {
+        name: "MIDI CC",
+        min: 1,
+        max: 128,
     });
 
 const LED_COLOR: RGB8 = RGB8 {
@@ -41,6 +46,7 @@ impl AppStorage for Storage {}
 pub struct Params<'a> {
     curve: ParamSlot<'a, Curve, PARAMS>,
     midi_channel: ParamSlot<'a, i32, PARAMS>,
+    midi_cc: ParamSlot<'a, i32, PARAMS>,
 }
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
@@ -49,7 +55,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     // TODO: Move Signal (when changed) to store so that we can do params.wait_for_change maybe
     // TODO: Generate this from the static params defined above
     let param_store = ParamStore::new(
-        [Value::Curve(Curve::Linear), Value::i32(1)],
+        [Value::Curve(Curve::Linear), Value::i32(1), Value::i32(32)],
         app.app_id,
         app.start_channel,
     );
@@ -57,6 +63,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let params = Params {
         curve: ParamSlot::new(&param_store, 0),
         midi_channel: ParamSlot::new(&param_store, 1),
+        midi_cc: ParamSlot::new(&param_store, 2),
     };
 
     let app_loop = async {
@@ -75,7 +82,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let leds = app.use_leds();
 
     let midi_chan = params.midi_channel.get().await;
-    let midi = app.use_midi(midi_chan as u8);
+    let midi_cc = params.midi_cc.get().await;
+    let midi = app.use_midi(midi_chan as u8 - 1);
     storage.load(None).await;
 
     let muted = storage.query(|s| s.muted).await;
@@ -92,12 +100,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let update_outputs = async |muted: bool| {
         if muted {
             jack.set_value(0);
-            midi.send_cc(32 + app.start_channel as u8, 0).await;
+            midi.send_cc(midi_cc as u8, 0).await;
             leds.reset_all();
         } else {
             leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
-            midi.send_cc(32 + app.start_channel as u8, fader.get_value())
-                .await
+            midi.send_cc(midi_cc as u8, fader.get_value()).await
         }
     };
 
@@ -118,8 +125,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             fader.wait_for_change().await;
             let muted = storage.query(|s| s.muted).await;
             if !muted {
-                midi.send_cc(32 + app.start_channel as u8, fader.get_value())
-                    .await;
+                midi.send_cc(midi_cc as u8, fader.get_value()).await;
             }
         }
     };
