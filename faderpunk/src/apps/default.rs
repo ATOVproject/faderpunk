@@ -1,5 +1,11 @@
-use embassy_futures::{join::join4, select::select};
+use config::{Config, Curve, Param, Value};
+use defmt::info;
+use embassy_futures::{
+    join::{join3, join4},
+    select::select,
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use libfp::{constants::CURVE_LOG, utils::slew_limiter};
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Value};
@@ -83,10 +89,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let midi_chan = params.midi_channel.get().await;
     let midi_cc = params.midi_cc.get().await;
+    let curve = params.curve.get().await;
     let midi = app.use_midi(midi_chan as u8 - 1);
+
+    let muted_glob = app.make_global(false);
+
     storage.load(None).await;
 
     let muted = storage.query(|s| s.muted).await;
+    muted_glob.set(muted).await;
 
     leds.set(
         0,
@@ -97,40 +108,36 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
-    let update_outputs = async |muted: bool| {
-        if muted {
-            jack.set_value(0);
-            midi.send_cc(midi_cc as u8, 0).await;
-            leds.reset_all();
-        } else {
-            leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
-            midi.send_cc(midi_cc as u8, fader.get_value()).await
-        }
-    };
-
     let fut1 = async {
+        let mut outval = 0.;
+        let mut val = fader.get_value();
+        let mut old_midi = 0;
+
         loop {
-            app.delay_millis(10).await;
-            let muted = storage.query(|s| s.muted).await;
-            let curve = params.curve.get().await;
-            if !muted {
-                jack.set_value(curve.at(fader.get_value().into()));
-                leds.set(0, Led::Top, LED_COLOR, (fader.get_value() / 16) as u8);
+            app.delay_millis(1).await;
+            let muted = muted_glob.get().await;
+            let fadval = fader.get_value();
+
+            if muted {
+                val = 0;
+            } else {
+                val = curve.at(fadval.into());
+            }
+
+            outval = clickless(outval, val);
+
+            jack.set_value(outval as u16);
+            leds.set(0, Led::Top, LED_COLOR, (outval as u16 / 16) as u8);
+
+            if old_midi != outval as u16 / 32 {
+                midi.send_cc(midi_cc as u8, outval as u16).await;
+                old_midi = outval as u16 / 32;
+                info!("midi = {}", old_midi);
             }
         }
     };
 
     let fut2 = async {
-        loop {
-            fader.wait_for_change().await;
-            let muted = storage.query(|s| s.muted).await;
-            if !muted {
-                midi.send_cc(midi_cc as u8, fader.get_value()).await;
-            }
-        }
-    };
-
-    let fut3 = async {
         loop {
             buttons.wait_for_down(0).await;
             let muted = storage
@@ -142,7 +149,20 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     None,
                 )
                 .await;
-            update_outputs(muted).await;
+            muted_glob.set(muted).await;
+            if muted {
+                leds.reset(0, Led::Button);
+            } else {
+                leds.set(0, Led::Button, LED_COLOR, 100);
+            }
+        }
+    };
+    let fut3 = async {
+        loop {
+            fader.wait_for_change().await;
+            if buttons.is_shift_pressed() {
+                //do attenuation setting here
+            }
         }
     };
 
@@ -152,7 +172,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
                     let muted = storage.query(|s| s.muted).await;
-                    update_outputs(muted).await;
+                    muted_glob.set(muted).await;
+                    if muted {
+                        leds.reset(0, Led::Button);
+                    } else {
+                        leds.set(0, Led::Button, LED_COLOR, 100);
+                    }
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }
@@ -160,4 +185,24 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     };
 
     join4(fut1, fut2, fut3, scene_handler).await;
+}
+
+fn clickless(prev: f32, input: u16) -> f32 {
+    let delta = input as i32 - prev as i32;
+    let step = 205.;
+    if delta > 0 {
+        if prev + step < input as f32 {
+            prev + step
+        } else {
+            input as f32
+        }
+    } else if delta < 0 {
+        if prev - step > input as f32 {
+            prev - step
+        } else {
+            input as f32
+        }
+    } else {
+        input.clamp(0, 4095) as f32
+    }
 }
