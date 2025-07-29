@@ -1,11 +1,13 @@
 use config::{Config, Curve, Param, Value};
-use defmt::info;
 use embassy_futures::{
     join::{join3, join4},
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{constants::CURVE_LOG, utils::slew_limiter};
+use libfp::{
+    constants::CURVE_LOG,
+    utils::{slew_limiter, split_unsigned_value},
+};
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Value};
@@ -15,13 +17,14 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 3;
+pub const PARAMS: usize = 4;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
     .add_param(Param::Curve {
         name: "Curve",
         variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
     })
+    .add_param(Param::Bool { name: "Bipolar" })
     .add_param(Param::i32 {
         name: "MIDI Channel",
         min: 1,
@@ -51,6 +54,7 @@ impl AppStorage for Storage {}
 // TODO: Make a macro to generate this.
 pub struct Params<'a> {
     curve: ParamSlot<'a, Curve, PARAMS>,
+    bipolar: ParamSlot<'a, bool, PARAMS>,
     midi_channel: ParamSlot<'a, i32, PARAMS>,
     midi_cc: ParamSlot<'a, i32, PARAMS>,
 }
@@ -61,15 +65,21 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     // TODO: Move Signal (when changed) to store so that we can do params.wait_for_change maybe
     // TODO: Generate this from the static params defined above
     let param_store = ParamStore::new(
-        [Value::Curve(Curve::Linear), Value::i32(1), Value::i32(32)],
+        [
+            Value::Curve(Curve::Linear),
+            Value::bool(false),
+            Value::i32(1),
+            Value::i32(32),
+        ],
         app.app_id,
         app.start_channel,
     );
 
     let params = Params {
         curve: ParamSlot::new(&param_store, 0),
-        midi_channel: ParamSlot::new(&param_store, 1),
-        midi_cc: ParamSlot::new(&param_store, 2),
+        bipolar: ParamSlot::new(&param_store, 1),
+        midi_channel: ParamSlot::new(&param_store, 2),
+        midi_cc: ParamSlot::new(&param_store, 3),
     };
 
     let app_loop = async {
@@ -106,7 +116,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         if muted { 0 } else { BUTTON_BRIGHTNESS },
     );
 
-    let jack = app.make_out_jack(0, Range::_0_10V).await;
+    let jack;
+    if !params.bipolar.get().await {
+        jack = app.make_out_jack(0, Range::_0_10V).await;
+    } else {
+        jack = app.make_out_jack(0, Range::_Neg5_5V).await;
+    }
 
     let fut1 = async {
         let mut outval = 0.;
@@ -127,12 +142,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             outval = clickless(outval, val);
 
             jack.set_value(outval as u16);
-            leds.set(0, Led::Top, LED_COLOR, (outval as u16 / 16) as u8);
+            if params.bipolar.get().await {
+                let led1 = split_unsigned_value(outval as u16);
+                leds.set(0, Led::Top, LED_COLOR, led1[0]);
+                leds.set(0, Led::Bottom, LED_COLOR, led1[1]);
+            } else {
+                leds.set(0, Led::Top, LED_COLOR, (outval as u16 / 16) as u8);
+            }
 
             if old_midi != outval as u16 / 32 {
                 midi.send_cc(midi_cc as u8, outval as u16).await;
                 old_midi = outval as u16 / 32;
-                info!("midi = {}", old_midi);
             }
         }
     };
@@ -140,6 +160,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let fut2 = async {
         loop {
             buttons.wait_for_down(0).await;
+
             let muted = storage
                 .modify_and_save(
                     |s| {
