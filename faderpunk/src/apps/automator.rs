@@ -13,7 +13,7 @@ use libfp::{Config, Curve, Param, Value};
 use smart_leds::RGB8;
 
 use crate::{
-    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, Range},
+    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, MidiSender, ParamSlot, Range},
     storage::ParamStore,
 };
 
@@ -102,7 +102,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let midi_chan = params.midi_channel.get().await;
     let cc: u8 = params.midi_cc.get().await as u8;
-    let midi = app.use_midi(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_chan as u8 - 1);
     let curve = params.curve.get().await;
 
     let mut clock = app.use_clock();

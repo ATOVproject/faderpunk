@@ -24,7 +24,10 @@ use libfp::{
 };
 
 use crate::{
-    app::{App, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, Range, SceneEvent, RGB8},
+    app::{
+        App, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, MidiSender, Range,
+        SceneEvent, RGB8,
+    },
     storage::{ParamSlot, ParamStore},
 };
 
@@ -122,10 +125,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let midi_chan4 = params.midi_channel4.get().await;
 
     let midi = [
-        app.use_midi(midi_chan1 as u8 - 1),
-        app.use_midi(midi_chan2 as u8 - 1),
-        app.use_midi(midi_chan3 as u8 - 1),
-        app.use_midi(midi_chan4 as u8 - 1),
+        app.use_midi_output(midi_chan1 as u8 - 1),
+        app.use_midi_output(midi_chan2 as u8 - 1),
+        app.use_midi_output(midi_chan3 as u8 - 1),
+        app.use_midi_output(midi_chan4 as u8 - 1),
     ];
 
     let clockn_glob = app.make_global(0);

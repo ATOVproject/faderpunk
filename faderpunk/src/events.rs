@@ -1,6 +1,6 @@
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
-    pubsub::{PubSubChannel, Publisher},
+    pubsub::{PubSubChannel, Publisher, Subscriber},
     watch::Watch,
 };
 use midly::live::LiveEvent;
@@ -41,6 +41,14 @@ pub type EventPubSubChannel = PubSubChannel<
 >;
 pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
 pub type EventPubSubPublisher = Publisher<
+    'static,
+    CriticalSectionRawMutex,
+    InputEvent,
+    EVENT_PUBSUB_SIZE,
+    EVENT_PUBSUB_SUBS,
+    EVENT_PUBSUB_SENDERS,
+>;
+pub type EventPubSubSubscriber = Subscriber<
     'static,
     CriticalSectionRawMutex,
     InputEvent,

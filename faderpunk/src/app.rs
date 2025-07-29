@@ -10,13 +10,13 @@ use libfp::{ext::BrightnessExt, quantizer::Quantizer, utils::scale_bits_12_7};
 const QUANTIZER_RANGER: usize = 9 * 12;
 
 use crate::{
-    events::{EventPubSubChannel, InputEvent},
+    events::{EventPubSubChannel, EventPubSubSubscriber, InputEvent},
     tasks::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
         leds::{set_led_mode, LedMode, LedMsg},
         max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
-        midi::MidiSender,
+        midi::MidiSender as MidiChannelSender,
     },
 };
 
@@ -311,29 +311,13 @@ pub enum SceneEvent {
     SaveScene(u8),
 }
 
-#[derive(Clone, Copy)]
-pub struct Midi<const N: usize> {
-    event_pubsub: &'static EventPubSubChannel,
-    midi_sender: MidiSender,
-    midi_channel: u4,
-}
+pub trait MidiSender {
+    fn get_send_channel(&self) -> u4;
+    async fn send_msg(&self, msg: LiveEvent<'static>);
 
-impl<const N: usize> Midi<N> {
-    pub fn new(
-        midi_channel: u4,
-        midi_sender: MidiSender,
-        event_pubsub: &'static EventPubSubChannel,
-    ) -> Self {
-        Self {
-            event_pubsub,
-            midi_sender,
-            midi_channel,
-        }
-    }
-
-    pub async fn send_cc(&self, cc: u8, val: u16) {
+    async fn send_cc(&self, cc: u8, val: u16) {
         let msg = LiveEvent::Midi {
-            channel: self.midi_channel,
+            channel: self.get_send_channel(),
             message: MidiMessage::Controller {
                 controller: cc.into(),
                 value: scale_bits_12_7(val),
@@ -342,9 +326,9 @@ impl<const N: usize> Midi<N> {
         self.send_msg(msg).await;
     }
 
-    pub async fn send_note_on(&self, note_number: u8, velocity: u16) {
+    async fn send_note_on(&self, note_number: u8, velocity: u16) {
         let msg = LiveEvent::Midi {
-            channel: self.midi_channel,
+            channel: self.get_send_channel(),
             message: MidiMessage::NoteOn {
                 key: note_number.into(),
 
@@ -354,9 +338,9 @@ impl<const N: usize> Midi<N> {
         self.send_msg(msg).await;
     }
 
-    pub async fn send_note_off(&self, note_number: u8) {
+    async fn send_note_off(&self, note_number: u8) {
         let msg = LiveEvent::Midi {
-            channel: self.midi_channel,
+            channel: self.get_send_channel(),
             message: MidiMessage::NoteOff {
                 key: note_number.into(),
                 vel: 0.into(),
@@ -364,19 +348,114 @@ impl<const N: usize> Midi<N> {
         };
         self.send_msg(msg).await;
     }
+}
 
-    pub async fn send_msg(&self, msg: LiveEvent<'static>) {
-        self.midi_sender.send(msg).await;
-    }
+pub trait MidiReceiver {
+    fn get_recv_channel(&self) -> u4;
+    fn get_subscriber(&self) -> EventPubSubSubscriber;
 
-    pub async fn wait_for_message(&self) -> LiveEvent<'static> {
-        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+    async fn wait_for_message(&self) -> MidiMessage {
+        let mut subscriber = self.get_subscriber();
 
         loop {
             if let InputEvent::MidiMsg(msg) = subscriber.next_message_pure().await {
-                return msg;
+                if let LiveEvent::Midi { channel, message } = msg {
+                    if channel == self.get_recv_channel() {
+                        return message;
+                    }
+                }
             }
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MidiOutput {
+    midi_sender: MidiChannelSender,
+    midi_channel: u4,
+}
+
+impl MidiOutput {
+    pub fn new(midi_channel: u4, midi_sender: MidiChannelSender) -> Self {
+        Self {
+            midi_sender,
+            midi_channel,
+        }
+    }
+}
+
+impl MidiSender for MidiOutput {
+    fn get_send_channel(&self) -> u4 {
+        self.midi_channel
+    }
+    async fn send_msg(&self, msg: LiveEvent<'static>) {
+        self.midi_sender.send(msg).await;
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MidiInput {
+    event_pubsub: &'static EventPubSubChannel,
+    midi_channel: u4,
+}
+
+impl MidiInput {
+    pub fn new(midi_channel: u4, event_pubsub: &'static EventPubSubChannel) -> Self {
+        Self {
+            event_pubsub,
+            midi_channel,
+        }
+    }
+}
+
+impl MidiReceiver for MidiInput {
+    fn get_recv_channel(&self) -> u4 {
+        self.midi_channel
+    }
+    fn get_subscriber(&self) -> EventPubSubSubscriber {
+        self.event_pubsub.subscriber().unwrap()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MidiDuplex {
+    event_pubsub: &'static EventPubSubChannel,
+    midi_input_channel: u4,
+    midi_output_channel: u4,
+    midi_sender: MidiChannelSender,
+}
+
+impl MidiDuplex {
+    pub fn new(
+        midi_input_channel: u4,
+        midi_output_channel: u4,
+        event_pubsub: &'static EventPubSubChannel,
+        midi_sender: MidiChannelSender,
+    ) -> Self {
+        Self {
+            event_pubsub,
+            midi_input_channel,
+            midi_output_channel,
+            midi_sender,
+        }
+    }
+}
+
+impl MidiReceiver for MidiDuplex {
+    fn get_recv_channel(&self) -> u4 {
+        self.midi_input_channel
+    }
+    fn get_subscriber(&self) -> EventPubSubSubscriber {
+        self.event_pubsub.subscriber().unwrap()
+    }
+}
+
+impl MidiSender for MidiDuplex {
+    fn get_send_channel(&self) -> u4 {
+        self.midi_output_channel
+    }
+    async fn send_msg(&self, msg: LiveEvent<'static>) {
+        self.midi_sender.send(msg).await;
     }
 }
 
@@ -453,7 +532,7 @@ pub struct App<const N: usize> {
     pub start_channel: usize,
     event_pubsub: &'static EventPubSubChannel,
     max_sender: MaxSender,
-    midi_sender: MidiSender,
+    midi_sender: MidiChannelSender,
 }
 
 impl<const N: usize> App<N> {
@@ -462,7 +541,7 @@ impl<const N: usize> App<N> {
         start_channel: usize,
         event_pubsub: &'static EventPubSubChannel,
         max_sender: MaxSender,
-        midi_sender: MidiSender,
+        midi_sender: MidiChannelSender,
     ) -> Self {
         Self {
             app_id,
@@ -558,8 +637,21 @@ impl<const N: usize> App<N> {
         Quantizer::default()
     }
 
-    pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {
-        Midi::new(midi_channel.into(), self.midi_sender, self.event_pubsub)
+    pub fn use_midi_input(&self, midi_channel: u8) -> MidiInput {
+        MidiInput::new(midi_channel.into(), self.event_pubsub)
+    }
+
+    pub fn use_midi_output(&self, midi_channel: u8) -> MidiOutput {
+        MidiOutput::new(midi_channel.into(), self.midi_sender)
+    }
+
+    pub fn use_midi_duplex(&self, midi_input_channel: u8, midi_output_channel: u8) -> MidiDuplex {
+        MidiDuplex::new(
+            midi_input_channel.into(),
+            midi_output_channel.into(),
+            self.event_pubsub,
+            self.midi_sender,
+        )
     }
 
     pub async fn wait_for_scene_event(&self) -> SceneEvent {
