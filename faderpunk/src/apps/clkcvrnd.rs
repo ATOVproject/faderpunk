@@ -7,8 +7,8 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
-    RGB8,
+    App, AppStorage, ClockEvent, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range,
+    SceneEvent, RGB8,
 };
 
 use libfp::{
@@ -87,7 +87,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let midi_chan = params.midi_channel.get().await;
     let cc = params.cc.get().await;
-    let midi = app.use_midi(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_chan as u8 - 1);
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);

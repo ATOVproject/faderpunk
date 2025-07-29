@@ -10,7 +10,8 @@ use libfp::{Config, Curve, Param, Value};
 use smart_leds::colors::RED;
 
 use crate::app::{
-    App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent, RGB8,
+    App, AppStorage, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range, SceneEvent,
+    RGB8,
 };
 
 pub const CHANNELS: usize = 1;
@@ -103,7 +104,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let midi_chan = params.midi_channel.get().await;
     let midi_cc = params.midi_cc.get().await;
     let curve = params.curve.get().await;
-    let midi = app.use_midi(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_chan as u8);
 
     let muted_glob = app.make_global(false);
     let att_glob = app.make_global(4095);

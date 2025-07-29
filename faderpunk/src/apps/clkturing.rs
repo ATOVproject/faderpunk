@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
 
 use crate::app::{
-    App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent, RGB8,
+    App, AppStorage, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range, SceneEvent,
+    RGB8,
 };
 
 pub const CHANNELS: usize = 2;
@@ -112,7 +113,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let midi_cc = params.midi_cc.get().await;
 
     let midi_chan = params.midi_channel.get().await;
-    let midi = app.use_midi(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_chan as u8 - 1);
 
     // let mut prob_glob = app.make_global_with_store(0, StorageSlot::A);
     // let mut length_glob = app.make_global_with_store(15, StorageSlot::B);
