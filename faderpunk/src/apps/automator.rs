@@ -7,7 +7,7 @@ use libfp::utils::slew_limiter;
 use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
 
-use libfp::{Config, Param, Value};
+use libfp::{Config, Curve, Param, Value};
 
 use crate::{
     app::{
@@ -19,9 +19,14 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 2;
+pub const PARAMS: usize = 4;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Automator", "Fader movement recording")
+    .add_param(Param::Curve {
+        name: "Curve",
+        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+    })
+    .add_param(Param::Bool { name: "Bipolar" })
     .add_param(Param::i32 {
         name: "MIDI Channel",
         min: 1,
@@ -42,8 +47,10 @@ pub struct Storage {
 impl AppStorage for Storage {}
 
 pub struct Params<'a> {
+    curve: ParamSlot<'a, Curve, PARAMS>,
+    bipolar: ParamSlot<'a, bool, PARAMS>,
     midi_channel: ParamSlot<'a, i32, PARAMS>,
-    cc: ParamSlot<'a, i32, PARAMS>,
+    midi_cc: ParamSlot<'a, i32, PARAMS>,
 }
 
 impl Default for Storage {
@@ -58,14 +65,21 @@ impl Default for Storage {
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     let param_store = ParamStore::new(
-        [Value::i32(1), Value::i32(32)],
+        [
+            Value::Curve(Curve::Linear),
+            Value::bool(false),
+            Value::i32(1),
+            Value::i32(32),
+        ],
         app.app_id,
         app.start_channel,
     );
 
     let params = Params {
-        midi_channel: ParamSlot::new(&param_store, 0),
-        cc: ParamSlot::new(&param_store, 1),
+        curve: ParamSlot::new(&param_store, 0),
+        bipolar: ParamSlot::new(&param_store, 1),
+        midi_channel: ParamSlot::new(&param_store, 2),
+        midi_cc: ParamSlot::new(&param_store, 3),
     };
 
     let app_loop = async {
@@ -84,8 +98,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let leds = app.use_leds();
 
     let midi_chan = params.midi_channel.get().await;
-    let cc = params.cc.get().await;
+    let cc: u8 = params.midi_cc.get().await as u8;
     let midi = app.use_midi(midi_chan as u8 - 1);
+    let curve = params.curve.get().await;
+
     let mut clock = app.use_clock();
 
     let rec_flag = app.make_global(false);
@@ -96,7 +112,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let index_glob = app.make_global(0);
     let latched = app.make_global(false);
 
-    let jack = app.make_out_jack(0, Range::_0_10V).await;
+    let jack;
+    if !params.bipolar.get().await {
+        jack = app.make_out_jack(0, Range::_0_10V).await;
+    } else {
+        jack = app.make_out_jack(0, Range::_Neg5_5V).await;
+    }
 
     let mut last_midi = 0;
 
@@ -121,6 +142,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let index = index_glob.get().await;
             let buffer = buffer_glob.get().await;
             let mut offset = offset_glob.get().await;
+
             if latched.get().await {
                 offset = fader.get_value();
             }
@@ -137,7 +159,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             let val = buffer[index] + offset;
             outval = slew_limiter(outval, val, slew_rate, slew_rate);
-            jack.set_value(outval as u16);
+            jack.set_value(curve.at(outval as usize));
             if last_midi / 16 != (val) / 16 {
                 midi.send_cc(cc as u8, outval as u16).await;
                 last_midi = outval as u16;
