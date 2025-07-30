@@ -171,8 +171,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 ClockEvent::Tick => {
                     if clkn % div == 0 {
                         let prob = prob_glob.get().await;
-                        let mut rand = die.roll();
-                        rand = (rand as u32 * 4000 / 4095 + 40) as u16;
+                        let rand = die.roll().clamp(100, 3900);
 
                         let rotation = rotate_select_bit(register, prob, rand, length);
                         register = rotation.0;
