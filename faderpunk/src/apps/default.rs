@@ -5,7 +5,7 @@ use embassy_futures::{
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::CURVE_LOG,
-    utils::{slew_limiter, split_unsigned_value},
+    utils::{clickless, slew_limiter, split_unsigned_value},
 };
 use serde::{Deserialize, Serialize};
 
@@ -205,24 +205,4 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     };
 
     join4(fut1, fut2, fut3, scene_handler).await;
-}
-
-fn clickless(prev: f32, input: u16) -> f32 {
-    let delta = input as i32 - prev as i32;
-    let step = 205.;
-    if delta > 0 {
-        if prev + step < input as f32 {
-            prev + step
-        } else {
-            input as f32
-        }
-    } else if delta < 0 {
-        if prev - step > input as f32 {
-            prev - step
-        } else {
-            input as f32
-        }
-    } else {
-        input.clamp(0, 4095) as f32
-    }
 }
