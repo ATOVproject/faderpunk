@@ -564,7 +564,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     gateseq_glob.set(gateseq_saved.get()).await;
                     seq_length_glob.set(seq_length_saved).await;
 
-                    for n in 0..3 {
+                    for n in 0..4 {
                         clockres[n] = resolution[clockres[n]];
                         gatel[n] = (clockres[n] * gatel[n] as usize / 256) as u8;
                         gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
