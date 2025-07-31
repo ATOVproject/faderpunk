@@ -1,4 +1,3 @@
-use config::{Config, Curve, Param, Value};
 use embassy_futures::{
     join::{join3, join4},
     select::select,

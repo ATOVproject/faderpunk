@@ -4,15 +4,8 @@ use embassy_time::{Duration, Timer};
 use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
-use rand::Rng;
 
-use config::Curve;
-use libfp::{
-    constants::{CURVE_EXP, CURVE_LOG},
-    ext::BrightnessExt,
-    quantizer::Quantizer,
-    utils::scale_bits_12_7,
-};
+use libfp::{ext::BrightnessExt, utils::scale_bits_12_7};
 
 use crate::{
     events::{EventPubSubChannel, InputEvent},
@@ -30,8 +23,6 @@ pub use crate::{
     tasks::{clock::ClockEvent, leds::Led},
 };
 pub use smart_leds::{colors, RGB8};
-
-const QUANTIZER_RANGER: usize = 9 * 12;
 
 pub enum Range {
     // 0 - 10V
@@ -592,9 +583,5 @@ impl<const N: usize> App<N> {
     pub async fn exit_handler(&self, exit_signal: &'static Signal<NoopRawMutex, bool>) {
         exit_signal.wait().await;
         self.reset().await;
-    }
-
-    pub fn use_quantizer(&self) -> Quantizer<QUANTIZER_RANGER> {
-        Quantizer::default()
     }
 }
