@@ -1,6 +1,6 @@
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{utils::is_close, Config, Param, Value};
+use libfp::{utils::is_close, Config, Curve, Param, Value};
 use serde::{Deserialize, Serialize};
 use smart_leds::{colors::RED, RGB, RGB8};
 
@@ -9,7 +9,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 3;
+pub const PARAMS: usize = 4;
 
 pub static CONFIG: Config<PARAMS> =
     Config::new("Random Triggers", "Generate random triggers on clock")
@@ -27,12 +27,17 @@ pub static CONFIG: Config<PARAMS> =
             name: "GATE %",
             min: 1,
             max: 100,
+        })
+        .add_param(Param::Curve {
+            name: "Fader Curve",
+            variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
         });
 
 pub struct Params<'a> {
     midi_channel: ParamSlot<'a, i32, PARAMS>,
     note: ParamSlot<'a, i32, PARAMS>,
     gatel: ParamSlot<'a, i32, PARAMS>,
+    curve: ParamSlot<'a, Curve, PARAMS>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -56,7 +61,12 @@ impl AppStorage for Storage {}
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     let param_store = ParamStore::new(
-        [Value::i32(1), Value::i32(32), Value::i32(50)],
+        [
+            Value::i32(1),
+            Value::i32(32),
+            Value::i32(50),
+            Value::Curve(Curve::Linear),
+        ],
         app.app_id,
         app.start_channel,
     );
@@ -65,6 +75,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         midi_channel: ParamSlot::new(&param_store, 0),
         note: ParamSlot::new(&param_store, 1),
         gatel: ParamSlot::new(&param_store, 2),
+        curve: ParamSlot::new(&param_store, 3),
     };
 
     let app_loop = async {
@@ -79,7 +90,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
     let mut clock = app.use_clock();
-    let mut die = app.use_die();
+    let die = app.use_die();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
@@ -96,11 +107,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let jack = app.make_gate_jack(0, 4095).await;
 
+    let curve = params.curve.get().await;
+
     let resolution = [368, 184, 92, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
     let mut clkn = 0;
 
-    const LED_BRIGHTNESS: u8 = 255;
+    const LED_BRIGHTNESS: u8 = 100;
 
     const LED_COLOR: RGB<u8> = RGB8 {
         r: 243,
@@ -124,7 +137,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         leds.set(0, Led::Top, LED_COLOR, 0);
         leds.set(0, Led::Bottom, LED_COLOR, 0);
     } else {
-        leds.set(0, Led::Button, LED_COLOR, 75);
+        leds.set(0, Led::Button, LED_COLOR, LED_BRIGHTNESS);
     }
 
     let fut1 = async {
@@ -144,7 +157,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     let div = div_glob.get().await;
 
                     if clkn % div == 0 {
-                        if val >= rndval && !muted {
+                        if curve.at(val as usize) >= rndval && !muted {
                             jack.set_high().await;
                             leds.set(0, Led::Top, LED_COLOR, LED_BRIGHTNESS);
                             midi.send_note_on(note as u8 - 1, 4095).await;
