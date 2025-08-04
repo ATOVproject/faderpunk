@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 embedded-io-async = "0.6.1"
-embassy-embedded-hal = { version = "0.3.1", features = ["defmt"] }
+embassy-embedded-hal = { version = "0.4.0", features = ["defmt"] }
 embassy-sync = { version = "0.7.0", features = ["defmt"] }
 embassy-executor = { version = "0.7.0", features = [
   "task-arena-size-262144",
