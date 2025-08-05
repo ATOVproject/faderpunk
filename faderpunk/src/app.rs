@@ -5,7 +5,9 @@ use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DAC
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
 
-use libfp::{ext::BrightnessExt, utils::scale_bits_12_7};
+use libfp::{ext::BrightnessExt, quantizer::Quantizer, utils::scale_bits_12_7};
+
+const QUANTIZER_RANGER: usize = 9 * 12;
 
 use crate::{
     events::{EventPubSubChannel, InputEvent},
@@ -550,6 +552,10 @@ impl<const N: usize> App<N> {
 
     pub fn use_clock(&self) -> Clock {
         Clock::new()
+    }
+
+    pub fn use_quantizer(&self) -> Quantizer<QUANTIZER_RANGER> {
+        Quantizer::default()
     }
 
     pub fn use_midi(&self, midi_channel: u8) -> Midi<N> {

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     constants::{ATOV_BLUE, ATOV_PURPLE, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MID},
+    quantizer::{self, Key, Note},
     Config, Param, Value,
 };
 
@@ -136,6 +137,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         app.make_gate_jack(5, 4095).await,
         app.make_gate_jack(7, 4095).await,
     ];
+
+    let mut quantizer = app.use_quantizer();
+
+    //Fix get this from global setting
+    quantizer.set_scale(Key::Chromatic, Note::C, Note::C);
 
     let page_glob: Global<usize> = app.make_global(0);
     let led_flag_glob: Global<bool> = app.make_global(true);
@@ -517,7 +523,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                                 lastnote[n] = (seq[clkindex] / 170) as u8 + 60;
                                 midi[n].send_note_on(lastnote[n], 4095).await;
                                 gate_out[n].set_high().await;
-                                cv_out[n].set_value(seq[clkindex] / 4);
+                                let out = ((quantizer.get_quantized_voltage(seq[clkindex] / 4))
+                                    * 410.) as u16;
+                                if n == 0 {
+                                    info!(
+                                        "bit : {}, voltage: {}, corrected out: {}",
+                                        seq[clkindex] / 4,
+                                        quantizer.get_quantized_voltage(seq[clkindex] / 4),
+                                        out
+                                    );
+                                }
+                                cv_out[n].set_value(out);
                                 gatelength1 = gatelength_glob.get().await;
                             }
                         }

@@ -5,6 +5,7 @@ use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::{ATOV_BLUE, ATOV_RED, LED_HIGH, LED_MID},
+    quantizer::{Key, Note},
     utils::is_close,
     Config, Param, Value,
 };
@@ -124,6 +125,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let recall_flag = app.make_global(false);
     let midi_note = app.make_global(0);
 
+    let mut quantizer = app.use_quantizer();
+
+    //Fix get this from global setting
+    quantizer.set_scale(Key::Chromatic, Note::C, Note::C);
+
     let latched_glob = app.make_global(true);
 
     leds.set(0, Led::Button, LED_COLOR, LED_MID);
@@ -161,8 +167,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 //leds.set(0, Led::Button, LED_COLOR, 100 * rotation.1 as u8);
 
                 let register_scalled = scale_to_12bit(register, length as u8);
-                att_reg = register_scalled as u32 * att_glob.get().await / 4095;
-                output.set_value(att_reg as u16);
+                att_reg = (register_scalled as u32 * att_glob.get().await / 4095) as u16;
+                let out = ((quantizer.get_quantized_voltage(att_reg)) * 410.0) as u16;
+                output.set_value(out as u16);
                 leds.set(0, Led::Top, LED_COLOR, (register_scalled / 16) as u8);
                 leds.set(1, Led::Top, LED_COLOR, (att_reg / 16) as u8);
                 // info!("{}", register_scalled);
