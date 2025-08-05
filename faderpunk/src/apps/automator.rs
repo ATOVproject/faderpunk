@@ -3,7 +3,7 @@
 
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::utils::slew_limiter;
+use libfp::utils::{attenuate, attenuate_bipolar, slew_limiter, split_unsigned_value};
 use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
 
@@ -40,8 +40,9 @@ pub static CONFIG: Config<PARAMS> = Config::new("Automator", "Fader movement rec
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
-    buffer_saved: Arr<u16, 384>,
-    length_saved: usize,
+    att_saved: u16,
+    // buffer_saved: Arr<u16, 384>,
+    // length_saved: usize,
 }
 
 impl AppStorage for Storage {}
@@ -56,8 +57,9 @@ pub struct Params<'a> {
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            buffer_saved: Arr::new([0; 384]),
-            length_saved: 384,
+            att_saved: 4095,
+            // buffer_saved: Arr::new([0; 384]),
+            // length_saved: 384,
         }
     }
 }
@@ -125,7 +127,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut recording = false;
     let mut buffer = [0; 384];
     let mut length = 384;
-    let slew_rate = 1000;
+    let slew_rate = 100;
+    let att_glob = app.make_global(4095);
 
     // let (buffer_saved, length_saved) = storage
     //     .query(|s| (s.buffer_saved.get(), s.length_saved))
@@ -133,41 +136,68 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     // buffer_glob.set(buffer_saved).await;
     // length_glob.set(length_saved).await;
 
+    att_glob.set(storage.query(|s| s.att_saved).await).await;
+
     leds.set(0, Led::Button, WHITE, 100);
 
     let update_output = async {
         let mut outval = 0.;
+        let mut shift_old = false;
         loop {
             app.delay_millis(1).await;
             let index = index_glob.get().await;
             let buffer = buffer_glob.get().await;
             let mut offset = offset_glob.get().await;
+            let att = att_glob.get().await;
+            let color;
+            if recording_glob.get().await {
+                color = RED;
+            } else {
+                color = WHITE;
+            }
 
             if latched.get().await {
                 offset = fader.get_value();
+                offset_glob.set(offset).await;
             }
 
-            // if recording_glob.get().await {
-            //     jack.set_value(offset);
-            //     info!("last midi {}, offset {}", last_midi / 16, (offset) / 16 );
-            //     if last_midi / 16 != (offset) / 16 {
-            //         midi.send_cc(0, offset).await;
-            //         last_midi = offset;
-            //     }
-            //     leds.set(0, Led::Top, (255, 0, 0), (offset / 32) as u8);
-            //     leds.set( 0,Led::Bottom,(255, 0, 0),(255 - (offset/ 16) as u8) / 2)
+            let val = (buffer[index] + offset).min(4095);
 
-            let val = buffer[index] + offset;
             outval = slew_limiter(outval, val, slew_rate, slew_rate);
-            jack.set_value(curve.at(outval as usize));
+            if !params.bipolar.get().await {
+                let out = curve.at(attenuate(outval as u16, att) as usize);
+                jack.set_value(out);
+                if !buttons.is_shift_pressed() {
+                    leds.set(0, Led::Top, color, (out / 16) as u8);
+                } else {
+                    leds.set(0, Led::Top, RED, (att / 16) as u8);
+                }
+            } else {
+                let out = curve.at(attenuate_bipolar(outval as u16, att) as usize);
+                jack.set_value(out);
+                if !buttons.is_shift_pressed() {
+                    let ledint = split_unsigned_value(out);
+                    leds.set(0, Led::Top, color, ledint[0]);
+                    leds.set(0, Led::Bottom, color, ledint[1]);
+                } else {
+                    let ledint = split_unsigned_value(att);
+                    leds.set(0, Led::Top, RED, ledint[0]);
+                    leds.set(0, Led::Bottom, RED, ledint[1]);
+                }
+            }
             if last_midi / 16 != (val) / 16 {
-                midi.send_cc(cc as u8, outval as u16).await;
+                midi.send_cc(cc as u8, attenuate(outval as u16, att)).await;
                 last_midi = outval as u16;
             };
-            if recording_glob.get().await {
-                leds.set(0, Led::Top, RED, (outval / 16.) as u8);
-            } else {
-                leds.set(0, Led::Top, WHITE, (outval / 16.) as u8)
+
+            if !shift_old && buttons.is_shift_pressed() {
+                latched.set(false).await;
+                shift_old = true;
+            }
+            if shift_old && !buttons.is_shift_pressed() {
+                latched.set(false).await;
+
+                shift_old = false;
             }
         }
     };
@@ -257,13 +287,30 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             fader.wait_for_change().await;
             let val = fader.get_value();
+            if !buttons.is_shift_pressed() {
+                if is_close(val, offset_glob.get().await) && !latched.get().await {
+                    latched.set(true).await
+                }
+            } else {
+                if !latched.get().await && is_close(val, att_glob.get().await) {
+                    latched.set(true).await;
+                }
+                if latched.get().await {
+                    att_glob.set(val).await;
 
-            if is_close(val, offset_glob.get().await) && !latched.get().await {
-                latched.set(true).await
+                    leds.set(0, Led::Top, RED, (val / 16) as u8);
+
+                    storage
+                        .modify_and_save(
+                            |s| {
+                                s.att_saved = val;
+                                s.att_saved
+                            },
+                            None,
+                        )
+                        .await;
+                }
             }
-            // if latched.get().await {
-            //     offset_glob.set(val).await;
-            // }
         }
     };
 
