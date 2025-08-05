@@ -3,18 +3,17 @@
 
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::utils::{attenuate, attenuate_bipolar, slew_limiter, split_unsigned_value};
+use libfp::{
+    constants::{ATOV_RED, ATOV_WHITE, LED_MID},
+    utils::{attenuate, attenuate_bipolar, slew_limiter, split_unsigned_value},
+};
 use serde::{Deserialize, Serialize};
-use smart_leds::colors::RED;
 
 use libfp::{Config, Curve, Param, Value};
+use smart_leds::RGB8;
 
 use crate::{
-    app::{
-        colors::WHITE, App, AppStorage, Arr, ClockEvent, Led, ManagedStorage, ParamSlot, Range,
-        SceneEvent, RGB8,
-    },
-    apps::slew,
+    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, Range},
     storage::ParamStore,
 };
 
@@ -94,6 +93,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
+const LED_COLOR: RGB8 = ATOV_WHITE;
+
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
     let buttons = app.use_buttons();
     let fader = app.use_faders();
@@ -138,7 +139,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     att_glob.set(storage.query(|s| s.att_saved).await).await;
 
-    leds.set(0, Led::Button, WHITE, 100);
+    leds.set(0, Led::Button, LED_COLOR, 100);
 
     let update_output = async {
         let mut outval = 0.;
@@ -151,9 +152,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let att = att_glob.get().await;
             let color;
             if recording_glob.get().await {
-                color = RED;
+                color = ATOV_RED;
             } else {
-                color = WHITE;
+                color = LED_COLOR;
             }
 
             if latched.get().await {
@@ -170,7 +171,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if !buttons.is_shift_pressed() {
                     leds.set(0, Led::Top, color, (out / 16) as u8);
                 } else {
-                    leds.set(0, Led::Top, RED, (att / 16) as u8);
+                    leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
                 }
             } else {
                 let out = curve.at(attenuate_bipolar(outval as u16, att) as usize);
@@ -181,8 +182,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     leds.set(0, Led::Bottom, color, ledint[1]);
                 } else {
                     let ledint = split_unsigned_value(att);
-                    leds.set(0, Led::Top, RED, ledint[0]);
-                    leds.set(0, Led::Bottom, RED, ledint[1]);
+                    leds.set(0, Led::Top, ATOV_RED, ledint[0]);
+                    leds.set(0, Led::Bottom, ATOV_RED, ledint[1]);
                 }
             }
             if last_midi / 16 != (val) / 16 {
@@ -250,9 +251,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if recording {
                         let val = fader.get_value();
                         buffer[index] = val;
-                        leds.set(0, Led::Button, RED, 100);
+                        leds.set(0, Led::Button, ATOV_RED, LED_MID);
                     } else {
-                        leds.set(0, Led::Button, WHITE, 100);
+                        leds.set(0, Led::Button, LED_COLOR, LED_MID);
                     }
 
                     if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
@@ -298,7 +299,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if latched.get().await {
                     att_glob.set(val).await;
 
-                    leds.set(0, Led::Top, RED, (val / 16) as u8);
+                    leds.set(0, Led::Top, ATOV_RED, (val / 16) as u8);
 
                     storage
                         .modify_and_save(
@@ -321,7 +322,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 recording_glob.set(false).await;
                 buffer_glob.set([0; 384]).await;
                 length_glob.set(384).await;
-                leds.set(0, Led::Button, WHITE, 100);
+                leds.set(0, Led::Button, LED_COLOR, LED_MID);
                 latched.set(false).await;
             } else {
                 rec_flag.set(true).await;

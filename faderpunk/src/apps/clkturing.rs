@@ -3,7 +3,11 @@
 
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{utils::is_close, Config, Param, Value};
+use libfp::{
+    constants::{ATOV_BLUE, ATOV_RED, LED_HIGH, LED_MID},
+    utils::is_close,
+    Config, Param, Value,
+};
 use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
 
@@ -53,12 +57,7 @@ pub struct Params<'a> {
     midi_cc: ParamSlot<'a, i32, PARAMS>,
 }
 
-const LED_COLOR: RGB8 = RGB8 {
-    r: 0,
-    g: 200,
-    b: 150,
-};
-const BUTTON_BRIGHTNESS: u8 = 75;
+const LED_COLOR: RGB8 = ATOV_BLUE;
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
@@ -127,8 +126,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let latched_glob = app.make_global(true);
 
-    leds.set(0, Led::Button, LED_COLOR, 100);
-    leds.set(1, Led::Button, LED_COLOR, 100);
+    leds.set(0, Led::Button, LED_COLOR, LED_MID);
+    leds.set(1, Led::Button, LED_COLOR, LED_MID);
 
     let input = app.make_in_jack(0, Range::_0_10V).await;
     let output = app.make_out_jack(1, Range::_0_10V).await;
@@ -177,11 +176,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     midi.send_cc(midi_cc as u8 - 1, att_reg as u16).await;
                 }
 
-                leds.set(0, Led::Bottom, RED, 255);
+                leds.set(0, Led::Bottom, ATOV_RED, LED_HIGH);
             }
 
             if inputval <= 406 && oldinputval > 406 {
-                leds.set(0, Led::Bottom, RED, 0);
+                leds.set(0, Led::Bottom, ATOV_RED, 0);
 
                 if midi_mode == 1 {
                     let note = midi_note.get().await;
@@ -282,7 +281,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if button_old {
                     latched_glob.set(false).await;
                     button_old = false;
-                    leds.set(0, Led::Bottom, RED, 0);
+                    leds.set(0, Led::Bottom, ATOV_RED, 0);
                 }
             }
         }

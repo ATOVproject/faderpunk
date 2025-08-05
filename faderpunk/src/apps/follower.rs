@@ -4,10 +4,9 @@
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
-use smart_leds::colors::RED;
 
 use libfp::{
-    constants::CURVE_EXP,
+    constants::{ATOV_PURPLE, ATOV_RED, CURVE_EXP, LED_MID},
     utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
     Config,
 };
@@ -20,12 +19,7 @@ pub const PARAMS: usize = 0;
 // pub static CONFIG: Config<PARAMS> = Config::new("Slew Limiter", "slows CV changes");
 pub static CONFIG: Config<PARAMS> = Config::new("Envelope Follower", "audio amplitude to CV");
 
-const LED_COLOR: RGB8 = RGB8 {
-    r: 188,
-    g: 77,
-    b: 216,
-};
-const BUTTON_BRIGHTNESS: u8 = 75;
+const BUTTON_BRIGHTNESS: u8 = LED_MID;
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
@@ -63,8 +57,8 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
     let faders = app.use_faders();
     let leds = app.use_leds();
 
-    leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
-    leds.set(1, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
+    leds.set(0, Led::Button, ATOV_PURPLE, BUTTON_BRIGHTNESS);
+    leds.set(1, Led::Button, ATOV_PURPLE, BUTTON_BRIGHTNESS);
     let _input = app.make_in_jack(0, Range::_Neg5_5V).await;
     let _output = app.make_out_jack(1, Range::_Neg5_5V).await;
 
@@ -87,8 +81,8 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
     attack_glob.set(CURVE_EXP[stored_faders[0] as usize]).await;
     decay_glob.set(CURVE_EXP[stored_faders[1] as usize]).await;
 
-    leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
-    leds.set(1, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
+    leds.set(0, Led::Button, ATOV_PURPLE, BUTTON_BRIGHTNESS);
+    leds.set(1, Led::Button, ATOV_PURPLE, BUTTON_BRIGHTNESS);
 
     let fut1 = async {
         loop {
@@ -114,19 +108,19 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
 
             if !buttons.is_shift_pressed() {
                 let slew_led = split_unsigned_value(oldval as u16);
-                leds.set(0, Led::Top, LED_COLOR, slew_led[0]);
-                leds.set(0, Led::Bottom, LED_COLOR, slew_led[1]);
+                leds.set(0, Led::Top, ATOV_PURPLE, slew_led[0]);
+                leds.set(0, Led::Bottom, ATOV_PURPLE, slew_led[1]);
 
                 let out_led = split_unsigned_value(outval);
-                leds.set(1, Led::Top, LED_COLOR, out_led[0]);
-                leds.set(1, Led::Bottom, LED_COLOR, out_led[1]);
+                leds.set(1, Led::Top, ATOV_PURPLE, out_led[0]);
+                leds.set(1, Led::Bottom, ATOV_PURPLE, out_led[1]);
             } else {
                 let off_led = split_signed_value(offset);
-                leds.set(0, Led::Top, RED, off_led[0]);
-                leds.set(0, Led::Bottom, RED, off_led[1]);
+                leds.set(0, Led::Top, ATOV_RED, off_led[0]);
+                leds.set(0, Led::Bottom, ATOV_RED, off_led[1]);
                 let att_led = split_unsigned_value(att);
-                leds.set(1, Led::Top, RED, att_led[0]);
-                leds.set(1, Led::Bottom, RED, att_led[1]);
+                leds.set(1, Led::Top, ATOV_RED, att_led[0]);
+                leds.set(1, Led::Bottom, ATOV_RED, att_led[1]);
             }
 
             if !shift_old && buttons.is_shift_pressed() {
@@ -139,8 +133,8 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
                 latched_glob.set([false; 2]).await;
                 shift_old = false;
 
-                leds.set(0, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
-                leds.set(1, Led::Button, LED_COLOR, BUTTON_BRIGHTNESS);
+                leds.set(0, Led::Button, ATOV_PURPLE, BUTTON_BRIGHTNESS);
+                leds.set(1, Led::Button, ATOV_PURPLE, BUTTON_BRIGHTNESS);
             }
         }
     };

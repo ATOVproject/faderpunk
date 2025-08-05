@@ -1,6 +1,10 @@
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{utils::is_close, Config, Curve, Param, Value};
+use libfp::{
+    constants::{ATOV_YELLOW, LED_MID},
+    utils::is_close,
+    Config, Curve, Param, Value,
+};
 use serde::{Deserialize, Serialize};
 use smart_leds::{colors::RED, RGB, RGB8};
 
@@ -113,13 +117,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let mut clkn = 0;
 
-    const LED_BRIGHTNESS: u8 = 100;
+    const LED_BRIGHTNESS: u8 = LED_MID;
 
-    const LED_COLOR: RGB<u8> = RGB8 {
-        r: 243,
-        g: 191,
-        b: 78,
-    };
+    const LED_COLOR: RGB<u8> = ATOV_YELLOW;
 
     storage.load(None).await;
 

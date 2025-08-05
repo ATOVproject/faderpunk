@@ -4,9 +4,13 @@
 
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{utils::is_close, Config, Param, Value};
+use libfp::{
+    constants::{ATOV_BLUE, ATOV_RED, LED_HIGH, LED_MID},
+    quantizer::{self, Key, Note, Quantizer},
+    utils::is_close,
+    Config, Param, Value,
+};
 use serde::{Deserialize, Serialize};
-use smart_leds::colors::RED;
 
 use crate::app::{
     App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
@@ -57,12 +61,7 @@ pub struct Params<'a> {
     midi_cc: ParamSlot<'a, i32, PARAMS>,
 }
 
-const LED_COLOR: RGB8 = RGB8 {
-    r: 0,
-    g: 200,
-    b: 150,
-};
-const BUTTON_BRIGHTNESS: u8 = 75;
+const BUTTON_BRIGHTNESS: u8 = LED_MID;
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
@@ -137,7 +136,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
-    leds.set(0, Led::Button, LED_COLOR, 100);
+    leds.set(0, Led::Button, ATOV_BLUE, LED_MID);
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
@@ -192,11 +191,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         }
 
                         if buttons.is_button_pressed(0) && !buttons.is_shift_pressed() {
-                            leds.set(0, Led::Bottom, RED, 255);
+                            leds.set(0, Led::Bottom, ATOV_RED, LED_HIGH);
                         }
                     }
                     if clkn % div == div / 2 {
-                        leds.set(0, Led::Bottom, RED, 0);
+                        leds.set(0, Led::Bottom, ATOV_RED, 0);
 
                         if midi_mode == 1 {
                             let note = midi_note.get().await;
@@ -223,9 +222,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
                     // if buttons.is_button_pressed(0) {
                     //     if clkn % 4 == 0 && clkn / 4 % (length + 1) != 0 {
-                    //         leds.set(0, Led::Bottom, RED, 255);
+                    //         leds.set(0, Led::Bottom, ATOV_RED, 255);
                     //     } else {
-                    //         leds.set(0, Led::Bottom, RED, 0);
+                    //         leds.set(0, Led::Bottom, ATOV_RED, 0);
                     //     }
                     // }
                 }
@@ -301,7 +300,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     rec_flag.set(true).await;
                     length_rec.set(0).await;
                 }
-                leds.set(0, Led::Top, RED, (att_glob.get().await / 16) as u8);
+                leds.set(0, Led::Top, ATOV_RED, (att_glob.get().await / 16) as u8);
             }
             if !buttons.is_shift_pressed() {
                 if shift_old {
@@ -331,7 +330,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if button_old {
                     latched_glob.set(false).await;
                     button_old = false;
-                    leds.set(0, Led::Bottom, RED, 0);
+                    leds.set(0, Led::Bottom, ATOV_RED, 0);
                 }
             }
         }
