@@ -2,6 +2,7 @@
 // Quantizer
 //clock res
 
+use defmt::info;
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
@@ -61,8 +62,6 @@ pub struct Params<'a> {
     midi_cc: ParamSlot<'a, i32, PARAMS>,
 }
 
-const BUTTON_BRIGHTNESS: u8 = LED_MID;
-
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     att_saved: u16,
@@ -112,7 +111,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let fader = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
-    let mut die = app.use_die();
+    let die = app.use_die();
+    let mut quantizer = app.use_quantizer();
+
+    //Fix get this from global setting
+    quantizer.set_scale(Key::Chromatic, Note::C, Note::C);
 
     let midi_mode = params.midi_mode.get().await;
     let midi_cc = params.midi_cc.get().await;
@@ -176,9 +179,19 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         register = rotation.0;
 
                         let register_scalled = scale_to_12bit(register, length as u8);
-                        att_reg = register_scalled as u32 * att_glob.get().await / 4095;
-                        jack.set_value(att_reg as u16);
-                        leds.set(0, Led::Top, LED_COLOR, (register_scalled / 16) as u8);
+                        att_reg = (register_scalled as u32 * att_glob.get().await / 4095) as u16;
+                        // att_reg = (register_scalled as u32 * 410 / 4095 + 410) as u16;
+
+                        let out = (quantizer.get_quantized_voltage(att_reg) * 410.0) as u16;
+                        info!(
+                            "bit : {}, voltage: {}, corrected out: {}",
+                            att_reg,
+                            quantizer.get_quantized_voltage(att_reg),
+                            out
+                        );
+
+                        jack.set_value(out);
+                        leds.set(0, Led::Top, ATOV_BLUE, (register_scalled / 16) as u8);
                         // info!("{}", register_scalled);
                         if midi_mode == 1 {
                             note = (att_reg / 32) as u8;
