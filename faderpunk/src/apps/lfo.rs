@@ -3,6 +3,7 @@
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
+    constants::{ATOV_BLUE, ATOV_PURPLE, ATOV_RED, ATOV_WHITE, ATOV_YELLOW, LED_MID},
     utils::{attenuate_bipolar, is_close, split_unsigned_value},
     Curve,
 };
@@ -11,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{Config, Waveform};
 
 use crate::{
-    app::{colors::RED, App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8},
+    app::{App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8},
     storage::ParamStore,
 };
 
@@ -81,29 +82,13 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     glob_wave.set(wave_saved).await;
 
     let color = match wave_saved {
-        Waveform::Sine => RGB8 {
-            r: 243,
-            g: 191,
-            b: 78,
-        },
-        Waveform::Triangle => RGB8 {
-            r: 188,
-            g: 77,
-            b: 216,
-        },
-        Waveform::Saw => RGB8 {
-            r: 78,
-            g: 243,
-            b: 243,
-        },
-        Waveform::Rect => RGB8 {
-            r: 250,
-            g: 250,
-            b: 250,
-        },
+        Waveform::Sine => ATOV_YELLOW,
+        Waveform::Triangle => ATOV_PURPLE,
+        Waveform::Saw => ATOV_BLUE,
+        Waveform::Rect => ATOV_WHITE,
     };
 
-    leds.set(0, Led::Button, color, 75);
+    leds.set(0, Led::Button, color, LED_MID);
 
     glob_lfo_speed
         .set(curve.at(fader_saved as usize) as f32 * 0.015 + 0.0682)
@@ -125,34 +110,18 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             let led = split_unsigned_value(val);
 
             let color = match wave {
-                Waveform::Sine => RGB8 {
-                    r: 243,
-                    g: 191,
-                    b: 78,
-                },
-                Waveform::Triangle => RGB8 {
-                    r: 188,
-                    g: 77,
-                    b: 216,
-                },
-                Waveform::Saw => RGB8 {
-                    r: 78,
-                    g: 243,
-                    b: 243,
-                },
-                Waveform::Rect => RGB8 {
-                    r: 250,
-                    g: 250,
-                    b: 250,
-                },
+                Waveform::Sine => ATOV_YELLOW,
+                Waveform::Triangle => ATOV_PURPLE,
+                Waveform::Saw => ATOV_BLUE,
+                Waveform::Rect => ATOV_WHITE,
             };
 
             if !buttons.is_shift_pressed() {
                 leds.set(0, Led::Top, color, led[0]);
                 leds.set(0, Led::Bottom, color, led[1]);
             } else {
-                leds.set(0, Led::Top, RED, ((att / 16) / 2) as u8);
-                leds.set(0, Led::Bottom, RED, 0);
+                leds.set(0, Led::Top, ATOV_RED, ((att / 16) / 2) as u8);
+                leds.set(0, Led::Bottom, ATOV_RED, 0);
             }
 
             glob_lfo_pos.set(next_pos).await;
@@ -223,28 +192,12 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 wave = glob_wave.get().await;
 
                 let color = match wave {
-                    Waveform::Sine => RGB8 {
-                        r: 243,
-                        g: 191,
-                        b: 78,
-                    },
-                    Waveform::Triangle => RGB8 {
-                        r: 188,
-                        g: 77,
-                        b: 216,
-                    },
-                    Waveform::Saw => RGB8 {
-                        r: 78,
-                        g: 243,
-                        b: 243,
-                    },
-                    Waveform::Rect => RGB8 {
-                        r: 250,
-                        g: 250,
-                        b: 250,
-                    },
+                    Waveform::Sine => ATOV_YELLOW,
+                    Waveform::Triangle => ATOV_PURPLE,
+                    Waveform::Saw => ATOV_BLUE,
+                    Waveform::Rect => ATOV_WHITE,
                 };
-                leds.set(0, Led::Button, color, 75);
+                leds.set(0, Led::Button, color, LED_MID);
 
                 storage
                     .modify_and_save(
@@ -277,28 +230,12 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         .await;
 
                     let color = match wave_saved {
-                        Waveform::Sine => RGB8 {
-                            r: 243,
-                            g: 191,
-                            b: 78,
-                        },
-                        Waveform::Triangle => RGB8 {
-                            r: 188,
-                            g: 77,
-                            b: 216,
-                        },
-                        Waveform::Saw => RGB8 {
-                            r: 78,
-                            g: 243,
-                            b: 243,
-                        },
-                        Waveform::Rect => RGB8 {
-                            r: 250,
-                            g: 250,
-                            b: 250,
-                        },
+                        Waveform::Sine => ATOV_YELLOW,
+                        Waveform::Triangle => ATOV_PURPLE,
+                        Waveform::Saw => ATOV_BLUE,
+                        Waveform::Rect => ATOV_WHITE,
                     };
-                    leds.set(0, Led::Button, color, 75);
+                    leds.set(0, Led::Button, color, LED_MID);
                     latched_glob.set(false).await;
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,

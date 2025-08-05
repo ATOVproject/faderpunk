@@ -12,6 +12,7 @@ use crate::app::{
 };
 
 use libfp::{
+    constants::{ATOV_PURPLE, LED_MID},
     utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
     Config, Param, Value,
 };
@@ -100,11 +101,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut clkn = 0;
     let mut val = 2048;
 
-    const LED_COLOR: RGB8 = RGB8 {
-        r: 243,
-        g: 191,
-        b: 78,
-    };
+    const LED_COLOR: RGB8 = ATOV_PURPLE;
 
     storage.load(None).await;
 
@@ -122,7 +119,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         leds.set(0, Led::Top, LED_COLOR, 0);
         leds.set(0, Led::Bottom, LED_COLOR, 0);
     } else {
-        leds.set(0, Led::Button, LED_COLOR, 75);
+        leds.set(0, Led::Button, LED_COLOR, LED_MID);
     }
 
     let fut1 = async {
@@ -178,7 +175,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 midi.send_cc(cc as u8, 0).await;
                 leds.reset_all();
             } else {
-                leds.set(0, Led::Button, LED_COLOR, 75);
+                leds.set(0, Led::Button, LED_COLOR, LED_MID);
             }
         }
     };
@@ -224,7 +221,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     glob_muted.set(mute).await;
                     div_glob.set(resolution[res as usize / 345]).await;
                     if mute {
-                        leds.set(0, Led::Button, LED_COLOR, 0);
+                        leds.set(0, Led::Button, LED_COLOR, LED_MID);
                         output.set_value(2047);
                         midi.send_cc(cc as u8, 0).await;
                         leds.set(0, Led::Top, LED_COLOR, 0);

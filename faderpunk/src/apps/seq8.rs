@@ -14,7 +14,10 @@ use embassy_futures::{
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
-use libfp::{Config, Param, Value};
+use libfp::{
+    constants::{ATOV_BLUE, ATOV_PURPLE, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MID},
+    Config, Param, Value,
+};
 
 use crate::{
     app::{App, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, Range, SceneEvent, RGB8},
@@ -334,28 +337,31 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         //LED update
 
         loop {
-            let intensity = [50, 100, 200];
+            let intensity = [LED_LOW, LED_MID, LED_HIGH];
             let colors = [
-                RGB8 {
-                    r: 243,
-                    g: 191,
-                    b: 78,
-                },
-                RGB8 {
-                    r: 188,
-                    g: 77,
-                    b: 216,
-                },
-                RGB8 {
-                    r: 78,
-                    g: 243,
-                    b: 243,
-                },
-                RGB8 {
-                    r: 250,
-                    g: 250,
-                    b: 250,
-                },
+                ATOV_YELLOW,
+                ATOV_PURPLE,
+                ATOV_BLUE,
+                ATOV_WHITE, // RGB8 {
+                            //     r: 243,
+                            //     g: 191,
+                            //     b: 78,
+                            // },
+                            // RGB8 {
+                            //     r: 188,
+                            //     g: 77,
+                            //     b: 216,
+                            // },
+                            // RGB8 {
+                            //     r: 78,
+                            //     g: 243,
+                            //     b: 243,
+                            // },
+                            // RGB8 {
+                            //     r: 250,
+                            //     g: 250,
+                            //     b: 250,
+                            // },
             ];
             app.delay_millis(10).await;
             let clockres = clockres_glob.get().await;

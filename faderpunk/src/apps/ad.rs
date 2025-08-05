@@ -7,7 +7,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    constants::{CURVE_EXP, CURVE_LOG},
+    constants::{ATOV_BLUE, ATOV_PURPLE, ATOV_YELLOW, CURVE_EXP, CURVE_LOG, LED_MID},
     Config,
 };
 
@@ -86,21 +86,23 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let mut env_state = 0;
 
     let color = [
-        RGB8 {
-            r: 243,
-            g: 191,
-            b: 78,
-        },
-        RGB8 {
-            r: 188,
-            g: 77,
-            b: 216,
-        },
-        RGB8 {
-            r: 78,
-            g: 243,
-            b: 243,
-        },
+        ATOV_YELLOW,
+        ATOV_BLUE,
+        ATOV_PURPLE, // RGB8 {
+                     //     r: 243,
+                     //     g: 191,
+                     //     b: 78,
+                     // },
+                     // RGB8 {
+                     //     r: 188,
+                     //     g: 77,
+                     //     b: 216,
+                     // },
+                     // RGB8 {
+                     //     r: 78,
+                     //     g: 243,
+                     //     b: 243,
+                     // },
     ];
 
     storage.load(None).await;
@@ -111,8 +113,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     att_glob.set(att_saved).await;
     glob_curve.set(curve_setting).await;
 
-    leds.set(0, Led::Button, color[curve_setting[0] as usize], 100);
-    leds.set(1, Led::Button, color[curve_setting[1] as usize], 100);
+    leds.set(0, Led::Button, color[curve_setting[0] as usize], LED_MID);
+    leds.set(1, Led::Button, color[curve_setting[1] as usize], LED_MID);
 
     let mut times: [f32; 2] = [0.0682, 0.0682];
     for n in 0..2 {

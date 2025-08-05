@@ -5,7 +5,7 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::CURVE_LOG,
+    constants::{ATOV_PURPLE, CURVE_LOG, LED_MID},
     utils::{
         attenuate, attenuate_bipolar, clickless, is_close, slew_limiter, split_unsigned_value,
     },
@@ -39,12 +39,8 @@ pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute 
         max: 128,
     });
 
-const LED_COLOR: RGB8 = RGB8 {
-    r: 0,
-    g: 200,
-    b: 150,
-};
-const BUTTON_BRIGHTNESS: u8 = 75;
+const LED_COLOR: RGB8 = ATOV_PURPLE;
+const BUTTON_BRIGHTNESS: u8 = LED_MID;
 
 // TODO: Make a macro to generate this.
 #[derive(Serialize, Deserialize)]

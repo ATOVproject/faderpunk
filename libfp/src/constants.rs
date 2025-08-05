@@ -1,3 +1,5 @@
+use smart_leds::RGB8;
+
 pub static CHAN_LED_MAP: [[usize; 16]; 3] = [
     // Top LEDs
     [
@@ -12,6 +14,39 @@ pub static CHAN_LED_MAP: [[usize; 16]; 3] = [
     // Button LEDs
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
 ];
+
+//ATOV colors :
+pub const ATOV_WHITE: RGB8 = RGB8 {
+    r: 0xFF,
+    g: 0xFF,
+    b: 0xFF,
+};
+pub const ATOV_RED: RGB8 = RGB8 {
+    r: 255,
+    g: 0,
+    b: 10,
+};
+pub const ATOV_BLUE: RGB8 = RGB8 {
+    r: 78,
+    g: 243,
+    b: 243,
+};
+pub const ATOV_YELLOW: RGB8 = RGB8 {
+    r: 243,
+    g: 191,
+    b: 78,
+};
+pub const ATOV_PURPLE: RGB8 = RGB8 {
+    r: 188,
+    g: 77,
+    b: 216,
+};
+
+//Standard LED intencity :
+pub const LED_OFF: u8 = 0;
+pub const LED_LOW: u8 = 50;
+pub const LED_MID: u8 = 100;
+pub const LED_HIGH: u8 = 200;
 
 pub static CURVE_LOG: [u16; 4096] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
