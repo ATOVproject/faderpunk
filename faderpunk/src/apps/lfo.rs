@@ -85,6 +85,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         Waveform::Sine => ATOV_YELLOW,
         Waveform::Triangle => ATOV_PURPLE,
         Waveform::Saw => ATOV_BLUE,
+        Waveform::Sawinv => ATOV_RED,
         Waveform::Rect => ATOV_WHITE,
     };
 
@@ -113,6 +114,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 Waveform::Sine => ATOV_YELLOW,
                 Waveform::Triangle => ATOV_PURPLE,
                 Waveform::Saw => ATOV_BLUE,
+                Waveform::Sawinv => ATOV_RED,
                 Waveform::Rect => ATOV_WHITE,
             };
 
@@ -195,6 +197,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     Waveform::Sine => ATOV_YELLOW,
                     Waveform::Triangle => ATOV_PURPLE,
                     Waveform::Saw => ATOV_BLUE,
+                    Waveform::Sawinv => ATOV_RED,
                     Waveform::Rect => ATOV_WHITE,
                 };
                 leds.set(0, Led::Button, color, LED_MID);
@@ -233,6 +236,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         Waveform::Sine => ATOV_YELLOW,
                         Waveform::Triangle => ATOV_PURPLE,
                         Waveform::Saw => ATOV_BLUE,
+                        Waveform::Sawinv => ATOV_RED,
                         Waveform::Rect => ATOV_WHITE,
                     };
                     leds.set(0, Led::Button, color, LED_MID);
