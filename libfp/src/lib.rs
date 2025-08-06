@@ -10,7 +10,7 @@ pub mod quantizer;
 pub mod types;
 pub mod utils;
 
-use constants::{WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SINE, WAVEFORM_TRIANGLE};
+use constants::{WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE, WAVEFORM_TRIANGLE};
 
 use crate::constants::{CURVE_EXP, CURVE_LOG};
 
@@ -198,6 +198,7 @@ pub enum Waveform {
     #[default]
     Triangle,
     Saw,
+    Sawinv,
     Rect,
     Sine,
 }
@@ -209,6 +210,7 @@ impl Waveform {
             Waveform::Sine => WAVEFORM_SINE[i],
             Waveform::Triangle => WAVEFORM_TRIANGLE[i],
             Waveform::Saw => WAVEFORM_SAW[i],
+            Waveform::Sawinv => WAVEFORM_SAW_INV[i],
             Waveform::Rect => WAVEFORM_RECT[i],
         }
     }
@@ -217,7 +219,8 @@ impl Waveform {
         match self {
             Waveform::Sine => Waveform::Triangle,
             Waveform::Triangle => Waveform::Saw,
-            Waveform::Saw => Waveform::Rect,
+            Waveform::Saw => Waveform::Sawinv,
+            Waveform::Sawinv => Waveform::Rect,
             Waveform::Rect => Waveform::Sine,
         }
     }
