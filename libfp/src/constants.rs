@@ -46,7 +46,8 @@ pub const ATOV_PURPLE: RGB8 = RGB8 {
 pub const LED_OFF: u8 = 0;
 pub const LED_LOW: u8 = 50;
 pub const LED_MID: u8 = 100;
-pub const LED_HIGH: u8 = 200;
+pub const LED_HIGH: u8 = 150;
+pub const LED_MAX: u8 = 200;
 
 pub static CURVE_LOG: [u16; 4096] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

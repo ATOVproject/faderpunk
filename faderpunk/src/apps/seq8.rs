@@ -8,14 +8,17 @@
 
 use defmt::info;
 use embassy_futures::{
-    join::{join, join5},
+    join::{join, join3, join5},
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use embassy_time::Duration;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    constants::{ATOV_BLUE, ATOV_PURPLE, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MID},
+    constants::{
+        ATOV_BLUE, ATOV_PURPLE, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MAX, LED_MID,
+    },
     quantizer::{self, Key, Note},
     Config, Param, Value,
 };
@@ -54,6 +57,7 @@ pub static CONFIG: Config<PARAMS> = Config::new("Sequencer", "4 x 16 step CV/gat
 pub struct Storage {
     seq: Arr<u16, 64>,
     gateseq: Arr<bool, 64>,
+    legato_seq: Arr<bool, 64>,
     seq_length: [u8; 4],
     seqres: [usize; 4],
     gate_length: [u8; 4],
@@ -71,6 +75,7 @@ impl Default for Storage {
         Self {
             seq: Arr::new([0; 64]),
             gateseq: Arr::new([true; 64]),
+            legato_seq: Arr::new([false; 64]),
             seq_length: [16; 4],
             seqres: [4; 4],
             gate_length: [127; 4],
@@ -149,6 +154,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let latched_glob: Global<[bool; 8]> = app.make_global([false; 8]);
     let seq_glob: Global<[u16; 64]> = app.make_global([0; 64]);
     let gateseq_glob: Global<[bool; 64]> = app.make_global([true; 64]);
+    let legatoseq_glob: Global<[bool; 64]> = app.make_global([false; 64]);
+
     let seq_length_glob: Global<[u8; 4]> = app.make_global([16; 4]);
     let gatelength_glob: Global<[u8; 4]> = app.make_global([128; 4]);
 
@@ -162,18 +169,29 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     storage.load(None).await;
 
-    let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel) = storage
-        .query(|s| (s.seq, s.gateseq, s.seq_length, s.seqres, s.gate_length))
-        .await;
+    let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel, legato_seq_saved) =
+        storage
+            .query(|s| {
+                (
+                    s.seq,
+                    s.gateseq,
+                    s.seq_length,
+                    s.seqres,
+                    s.gate_length,
+                    s.legato_seq,
+                )
+            })
+            .await;
 
     seq_glob.set(seq_saved.get()).await;
     gateseq_glob.set(gateseq_saved.get()).await;
     seq_length_glob.set(seq_length_saved).await;
+    legatoseq_glob.set(legato_seq_saved.get()).await;
 
     for n in 0..4 {
         clockres[n] = resolution[clockres[n]];
         gatel[n] = (clockres[n] * gatel[n] as usize / 256) as u8;
-        gatel[n] = gatel[n].clamp(1, clockres[n] as u8);
+        gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
     }
     clockres_glob.set(clockres).await;
     gatelength_glob.set(gatel).await;
@@ -318,6 +336,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             let mut gateseq = gateseq_glob.get().await;
+            let mut legato_seq = legatoseq_glob.get().await;
 
             // let mut gateseq = gateseq_glob.get_array().await;
             let page = page_glob.get().await;
@@ -325,8 +344,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 gateseq[chan + (page * 8)] = !gateseq[chan + (page * 8)];
                 gateseq_glob.set(gateseq).await;
 
+                legato_seq[chan + (page * 8)] = false;
+                legatoseq_glob.set(legato_seq).await;
+
                 storage
                     .modify_and_save(|s| s.gateseq.set(gateseq), None)
+                    .await;
+                storage
+                    .modify_and_save(|s| s.legato_seq.set(legato_seq), None)
                     .await;
 
                 // gateseq_glob.set_array(gateseq).await;
@@ -339,11 +364,44 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         }
     };
 
+    let fut6 = async {
+        //long press
+
+        loop {
+            let (chan, is_shift_pressed) = buttons
+                .wait_for_any_long_press(Duration::from_millis(500))
+                .await;
+
+            // let mut gateseq = gateseq_glob.get_array().await;
+            let page = page_glob.get().await;
+
+            if !is_shift_pressed {
+                let mut legato_seq = legatoseq_glob.get().await;
+                legato_seq[chan + (page * 8)] = !legato_seq[chan + (page * 8)];
+                legatoseq_glob.set(legato_seq).await;
+
+                let mut gateseq = gateseq_glob.get().await;
+                gateseq[chan + (page * 8)] = true;
+                gateseq_glob.set(gateseq).await;
+
+                storage
+                    .modify_and_save(|s| s.gateseq.set(gateseq), None)
+                    .await;
+                storage
+                    .modify_and_save(|s| s.legato_seq.set(legato_seq), None)
+                    .await;
+
+                // gateseq_glob.set_array(gateseq).await;
+                // gateseq_glob.save().await;
+            }
+        }
+    };
+
     let fut4 = async {
         //LED update
 
         loop {
-            let intensity = [LED_LOW, LED_MID, LED_HIGH];
+            let intensity = [LED_LOW, LED_MID, LED_HIGH, LED_MAX];
             let colors = [
                 ATOV_YELLOW,
                 ATOV_PURPLE,
@@ -384,7 +442,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 let mut bright = 75;
                 for n in 0..=7 {
                     if n == page {
-                        bright = intensity[2];
+                        bright = intensity[3];
                     } else {
                         bright = intensity[1];
                     }
@@ -441,6 +499,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     color = colors[3];
                 }
 
+                let legato_seq = legatoseq_glob.get().await;
+
                 for n in 0..=7 {
                     led.set(n, Led::Top, color, (seq[n + (page * 8)] / 16) as u8 / 2);
 
@@ -449,6 +509,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     }
                     if !gateseq[n + (page * 8)] {
                         led.set(n, Led::Button, color, intensity[0]);
+                    }
+                    if legato_seq[n + (page * 8)] {
+                        led.set(n, Led::Button, color, intensity[2]);
                     }
 
                     let index = seq_length[page / 2] as usize - (page % 2 * 8);
@@ -497,6 +560,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let gateseq = gateseq_glob.get().await;
             let seq_length = seq_length_glob.get().await;
             let clockres = clockres_glob.get().await;
+            let legato_seq = legatoseq_glob.get().await;
 
             let mut clockn = clockn_glob.get().await;
 
@@ -516,33 +580,34 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         if clockn % clockres[n] == 0 {
                             let clkindex =
                                 (clockn / clockres[n] % seq_length[n] as usize) + (n * 16);
-
+                            midi[n].send_note_off(lastnote[n]).await;
                             if gateseq[clkindex] {
-                                midi[n].send_note_off(lastnote[n]).await;
                                 let seq = seq_glob.get().await;
+
                                 lastnote[n] = (seq[clkindex] / 170) as u8 + 60;
                                 midi[n].send_note_on(lastnote[n], 4095).await;
                                 gate_out[n].set_high().await;
                                 let out = ((quantizer.get_quantized_voltage(seq[clkindex] / 4))
                                     * 410.) as u16;
-                                if n == 0 {
-                                    info!(
-                                        "bit : {}, voltage: {}, corrected out: {}",
-                                        seq[clkindex] / 4,
-                                        quantizer.get_quantized_voltage(seq[clkindex] / 4),
-                                        out
-                                    );
-                                }
+                                // if n == 0 {
+                                //     info!(
+                                //         "bit : {}, voltage: {}, corrected out: {}",
+                                //         seq[clkindex] / 4,
+                                //         quantizer.get_quantized_voltage(seq[clkindex] / 4),
+                                //         out
+                                //     );
+                                // }
                                 cv_out[n].set_value(out);
                                 gatelength1 = gatelength_glob.get().await;
+                            } else {
+                                gate_out[n].set_low().await;
                             }
                         }
                         if (clockn - gatelength1[n] as usize) % clockres[n] == 0 {
                             let clkindex =
                                 (((clockn - 1) / clockres[n]) % seq_length[n] as usize) + (n * 16);
-                            if gateseq[clkindex] {
+                            if gateseq[clkindex] && !legato_seq[clkindex] {
                                 gate_out[n].set_low().await;
-
                                 midi[n].send_note_off(lastnote[n]).await;
                             }
                         }
@@ -562,10 +627,25 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
 
-                    let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel) =
-                        storage
-                            .query(|s| (s.seq, s.gateseq, s.seq_length, s.seqres, s.gate_length))
-                            .await;
+                    let (
+                        seq_saved,
+                        gateseq_saved,
+                        seq_length_saved,
+                        mut clockres,
+                        mut gatel,
+                        legato_seq_saved,
+                    ) = storage
+                        .query(|s| {
+                            (
+                                s.seq,
+                                s.gateseq,
+                                s.seq_length,
+                                s.seqres,
+                                s.gate_length,
+                                s.legato_seq,
+                            )
+                        })
+                        .await;
 
                     // storage
                     //     .modify_and_save(
@@ -585,6 +665,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     seq_glob.set(seq_saved.get()).await;
                     gateseq_glob.set(gateseq_saved.get()).await;
                     seq_length_glob.set(seq_length_saved).await;
+                    legatoseq_glob.set(legato_seq_saved.get()).await;
 
                     for n in 0..4 {
                         clockres[n] = resolution[clockres[n]];
@@ -601,7 +682,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         }
     };
 
-    join(join5(fut1, fut2, fut3, fut4, fut5), scene_handler).await;
+    join3(join5(fut1, fut2, fut3, fut4, fut5), fut6, scene_handler).await;
 }
 
 fn is_close(a: u16, b: u16) -> bool {
