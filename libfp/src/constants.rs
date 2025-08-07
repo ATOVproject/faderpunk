@@ -27,19 +27,19 @@ pub const ATOV_RED: RGB8 = RGB8 {
     b: 10,
 };
 pub const ATOV_BLUE: RGB8 = RGB8 {
-    r: 78,
-    g: 243,
-    b: 243,
+    r: 76,
+    g: 175,
+    b: 177,
 };
 pub const ATOV_YELLOW: RGB8 = RGB8 {
-    r: 243,
-    g: 191,
-    b: 78,
+    r: 253,
+    g: 196,
+    b: 47,
 };
 pub const ATOV_PURPLE: RGB8 = RGB8 {
-    r: 188,
-    g: 77,
-    b: 216,
+    r: 174,
+    g: 52,
+    b: 139,
 };
 
 //Standard LED intencity :
