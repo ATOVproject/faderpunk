@@ -182,7 +182,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         att_reg = (register_scalled as u32 * att_glob.get().await / 4095) as u16;
                         // att_reg = (register_scalled as u32 * 410 / 4095 + 410) as u16;
 
-                        let out = (quantizer.get_quantized_voltage(att_reg) * 410.0) as u16;
+                        // let out = (quantizer.get_quantized_voltage(att_reg) * 410.0) as u16;
+                        let out = att_reg;
+
                         info!(
                             "bit : {}, voltage: {}, corrected out: {}",
                             att_reg,

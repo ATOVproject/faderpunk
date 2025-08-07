@@ -587,8 +587,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                                 lastnote[n] = (seq[clkindex] / 170) as u8 + 60;
                                 midi[n].send_note_on(lastnote[n], 4095).await;
                                 gate_out[n].set_high().await;
-                                let out = ((quantizer.get_quantized_voltage(seq[clkindex] / 4))
-                                    * 410.) as u16;
+
+                                // let out = ((quantizer.get_quantized_voltage(seq[clkindex] / 4))
+                                //     * 410.) as u16;
                                 // if n == 0 {
                                 //     info!(
                                 //         "bit : {}, voltage: {}, corrected out: {}",
@@ -597,6 +598,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                                 //         out
                                 //     );
                                 // }
+
+                                let out = seq[clkindex] / 4;
                                 cv_out[n].set_value(out);
                                 gatelength1 = gatelength_glob.get().await;
                             } else {

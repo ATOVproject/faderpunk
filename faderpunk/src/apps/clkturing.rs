@@ -168,7 +168,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
                 let register_scalled = scale_to_12bit(register, length as u8);
                 att_reg = (register_scalled as u32 * att_glob.get().await / 4095) as u16;
-                let out = ((quantizer.get_quantized_voltage(att_reg)) * 410.0) as u16;
+
+                // let out = ((quantizer.get_quantized_voltage(att_reg)) * 410.0) as u16;
+                let out = att_reg;
+
                 output.set_value(out as u16);
                 leds.set(0, Led::Top, LED_COLOR, (register_scalled / 16) as u8);
                 leds.set(1, Led::Top, LED_COLOR, (att_reg / 16) as u8);
