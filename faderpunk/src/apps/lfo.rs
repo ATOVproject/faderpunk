@@ -1,4 +1,3 @@
-// use defmt::info;
 use embassy_futures::{
     join::{join, join5},
     select::select,
@@ -133,12 +132,11 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
             // let next_pos = (lfo_pos + lfo_speed) % 4096.0;
 
-            let next_pos;
-            if sync {
-                next_pos = (lfo_pos + quant_speed) % 4096.0;
+            let next_pos = if sync {
+                (lfo_pos + quant_speed) % 4096.0
             } else {
-                next_pos = (lfo_pos + lfo_speed) % 4096.0;
-            }
+                (lfo_pos + lfo_speed) % 4096.0
+            };
 
             let att = att_glob.get().await;
 
@@ -300,12 +298,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     };
     let fut5 = async {
         loop {
-            match clk.wait_for_event(24).await {
-                ClockEvent::Tick => {
-                    tick_flag.set(true).await;
-                    // info!("tick")
-                }
-                _ => {}
+            if let ClockEvent::Tick = clk.wait_for_event(24).await {
+                tick_flag.set(true).await;
             }
         }
     };

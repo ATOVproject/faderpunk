@@ -8,7 +8,7 @@
 
 use defmt::info;
 use embassy_futures::{
-    join::{join, join3, join5},
+    join::{join3, join5},
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};

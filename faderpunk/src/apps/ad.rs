@@ -85,25 +85,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let mut oldinputval = 0;
     let mut env_state = 0;
 
-    let color = [
-        ATOV_YELLOW,
-        ATOV_BLUE,
-        ATOV_PURPLE, // RGB8 {
-                     //     r: 243,
-                     //     g: 191,
-                     //     b: 78,
-                     // },
-                     // RGB8 {
-                     //     r: 188,
-                     //     g: 77,
-                     //     b: 216,
-                     // },
-                     // RGB8 {
-                     //     r: 78,
-                     //     g: 243,
-                     //     b: 243,
-                     // },
-    ];
+    let color = [ATOV_YELLOW, ATOV_BLUE, ATOV_PURPLE];
 
     storage.load(None).await;
 
@@ -188,13 +170,11 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
                 leds.set(1, Led::Top, WHITE, (outval / 16) as u8);
 
-                if vals == 0.0 {
-                    if mode == 2 && inputval > 406 {
-                        env_state = 1;
-                    }
+                if vals == 0.0 && mode == 2 && inputval > 406 {
+                    env_state = 1;
                 }
             }
-            outval = attenuate(outval as u16, att_glob.get().await);
+            outval = attenuate(outval, att_glob.get().await);
             output.set_value(outval);
             if shift_old {
                 leds.set(0, Led::Button, color[mode as usize], 75);

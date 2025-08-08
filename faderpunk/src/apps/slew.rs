@@ -86,7 +86,7 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
     let fut1 = async {
         loop {
             app.delay_millis(1).await;
-            let mut inval = _input.get_value();
+            let inval = _input.get_value();
             // inval = rectify(inval);
 
             oldval = slew_limiter(
@@ -151,7 +151,7 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
                     latched[chan] = true;
                     latched_glob.set(latched).await;
                 }
-                if latched[chan] == true {
+                if latched[chan] {
                     if chan == 0 {
                         attack_glob.set(CURVE_EXP[vals[chan] as usize]).await;
                         stored_faders[chan] = vals[chan];
@@ -180,7 +180,7 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
                         latched_glob.set(latched).await;
                     }
 
-                    if latched[chan] == true {
+                    if latched[chan] {
                         offset_glob.set(vals[chan] as i32 - 2047).await;
                         storage
                             .modify_and_save(
@@ -200,7 +200,7 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
                         latched[chan] = true;
                         latched_glob.set(latched).await;
                     }
-                    if latched[chan] == true {
+                    if latched[chan] {
                         att_glob.set(vals[chan]).await;
 
                         storage
@@ -298,9 +298,4 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
     };
 
     join4(fut1, fut2, fut3, scene_handler).await;
-}
-
-fn rectify(value: u16) -> u16 {
-    let result = value.abs_diff(2047) + 2047;
-    result
 }

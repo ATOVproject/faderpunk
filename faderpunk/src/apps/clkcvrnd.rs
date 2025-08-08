@@ -80,7 +80,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
     let mut clock = app.use_clock();
-    let mut rnd = app.use_die();
+    let rnd = app.use_die();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();

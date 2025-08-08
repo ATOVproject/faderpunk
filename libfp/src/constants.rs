@@ -15,7 +15,7 @@ pub static CHAN_LED_MAP: [[usize; 16]; 3] = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
 ];
 
-//ATOV colors :
+// ATOV colors
 pub const ATOV_WHITE: RGB8 = RGB8 {
     r: 0xFF,
     g: 0xFF,
@@ -42,7 +42,7 @@ pub const ATOV_PURPLE: RGB8 = RGB8 {
     b: 139,
 };
 
-//Standard LED intencity :
+// Standard LED intensities
 pub const LED_OFF: u8 = 0;
 pub const LED_LOW: u8 = 50;
 pub const LED_MID: u8 = 100;

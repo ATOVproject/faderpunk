@@ -106,7 +106,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
-    let mut die = app.use_die();
+    let die = app.use_die();
 
     let midi_mode = params.midi_mode.get().await;
     let midi_cc = params.midi_cc.get().await;
@@ -172,7 +172,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 // let out = ((quantizer.get_quantized_voltage(att_reg)) * 410.0) as u16;
                 let out = att_reg;
 
-                output.set_value(out as u16);
+                output.set_value(out);
                 leds.set(0, Led::Top, LED_COLOR, (register_scalled / 16) as u8);
                 leds.set(1, Led::Top, LED_COLOR, (att_reg / 16) as u8);
                 // info!("{}", register_scalled);
@@ -183,7 +183,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     midi_note.set(note).await;
                 }
                 if midi_mode == 2 {
-                    midi.send_cc(midi_cc as u8 - 1, att_reg as u16).await;
+                    midi.send_cc(midi_cc as u8 - 1, att_reg).await;
                 }
 
                 leds.set(0, Led::Bottom, ATOV_RED, LED_HIGH);
@@ -241,10 +241,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             let shift = buttons.wait_for_down(0).await;
             // latched_glob.set(false).await;
-            let mut lenght = length_rec.get().await;
+            let mut length = length_rec.get().await;
             if shift && rec_flag.get().await {
-                lenght += 1;
-                length_rec.set(lenght.min(16)).await;
+                length += 1;
+                length_rec.set(length.min(16)).await;
             }
         }
     };
@@ -263,20 +263,18 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
                 leds.set(0, Led::Top, RED, (att_glob.get().await / 16) as u8);
             }
-            if !buttons.is_shift_pressed() {
-                if shift_old {
-                    latched_glob.set(false).await;
-                    shift_old = false;
-                    rec_flag.set(false).await;
-                    let length = length_rec.get().await;
-                    if length > 1 {
-                        length_glob.set(length - 1).await;
-                        // let note = midi_note.get().await;
-                        // midi.send_note_off(note).await;
-                        storage
-                            .modify_and_save(|s| s.length_saved = length, None)
-                            .await;
-                    }
+            if !buttons.is_shift_pressed() && shift_old {
+                latched_glob.set(false).await;
+                shift_old = false;
+                rec_flag.set(false).await;
+                let length = length_rec.get().await;
+                if length > 1 {
+                    length_glob.set(length - 1).await;
+                    // let note = midi_note.get().await;
+                    // midi.send_note_off(note).await;
+                    storage
+                        .modify_and_save(|s| s.length_saved = length, None)
+                        .await;
                 }
             }
 
@@ -287,12 +285,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     button_old = true;
                 }
             }
-            if !buttons.is_button_pressed(0) {
-                if button_old {
-                    latched_glob.set(false).await;
-                    button_old = false;
-                    leds.set(0, Led::Bottom, ATOV_RED, 0);
-                }
+            if !buttons.is_button_pressed(0) && button_old {
+                latched_glob.set(false).await;
+                button_old = false;
+                leds.set(0, Led::Bottom, ATOV_RED, 0);
             }
         }
     };
