@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.4.0...faderpunk-v0.4.1) (2025-08-08)
+
+
+### Bug Fixes
+
+* **api:** rename Sawinv to SawInv ([9b18e3c](https://github.com/ATOVproject/faderpunk/commit/9b18e3c5f6fd4134e83119d209608b06f5a863e0))
+* **lfo:** fix crash on certain fader positions ([0bf3aaa](https://github.com/ATOVproject/faderpunk/commit/0bf3aaa289e22940a2ec2f92549a39d97d78bc57))
+
 ## [0.4.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.3.0...faderpunk-v0.4.0) (2025-08-08)
 
 
