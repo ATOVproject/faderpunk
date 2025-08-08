@@ -195,7 +195,9 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     glob_lfo_speed
                         .set(curve.at(fader_val as usize) as f32 * 0.015 + 0.0682)
                         .await;
-                    div_glob.set(resolution[fader_val as usize / 455]).await;
+                    div_glob
+                        .set(resolution[(fader_val as usize / 455).clamp(0, 8)])
+                        .await;
                     // info!("div = {}", div_glob.get().await);
 
                     storage
