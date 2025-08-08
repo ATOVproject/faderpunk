@@ -198,7 +198,7 @@ pub enum Waveform {
     #[default]
     Triangle,
     Saw,
-    Sawinv,
+    SawInv,
     Rect,
     Sine,
 }
@@ -210,7 +210,7 @@ impl Waveform {
             Waveform::Sine => WAVEFORM_SINE[i],
             Waveform::Triangle => WAVEFORM_TRIANGLE[i],
             Waveform::Saw => WAVEFORM_SAW[i],
-            Waveform::Sawinv => WAVEFORM_SAW_INV[i],
+            Waveform::SawInv => WAVEFORM_SAW_INV[i],
             Waveform::Rect => WAVEFORM_RECT[i],
         }
     }
@@ -219,8 +219,8 @@ impl Waveform {
         match self {
             Waveform::Sine => Waveform::Triangle,
             Waveform::Triangle => Waveform::Saw,
-            Waveform::Saw => Waveform::Sawinv,
-            Waveform::Sawinv => Waveform::Rect,
+            Waveform::Saw => Waveform::SawInv,
+            Waveform::SawInv => Waveform::Rect,
             Waveform::Rect => Waveform::Sine,
         }
     }
