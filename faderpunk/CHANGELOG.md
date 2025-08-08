@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.4.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.3.0...faderpunk-v0.4.0) (2025-08-08)
+
+
+### Features
+
+* **api:** add MidiOutput, MidiInput, MidiDuplex APIs ([710358e](https://github.com/ATOVproject/faderpunk/commit/710358e9d0f5276816c2b1414f92add927ec81bd))
+* **automator:** add attenuation ([6374638](https://github.com/ATOVproject/faderpunk/commit/637463831752bbb34370cb8c6647a983daea70e4))
+* **automator:** add bipolar and curve param ([b35180c](https://github.com/ATOVproject/faderpunk/commit/b35180c0396d89b0d2b36ada003baa375b683994))
+* **constants:** introduced some standard LED colors and intensities ([2e2baa3](https://github.com/ATOVproject/faderpunk/commit/2e2baa3f92c27a83cb1f276791162070a4610914))
+* **default:** add attenuation ([6ce5df1](https://github.com/ATOVproject/faderpunk/commit/6ce5df1d578dd2a8ae9af856a40e6370c6a6fe47))
+* **default:** add bipolar param ([f68b6fa](https://github.com/ATOVproject/faderpunk/commit/f68b6fac6cf3ae495190afa22d05ae0cebee7180))
+* **default:** add clickless mute, remove stepping ([785eb00](https://github.com/ATOVproject/faderpunk/commit/785eb000e654a4b7ca0edbed75219c8c5a01990d))
+* **default:** add MIDI CC selection ([c3b36ed](https://github.com/ATOVproject/faderpunk/commit/c3b36edc765da824c4b51462d37869b977785cca))
+* **deps:** downgrade embassy-executor and embassy-rp for now ([ca286f4](https://github.com/ATOVproject/faderpunk/commit/ca286f425fdb17974840c39dd3020a428919acf5))
+* **lfo:** add clocked mode ([94b104c](https://github.com/ATOVproject/faderpunk/commit/94b104c8c3fdc07449cb24a19c1f1ae81766f550))
+* **lfo:** add inverted saw waveform ([b32c7bc](https://github.com/ATOVproject/faderpunk/commit/b32c7bc923010eb65ae5a7ba5b0072cf674aebc5))
+* **probatrigger:** add fader curve param for testing ([a0d4506](https://github.com/ATOVproject/faderpunk/commit/a0d450665318b2fa5d5e69c61a0a889d15caeae7))
+* **quantizer:** add quantizer to apps ([3fc4ef0](https://github.com/ATOVproject/faderpunk/commit/3fc4ef06737292aafa9a027cf1c0a50a04f5e5aa))
+* **quantizer:** add quantizer utility ([201a47b](https://github.com/ATOVproject/faderpunk/commit/201a47b3dc9beeaefd57f0f84931c4565e129385))
+* **rgbtest:** add rgb test app ([4599471](https://github.com/ATOVproject/faderpunk/commit/45994715b0fb4d723a5ce2a105d19bc0e48adeaf))
+* **sequencer:** add legato ([e60b3ea](https://github.com/ATOVproject/faderpunk/commit/e60b3ea0cc56dc7d0d5663d92db181f37b6a761f))
+* **utils:** add clickless function as public ([819042b](https://github.com/ATOVproject/faderpunk/commit/819042b4f788d795168c841473c8dd4ca56fc96b))
+
+
+### Bug Fixes
+
+* **automator:** add interpolation to remove stepping ([03e8bd3](https://github.com/ATOVproject/faderpunk/commit/03e8bd3731a849b3f882ac080c2239e73e3ccda4))
+* **automator:** kill previous buffer before recording a new one ([f54e4fd](https://github.com/ATOVproject/faderpunk/commit/f54e4fd3f80331f12e2c3e11ed8eb03d9c0f62cb))
+* housekeeping ([4346be3](https://github.com/ATOVproject/faderpunk/commit/4346be3a248d3dbc289f13d86155063e102dd854))
+* **quantizer:** disable quantizer for now ([0ceb4e0](https://github.com/ATOVproject/faderpunk/commit/0ceb4e0fc604dba62a4be59dcd8a82bb64188de0))
+* **sequencer:** CH4 not recalling gate and resolution ([eedc9ff](https://github.com/ATOVproject/faderpunk/commit/eedc9ffc1676988dc774495bc0e4f81ba7139637))
+* **turing & turing+:** bigger dead zones on probability ([be19ccd](https://github.com/ATOVproject/faderpunk/commit/be19ccdc9b0069ad04308b5048a8b7be0c209a9f))
+* **turing & turing+:** make bit flip more direct ([460e28d](https://github.com/ATOVproject/faderpunk/commit/460e28d443fe553f837f7df6b06ee564f77f13c8))
+
 ## [0.3.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.2.0...faderpunk-v0.3.0) (2025-07-27)
 
 
