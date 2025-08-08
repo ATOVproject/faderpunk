@@ -115,12 +115,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let index_glob = app.make_global(0);
     let latched = app.make_global(false);
 
-    let jack;
-    if !params.bipolar.get().await {
-        jack = app.make_out_jack(0, Range::_0_10V).await;
+    let jack = if !params.bipolar.get().await {
+        app.make_out_jack(0, Range::_0_10V).await
     } else {
-        jack = app.make_out_jack(0, Range::_Neg5_5V).await;
-    }
+        app.make_out_jack(0, Range::_Neg5_5V).await
+    };
 
     let mut last_midi = 0;
 
@@ -150,12 +149,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let buffer = buffer_glob.get().await;
             let mut offset = offset_glob.get().await;
             let att = att_glob.get().await;
-            let color;
-            if recording_glob.get().await {
-                color = ATOV_RED;
+            let color = if recording_glob.get().await {
+                ATOV_RED
             } else {
-                color = LED_COLOR;
-            }
+                LED_COLOR
+            };
 
             if latched.get().await {
                 offset = fader.get_value();

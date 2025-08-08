@@ -11,13 +11,12 @@ use libfp::{
     Config,
 };
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8};
+use crate::app::{App, AppStorage, Led, ManagedStorage, Range, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;
 
-// pub static CONFIG: Config<PARAMS> = Config::new("Slew Limiter", "slows CV changes");
-pub static CONFIG: Config<PARAMS> = Config::new("Envelope Follower", "audio amplitude to CV");
+pub static CONFIG: Config<PARAMS> = Config::new("Envelope Follower", "Audio amplitude to CV");
 
 const BUTTON_BRIGHTNESS: u8 = LED_MID;
 
@@ -102,7 +101,6 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
             let offset = offset_glob.get().await;
 
             let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
-            // info!("{}", attack_glob.get().await);
 
             _output.set_value(outval as u16);
 
@@ -152,7 +150,7 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
                     latched[chan] = true;
                     latched_glob.set(latched).await;
                 }
-                if latched[chan] == true {
+                if latched[chan] {
                     if chan == 0 {
                         attack_glob.set(CURVE_EXP[vals[chan] as usize]).await;
                         stored_faders[chan] = vals[chan];
@@ -181,7 +179,7 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
                         latched_glob.set(latched).await;
                     }
 
-                    if latched[chan] == true {
+                    if latched[chan] {
                         offset_glob.set(vals[chan] as i32 - 2047).await;
                         storage
                             .modify_and_save(
@@ -201,7 +199,7 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
                         latched[chan] = true;
                         latched_glob.set(latched).await;
                     }
-                    if latched[chan] == true {
+                    if latched[chan] {
                         att_glob.set(vals[chan]).await;
 
                         storage
@@ -302,6 +300,5 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
 }
 
 fn rectify(value: u16) -> u16 {
-    let result = value.abs_diff(2047) + 2047;
-    result
+    value.abs_diff(2047) + 2047
 }

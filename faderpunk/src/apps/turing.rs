@@ -7,7 +7,7 @@ use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::{ATOV_BLUE, ATOV_RED, LED_HIGH, LED_MID},
-    quantizer::{self, Key, Note, Quantizer},
+    quantizer::{Key, Note},
     utils::is_close,
     Config, Param, Value,
 };
@@ -15,16 +15,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::{
     App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
-    RGB8,
 };
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 3;
-enum Midi {
-    None,
-    Note,
-    CC,
-}
 
 // TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
@@ -202,7 +196,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             midi_note.set(note).await;
                         }
                         if midi_mode == 2 {
-                            midi.send_cc(midi_cc as u8 - 1, att_reg as u16).await;
+                            midi.send_cc(midi_cc as u8 - 1, att_reg).await;
                         }
 
                         if buttons.is_button_pressed(0) && !buttons.is_shift_pressed() {
@@ -317,20 +311,18 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
                 leds.set(0, Led::Top, ATOV_RED, (att_glob.get().await / 16) as u8);
             }
-            if !buttons.is_shift_pressed() {
-                if shift_old {
-                    latched_glob.set(false).await;
-                    shift_old = false;
-                    rec_flag.set(false).await;
-                    let length = length_rec.get().await;
-                    if length > 1 {
-                        length_glob.set(length - 1).await;
-                        // let note = midi_note.get().await;
-                        // midi.send_note_off(note).await;
-                        storage
-                            .modify_and_save(|s| s.length_saved = length, None)
-                            .await;
-                    }
+            if !buttons.is_shift_pressed() && shift_old {
+                latched_glob.set(false).await;
+                shift_old = false;
+                rec_flag.set(false).await;
+                let length = length_rec.get().await;
+                if length > 1 {
+                    length_glob.set(length - 1).await;
+                    // let note = midi_note.get().await;
+                    // midi.send_note_off(note).await;
+                    storage
+                        .modify_and_save(|s| s.length_saved = length, None)
+                        .await;
                 }
             }
 
@@ -341,12 +333,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     button_old = true;
                 }
             }
-            if !buttons.is_button_pressed(0) {
-                if button_old {
-                    latched_glob.set(false).await;
-                    button_old = false;
-                    leds.set(0, Led::Bottom, ATOV_RED, 0);
-                }
+            if !buttons.is_button_pressed(0) && button_old {
+                latched_glob.set(false).await;
+                button_old = false;
+                leds.set(0, Led::Bottom, ATOV_RED, 0);
             }
         }
     };

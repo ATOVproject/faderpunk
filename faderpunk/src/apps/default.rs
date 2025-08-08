@@ -1,14 +1,8 @@
-use defmt::info;
-use embassy_futures::{
-    join::{join3, join4},
-    select::select,
-};
+use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_PURPLE, CURVE_LOG, LED_MID},
-    utils::{
-        attenuate, attenuate_bipolar, clickless, is_close, slew_limiter, split_unsigned_value,
-    },
+    constants::{ATOV_PURPLE, LED_MID},
+    utils::{attenuate_bipolar, clickless, is_close, split_unsigned_value},
 };
 use serde::{Deserialize, Serialize};
 
@@ -129,12 +123,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         if muted { 0 } else { BUTTON_BRIGHTNESS },
     );
 
-    let jack;
-    if !params.bipolar.get().await {
-        jack = app.make_out_jack(0, Range::_0_10V).await;
+    let jack = if !params.bipolar.get().await {
+        app.make_out_jack(0, Range::_0_10V).await
     } else {
-        jack = app.make_out_jack(0, Range::_Neg5_5V).await;
-    }
+        app.make_out_jack(0, Range::_Neg5_5V).await
+    };
 
     let fut1 = async {
         let mut outval = 0;
@@ -162,7 +155,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     val = curve.at(fadval.into());
                 }
                 if !buttons.is_shift_pressed() {
-                    let led1 = split_unsigned_value(outval as u16);
+                    let led1 = split_unsigned_value(outval);
                     leds.set(0, Led::Top, LED_COLOR, led1[0]);
                     leds.set(0, Led::Bottom, LED_COLOR, led1[1]);
                 } else {
@@ -181,17 +174,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     leds.set(0, Led::Top, RED, (att / 16) as u8);
                     leds.set(0, Led::Bottom, RED, 0);
                 } else {
-                    leds.set(0, Led::Top, LED_COLOR, (outval as u16 / 16) as u8);
+                    leds.set(0, Led::Top, LED_COLOR, (outval / 16) as u8);
                 }
 
                 attval = ((outval as u32 * att as u32) / 4095) as u16;
             }
 
-            jack.set_value(attval as u16);
+            jack.set_value(attval);
 
-            if old_midi != outval as u16 / 32 {
-                midi.send_cc(midi_cc as u8, outval as u16).await;
-                old_midi = outval as u16 / 32;
+            if old_midi != outval / 32 {
+                midi.send_cc(midi_cc as u8, outval).await;
+                old_midi = outval / 32;
             }
 
             if !shift_old && buttons.is_shift_pressed() {

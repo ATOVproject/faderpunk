@@ -6,7 +6,7 @@ use libfp::{
     Config, Curve, Param, Value,
 };
 use serde::{Deserialize, Serialize};
-use smart_leds::{colors::RED, RGB, RGB8};
+use smart_leds::{colors::RED, RGB};
 
 use crate::app::{
     App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent,
