@@ -10,6 +10,8 @@ register_apps!(
     9 => clkturing,
     10 => slew,
     11 => follower,
+    252 => calibration,
+    253 => calibration_unipolar,
     254 => rgbtest,
     255 => calibrator,
 );
