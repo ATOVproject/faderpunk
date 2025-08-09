@@ -74,7 +74,6 @@ async fn run_i2c(mut _i2c_device: I2cDevice) {
 }
 
 pub async fn run_calibration(i2c_device: &mut I2cDevice) {
-    // TODO: This is for when the calibrator actually works
     let mut buf = [0u8; MAX_MESSAGE_SIZE];
 
     loop {
@@ -114,7 +113,10 @@ pub async fn run_calibration(i2c_device: &mut I2cDevice) {
                 };
             }
             Ok(Command::Read) => {
-                info!("Device received a Read-Only command.");
+                // This is just for showing up on i2c scanners
+                if i2c_device.respond_to_read(&[0x00]).await.is_err() {
+                    error!("Failed to respond to I2C read request");
+                }
             }
             Ok(Command::GeneralCall(len)) => {
                 info!("Device received a General Call: {}", &buf[..len]);
