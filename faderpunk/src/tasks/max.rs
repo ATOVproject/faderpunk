@@ -17,8 +17,8 @@ use libfp::types::RegressionValues;
 use libm::roundf;
 use max11300::{
     config::{
-        ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, DeviceConfig, Port, ADCCTL, ADCRANGE,
-        AVR, DACREF, NSAMPLES, THSHDN,
+        ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, DeviceConfig, Mode, Port, ADCCTL,
+        ADCRANGE, AVR, DACREF, NSAMPLES, THSHDN,
     },
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
@@ -53,17 +53,10 @@ pub static CALIBRATING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy)]
 pub enum MaxCmd {
-    ConfigurePort(MaxConfig),
+    // Mode, GPO level (for mode 3)
+    ConfigurePort(Mode, Option<u16>),
     GpoSetHigh,
     GpoSetLow,
-}
-
-#[derive(Clone, Copy)]
-pub enum MaxConfig {
-    Mode0,
-    Mode3(ConfigMode3, u16),
-    Mode5(ConfigMode5),
-    Mode7(ConfigMode7),
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Default, Format)]
@@ -211,7 +204,7 @@ async fn process_channel_values(
             let port = Port::try_from(i).unwrap();
             let mut max = max_driver.lock().await;
             match max.get_mode(port) {
-                5 => {
+                Mode::Mode5(config) => {
                     let target_dac_value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
                     let calibrated_value = if target_dac_value == 0 {
                         // If the target is 0, the output MUST be 0
@@ -220,8 +213,13 @@ async fn process_channel_values(
                     } else if CALIBRATING.load(Ordering::Relaxed) {
                         target_dac_value
                     } else if let Some(data) = calibration_data {
-                        // For any non-zero target, apply the pre-correction formula
-                        let (slope, intercept) = data.outputs[i];
+                        // Determine which DAC range is configured and use appropriate calibration data
+                        let range_idx = match config.0 {
+                            max11300::config::DACRANGE::Rg0_10v => 0,
+                            max11300::config::DACRANGE::RgNeg5_5v => 1,
+                            _ => 0, // Default to 0-10V range for other ranges
+                        };
+                        let (slope, intercept) = data.outputs[i][range_idx];
                         let target_f32 = target_dac_value as f32;
                         let raw_f32 = (target_f32 - intercept) / (1.0 + slope);
 
@@ -233,7 +231,7 @@ async fn process_channel_values(
 
                     max.dac_set_value(port, calibrated_value).await.unwrap();
                 }
-                7 => {
+                Mode::Mode7(_) => {
                     let value = max.adc_get_value(port).await.unwrap();
                     let calibrated_value = if CALIBRATING.load(Ordering::Relaxed) {
                         value
@@ -267,20 +265,23 @@ async fn message_loop(max_driver: &'static SharedMax) {
         let mut max = max_driver.lock().await;
 
         match msg {
-            MaxCmd::ConfigurePort(config) => match config {
-                MaxConfig::Mode0 => {
+            MaxCmd::ConfigurePort(config, gpo_level) => match config {
+                Mode::Mode0(_) => {
                     max.configure_port(port, ConfigMode0).await.unwrap();
                 }
-                MaxConfig::Mode3(config, gpo_level) => {
-                    max.dac_set_value(port, gpo_level).await.unwrap();
+                Mode::Mode3(config) => {
+                    max.dac_set_value(port, gpo_level.unwrap_or(2048))
+                        .await
+                        .unwrap();
                     max.configure_port(port, config).await.unwrap();
                 }
-                MaxConfig::Mode5(config) => {
+                Mode::Mode5(config) => {
                     max.configure_port(port, config).await.unwrap();
                 }
-                MaxConfig::Mode7(config) => {
+                Mode::Mode7(config) => {
                     max.configure_port(port, config).await.unwrap();
                 }
+                _ => {}
             },
             MaxCmd::GpoSetHigh => {
                 max.gpo_set_high(port).await.unwrap();

@@ -2,7 +2,7 @@ use defmt::{error, info};
 use embassy_executor::Spawner;
 use embassy_rp::i2c_slave::{Command, I2cSlave};
 use embassy_rp::peripherals::I2C0;
-use max11300::config::{ConfigMode5, DACRANGE};
+use max11300::config::{ConfigMode5, Mode, DACRANGE};
 use portable_atomic::Ordering;
 
 use libfp::i2c_proto::{
@@ -11,7 +11,7 @@ use libfp::i2c_proto::{
 use postcard::{from_bytes, to_slice};
 
 use crate::storage::store_calibration_data;
-use crate::tasks::max::{MaxCalibration, MaxCmd, MaxConfig, MAX_CHANNEL};
+use crate::tasks::max::{MaxCalibration, MaxCmd, MAX_CHANNEL};
 
 use super::max::MAX_VALUES_DAC;
 
@@ -36,7 +36,7 @@ async fn process_write_read(command: WriteReadCommand) -> Response {
             MAX_CHANNEL
                 .send((
                     channel,
-                    MaxCmd::ConfigurePort(MaxConfig::Mode5(ConfigMode5(range))),
+                    MaxCmd::ConfigurePort(Mode::Mode5(ConfigMode5(range)), None),
                 ))
                 .await;
             MAX_VALUES_DAC[channel].store(value, Ordering::Relaxed);
