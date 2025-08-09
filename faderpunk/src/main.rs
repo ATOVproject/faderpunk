@@ -111,7 +111,7 @@ async fn main(spawner: Spawner) {
     // I2C0 (external I2C)
     let mut i2c0_config = i2c_slave::Config::default();
     i2c0_config.addr = I2C_ADDRESS;
-    let i2c0 = i2c_slave::I2cSlave::new(p.I2C0, p.PIN_21, p.PIN_20, Irqs, i2c0_config);
+    let mut i2c0 = i2c_slave::I2cSlave::new(p.I2C0, p.PIN_21, p.PIN_20, Irqs, i2c0_config);
 
     // I2C1 (FRAM)
     let mut i2c1_config = i2c::Config::default();
@@ -163,7 +163,9 @@ async fn main(spawner: Spawner) {
 
     tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
 
-    tasks::i2c::start_i2c(&spawner, i2c0).await;
+    // tasks::i2c::start_i2c(&spawner, i2c0).await;
+
+    tasks::i2c::run_calibration(&mut i2c0).await;
 
     tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
 
