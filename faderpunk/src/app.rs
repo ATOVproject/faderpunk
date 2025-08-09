@@ -1,7 +1,9 @@
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::Timer;
-use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
+use max11300::config::{
+    ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES,
+};
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
 
@@ -15,7 +17,7 @@ use crate::{
         buttons::BUTTON_PRESSED,
         clock::{ClockSubscriber, CLOCK_PUBSUB},
         leds::{set_led_mode, LedMode, LedMsg},
-        max::{MaxCmd, MaxConfig, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
+        max::{MaxCmd, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender as MidiChannelSender,
     },
 };
@@ -482,9 +484,12 @@ impl<const N: usize> App<N> {
         }
     }
 
-    async fn reconfigure_jack(&self, chan: usize, config: MaxConfig) {
+    async fn reconfigure_jack(&self, chan: usize, mode: Mode, gpo_level: Option<u16>) {
         self.max_sender
-            .send((self.start_channel + chan, MaxCmd::ConfigurePort(config)))
+            .send((
+                self.start_channel + chan,
+                MaxCmd::ConfigurePort(mode, gpo_level),
+            ))
             .await;
     }
 
@@ -500,11 +505,12 @@ impl<const N: usize> App<N> {
         };
         self.reconfigure_jack(
             chan,
-            MaxConfig::Mode7(ConfigMode7(
+            Mode::Mode7(ConfigMode7(
                 AVR::InternalRef,
                 adc_range,
                 NSAMPLES::Samples16,
             )),
+            None,
         )
         .await;
 
@@ -517,7 +523,7 @@ impl<const N: usize> App<N> {
             Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
             _ => DACRANGE::Rg0_10v,
         };
-        self.reconfigure_jack(chan, MaxConfig::Mode5(ConfigMode5(dac_range)))
+        self.reconfigure_jack(chan, Mode::Mode5(ConfigMode5(dac_range)), None)
             .await;
 
         OutJack::new(self.start_channel + chan, range)
@@ -525,7 +531,7 @@ impl<const N: usize> App<N> {
 
     pub async fn make_gate_jack(&self, chan: usize, level: u16) -> GateJack {
         let chan = chan.clamp(0, N - 1);
-        self.reconfigure_jack(chan, MaxConfig::Mode3(ConfigMode3, level))
+        self.reconfigure_jack(chan, Mode::Mode3(ConfigMode3), Some(level))
             .await;
 
         GateJack::new(self.start_channel + chan, self.max_sender)
@@ -595,7 +601,8 @@ impl<const N: usize> App<N> {
         let leds = self.use_leds();
         leds.reset_all();
         for chan in 0..N {
-            self.reconfigure_jack(chan, MaxConfig::Mode0).await;
+            self.reconfigure_jack(chan, Mode::Mode0(ConfigMode0), None)
+                .await;
         }
     }
 
