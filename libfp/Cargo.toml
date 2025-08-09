@@ -1,7 +1,9 @@
 [package]
 name = "libfp"
+description = "Faderpunk shared libraries"
 version = "0.2.1"
 edition = "2021"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 defmt = "1.0.1"
