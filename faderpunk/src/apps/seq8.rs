@@ -17,7 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     constants::{
-        ATOV_BLUE, ATOV_PURPLE, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MAX, LED_MID,
+        ATOV_BLUE, ATOV_PURPLE, ATOV_RED, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MAX,
+        LED_MID,
     },
     quantizer::{self, Key, Note},
     Config, Param, Value,
@@ -525,15 +526,16 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         < 8
                     {
                         //this needs changing
-                        led.set(n, Led::Bottom, RGB8 { r: 255, g: 0, b: 0 }, 100)
+                        led.set(n, Led::Bottom, ATOV_RED, intensity[1])
                     } else {
-                        led.set(n, Led::Bottom, RGB8 { r: 255, g: 0, b: 0 }, 0)
+                        led.set(n, Led::Bottom, ATOV_RED, 0)
                     }
                 }
                 //runing light on buttons
                 if ((clockn / clockres[page / 2]) % seq_length[page / 2] as usize) % 16
                     - (page % 2) * 8
                     < 8
+                    && clockn != 0
                 {
                     led.set(
                         (clockn / clockres[page / 2] % seq_length[page / 2] as usize) % 16
