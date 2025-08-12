@@ -16,6 +16,8 @@ use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
 
 use super::leds::{set_led_overlay_mode, LedMode};
 
+const LONG_PRESS_DURATION_MS: u64 = 500;
+
 type Buttons = (
     Peri<'static, PIN_6>,
     Peri<'static, PIN_7>,
@@ -43,54 +45,116 @@ pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
     spawner.spawn(run_buttons(buttons)).unwrap();
 }
 
+// Process button using debounce and state synchronization logic
 async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &EventPubSubPublisher) {
     loop {
+        if button.is_low() {
+            button.wait_for_rising_edge().await;
+            Timer::after_millis(10).await;
+
+            if button.is_low() {
+                continue;
+            }
+        }
+
         button.wait_for_falling_edge().await;
+
+        Timer::after_millis(1).await;
+        if button.is_high() {
+            continue;
+        }
+
         if BUTTON_PRESSED[16].load(Ordering::Relaxed) {
-            // Debounce a bit (bounces are all in sub 1ms)
-            Timer::after_millis(1).await;
-            match select(button.wait_for_rising_edge(), Timer::after_millis(1500)).await {
+            // Special mode when button 16 is pressed - handle scene load/save
+            match select(
+                button.wait_for_rising_edge(),
+                Timer::after_millis(LONG_PRESS_DURATION_MS),
+            )
+            .await
+            {
                 Either::First(_) => {
+                    // Short press - Load scene
                     set_led_overlay_mode(i, Led::Button, LedMode::Flash(GREEN, Some(2))).await;
                     event_publisher
                         .publish(InputEvent::LoadScene(i as u8))
                         .await;
                 }
                 Either::Second(_) => {
+                    // Long press - Save scene
                     set_led_overlay_mode(i, Led::Button, LedMode::Flash(RED, Some(3))).await;
                     event_publisher
                         .publish(InputEvent::SaveScene(i as u8))
                         .await;
+
                     button.wait_for_rising_edge().await;
                 }
             }
         } else {
             event_publisher.publish(InputEvent::ButtonDown(i)).await;
             BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
-            // Debounce a bit (bounces are all in sub 1ms)
-            Timer::after_millis(1).await;
-            button.wait_for_rising_edge().await;
-            event_publisher.publish(InputEvent::ButtonUp(i)).await;
-            BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
+
+            match select(
+                button.wait_for_rising_edge(),
+                Timer::after_millis(LONG_PRESS_DURATION_MS),
+            )
+            .await
+            {
+                Either::First(_) => {
+                    event_publisher.publish(InputEvent::ButtonUp(i)).await;
+                    BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
+                }
+                Either::Second(_) => {
+                    if button.is_low() {
+                        event_publisher
+                            .publish(InputEvent::ButtonLongPress(i))
+                            .await;
+
+                        button.wait_for_rising_edge().await;
+                    }
+
+                    event_publisher.publish(InputEvent::ButtonUp(i)).await;
+                    BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
+                }
+            }
         }
-        // Release debounce
-        Timer::after_millis(1).await;
+
+        Timer::after_millis(10).await;
     }
 }
 
+// Process modifier button using debounce and state synchronization logic
 async fn process_modifier_button(i: usize, mut button: Input<'_>) {
-    // To detect a press on startup
-    if button.is_low() {
-        BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
-        button.wait_for_rising_edge().await;
-        BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
-    }
     loop {
+        if button.is_low() {
+            BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
+            button.wait_for_rising_edge().await;
+            Timer::after_millis(1).await;
+
+            if button.is_low() {
+                continue;
+            }
+
+            BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
+        }
+
         button.wait_for_falling_edge().await;
-        BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
+
         Timer::after_millis(1).await;
+        if button.is_high() {
+            continue;
+        }
+
+        BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
+
         button.wait_for_rising_edge().await;
+
+        Timer::after_millis(1).await;
+        if button.is_low() {
+            button.wait_for_rising_edge().await;
+        }
+
         BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
+
         Timer::after_millis(1).await;
     }
 }

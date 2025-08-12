@@ -182,20 +182,22 @@ impl<const N: usize> Buttons<N> {
         }
     }
 
-    pub async fn wait_for_any_long_press(&self, duration: Duration) -> (usize, bool) {
+    pub async fn wait_for_any_long_press(&self) -> (usize, bool) {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+
         loop {
-            let (channel, is_shift_pressed) = self.wait_for_any_down().await;
-            Timer::after(duration).await;
-            if BUTTON_PRESSED[self.start_channel + channel].load(Ordering::Relaxed) {
-                return (channel, is_shift_pressed);
+            if let InputEvent::ButtonLongPress(channel) = subscriber.next_message_pure().await {
+                if (self.start_channel..self.start_channel + N).contains(&channel) {
+                    return (channel - self.start_channel, self.is_shift_pressed());
+                }
             }
         }
     }
 
-    pub async fn wait_for_long_press(&self, chan: usize, duration: Duration) -> bool {
+    pub async fn wait_for_long_press(&self, chan: usize) -> bool {
         let chan = chan.clamp(0, N - 1);
         loop {
-            let (channel, is_shift_pressed) = self.wait_for_any_long_press(duration).await;
+            let (channel, is_shift_pressed) = self.wait_for_any_long_press().await;
             if chan == channel {
                 return is_shift_pressed;
             }

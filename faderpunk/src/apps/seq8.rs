@@ -371,9 +371,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         //long press
 
         loop {
-            let (chan, is_shift_pressed) = buttons
-                .wait_for_any_long_press(Duration::from_millis(500))
-                .await;
+            let (chan, is_shift_pressed) = buttons.wait_for_any_long_press().await;
 
             // let mut gateseq = gateseq_glob.get_array().await;
             let page = page_glob.get().await;
