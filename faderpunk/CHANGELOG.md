@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.4.1...faderpunk-v0.4.2) (2025-08-12)
+
+
+### Bug Fixes
+
+* **buttons:** improve debounce and add button state sync ([f12cc04](https://github.com/ATOVproject/faderpunk/commit/f12cc04beaef36fe155c222e1de7892d62e7de7e))
+
 ## [0.4.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.4.0...faderpunk-v0.4.1) (2025-08-08)
 
 
