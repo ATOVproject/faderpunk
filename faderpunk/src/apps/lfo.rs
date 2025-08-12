@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{Config, Waveform};
 
 use crate::{
-    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, Range, SceneEvent, RGB8},
+    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, Range, SceneEvent},
     storage::ParamStore,
     tasks::leds::LedMode,
 };
@@ -265,9 +265,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let fut4 = async {
         loop {
-            buttons
-                .wait_for_any_long_press(Duration::from_millis(500))
-                .await;
+            buttons.wait_for_any_long_press().await;
 
             let mut wave = glob_wave.get().await;
             for n in 0..2 {

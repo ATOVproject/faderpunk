@@ -11,6 +11,7 @@ use libfp::GlobalConfig;
 pub enum InputEvent {
     ButtonDown(usize),
     ButtonUp(usize),
+    ButtonLongPress(usize),
     FaderChange(usize),
     MidiMsg(LiveEvent<'static>),
     LoadScene(u8),
