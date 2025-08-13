@@ -11,9 +11,11 @@ pub mod quantizer;
 pub mod types;
 pub mod utils;
 
-use constants::{WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE, WAVEFORM_TRIANGLE};
-
-use crate::constants::{CURVE_EXP, CURVE_LOG};
+use constants::{
+    ATOV_BLUE, ATOV_PURPLE, ATOV_RED, ATOV_WHITE, ATOV_YELLOW, CURVE_EXP, CURVE_LOG, WAVEFORM_RECT,
+    WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE, WAVEFORM_TRIANGLE,
+};
+use smart_leds::RGB8;
 
 /// Total channel size of this device
 pub const GLOBAL_CHANNELS: usize = 16;
@@ -233,6 +235,46 @@ impl Waveform {
     }
 }
 
+impl FromValue for Waveform {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::Waveform(w) => w,
+            _ => Self::default(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings)]
+pub enum Color {
+    #[default]
+    White,
+    Red,
+    Blue,
+    Yellow,
+    Purple,
+}
+
+impl Color {
+    pub fn get(&self) -> RGB8 {
+        match self {
+            Color::White => ATOV_WHITE,
+            Color::Red => ATOV_RED,
+            Color::Blue => ATOV_BLUE,
+            Color::Yellow => ATOV_YELLOW,
+            Color::Purple => ATOV_PURPLE,
+        }
+    }
+}
+
+impl FromValue for Color {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::Color(c) => c,
+            _ => Self::default(),
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Serialize, PostcardBindings)]
 pub enum Param {
@@ -260,6 +302,10 @@ pub enum Param {
         name: &'static str,
         variants: &'static [Waveform],
     },
+    Color {
+        name: &'static str,
+        variants: &'static [Color],
+    },
 }
 
 #[allow(non_camel_case_types)]
@@ -271,11 +317,24 @@ pub enum Value {
     Enum(usize),
     Curve(Curve),
     Waveform(Waveform),
+    Color(Color),
 }
 
 impl From<Curve> for Value {
     fn from(value: Curve) -> Self {
         Value::Curve(value)
+    }
+}
+
+impl From<Waveform> for Value {
+    fn from(value: Waveform) -> Self {
+        Value::Waveform(value)
+    }
+}
+
+impl From<Color> for Value {
+    fn from(value: Color) -> Self {
+        Value::Color(value)
     }
 }
 
