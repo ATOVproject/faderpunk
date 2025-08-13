@@ -32,7 +32,7 @@ impl Default for Storage {
         Self {
             fader_saved: [2000; 2],
             att_saved: 4095,
-            offset_saved: 2047,
+            offset_saved: 0,
         }
     }
 }
