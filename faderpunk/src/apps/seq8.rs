@@ -535,6 +535,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if ((clockn / clockres[page / 2]) % seq_length[page / 2] as usize) % 16
                     - (page % 2) * 8
                     < 8
+                    && clockn != 0
                 {
                     led.set(
                         (clockn / clockres[page / 2] % seq_length[page / 2] as usize) % 16
