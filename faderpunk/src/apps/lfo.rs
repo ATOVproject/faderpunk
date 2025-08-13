@@ -106,7 +106,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     glob_lfo_speed
         .set(curve.at(fader_saved as usize) as f32 * 0.015 + 0.0682)
         .await;
-
+    div_glob.set(resolution[fader_saved as usize / 500]).await;
     let mut count = 0;
     let mut quant_speed: f32 = 6.;
 
@@ -195,9 +195,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     glob_lfo_speed
                         .set(curve.at(fader_val as usize) as f32 * 0.015 + 0.0682)
                         .await;
-                    div_glob
-                        .set(resolution[(fader_val as usize / 455).clamp(0, 8)])
-                        .await;
+                    div_glob.set(resolution[(fader_val as usize / 500)]).await;
                     // info!("div = {}", div_glob.get().await);
 
                     storage
@@ -318,7 +316,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     glob_lfo_speed
                         .set(curve.at(fader_saved as usize) as f32 * 0.015 + 0.0682)
                         .await;
-                    div_glob.set(resolution[fader_saved as usize / 455]).await;
+                    div_glob.set(resolution[fader_saved as usize / 500]).await;
 
                     let color = match wave_saved {
                         Waveform::Sine => ATOV_YELLOW,
