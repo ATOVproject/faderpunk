@@ -1,13 +1,12 @@
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_PURPLE, LED_MID},
+    constants::{ATOV_PURPLE, ATOV_RED, LED_MID},
     utils::{attenuate_bipolar, clickless, is_close, split_unsigned_value},
 };
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Value};
-use smart_leds::colors::RED;
 
 use crate::app::{
     App, AppStorage, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range, SceneEvent,
@@ -160,8 +159,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     leds.set(0, Led::Top, LED_COLOR, led1[0]);
                     leds.set(0, Led::Bottom, LED_COLOR, led1[1]);
                 } else {
-                    leds.set(0, Led::Top, RED, (att / 16) as u8);
-                    leds.set(0, Led::Bottom, RED, (att / 16) as u8);
+                    leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
+                    leds.set(0, Led::Bottom, ATOV_RED, (att / 16) as u8);
                 }
 
                 attval = attenuate_bipolar(outval, att);
@@ -172,8 +171,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     val = curve.at(fadval.into());
                 }
                 if buttons.is_shift_pressed() {
-                    leds.set(0, Led::Top, RED, (att / 16) as u8);
-                    leds.set(0, Led::Bottom, RED, 0);
+                    leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
+                    leds.set(0, Led::Bottom, ATOV_RED, 0);
                 } else {
                     leds.set(0, Led::Top, LED_COLOR, (outval / 16) as u8);
                 }
