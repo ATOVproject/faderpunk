@@ -24,7 +24,7 @@ pub const GLOBAL_CHANNELS: usize = 16;
 pub const I2C_ADDRESS: u16 = 0x56;
 
 /// Maximum number of params per app
-pub const APP_MAX_PARAMS: usize = 4;
+pub const APP_MAX_PARAMS: usize = 8;
 
 /// Length of the startup animation
 pub const STARTUP_ANIMATION_DURATION: Duration = Duration::from_secs(2);
