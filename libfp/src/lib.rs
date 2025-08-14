@@ -254,9 +254,9 @@ pub enum Color {
     Purple,
 }
 
-impl Color {
-    pub fn get(&self) -> RGB8 {
-        match self {
+impl From<Color> for RGB8 {
+    fn from(value: Color) -> Self {
+        match value {
             Color::White => ATOV_WHITE,
             Color::Red => ATOV_RED,
             Color::Blue => ATOV_BLUE,
