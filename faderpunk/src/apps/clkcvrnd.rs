@@ -71,6 +71,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
+            param_store.load().await;
+            storage.load(None).await;
             select(run(&app, &params, storage), param_store.param_handler()).await;
         }
     };
@@ -102,8 +104,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut val = 2048;
 
     const LED_COLOR: RGB8 = ATOV_PURPLE;
-
-    storage.load(None).await;
 
     let (res, mute, att) = storage
         .query(|s| (s.fader_saved, s.mute_save, s.att_saved))

@@ -18,7 +18,7 @@ use libfp::{
     constants::{
         ATOV_BLUE, ATOV_PURPLE, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MAX, LED_MID,
     },
-    quantizer::{self, Key, Note},
+    quantizer::{Key, Note},
     Config, Param, Value,
 };
 
@@ -105,6 +105,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
+            param_store.load().await;
+            storage.load(None).await;
             select(run(&app, &params, storage), param_store.param_handler()).await;
         }
     };
@@ -169,8 +171,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut shift_old = false;
     let mut lastnote = [0; 4];
     let mut gatelength1 = gatelength_glob.get().await;
-
-    storage.load(None).await;
 
     let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel, legato_seq_saved) =
         storage

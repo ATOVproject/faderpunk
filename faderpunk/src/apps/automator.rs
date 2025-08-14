@@ -86,6 +86,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
+            param_store.load().await;
+            storage.load(None).await;
             select(run(&app, &params, storage), param_store.param_handler()).await;
         }
     };
@@ -114,9 +116,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let length_glob = app.make_global(384);
     let index_glob = app.make_global(0);
     let latched = app.make_global(false);
-
-    // FIXME
-    app.delay_millis(1).await;
 
     let jack = if !params.bipolar.get().await {
         app.make_out_jack(0, Range::_0_10V).await
