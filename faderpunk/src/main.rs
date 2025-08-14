@@ -30,14 +30,12 @@ use fm24v10::{Address, Fm24v10};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-use libfp::{GlobalConfig, Layout, I2C_ADDRESS};
+use libfp::I2C_ADDRESS;
 
-use crate::tasks::buttons::BUTTON_PRESSED;
-
-use events::CONFIG_CHANGE_WATCH;
+use events::{CONFIG_CHANGE_WATCH, LAYOUT_CHANGE_WATCH};
 use layout::{LayoutManager, LAYOUT_MANAGER};
-use storage::{load_calibration_data, load_global_config};
-use tasks::{fram::MAX_DATA_LEN, max::MAX_CHANNEL, midi::MIDI_CHANNEL};
+use storage::{load_calibration_data, load_global_config, load_layout};
+use tasks::{buttons::BUTTON_PRESSED, fram::MAX_DATA_LEN, max::MAX_CHANNEL, midi::MIDI_CHANNEL};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -74,10 +72,10 @@ static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
     let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
-    let mut receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
+    let mut receiver = LAYOUT_CHANGE_WATCH.receiver().unwrap();
     loop {
-        let global_config = receiver.changed().await;
-        lm.spawn_layout(global_config.layout).await;
+        let layout = receiver.changed().await;
+        lm.spawn_layout(layout).await;
     }
 }
 
@@ -183,18 +181,18 @@ async fn main(spawner: Spawner) {
     );
 
     let config_sender = CONFIG_CHANGE_WATCH.sender();
+    let layout_sender = LAYOUT_CHANGE_WATCH.sender();
 
-    let mut global_config = GlobalConfig::new();
+    let global_config = load_global_config().await;
+    let mut layout = load_layout().await;
 
     // Load calibration app if there is no calibration data or
     // when scene + shift are pressed during startup
     if calibration_data.is_none() || BUTTON_PRESSED[16].load(Ordering::Relaxed) {
-        global_config.layout = Layout::new();
-        global_config.layout.0[0] = Some((255, 16));
-    } else {
-        global_config = load_global_config().await;
+        layout.0[0] = Some((255, 16));
     }
 
-    // Initialize the device with the loaded config
+    // Initialize the device with the loaded config and layout
     config_sender.send(global_config);
+    layout_sender.send(layout);
 }

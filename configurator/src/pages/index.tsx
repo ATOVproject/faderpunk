@@ -18,7 +18,13 @@ import { AppConfigDrawer } from "@/components/app-config-drawer";
 import { title } from "@/components/primitives";
 import DefaultLayout from "@/layouts/default";
 import { connectToFaderPunk, getDeviceName } from "@/utils/usb-protocol";
-import { getAllApps, getGlobalConfig, setGlobalConfig } from "@/utils/config";
+import {
+  getAllApps,
+  getGlobalConfig,
+  getLayout,
+  setGlobalConfig,
+  setLayout,
+} from "@/utils/config";
 
 // TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
@@ -55,6 +61,7 @@ export default function IndexPage() {
 
       const appsData = await getAllApps(device);
       const globalConfig = await getGlobalConfig(device);
+      const layout = await getLayout(device);
 
       if (appsData) {
         // Parse apps data into a Map for easy lookup by app ID
@@ -82,7 +89,12 @@ export default function IndexPage() {
       }
 
       if (globalConfig && globalConfig.tag === "GlobalConfig") {
-        const appsWithChannels = globalConfig.value.layout[0]
+        setClockSrc(globalConfig.value.clock_src);
+        setResetSrc(globalConfig.value.reset_src);
+      }
+
+      if (layout && layout.tag == "Layout") {
+        const appsWithChannels = layout.value[0]
           .map((app_data, index) =>
             app_data
               ? { appId: app_data[0].toString(), startChannel: index }
@@ -94,8 +106,6 @@ export default function IndexPage() {
         }[];
 
         setSelectedApps(appsWithChannels);
-        setClockSrc(globalConfig.value.clock_src);
-        setResetSrc(globalConfig.value.reset_src);
       }
     } catch (error) {
       console.error("Failed to connect to Faderpunk:", error);
@@ -223,8 +233,21 @@ export default function IndexPage() {
                 </div>
               </div>
             )}
+            <Button
+              disabled={!selectedApps.length}
+              type="button"
+              variant="bordered"
+              onPress={() =>
+                setLayout(
+                  usbDevice,
+                  selectedApps.map((app) => Number(app.appId)),
+                )
+              }
+            >
+              Set layout
+            </Button>
             <div className="w-full max-w-4xl">
-              <h2 className={title({ size: "sm" })}>Clock config</h2>
+              <h2 className={title({ size: "sm" })}>Device config</h2>
               <div className="flex gap-4 items-end mt-4">
                 <Select
                   className="flex-1"
@@ -267,17 +290,9 @@ export default function IndexPage() {
               </div>
             </div>
             <Button
-              disabled={!selectedApps.length}
               type="button"
               variant="bordered"
-              onPress={() =>
-                setGlobalConfig(
-                  usbDevice,
-                  selectedApps.map((app) => Number(app.appId)),
-                  clockSrc,
-                  resetSrc,
-                )
-              }
+              onPress={() => setGlobalConfig(usbDevice, clockSrc, resetSrc)}
             >
               Set config
             </Button>

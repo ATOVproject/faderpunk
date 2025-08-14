@@ -8,10 +8,19 @@ import {
 
 export const setGlobalConfig = async (
   dev: USBDevice,
-  layout: Array<number>,
   clock_src: ClockSrc,
   reset_src: ClockSrc,
 ) => {
+  await sendMessage(dev, {
+    tag: "SetGlobalConfig",
+    value: {
+      clock_src,
+      reset_src,
+    },
+  });
+};
+
+export const setLayout = async (dev: USBDevice, layout: Array<number>) => {
   let send_layout: Layout = [
     [
       undefined,
@@ -40,12 +49,8 @@ export const setGlobalConfig = async (
   }
 
   await sendMessage(dev, {
-    tag: "SetGlobalConfig",
-    value: {
-      clock_src,
-      reset_src,
-      layout: send_layout,
-    },
+    tag: "SetLayout",
+    value: send_layout,
   });
 };
 
@@ -115,5 +120,11 @@ export const setAppParams = async (
 export const getGlobalConfig = async (dev: USBDevice) => {
   return sendAndReceive(dev, {
     tag: "GetGlobalConfig",
+  });
+};
+
+export const getLayout = async (dev: USBDevice) => {
+  return sendAndReceive(dev, {
+    tag: "GetLayout",
   });
 };

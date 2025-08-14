@@ -8,7 +8,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use libfp::{FromValue, GlobalConfig, Value, APP_MAX_PARAMS};
+use libfp::{FromValue, GlobalConfig, Layout, Value, APP_MAX_PARAMS};
 
 use crate::tasks::{
     configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
@@ -16,8 +16,9 @@ use crate::tasks::{
     max::MaxCalibration,
 };
 
-const GLOBAL_CONFIG_RANGE: Range<u32> = 0..512;
-const CALIBRATION_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..1024;
+const GLOBAL_CONFIG_RANGE: Range<u32> = 0..256;
+const LAYOUT_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..512;
+const CALIBRATION_RANGE: Range<u32> = LAYOUT_RANGE.end..1024;
 const APP_STORAGE_RANGE: Range<u32> = CALIBRATION_RANGE.end..122_880;
 const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..131_072;
 const APP_STORAGE_MAX_BYTES: u32 = 400;
@@ -45,6 +46,29 @@ pub async fn load_global_config() -> GlobalConfig {
         }
     }
     GlobalConfig::new()
+}
+
+pub async fn store_layout(layout: &Layout) {
+    let res = write_with(LAYOUT_RANGE.start, |buf| {
+        Ok(to_slice(&layout, &mut *buf)?.len())
+    })
+    .await;
+
+    if res.is_err() {
+        defmt::error!("Could not save Layout");
+    }
+}
+
+pub async fn load_layout() -> Layout {
+    if let Ok(guard) = read_data(LAYOUT_RANGE.start).await {
+        let data = guard.data();
+        if !data.is_empty() {
+            if let Ok(layout) = from_bytes::<Layout>(data) {
+                return layout;
+            }
+        }
+    }
+    Layout::new()
 }
 
 pub async fn store_calibration_data(data: &MaxCalibration) {
