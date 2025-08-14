@@ -265,32 +265,20 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         loop {
             buttons.wait_for_any_long_press().await;
 
-            let mut wave = glob_wave.get().await;
-            for n in 0..2 {
-                wave.cycle();
-            }
-            glob_wave.set(wave).await;
-
-            let color = match wave {
-                Waveform::Sine => ATOV_YELLOW,
-                Waveform::Triangle => ATOV_PURPLE,
-                Waveform::Saw => ATOV_BLUE,
-                Waveform::SawInv => ATOV_RED,
-                Waveform::Rect => ATOV_WHITE,
-            };
-
-            let clocked = storage
-                .modify_and_save(
-                    |s| {
-                        s.clocked_saved = !s.clocked_saved;
-                        s.clocked_saved
-                    },
-                    None,
-                )
-                .await;
-            clocked_glob.set(clocked).await;
-            if clocked {
-                leds.set_mode(0, Led::Button, LedMode::Flash(color, Some(4)));
+            if buttons.is_shift_pressed() {
+                let clocked = storage
+                    .modify_and_save(
+                        |s| {
+                            s.clocked_saved = !s.clocked_saved;
+                            s.clocked_saved
+                        },
+                        None,
+                    )
+                    .await;
+                clocked_glob.set(clocked).await;
+                if clocked {
+                    leds.set_mode(0, Led::Button, LedMode::Flash(color, Some(4)));
+                }
             }
         }
     };
