@@ -293,8 +293,12 @@ pub async fn start_fram(spawner: &Spawner, fram: Fram) {
 #[embassy_executor::task]
 async fn run_fram(fram: Fram) {
     for i in 0..MAX_CONCURRENT_REQUESTS {
-        AVAILABLE_SIGNAL_INDICES.try_send(i).unwrap();
-        AVAILABLE_READ_BUFFER_INDICES.try_send(i).unwrap();
+        AVAILABLE_SIGNAL_INDICES
+            .try_send(i)
+            .expect("Failed to get an available signal index");
+        AVAILABLE_READ_BUFFER_INDICES
+            .try_send(i)
+            .expect("Failed to get an available read buffer");
     }
     WRITE_BUFFER_TOKEN
         .try_send(())
