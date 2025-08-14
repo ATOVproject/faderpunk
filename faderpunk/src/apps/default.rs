@@ -2,15 +2,18 @@ use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::{ATOV_PURPLE, ATOV_RED, LED_MID},
-    utils::{attenuate_bipolar, clickless, is_close, split_unsigned_value},
+    utils::{attenuate_bipolar, clickless, is_close, slew_limiter, split_unsigned_value},
 };
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Value};
 
-use crate::app::{
-    App, AppStorage, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range, SceneEvent,
-    RGB8,
+use crate::{
+    app::{
+        App, AppStorage, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range, SceneEvent,
+        RGB8,
+    },
+    apps::slew,
 };
 
 pub const CHANNELS: usize = 1;
@@ -122,6 +125,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         LED_COLOR,
         if muted { 0 } else { BUTTON_BRIGHTNESS },
     );
+    //FIXME
+    app.delay_millis(1).await;
 
     let jack = if !params.bipolar.get().await {
         app.make_out_jack(0, Range::_0_10V).await
@@ -130,7 +135,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     };
 
     let fut1 = async {
-        let mut outval = 0;
+        let mut outval = 0.;
         let mut val = fader.get_value();
         let mut fadval = fader.get_value();
         let mut old_midi = 0;
@@ -145,8 +150,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             }
             let att = att_glob.get().await;
 
-            outval = clickless(outval as f32, val) as u16;
-
             // if buttons.is_shift_pressed() {
             if params.bipolar.get().await {
                 if muted {
@@ -155,15 +158,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     val = curve.at(fadval.into());
                 }
                 if !buttons.is_shift_pressed() {
-                    let led1 = split_unsigned_value(outval);
+                    let led1 = split_unsigned_value(outval as u16);
                     leds.set(0, Led::Top, LED_COLOR, led1[0]);
                     leds.set(0, Led::Bottom, LED_COLOR, led1[1]);
                 } else {
                     leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
                     leds.set(0, Led::Bottom, ATOV_RED, (att / 16) as u8);
                 }
-
-                attval = attenuate_bipolar(outval, att);
+                outval = clickless(outval as f32, val);
+                attval = attenuate_bipolar(outval as u16, att);
             } else {
                 if muted {
                     val = 0;
@@ -174,17 +177,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
                     leds.set(0, Led::Bottom, ATOV_RED, 0);
                 } else {
-                    leds.set(0, Led::Top, LED_COLOR, (outval / 16) as u8);
+                    leds.set(0, Led::Top, LED_COLOR, (outval / 16.) as u8);
                 }
-
+                outval = clickless(outval, val);
                 attval = ((outval as u32 * att as u32) / 4095) as u16;
             }
 
             jack.set_value(attval);
 
-            if old_midi != outval / 32 {
-                midi.send_cc(midi_cc as u8, outval).await;
-                old_midi = outval / 32;
+            if old_midi != outval as u16 / 32 {
+                midi.send_cc(midi_cc as u8, outval as u16).await;
+                old_midi = outval as u16 / 32;
             }
 
             if !shift_old && buttons.is_shift_pressed() {
