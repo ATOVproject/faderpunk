@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.5.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.4.2...faderpunk-v0.5.0) (2025-08-14)
+
+
+### Features
+
+* **notefader:** add notefader app ([5dc1dd2](https://github.com/ATOVproject/faderpunk/commit/5dc1dd221d50bc0b47f6c6d0cd891c6eb4764314))
+
+
+### Bug Fixes
+
+* **apps:** load params at app startup ([59a74df](https://github.com/ATOVproject/faderpunk/commit/59a74dfa5c34653183357546a3d5b76822b564c3))
+* **automator:** fix bipolar recall, update slewing to new method ([43e498e](https://github.com/ATOVproject/faderpunk/commit/43e498e3ba64dfa4729f259139f50f976a562b02))
+* **default:** fix curve, slew and bipolar recall ([968d4df](https://github.com/ATOVproject/faderpunk/commit/968d4dfca3812f1f3f4084d8a9448b81b70a7603))
+* **default:** use the common red color value ([a645ea6](https://github.com/ATOVproject/faderpunk/commit/a645ea62c22c02c779f60be88faffc07667e5e6d))
+* **follower & slew:** small changes to make it easier to change LED colors ([961a03e](https://github.com/ATOVproject/faderpunk/commit/961a03e8abf8328f365c619655e9a9e2542d2e64))
+* **follower and slew:** change offset default value to 0 ([ee68d5d](https://github.com/ATOVproject/faderpunk/commit/ee68d5d59f416279c6e5d0db8cbec112dbf30556))
+* **fram:** better read buffer error handling ([2aa1af6](https://github.com/ATOVproject/faderpunk/commit/2aa1af64eb3d68f793c384e6d827f1c056dd18ab))
+* **lfo:** change clock switch procedure ([4cbb93b](https://github.com/ATOVproject/faderpunk/commit/4cbb93b1b1e3c8c329c220ce341ce72e17f7e6ce))
+* **lfo:** fix crashes on certain recalled values ([97a0392](https://github.com/ATOVproject/faderpunk/commit/97a0392bdc83a14d047c99103071e3178e0d7afd))
+* **notefader:** small led fix, fix note trigger when changing mode ([8ac632d](https://github.com/ATOVproject/faderpunk/commit/8ac632dfc433b93520b347ae46df4ac131bc3f3c))
+* **quantizer:** reactivate quantizer ([2a7fada](https://github.com/ATOVproject/faderpunk/commit/2a7fadae6392bf1bee65d226b9580ab11e784142))
+* **sequencer:** remove running light when stopped ([094cc66](https://github.com/ATOVproject/faderpunk/commit/094cc66a844d21dffccc4d890de310af70d6a5f7))
+
 ## [0.4.2](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.4.1...faderpunk-v0.4.2) (2025-08-12)
 
 
