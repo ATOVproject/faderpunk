@@ -157,9 +157,17 @@ pub enum ClockSrc {
 }
 
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]
+pub enum I2cMode {
+    Calibration,
+    Leader,
+    Follower,
+}
+
+#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
 pub struct GlobalConfig {
     pub clock_src: ClockSrc,
     pub reset_src: ClockSrc,
+    pub i2c_mode: I2cMode,
 }
 
 #[allow(clippy::new_without_default)]
@@ -168,6 +176,7 @@ impl GlobalConfig {
         Self {
             clock_src: ClockSrc::Internal,
             reset_src: ClockSrc::None,
+            i2c_mode: I2cMode::Follower,
         }
     }
 }
