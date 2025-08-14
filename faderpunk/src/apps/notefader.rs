@@ -88,6 +88,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
+            param_store.load().await;
+            storage.load(None).await;
             select(run(&app, &params, storage), param_store.param_handler()).await;
         }
     };
@@ -115,7 +117,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
     let latched_glob = app.make_global(false);
-    let prob_glob = app.make_global(4095);
     let clocked_glob = app.make_global(false);
 
     let jack = app.make_out_jack(0, crate::app::Range::_0_10V).await;
@@ -127,8 +128,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     const LED_BRIGHTNESS: u8 = LED_MID;
 
     const LED_COLOR: RGB<u8> = ATOV_YELLOW;
-
-    storage.load(None).await;
 
     let (res, mute, att) = storage
         .query(|s| (s.fader_saved, s.mute_saved, s.clocked))
@@ -145,7 +144,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         leds.set(0, Led::Button, LED_COLOR, LED_BRIGHTNESS);
     }
 
-    let trigger_note = async |note: u16| {
+    let trigger_note = async |_| {
         let fadval = (fader.get_value() as i32 * (span + 3) / 120) as u16;
 
         leds.set(0, Led::Top, LED_COLOR, LED_BRIGHTNESS);
@@ -263,7 +262,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     div_glob.set(resolution[fad as usize / 345]).await;
                     storage.modify_and_save(|s| s.fader_saved = fad, None).await;
                 }
-            } else {
             }
         }
     };

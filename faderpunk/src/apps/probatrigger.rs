@@ -85,6 +85,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
+            param_store.load().await;
+            storage.load(None).await;
             select(run(&app, &params, storage), param_store.param_handler()).await;
         }
     };
@@ -120,8 +122,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     const LED_BRIGHTNESS: u8 = LED_MID;
 
     const LED_COLOR: RGB<u8> = ATOV_YELLOW;
-
-    storage.load(None).await;
 
     let mut rndval = die.roll();
 

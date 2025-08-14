@@ -304,7 +304,6 @@ where
 
     pub async fn param_handler(&self) {
         APP_PARAM_SIGNALS[self.start_channel].reset();
-        self.load().await;
         loop {
             match APP_PARAM_SIGNALS[self.start_channel].wait().await {
                 AppParamCmd::SetAppParams { values } => {

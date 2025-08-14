@@ -45,6 +45,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
+            storage.load(None).await;
             run(&app, storage).await;
         }
     };
@@ -71,7 +72,6 @@ pub async fn run(app: &App<CHANNELS>, storage: ManagedStorage<Storage>) {
     let mut oldval = 0.;
     let mut shift_old = false;
 
-    storage.load(None).await;
     let stored_faders = storage.query(|s| s.fader_saved).await;
     let offset = storage.query(|s| s.offset_saved).await;
     let att = storage.query(|s| s.att_saved).await;
