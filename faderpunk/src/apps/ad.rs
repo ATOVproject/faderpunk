@@ -14,7 +14,7 @@ use libfp::{
 use crate::{
     app::{
         colors::{RED, WHITE},
-        App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8,
+        App, AppStorage, Led, ManagedStorage, Range, SceneEvent,
     },
     storage::ParamStore,
 };
@@ -68,7 +68,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    //let midi = app.use_midi(0);
 
     let times_glob = app.make_global([0.0682, 0.0682]);
     let glob_curve = app.make_global([0, 0]);

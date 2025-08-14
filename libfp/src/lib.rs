@@ -1,5 +1,6 @@
 #![no_std]
 
+use embassy_time::Duration;
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
@@ -14,11 +15,17 @@ use constants::{WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE, WA
 
 use crate::constants::{CURVE_EXP, CURVE_LOG};
 
+/// Total channel size of this device
 pub const GLOBAL_CHANNELS: usize = 16;
+
+/// The devices I2C address (as a follower)
 pub const I2C_ADDRESS: u16 = 0x56;
 
 /// Maximum number of params per app
 pub const APP_MAX_PARAMS: usize = 4;
+
+/// Length of the startup animation
+pub const STARTUP_ANIMATION_DURATION: Duration = Duration::from_secs(2);
 
 pub type ConfigMeta<'a> = (usize, &'a str, &'a str, &'a [Param]);
 

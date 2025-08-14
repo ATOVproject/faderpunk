@@ -3,7 +3,6 @@ use embassy_futures::{
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embassy_time::Duration;
 use libfp::{
     constants::{ATOV_BLUE, ATOV_PURPLE, ATOV_RED, ATOV_WHITE, ATOV_YELLOW, LED_LOW, LED_MID},
     utils::{attenuate_bipolar, is_close, split_unsigned_value},
