@@ -3,7 +3,7 @@ use embassy_futures::{join::join5, select::select};
 
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_YELLOW, LED_LOW, LED_MID},
+    constants::{ATOV_RED, ATOV_YELLOW, LED_LOW, LED_MID},
     quantizer::{self, Key, Note},
     utils::is_close,
     Config, Curve, Param, Value,
@@ -203,7 +203,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             note_on = false;
                         }
 
-                        leds.set(0, Led::Bottom, RED, 0);
+                        leds.set(0, Led::Bottom, ATOV_RED, 0);
                     }
                     clkn += 1;
                 }
@@ -308,6 +308,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             app.delay_millis(1).await;
             if !shift_old && buttons.is_shift_pressed() {
                 latched_glob.set(false).await;
+                leds.set(
+                    0,
+                    Led::Bottom,
+                    ATOV_RED,
+                    LED_MID * clocked_glob.get().await as u8,
+                );
                 shift_old = true;
             }
             if shift_old && !buttons.is_shift_pressed() {
@@ -316,7 +322,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             }
 
             // use this to trigger notes
-            if !clocked_glob.get().await {
+            if !clocked_glob.get().await && !buttons.is_shift_pressed() {
                 if !button_old && buttons.is_button_pressed(0) {
                     button_old = true;
                     note = trigger_note(note).await;
