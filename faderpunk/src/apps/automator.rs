@@ -5,7 +5,7 @@ use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::{ATOV_RED, ATOV_WHITE, LED_MID},
-    utils::{attenuate, attenuate_bipolar, slew_limiter, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, clickless, slew_limiter, split_unsigned_value},
 };
 use serde::{Deserialize, Serialize};
 
@@ -115,6 +115,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let index_glob = app.make_global(0);
     let latched = app.make_global(false);
 
+    // FIXME
+    app.delay_millis(1).await;
+
     let jack = if !params.bipolar.get().await {
         app.make_out_jack(0, Range::_0_10V).await
     } else {
@@ -162,7 +165,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             let val = (buffer[index] + offset).min(4095);
 
-            outval = slew_limiter(outval, val, slew_rate, slew_rate);
+            outval = clickless(outval, val);
             if !params.bipolar.get().await {
                 let out = curve.at(attenuate(outval as u16, att) as usize);
                 jack.set_value(out);
