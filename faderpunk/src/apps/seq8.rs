@@ -12,7 +12,6 @@ use embassy_futures::{
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embassy_time::Duration;
 use serde::{Deserialize, Serialize};
 
 use libfp::{

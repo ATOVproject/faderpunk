@@ -2,7 +2,6 @@
 // Quantizer
 //clock res
 
-use defmt::info;
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{

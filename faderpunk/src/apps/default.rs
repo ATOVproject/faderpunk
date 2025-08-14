@@ -2,18 +2,15 @@ use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::{ATOV_PURPLE, ATOV_RED, LED_MID},
-    utils::{attenuate_bipolar, clickless, is_close, slew_limiter, split_unsigned_value},
+    utils::{attenuate_bipolar, clickless, is_close, split_unsigned_value},
 };
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Value};
 
-use crate::{
-    app::{
-        App, AppStorage, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range, SceneEvent,
-        RGB8,
-    },
-    apps::slew,
+use crate::app::{
+    App, AppStorage, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range, SceneEvent,
+    RGB8,
 };
 
 pub const CHANNELS: usize = 1;
@@ -165,7 +162,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
                     leds.set(0, Led::Bottom, ATOV_RED, (att / 16) as u8);
                 }
-                outval = clickless(outval as f32, val);
+                outval = clickless(outval, val);
                 attval = attenuate_bipolar(outval as u16, att);
             } else {
                 if muted {

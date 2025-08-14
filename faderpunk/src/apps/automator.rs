@@ -5,7 +5,7 @@ use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::{ATOV_RED, ATOV_WHITE, LED_MID},
-    utils::{attenuate, attenuate_bipolar, clickless, slew_limiter, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, clickless, split_unsigned_value},
 };
 use serde::{Deserialize, Serialize};
 
@@ -130,7 +130,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut recording = false;
     let mut buffer = [0; 384];
     let mut length = 384;
-    let slew_rate = 100;
     let att_glob = app.make_global(4095);
 
     // let (buffer_saved, length_saved) = storage

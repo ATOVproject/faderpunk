@@ -193,5 +193,6 @@ async fn main(spawner: Spawner) {
         global_config = load_global_config().await;
     }
 
+    // Initialize the device with the loaded config
     config_sender.send(global_config);
 }
