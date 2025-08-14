@@ -105,21 +105,6 @@ pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f3
 
 /// Very short slew meant to avoid clicks
 pub fn clickless(prev: f32, input: u16) -> f32 {
-    let delta = input as i32 - prev as i32;
-    let step = 205.;
-    if delta > 0 {
-        if prev + step < input as f32 {
-            prev + step
-        } else {
-            input as f32
-        }
-    } else if delta < 0 {
-        if prev - step > input as f32 {
-            prev - step
-        } else {
-            input as f32
-        }
-    } else {
-        input.clamp(0, 4095) as f32
-    }
+    let output = (prev * 15. + input as f32) / 16.;
+    output
 }
