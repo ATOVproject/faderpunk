@@ -20,17 +20,15 @@ use embassy_rp::multicore::{spawn_core1, Stack};
 use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_rp::spi::{self, Spi};
 use embassy_rp::uart::{self, Async as UartAsync, BufferedUart, Config as UartConfig, UartTx};
+use embassy_rp::usb;
 use embassy_rp::{
     bind_interrupts, i2c,
     peripherals::{I2C0, I2C1, PIO0},
     pio,
 };
-use embassy_rp::{i2c_slave, usb};
 use fm24v10::{Address, Fm24v10};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
-
-use libfp::I2C_ADDRESS;
 
 use events::{CONFIG_CHANGE_WATCH, LAYOUT_CHANGE_WATCH};
 use layout::{LayoutManager, LAYOUT_MANAGER};
@@ -106,11 +104,6 @@ async fn main(spawner: Spawner) {
     spi1_config.frequency = 3_800_000;
     let spi1 = Spi::new_txonly(p.SPI1, p.PIN_10, p.PIN_11, p.DMA_CH5, spi1_config);
 
-    // I2C0 (external I2C)
-    let mut i2c0_config = i2c_slave::Config::default();
-    i2c0_config.addr = I2C_ADDRESS;
-    let mut i2c0 = i2c_slave::I2cSlave::new(p.I2C0, p.PIN_21, p.PIN_20, Irqs, i2c0_config);
-
     // I2C1 (FRAM)
     let mut i2c1_config = i2c::Config::default();
     i2c1_config.frequency = 1_000_000;
@@ -159,11 +152,11 @@ async fn main(spawner: Spawner) {
 
     let calibration_data = load_calibration_data().await;
 
+    let global_config = load_global_config().await;
+
     tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
 
-    // tasks::i2c::start_i2c(&spawner, i2c0).await;
-
-    tasks::i2c::run_calibration(&mut i2c0).await;
+    tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20, &global_config).await;
 
     tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
 
@@ -180,10 +173,6 @@ async fn main(spawner: Spawner) {
         },
     );
 
-    let config_sender = CONFIG_CHANGE_WATCH.sender();
-    let layout_sender = LAYOUT_CHANGE_WATCH.sender();
-
-    let global_config = load_global_config().await;
     let mut layout = load_layout().await;
 
     // Load calibration app if there is no calibration data or
@@ -193,6 +182,9 @@ async fn main(spawner: Spawner) {
     }
 
     // Initialize the device with the loaded config and layout
+    let config_sender = CONFIG_CHANGE_WATCH.sender();
+    let layout_sender = LAYOUT_CHANGE_WATCH.sender();
+
     config_sender.send(global_config);
     layout_sender.send(layout);
 }

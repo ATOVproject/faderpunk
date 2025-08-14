@@ -1,7 +1,10 @@
 use defmt::{error, info};
 use embassy_executor::Spawner;
-use embassy_rp::i2c_slave::{Command, I2cSlave};
-use embassy_rp::peripherals::I2C0;
+use embassy_rp::i2c::{self, Async, I2c};
+use embassy_rp::i2c_slave::{self, Command, I2cSlave};
+use embassy_rp::peripherals::{I2C0, PIN_20, PIN_21};
+use embassy_rp::Peri;
+use libfp::{GlobalConfig, I2cMode, I2C_ADDRESS};
 use max11300::config::{ConfigMode5, DACRANGE};
 use portable_atomic::Ordering;
 
@@ -12,13 +15,40 @@ use postcard::{from_bytes, to_slice};
 
 use crate::storage::store_calibration_data;
 use crate::tasks::max::{MaxCalibration, MaxCmd, MaxConfig, MAX_CHANNEL};
+use crate::Irqs;
 
 use super::max::MAX_VALUES_DAC;
 
 type I2cDevice = I2cSlave<'static, I2C0>;
 
-pub async fn start_i2c(spawner: &Spawner, i2c_device: I2cDevice) {
-    spawner.spawn(run_i2c(i2c_device)).unwrap();
+pub async fn start_i2c(
+    spawner: &Spawner,
+    i2c0: Peri<'static, I2C0>,
+    scl: Peri<'static, PIN_21>,
+    sda: Peri<'static, PIN_20>,
+    global_config: &GlobalConfig,
+) {
+    match global_config.i2c_mode {
+        I2cMode::Calibration => {
+            let mut i2c0_config = i2c_slave::Config::default();
+            i2c0_config.addr = I2C_ADDRESS;
+            let i2c_device = i2c_slave::I2cSlave::new(i2c0, scl, sda, Irqs, i2c0_config);
+            run_calibration(i2c_device).await;
+            // FIXME: Restart device after calibration
+        }
+        I2cMode::Follower => {
+            let mut i2c0_config = i2c_slave::Config::default();
+            i2c0_config.addr = I2C_ADDRESS;
+            let i2c_device = i2c_slave::I2cSlave::new(i2c0, scl, sda, Irqs, i2c0_config);
+            spawner.spawn(run_i2c_follower(i2c_device)).unwrap();
+        }
+        I2cMode::Leader => {
+            let mut i2c0_config = i2c::Config::default();
+            i2c0_config.frequency = 400_000;
+            let i2c0 = i2c::I2c::new_async(i2c0, scl, sda, Irqs, i2c0_config);
+            spawner.spawn(run_i2c_leader(i2c0)).unwrap();
+        }
+    }
 }
 
 async fn process_write_read(command: WriteReadCommand) -> Response {
@@ -69,11 +99,16 @@ async fn process_write(command: WriteCommand) {
 }
 
 #[embassy_executor::task]
-async fn run_i2c(mut _i2c_device: I2cDevice) {
-    // Run i2c business here
+async fn run_i2c_follower(mut _i2c_device: I2cDevice) {
+    // TODO: Run i2c follower stuff here
 }
 
-pub async fn run_calibration(i2c_device: &mut I2cDevice) {
+#[embassy_executor::task]
+async fn run_i2c_leader(mut _i2c: I2c<'static, I2C0, Async>) {
+    // TODO: Run i2c leader stuff here
+}
+
+pub async fn run_calibration(mut i2c_device: I2cDevice) {
     let mut buf = [0u8; MAX_MESSAGE_SIZE];
 
     loop {
