@@ -10,6 +10,7 @@ register_apps!(
     9 => clkturing,
     10 => slew,
     11 => follower,
+    12 => notefader,
     254 => rgbtest,
     255 => calibrator,
 );
