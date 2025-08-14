@@ -139,6 +139,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let input = app.make_in_jack(0, Range::_0_10V).await;
     let output = app.make_out_jack(1, Range::_0_10V).await;
 
+    let base_note = 48;
+
     storage.load(None).await;
     let (att, length, mut register) = storage
         .query(|s| (s.att_saved, s.length_saved, s.register_saved))
@@ -170,17 +172,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 let register_scalled = scale_to_12bit(register, length as u8);
                 att_reg = (register_scalled as u32 * att_glob.get().await / 4095) as u16;
 
-                // let out = ((quantizer.get_quantized_voltage(att_reg)) * 410.0) as u16;
-                let out = att_reg;
+                let out = ((quantizer.get_quantized_voltage(att_reg)) * 410.0) as u16;
+                // let out = att_reg;
 
                 output.set_value(out);
                 leds.set(0, Led::Top, LED_COLOR, (register_scalled / 16) as u8);
                 leds.set(1, Led::Top, LED_COLOR, (att_reg / 16) as u8);
                 // info!("{}", register_scalled);
                 if midi_mode == 1 {
-                    note = (att_reg / 32) as u8;
-
+                    let note = (out as u32 * 120 / 4095 + base_note as u32) as u8;
                     midi.send_note_on(note, 4095).await;
+
                     midi_note.set(note).await;
                 }
                 if midi_mode == 2 {

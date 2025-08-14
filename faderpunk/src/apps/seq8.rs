@@ -149,7 +149,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut quantizer = app.use_quantizer();
 
     //Fix get this from global setting
-    quantizer.set_scale(Key::Chromatic, Note::C, Note::C);
+    quantizer.set_scale(Key::Major, Note::C, Note::C);
 
     let page_glob: Global<usize> = app.make_global(0);
     let led_flag_glob: Global<bool> = app.make_global(true);
@@ -165,6 +165,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let clockres_glob = app.make_global([6, 6, 6, 6]);
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
+    let base_note = 48;
 
     let mut shift_old = false;
     let mut lastnote = [0; 4];
@@ -428,7 +429,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             //     b: 250,
                             // },
             ];
-            app.delay_millis(10).await;
+            app.delay_millis(16).await;
             let clockres = clockres_glob.get().await;
 
             //if buttons.is_shift_pressed().await;
@@ -586,24 +587,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             if gateseq[clkindex] {
                                 let seq = seq_glob.get().await;
 
-                                lastnote[n] = (seq[clkindex] / 170) as u8 + 60;
+                                let out = ((quantizer.get_quantized_voltage(seq[clkindex] / 4))
+                                    * 410.) as u16;
+
+                                lastnote[n] = (out as u32 * 120 / 4095 + base_note as u32) as u8;
                                 midi[n].send_note_on(lastnote[n], 4095).await;
-                                gate_out[n].set_high().await;
-
-                                // let out = ((quantizer.get_quantized_voltage(seq[clkindex] / 4))
-                                //     * 410.) as u16;
-                                // if n == 0 {
-                                //     info!(
-                                //         "bit : {}, voltage: {}, corrected out: {}",
-                                //         seq[clkindex] / 4,
-                                //         quantizer.get_quantized_voltage(seq[clkindex] / 4),
-                                //         out
-                                //     );
-                                // }
-
-                                let out = seq[clkindex] / 4;
-                                cv_out[n].set_value(out);
                                 gatelength1 = gatelength_glob.get().await;
+                                cv_out[n].set_value(out);
+                                gate_out[n].set_high().await;
                             } else {
                                 gate_out[n].set_low().await;
                             }

@@ -132,6 +132,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let latched_glob = app.make_global(true);
 
+    let base_note = 48;
+
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
     leds.set(0, Led::Button, ATOV_BLUE, LED_MID);
@@ -175,25 +177,26 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
                         let register_scalled = scale_to_12bit(register, length as u8);
                         att_reg = (register_scalled as u32 * att_glob.get().await / 4095) as u16;
-                        // att_reg = (register_scalled as u32 * 410 / 4095 + 410) as u16;
 
-                        // let out = (quantizer.get_quantized_voltage(att_reg) * 410.0) as u16;
-                        let out = att_reg;
+                        let out = (quantizer.get_quantized_voltage(att_reg) * 410.0) as u16;
+                        // let out = att_reg;
 
-                        info!(
-                            "bit : {}, voltage: {}, corrected out: {}",
-                            att_reg,
-                            quantizer.get_quantized_voltage(att_reg),
-                            out
-                        );
+                        // info!(
+                        //     "bit : {}, voltage: {}, corrected out: {}",
+                        //     att_reg,
+                        //     quantizer.get_quantized_voltage(att_reg),
+                        //     out
+                        // );
 
                         jack.set_value(out);
                         leds.set(0, Led::Top, ATOV_BLUE, (register_scalled / 16) as u8);
                         // info!("{}", register_scalled);
                         if midi_mode == 1 {
-                            note = (att_reg / 32) as u8;
+                            // let note = (out as u32 * 120 / 4095 + base_note as u32) as u16;
 
-                            midi.send_note_on(note, 4095).await;
+                            let note = (out as u32 * 120 / 4095 + base_note as u32) as u8;
+                            midi.send_note_on(note as u8, 4095).await;
+
                             midi_note.set(note).await;
                         }
                         if midi_mode == 2 {
@@ -290,10 +293,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             let shift = buttons.wait_for_down(0).await;
             // latched_glob.set(false).await;
-            let mut lenght = length_rec.get().await;
+            let mut length = length_rec.get().await;
             if shift && rec_flag.get().await {
-                lenght += 1;
-                length_rec.set(lenght.min(16)).await;
+                length += 1;
+                length_rec.set(length.min(16)).await;
             }
         }
     };
