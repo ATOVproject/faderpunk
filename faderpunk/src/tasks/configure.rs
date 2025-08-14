@@ -12,7 +12,8 @@ use postcard::{from_bytes, to_vec};
 use libfp::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS};
 
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
-use crate::storage::store_global_config;
+use crate::events::LAYOUT_CHANGE_WATCH;
+use crate::storage::{store_global_config, store_layout};
 use crate::CONFIG_CHANGE_WATCH;
 
 use super::transport::{WebEndpoints, USB_MAX_PACKET_SIZE};
@@ -83,9 +84,12 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 }
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
+            ConfigMsgIn::GetLayout => {
+                let layout = LAYOUT_CHANGE_WATCH.try_get().unwrap();
+                proto.send_msg(ConfigMsgOut::Layout(layout)).await.unwrap();
+            }
             ConfigMsgIn::GetGlobalConfig => {
                 let global_config = CONFIG_CHANGE_WATCH.try_get().unwrap();
-
                 proto
                     .send_msg(ConfigMsgOut::GlobalConfig(global_config))
                     .await
@@ -109,12 +113,18 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::SetAppParams { values });
                 // TODO: This should answer to refresh UI
             }
-            ConfigMsgIn::SetGlobalConfig(mut global_config) => {
-                global_config.layout.validate(get_channels);
+            ConfigMsgIn::SetGlobalConfig(global_config) => {
                 // TODO: Should we really do this here??
                 store_global_config(&global_config).await;
                 let sender = CONFIG_CHANGE_WATCH.sender();
                 sender.send(global_config);
+            }
+            ConfigMsgIn::SetLayout(mut layout) => {
+                layout.validate(get_channels);
+                // TODO: Should we really do this here??
+                store_layout(&layout).await;
+                let sender = LAYOUT_CHANGE_WATCH.sender();
+                sender.send(layout);
             }
         }
     }

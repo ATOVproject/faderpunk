@@ -160,7 +160,6 @@ pub enum ClockSrc {
 pub struct GlobalConfig {
     pub clock_src: ClockSrc,
     pub reset_src: ClockSrc,
-    pub layout: Layout,
 }
 
 #[allow(clippy::new_without_default)]
@@ -169,7 +168,6 @@ impl GlobalConfig {
         Self {
             clock_src: ClockSrc::Internal,
             reset_src: ClockSrc::None,
-            layout: Layout::new(),
         }
     }
 }
@@ -362,6 +360,8 @@ pub enum ConfigMsgIn {
     GetAllApps,
     GetGlobalConfig,
     SetGlobalConfig(GlobalConfig),
+    GetLayout,
+    SetLayout(Layout),
     GetAppParams {
         start_channel: usize,
     },
@@ -377,6 +377,7 @@ pub enum ConfigMsgOut<'a> {
     BatchMsgStart(usize),
     BatchMsgEnd,
     GlobalConfig(GlobalConfig),
+    Layout(Layout),
     AppConfig(u8, usize, ConfigMeta<'a>),
     AppState(usize, &'a [Value]),
 }
