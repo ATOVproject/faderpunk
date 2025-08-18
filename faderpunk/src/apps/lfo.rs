@@ -174,7 +174,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             }
             if shift_old && !buttons.is_shift_pressed() {
                 latched_glob.set(false).await;
-
                 shift_old = false;
             }
         }
@@ -283,8 +282,14 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     };
     let fut5 = async {
         loop {
-            if let ClockEvent::Tick = clk.wait_for_event(24).await {
-                tick_flag.set(true).await;
+            match clk.wait_for_event(24).await {
+                ClockEvent::Tick => {
+                    tick_flag.set(true).await;
+                }
+                ClockEvent::Reset => {
+                    glob_lfo_pos.set(0.0).await;
+                }
+                _ => {}
             }
         }
     };
