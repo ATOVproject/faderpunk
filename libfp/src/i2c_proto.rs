@@ -1,7 +1,7 @@
 use defmt::Format;
 use serde::{Deserialize, Serialize};
 
-use crate::types::RegressionValues;
+use crate::types::RegressionValuesOutput;
 
 /// Maximum size of a serialized message in bytes.
 /// This must be large enough for the largest possible message.
@@ -14,7 +14,7 @@ pub enum WriteReadCommand {
     /// (channel, bipolar_range, value)
     CalibSetVoltage(usize, bool, u16),
     /// Set the calculated regression values for output voltages
-    CalibSetRegressionValues(RegressionValues),
+    CalibSetRegressionValues(RegressionValuesOutput),
     /// Get the device's current status.
     GetStatus,
     /// Reset the device
@@ -24,6 +24,8 @@ pub enum WriteReadCommand {
 /// WriteCommands sent from the calibrator to the device.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Format)]
 pub enum WriteCommand {
+    /// Start automatic calibration
+    StartCalibration,
     /// Reset the device
     SysReset,
 }

@@ -41,6 +41,11 @@ pub const ATOV_PURPLE: RGB8 = RGB8 {
     g: 52,
     b: 139,
 };
+pub const ATOV_GREEN: RGB8 = RGB8 {
+    r: 46,
+    g: 204,
+    b: 113,
+};
 
 // Standard LED intensities
 pub const LED_OFF: u8 = 0;
