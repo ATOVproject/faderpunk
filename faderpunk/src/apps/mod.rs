@@ -11,6 +11,7 @@ register_apps!(
     10 => slew,
     11 => follower,
     12 => notefader,
+    13 => midi2cv,
     252 => calibration,
     253 => calibration_unipolar,
     254 => rgbtest,

@@ -10,6 +10,14 @@ pub fn scale_bits_12_7(value: u16) -> u7 {
     u7::new(((value as u32 * 127) / 4095) as u8)
 }
 
+pub fn scale_bits_7_12(value: u7) -> u16 {
+    ((value.as_int() as u32 * 4095) / 127) as u16
+}
+
+pub fn bits_7_16(value: u7) -> u16 {
+    value.as_int() as u16
+}
+
 /// Return bool of values are close
 pub fn is_close(a: u16, b: u16) -> bool {
     a.abs_diff(b) < 100
