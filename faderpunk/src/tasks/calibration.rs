@@ -5,7 +5,7 @@ use libfp::ext::BrightnessExt;
 use libfp::types::{RegressionValuesInput, RegressionValuesOutput};
 use linreg::linear_regression;
 use max11300::config::{ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES};
-use portable_atomic::Ordering;
+use portable_atomic::{AtomicUsize, Ordering};
 use smart_leds::RGB8;
 
 use crate::app::Led;
@@ -19,6 +19,8 @@ use crate::tasks::max::{
 };
 
 use super::max::MAX_VALUES_DAC;
+
+pub static CALIBRATION_PORT: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 const CHANNELS: usize = 16;
 const VALUES_0_10V: [u16; 3] = [410, 819, 3686];
@@ -122,7 +124,7 @@ async fn run_input_calibration() -> RegressionValuesInput {
     input_results
 }
 
-async fn run_output_calibration() -> RegressionValuesOutput {
+async fn run_manual_output_calibration() -> RegressionValuesOutput {
     let mut output_results = RegressionValuesOutput::default();
 
     for i in 0..CHANNELS {
@@ -275,6 +277,38 @@ async fn run_output_calibration() -> RegressionValuesOutput {
     output_results
 }
 
+async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) {
+    defmt::info!("Starting automatic calibration");
+
+    for i in 0..CHANNELS {
+        set_led_color(i, Led::Button, ATOV_RED);
+    }
+
+    reset_led(0, Led::Button);
+    reset_led(0, Led::Bottom);
+    reset_led(0, Led::Top);
+
+    loop {
+        if let I2cMessage::PlugInPort(chan) = receiver.receive().await {
+            let ui_no = chan % 17;
+            let prev_ui_no = if chan == 0 {
+                0
+            } else {
+                (ui_no + CHANNELS - 1) % CHANNELS
+            };
+            reset_led(prev_ui_no, Led::Button);
+            flash_led(chan, Led::Button, ATOV_YELLOW, None);
+            defmt::info!(
+                "Plug multimeter into jack {} now, then press button {}",
+                chan,
+                ui_no,
+            );
+            wait_for_button_press(ui_no).await;
+            CALIBRATION_PORT.store(chan, Ordering::Relaxed);
+        }
+    }
+}
+
 pub async fn run_calibration(mut msg_receiver: I2cMsgReceiver) {
     CALIBRATING.store(true, Ordering::Relaxed);
 
@@ -291,7 +325,7 @@ pub async fn run_calibration(mut msg_receiver: I2cMsgReceiver) {
         Either::First(_) => {
             // Manual calibration
             let inputs = run_input_calibration().await;
-            let outputs = run_output_calibration().await;
+            let outputs = run_manual_output_calibration().await;
 
             let calibration_data = MaxCalibration { inputs, outputs };
 
@@ -307,13 +341,12 @@ pub async fn run_calibration(mut msg_receiver: I2cMsgReceiver) {
         }
         Either::Second(_) => {
             // Automatic calibration
-            set_led_color(0, Led::Button, ATOV_YELLOW);
+            // TODO: Add input calibration
+            run_automatic_output_calibration(&mut msg_receiver).await;
         }
     }
 
     loop {
         Timer::after_secs(10).await;
     }
-
-    // FIXME: Restart device after calibration
 }

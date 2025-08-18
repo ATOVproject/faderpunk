@@ -16,7 +16,7 @@ use libfp::i2c_proto::{
 use postcard::{from_bytes, to_slice};
 
 use crate::storage::store_calibration_data;
-use crate::tasks::calibration::run_calibration;
+use crate::tasks::calibration::{run_calibration, CALIBRATION_PORT};
 use crate::tasks::max::{MaxCalibration, MaxCmd, MAX_CHANNEL};
 use crate::Irqs;
 
@@ -26,6 +26,7 @@ pub type I2cDevice = I2cSlave<'static, I2C0>;
 
 pub enum I2cMessage {
     StartCalibration,
+    PlugInPort(usize),
 }
 
 pub static I2C_CHANNEL: Channel<ThreadModeRawMutex, I2cMessage, 8> = Channel::new();
@@ -72,7 +73,19 @@ pub async fn start_i2c(
 
 async fn process_write_read(command: WriteReadCommand) -> Response {
     match command {
-        WriteReadCommand::CalibSetVoltage(channel, bipolar_range, value) => {
+        WriteReadCommand::CalibPollPort => {
+            let port = CALIBRATION_PORT.load(Ordering::Relaxed);
+            Response::CalibCurrentPort(port)
+        }
+        WriteReadCommand::CalibSetRegressionValues(values) => {
+            let data = MaxCalibration {
+                outputs: values,
+                ..Default::default()
+            };
+            store_calibration_data(&data).await;
+            Response::Ack
+        }
+        WriteReadCommand::DacSetVoltage(channel, bipolar_range, value) => {
             info!(
                 "Setting voltage value to {} on channel {}. -5 to 5V range: {}",
                 value, channel, bipolar_range
@@ -91,14 +104,6 @@ async fn process_write_read(command: WriteReadCommand) -> Response {
             MAX_VALUES_DAC[channel].store(value, Ordering::Relaxed);
             Response::CalibVoltageSet(channel)
         }
-        WriteReadCommand::CalibSetRegressionValues(values) => {
-            let data = MaxCalibration {
-                outputs: values,
-                ..Default::default()
-            };
-            store_calibration_data(&data).await;
-            Response::Ack
-        }
         WriteReadCommand::SysReset => {
             cortex_m::peripheral::SCB::sys_reset();
         }
@@ -111,11 +116,14 @@ async fn process_write_read(command: WriteReadCommand) -> Response {
 
 async fn process_write(command: WriteCommand, sender: &mut I2cMsgSender) {
     match command {
+        WriteCommand::CalibStart => {
+            sender.send(I2cMessage::StartCalibration).await;
+        }
+        WriteCommand::CalibPlugInPort(port) => {
+            sender.send(I2cMessage::PlugInPort(port)).await;
+        }
         WriteCommand::SysReset => {
             cortex_m::peripheral::SCB::sys_reset();
-        }
-        WriteCommand::StartCalibration => {
-            sender.send(I2cMessage::StartCalibration).await;
         }
     }
 }
@@ -124,7 +132,8 @@ async fn process_write(command: WriteCommand, sender: &mut I2cMsgSender) {
 async fn run_i2c_follower(
     mut i2c_device: I2cDevice,
     mut msg_sender: I2cMsgSender,
-    calibrating: bool,
+    // TODO: use this to disable calibration i2c commands?
+    _calibrating: bool,
 ) {
     let mut buf = [0u8; MAX_MESSAGE_SIZE];
     loop {
