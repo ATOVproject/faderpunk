@@ -27,6 +27,7 @@ use embassy_rp::{
     pio,
 };
 use fm24v10::{Address, Fm24v10};
+use libfp::I2cMode;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -152,15 +153,22 @@ async fn main(spawner: Spawner) {
 
     let calibration_data = load_calibration_data().await;
 
-    let global_config = load_global_config().await;
-
     tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
-
-    tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20, &global_config).await;
 
     tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
 
     tasks::clock::start_clock(&spawner, aux_inputs).await;
+
+    let layout = load_layout().await;
+    let mut global_config = load_global_config().await;
+
+    // Load calibration if there is no calibration data or
+    // when scene is pressed during startup
+    if calibration_data.is_none() || BUTTON_PRESSED[16].load(Ordering::Relaxed) {
+        global_config.i2c_mode = I2cMode::Calibration;
+    }
+
+    tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20, &global_config).await;
 
     spawn_core1(
         p.CORE1,
@@ -172,14 +180,6 @@ async fn main(spawner: Spawner) {
             });
         },
     );
-
-    let mut layout = load_layout().await;
-
-    // Load calibration app if there is no calibration data or
-    // when scene + shift are pressed during startup
-    if calibration_data.is_none() || BUTTON_PRESSED[16].load(Ordering::Relaxed) {
-        layout.0[0] = Some((255, 16));
-    }
 
     // Initialize the device with the loaded config and layout
     let config_sender = CONFIG_CHANGE_WATCH.sender();

@@ -13,7 +13,7 @@ use embassy_sync::{
     mutex::Mutex,
 };
 use embassy_time::Timer;
-use libfp::types::RegressionValues;
+use libfp::types::{RegressionValuesInput, RegressionValuesOutput};
 use libm::roundf;
 use max11300::{
     config::{
@@ -61,10 +61,10 @@ pub enum MaxCmd {
 
 #[derive(Clone, Copy, Serialize, Deserialize, Default, Format)]
 pub struct MaxCalibration {
-    // (slope, intercept)
-    pub inputs: (f32, f32),
-    // (slope, intercept)
-    pub outputs: RegressionValues,
+    /// Input calibration data
+    pub inputs: RegressionValuesInput,
+    /// Output calibration data
+    pub outputs: RegressionValuesOutput,
 }
 
 pub async fn start_max(
@@ -231,12 +231,17 @@ async fn process_channel_values(
 
                     max.dac_set_value(port, calibrated_value).await.unwrap();
                 }
-                Mode::Mode7(_) => {
+                Mode::Mode7(config) => {
                     let value = max.adc_get_value(port).await.unwrap();
                     let calibrated_value = if CALIBRATING.load(Ordering::Relaxed) {
                         value
                     } else if let Some(data) = calibration_data {
-                        let (slope, intercept) = data.inputs;
+                        let range_idx = match config.1 {
+                            max11300::config::ADCRANGE::Rg0_10v => 0,
+                            max11300::config::ADCRANGE::RgNeg5_5v => 1,
+                            _ => 0, // Default to 0-10V range for other ranges
+                        };
+                        let (slope, intercept) = data.inputs[range_idx];
                         let raw_value_f32 = value as f32;
                         let corrected_f32 = raw_value_f32 * (1.0 + slope) + intercept;
 

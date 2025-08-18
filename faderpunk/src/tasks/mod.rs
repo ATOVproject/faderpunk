@@ -1,4 +1,5 @@
 pub mod buttons;
+pub mod calibration;
 pub mod clock;
 pub mod configure;
 pub mod fram;

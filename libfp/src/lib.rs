@@ -22,6 +22,7 @@ pub const GLOBAL_CHANNELS: usize = 16;
 
 /// The devices I2C address (as a follower)
 pub const I2C_ADDRESS: u16 = 0x56;
+pub const I2C_ADDRESS_CALIBRATION: u16 = 0x57;
 
 /// Maximum number of params per app
 pub const APP_MAX_PARAMS: usize = 8;
