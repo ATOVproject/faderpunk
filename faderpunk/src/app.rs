@@ -376,13 +376,13 @@ impl MidiInput {
         }
     }
 
-    async fn wait_for_message(&mut self) -> MidiMessage {
+    pub async fn wait_for_message(&mut self) -> MidiMessage {
         loop {
-            if let InputEvent::MidiMsg(msg) = self.subscriber.next_message_pure().await {
-                if let LiveEvent::Midi { channel, message } = msg {
-                    if channel == self.midi_channel {
-                        return message;
-                    }
+            if let InputEvent::MidiMsg(LiveEvent::Midi { channel, message }) =
+                self.subscriber.next_message_pure().await
+            {
+                if channel == self.midi_channel {
+                    return message;
                 }
             }
         }
