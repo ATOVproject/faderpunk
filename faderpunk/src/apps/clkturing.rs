@@ -13,9 +13,7 @@ use libfp::{
     Config, Param, Range, Value,
 };
 
-use crate::app::{
-    App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8,
-};
+use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 3;
