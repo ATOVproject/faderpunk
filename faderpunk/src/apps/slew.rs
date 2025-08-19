@@ -3,14 +3,15 @@
 
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use serde::{Deserialize, Serialize};
+
 use libfp::{
     constants::{ATOV_BLUE, CURVE_EXP, LED_MID},
     utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
-    Config,
+    Config, Range,
 };
-use serde::{Deserialize, Serialize};
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8};
+use crate::app::{App, AppStorage, Led, ManagedStorage, SceneEvent, RGB8};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;

@@ -9,9 +9,10 @@ use libfp::{
     constants::{ATOV_PURPLE, ATOV_RED, CURVE_EXP, LED_MID},
     utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
     Config,
+    Range,
 };
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, Range, SceneEvent, RGB8};
+use crate::app::{App, AppStorage, Led, ManagedStorage, SceneEvent, RGB8};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;

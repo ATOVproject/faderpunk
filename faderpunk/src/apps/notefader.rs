@@ -2,14 +2,15 @@ use defmt::info;
 use embassy_futures::{join::join5, select::select};
 
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use serde::{Deserialize, Serialize};
+use smart_leds::{colors::RED, RGB};
+
 use libfp::{
     constants::{ATOV_RED, ATOV_YELLOW, LED_LOW, LED_MID},
     quantizer::{Key, Note},
     utils::is_close,
-    Config, Param, Value,
+    Config, Param, Range, Value,
 };
-use serde::{Deserialize, Serialize};
-use smart_leds::{colors::RED, RGB};
 
 use crate::app::{
     App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent,
@@ -119,7 +120,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let latched_glob = app.make_global(false);
     let clocked_glob = app.make_global(false);
 
-    let jack = app.make_out_jack(0, crate::app::Range::_0_10V).await;
+    let jack = app.make_out_jack(0, Range::_0_10V).await;
 
     let resolution = [368, 184, 92, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 

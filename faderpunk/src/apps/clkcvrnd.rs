@@ -7,14 +7,14 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range,
+    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore,
     SceneEvent, RGB8,
 };
 
 use libfp::{
     constants::{ATOV_PURPLE, LED_MID},
     utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
-    Config, Param, Value,
+    Config, Param, Range, Value,
 };
 
 pub const CHANNELS: usize = 1;

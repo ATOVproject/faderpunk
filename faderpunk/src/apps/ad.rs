@@ -9,12 +9,13 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     constants::{ATOV_BLUE, ATOV_PURPLE, ATOV_YELLOW, CURVE_EXP, CURVE_LOG, LED_MID},
     Config,
+    Range,
 };
 
 use crate::{
     app::{
         colors::{RED, WHITE},
-        App, AppStorage, Led, ManagedStorage, Range, SceneEvent,
+        App, AppStorage, Led, ManagedStorage, SceneEvent,
     },
     storage::ParamStore,
 };

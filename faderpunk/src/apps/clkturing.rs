@@ -3,18 +3,18 @@
 
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use serde::{Deserialize, Serialize};
+use smart_leds::colors::RED;
+
 use libfp::{
     constants::{ATOV_BLUE, ATOV_RED, LED_HIGH, LED_MID},
     quantizer::{Key, Note},
     utils::is_close,
-    Config, Param, Value,
+    Config, Param, Range, Value,
 };
-use serde::{Deserialize, Serialize};
-use smart_leds::colors::RED;
 
 use crate::app::{
-    App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
-    RGB8,
+    App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8,
 };
 
 pub const CHANNELS: usize = 2;

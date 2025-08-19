@@ -9,11 +9,11 @@ use libfp::{
 };
 use serde::{Deserialize, Serialize};
 
-use libfp::{Config, Curve, Param, Value};
+use libfp::{Config, Curve, Param, Range, Value};
 use smart_leds::RGB8;
 
 use crate::{
-    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, Range},
+    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot},
     storage::ParamStore,
 };
 

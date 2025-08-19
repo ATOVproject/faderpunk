@@ -1,6 +1,7 @@
 #![no_std]
 
 use embassy_time::Duration;
+use max11300::config::DACRANGE;
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
@@ -423,5 +424,27 @@ impl<const N: usize> Config<N> {
 
     pub fn get_meta(&self) -> ConfigMeta<'_> {
         (N, self.name, self.description, &self.params)
+    }
+}
+
+/// Supported DAC ranges
+#[repr(u8)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
+pub enum Range {
+    // 0 - 10V
+    _0_10V,
+    // 0 - 5V
+    _0_5V,
+    // -5 - 5V
+    _Neg5_5V,
+}
+
+impl From<Range> for DACRANGE {
+    fn from(value: Range) -> Self {
+        match value {
+            Range::_0_10V => DACRANGE::Rg0_10v,
+            Range::_0_5V => DACRANGE::Rg0_10v,
+            Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
+        }
     }
 }
