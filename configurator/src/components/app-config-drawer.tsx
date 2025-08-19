@@ -15,6 +15,7 @@ import {
   EnumParamInput,
   CurveParamInput,
   WaveformParamInput,
+  ColorParamInput,
 } from "@/components/param-inputs";
 import { getAppParams, setAppParams } from "@/utils/config";
 
@@ -212,6 +213,33 @@ export function AppConfigDrawer({
               if (selectedValue) {
                 handleParamChange(index, {
                   tag: "Waveform",
+                  value: { tag: selectedValue },
+                });
+              }
+            }}
+          />
+        );
+      case "Color":
+        return (
+          <ColorParamInput
+            key={`param-${index}`}
+            {...commonProps}
+            selectedKeys={value?.value?.tag ? [value.value.tag] : ["White"]}
+            variants={
+              param.value?.variants?.map((v: any) => v.tag || v) || [
+                "White",
+                "Red",
+                "Blue",
+                "Yellow",
+                "Purple",
+              ]
+            }
+            onSelectionChange={(keys) => {
+              const selectedValue = Array.from(keys)[0];
+
+              if (selectedValue) {
+                handleParamChange(index, {
+                  tag: "Color",
                   value: { tag: selectedValue },
                 });
               }
