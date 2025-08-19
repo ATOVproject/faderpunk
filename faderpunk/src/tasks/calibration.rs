@@ -54,7 +54,7 @@ async fn wait_for_button_press(channel: usize) -> bool {
 
 async fn wait_for_start_cmd(msg_receiver: &mut I2cMsgReceiver) {
     loop {
-        if let I2cMessage::StartCalibration = msg_receiver.receive().await {
+        if let I2cMessage::CalibStart = msg_receiver.receive().await {
             return;
         }
     }
@@ -277,8 +277,8 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
     output_results
 }
 
-async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) {
-    defmt::info!("Starting automatic calibration");
+async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) -> RegressionValuesOutput {
+    CALIBRATION_PORT.store(usize::MAX, Ordering::Relaxed);
 
     for i in 0..CHANNELS {
         set_led_color(i, Led::Button, ATOV_RED);
@@ -289,22 +289,31 @@ async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) {
     reset_led(0, Led::Top);
 
     loop {
-        if let I2cMessage::PlugInPort(chan) = receiver.receive().await {
-            let ui_no = chan % 17;
-            let prev_ui_no = if chan == 0 {
-                0
-            } else {
-                (ui_no + CHANNELS - 1) % CHANNELS
-            };
-            reset_led(prev_ui_no, Led::Button);
-            flash_led(chan, Led::Button, ATOV_YELLOW, None);
-            defmt::info!(
-                "Plug multimeter into jack {} now, then press button {}",
-                chan,
-                ui_no,
-            );
-            wait_for_button_press(ui_no).await;
-            CALIBRATION_PORT.store(chan, Ordering::Relaxed);
+        match receiver.receive().await {
+            I2cMessage::CalibPlugInPort(chan) => {
+                let ui_no = chan % 17;
+                let prev_ui_no = if chan == 0 {
+                    0
+                } else {
+                    (ui_no + CHANNELS - 1) % CHANNELS
+                };
+                for led_no in 0..=prev_ui_no {
+                    set_led_color(led_no, Led::Button, ATOV_GREEN);
+                }
+                flash_led(chan, Led::Button, ATOV_YELLOW, None);
+                defmt::info!(
+                    "Plug multimeter into jack {} now, then press button {}",
+                    chan,
+                    ui_no,
+                );
+                wait_for_button_press(ui_no).await;
+                flash_led(chan, Led::Button, ATOV_GREEN, None);
+                CALIBRATION_PORT.store(chan, Ordering::Relaxed);
+            }
+            I2cMessage::CalibSetRegressionValues(output_values) => {
+                return output_values;
+            }
+            _ => {}
         }
     }
 }
@@ -316,7 +325,7 @@ pub async fn run_calibration(mut msg_receiver: I2cMsgReceiver) {
 
     defmt::info!("Press button or send i2c signal to start calibration");
 
-    match select(
+    let calibration_data = match select(
         wait_for_button_press(0),
         wait_for_start_cmd(&mut msg_receiver),
     )
@@ -327,22 +336,24 @@ pub async fn run_calibration(mut msg_receiver: I2cMsgReceiver) {
             let inputs = run_input_calibration().await;
             let outputs = run_manual_output_calibration().await;
 
-            let calibration_data = MaxCalibration { inputs, outputs };
-
-            store_calibration_data(&calibration_data).await;
-
-            CALIBRATING.store(false, Ordering::Relaxed);
-
-            for chan in 0..16 {
-                for &p in LED_POS.iter() {
-                    flash_led(chan, p, ATOV_GREEN, Some(5));
-                }
-            }
+            MaxCalibration { inputs, outputs }
         }
         Either::Second(_) => {
             // Automatic calibration
-            // TODO: Add input calibration
-            run_automatic_output_calibration(&mut msg_receiver).await;
+            let inputs = run_input_calibration().await;
+            let outputs = run_automatic_output_calibration(&mut msg_receiver).await;
+
+            MaxCalibration { inputs, outputs }
+        }
+    };
+
+    store_calibration_data(&calibration_data).await;
+
+    CALIBRATING.store(false, Ordering::Relaxed);
+
+    for chan in 0..16 {
+        for &p in LED_POS.iter() {
+            flash_led(chan, p, ATOV_GREEN, Some(5));
         }
     }
 
