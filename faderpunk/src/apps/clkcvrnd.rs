@@ -7,7 +7,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, ClockEvent, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range,
+    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range,
     SceneEvent, RGB8,
 };
 

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
 
 use crate::app::{
-    App, AppStorage, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range, SceneEvent,
+    App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
     RGB8,
 };
 

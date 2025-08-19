@@ -13,7 +13,7 @@ use libfp::{Config, Curve, Param, Value};
 use smart_leds::RGB8;
 
 use crate::{
-    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, MidiSender, ParamSlot, Range},
+    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, Range},
     storage::ParamStore,
 };
 

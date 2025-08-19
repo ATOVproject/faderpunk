@@ -13,8 +13,7 @@ use libfp::{
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, ClockEvent, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range,
-    SceneEvent,
+    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
 };
 
 pub const CHANNELS: usize = 1;

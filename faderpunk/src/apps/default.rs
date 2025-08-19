@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{Config, Curve, Param, Value};
 
 use crate::app::{
-    App, AppStorage, Led, ManagedStorage, MidiSender, ParamSlot, ParamStore, Range, SceneEvent,
-    RGB8,
+    App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent, RGB8,
 };
 
 pub const CHANNELS: usize = 1;

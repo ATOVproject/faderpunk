@@ -1,6 +1,6 @@
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
 use max11300::config::{ConfigMode3, ConfigMode5, ConfigMode7, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
@@ -313,64 +313,6 @@ pub enum SceneEvent {
     SaveScene(u8),
 }
 
-pub trait MidiSender {
-    fn get_send_channel(&self) -> u4;
-    async fn send_msg(&self, msg: LiveEvent<'static>);
-
-    async fn send_cc(&self, cc: u8, val: u16) {
-        let msg = LiveEvent::Midi {
-            channel: self.get_send_channel(),
-            message: MidiMessage::Controller {
-                controller: cc.into(),
-                value: scale_bits_12_7(val),
-            },
-        };
-        self.send_msg(msg).await;
-    }
-
-    async fn send_note_on(&self, note_number: u8, velocity: u16) {
-        let msg = LiveEvent::Midi {
-            channel: self.get_send_channel(),
-            message: MidiMessage::NoteOn {
-                key: note_number.into(),
-
-                vel: scale_bits_12_7(velocity),
-            },
-        };
-        self.send_msg(msg).await;
-    }
-
-    async fn send_note_off(&self, note_number: u8) {
-        let msg = LiveEvent::Midi {
-            channel: self.get_send_channel(),
-            message: MidiMessage::NoteOff {
-                key: note_number.into(),
-                vel: 0.into(),
-            },
-        };
-        self.send_msg(msg).await;
-    }
-}
-
-pub trait MidiReceiver {
-    fn get_recv_channel(&self) -> u4;
-    fn get_subscriber(&self) -> EventPubSubSubscriber;
-
-    async fn wait_for_message(&self) -> MidiMessage {
-        let mut subscriber = self.get_subscriber();
-
-        loop {
-            if let InputEvent::MidiMsg(msg) = subscriber.next_message_pure().await {
-                if let LiveEvent::Midi { channel, message } = msg {
-                    if channel == self.get_recv_channel() {
-                        return message;
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 pub struct MidiOutput {
     midi_sender: MidiChannelSender,
@@ -384,80 +326,66 @@ impl MidiOutput {
             midi_channel,
         }
     }
-}
 
-impl MidiSender for MidiOutput {
-    fn get_send_channel(&self) -> u4 {
-        self.midi_channel
+    pub async fn send_cc(&self, cc: u8, val: u16) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::Controller {
+                controller: cc.into(),
+                value: scale_bits_12_7(val),
+            },
+        };
+        self.midi_sender.send(msg).await;
     }
-    async fn send_msg(&self, msg: LiveEvent<'static>) {
+
+    pub async fn send_note_on(&self, note_number: u8, velocity: u16) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::NoteOn {
+                key: note_number.into(),
+
+                vel: scale_bits_12_7(velocity),
+            },
+        };
+        self.midi_sender.send(msg).await;
+    }
+
+    pub async fn send_note_off(&self, note_number: u8) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::NoteOff {
+                key: note_number.into(),
+                vel: 0.into(),
+            },
+        };
         self.midi_sender.send(msg).await;
     }
 }
 
-#[derive(Clone, Copy)]
 pub struct MidiInput {
-    event_pubsub: &'static EventPubSubChannel,
+    subscriber: EventPubSubSubscriber,
     midi_channel: u4,
 }
 
 impl MidiInput {
     pub fn new(midi_channel: u4, event_pubsub: &'static EventPubSubChannel) -> Self {
+        let subscriber = event_pubsub.subscriber().unwrap();
         Self {
-            event_pubsub,
+            subscriber,
             midi_channel,
         }
     }
-}
 
-impl MidiReceiver for MidiInput {
-    fn get_recv_channel(&self) -> u4 {
-        self.midi_channel
-    }
-    fn get_subscriber(&self) -> EventPubSubSubscriber {
-        self.event_pubsub.subscriber().unwrap()
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct MidiDuplex {
-    event_pubsub: &'static EventPubSubChannel,
-    midi_input_channel: u4,
-    midi_output_channel: u4,
-    midi_sender: MidiChannelSender,
-}
-
-impl MidiDuplex {
-    pub fn new(
-        midi_input_channel: u4,
-        midi_output_channel: u4,
-        event_pubsub: &'static EventPubSubChannel,
-        midi_sender: MidiChannelSender,
-    ) -> Self {
-        Self {
-            event_pubsub,
-            midi_input_channel,
-            midi_output_channel,
-            midi_sender,
+    async fn wait_for_message(&mut self) -> MidiMessage {
+        loop {
+            if let InputEvent::MidiMsg(msg) = self.subscriber.next_message_pure().await {
+                if let LiveEvent::Midi { channel, message } = msg {
+                    if channel == self.midi_channel {
+                        return message;
+                    }
+                }
+            }
         }
-    }
-}
-
-impl MidiReceiver for MidiDuplex {
-    fn get_recv_channel(&self) -> u4 {
-        self.midi_input_channel
-    }
-    fn get_subscriber(&self) -> EventPubSubSubscriber {
-        self.event_pubsub.subscriber().unwrap()
-    }
-}
-
-impl MidiSender for MidiDuplex {
-    fn get_send_channel(&self) -> u4 {
-        self.midi_output_channel
-    }
-    async fn send_msg(&self, msg: LiveEvent<'static>) {
-        self.midi_sender.send(msg).await;
     }
 }
 
@@ -645,15 +573,6 @@ impl<const N: usize> App<N> {
 
     pub fn use_midi_output(&self, midi_channel: u8) -> MidiOutput {
         MidiOutput::new(midi_channel.into(), self.midi_sender)
-    }
-
-    pub fn use_midi_duplex(&self, midi_input_channel: u8, midi_output_channel: u8) -> MidiDuplex {
-        MidiDuplex::new(
-            midi_input_channel.into(),
-            midi_output_channel.into(),
-            self.event_pubsub,
-            self.midi_sender,
-        )
     }
 
     pub async fn wait_for_scene_event(&self) -> SceneEvent {
