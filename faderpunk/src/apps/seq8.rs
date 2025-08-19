@@ -23,10 +23,7 @@ use libfp::{
 };
 
 use crate::{
-    app::{
-        App, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, MidiSender, Range,
-        SceneEvent, RGB8,
-    },
+    app::{App, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, Range, SceneEvent, RGB8},
     storage::{ParamSlot, ParamStore},
 };
 

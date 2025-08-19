@@ -1,7 +1,7 @@
 use defmt::info;
-use embassy_futures::join::{join, join4};
+use embassy_futures::join::{join, join3};
 use embassy_rp::{
-    peripherals::{UART0, UART1, USB},
+    peripherals::USB,
     uart::{Async, BufferedUart, BufferedUartTx, Error as UartError, UartTx},
     usb::Driver,
 };
@@ -20,7 +20,7 @@ use midly::{
     MidiMessage,
 };
 
-use libfp::{ClockSrc, GlobalConfig};
+use libfp::ClockSrc;
 
 use crate::{
     events::{InputEvent, CONFIG_CHANGE_WATCH, EVENT_PUBSUB},
@@ -30,7 +30,7 @@ use crate::{
 use super::clock::ClockEvent;
 
 midly::stack_buffer! {
-    struct UartRxBuffer([u8; 64]);
+    struct MidiStreamBuffer([u8; 64]);
 }
 
 const MIDI_CHANNEL_SIZE: usize = 16;
@@ -116,9 +116,6 @@ pub async fn start_midi_loops<'a>(
     let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, Async>> = Mutex::new(uart0);
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
     let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
-    let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
-    let initial_config = config_receiver.try_get().unwrap();
-    let config: Mutex<NoopRawMutex, GlobalConfig> = Mutex::new(initial_config);
 
     let midi_tx = async {
         // TODO: Do not try to send midi message to USB when not connected
@@ -174,7 +171,8 @@ pub async fn start_midi_loops<'a>(
                             },
                             _ => {
                                 event_publisher
-                                    .publish_immediate(InputEvent::MidiMsg(event.to_static()));
+                                    .publish(InputEvent::MidiMsg(event.to_static()))
+                                    .await;
                             }
                         }
                     }
@@ -192,7 +190,7 @@ pub async fn start_midi_loops<'a>(
 
     let uart_rx = async {
         let mut uart_rx_buffer = [0u8; 64];
-        let mut midi_stream = MidiStream::<UartRxBuffer>::default();
+        let mut midi_stream = MidiStream::<MidiStreamBuffer>::default();
         let event_publisher = EVENT_PUBSUB.publisher().unwrap();
         loop {
             if let Ok(bytes_read) = uart1_rx.read(&mut uart_rx_buffer).await {
@@ -228,15 +226,7 @@ pub async fn start_midi_loops<'a>(
         }
     };
 
-    let config_fut = async {
-        loop {
-            let new_config = config_receiver.changed().await;
-            let mut cfg = config.lock().await;
-            *cfg = new_config;
-        }
-    };
-
-    join4(midi_tx, usb_rx, uart_rx, config_fut).await;
+    join3(midi_tx, usb_rx, uart_rx).await;
 }
 
 fn cin_from_live_event(midi_ev: &LiveEvent) -> CodeIndexNumber {
