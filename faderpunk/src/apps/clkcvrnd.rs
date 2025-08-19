@@ -7,8 +7,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore,
-    SceneEvent, RGB8,
+    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8,
 };
 
 use libfp::{
