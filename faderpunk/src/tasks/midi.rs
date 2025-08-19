@@ -142,46 +142,54 @@ pub async fn start_midi_loops<'a>(
                 if len == 0 {
                     continue;
                 }
-                // Remove USB-MIDI CIN
-                let data = &buf[1..len];
-                // Write to MIDI-THRU
-                let mut tx = uart0_tx.lock().await;
-                tx.write(data).await.unwrap();
-                match LiveEvent::parse(data) {
-                    Ok(event) => {
-                        let cfg = CONFIG_CHANGE_WATCH.try_get().unwrap();
-                        match event {
-                            LiveEvent::Realtime(msg) => match msg {
-                                SystemRealtime::TimingClock => {
-                                    if let ClockSrc::MidiUsb = cfg.clock_src {
-                                        clock_publisher.publish(ClockEvent::Tick).await;
+                // Split data into 4 byte chunks
+                let packets = buf[..len].chunks_exact(4);
+                for packet in packets {
+                    let msg_len = len_from_cin(packet[0]);
+                    if msg_len == 0 {
+                        continue;
+                    }
+                    // Remove USB-MIDI CIN and padding
+                    let msg = &packet[1..1 + msg_len];
+                    // Write to MIDI-THRU
+                    let mut tx = uart0_tx.lock().await;
+                    tx.write(msg).await.unwrap();
+                    match LiveEvent::parse(msg) {
+                        Ok(event) => {
+                            let cfg = CONFIG_CHANGE_WATCH.try_get().unwrap();
+                            match event {
+                                LiveEvent::Realtime(msg) => match msg {
+                                    SystemRealtime::TimingClock => {
+                                        if let ClockSrc::MidiUsb = cfg.clock_src {
+                                            clock_publisher.publish(ClockEvent::Tick).await;
+                                        }
                                     }
-                                }
-                                SystemRealtime::Start => {
-                                    if let ClockSrc::MidiUsb = cfg.reset_src {
-                                        clock_publisher.publish(ClockEvent::Start).await;
+                                    SystemRealtime::Start => {
+                                        if let ClockSrc::MidiUsb = cfg.reset_src {
+                                            clock_publisher.publish(ClockEvent::Start).await;
+                                        }
                                     }
-                                }
-                                SystemRealtime::Stop => {
-                                    if let ClockSrc::MidiUsb = cfg.reset_src {
-                                        clock_publisher.publish(ClockEvent::Reset).await;
+                                    SystemRealtime::Stop => {
+                                        if let ClockSrc::MidiUsb = cfg.reset_src {
+                                            clock_publisher.publish(ClockEvent::Reset).await;
+                                        }
                                     }
+                                    _ => {}
+                                },
+                                _ => {
+                                    event_publisher
+                                        .publish(InputEvent::MidiMsg(event.to_static()))
+                                        .await;
                                 }
-                                _ => {}
-                            },
-                            _ => {
-                                event_publisher
-                                    .publish(InputEvent::MidiMsg(event.to_static()))
-                                    .await;
                             }
                         }
-                    }
-                    Err(_err) => {
-                        // TODO: Log with USB
-                        info!(
-                            "There was an error but we should not panic. Len: {}, Data: {}",
-                            len, data
-                        );
+                        Err(_err) => {
+                            // TODO: Log with USB
+                            info!(
+                                "There was an error but we should not panic. Len: {}, Data: {}",
+                                len, msg
+                            );
+                        }
                     }
                 }
             }
@@ -256,5 +264,14 @@ fn cin_from_live_event(midi_ev: &LiveEvent) -> CodeIndexNumber {
             SystemCommon::SongPosition(..) => CodeIndexNumber::SystemCommonLen3,
             SystemCommon::MidiTimeCodeQuarterFrame(..) => CodeIndexNumber::SystemCommonLen2,
         },
+    }
+}
+
+fn len_from_cin(cin: u8) -> usize {
+    match cin & 0x0f {
+        0x5 | 0xf => 1,
+        0x2 | 0x6 | 0xc | 0xd => 2,
+        0x3 | 0x4 | 0x7 | 0x8 | 0x9 | 0xa | 0xb | 0xe => 3,
+        _ => 0,
     }
 }
