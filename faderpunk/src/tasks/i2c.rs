@@ -6,8 +6,9 @@ use embassy_rp::peripherals::{I2C0, PIN_20, PIN_21};
 use embassy_rp::Peri;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
+use libfp::types::RegressionValuesOutput;
 use libfp::{GlobalConfig, I2cMode, I2C_ADDRESS, I2C_ADDRESS_CALIBRATION};
-use max11300::config::{ConfigMode5, Mode, DACRANGE};
+use max11300::config::{ConfigMode5, Mode};
 use portable_atomic::Ordering;
 
 use libfp::i2c_proto::{
@@ -25,8 +26,9 @@ use super::max::MAX_VALUES_DAC;
 pub type I2cDevice = I2cSlave<'static, I2C0>;
 
 pub enum I2cMessage {
-    StartCalibration,
-    PlugInPort(usize),
+    CalibStart,
+    CalibPlugInPort(usize),
+    CalibSetRegressionValues(RegressionValuesOutput),
 }
 
 pub static I2C_CHANNEL: Channel<ThreadModeRawMutex, I2cMessage, 8> = Channel::new();
@@ -77,28 +79,11 @@ async fn process_write_read(command: WriteReadCommand) -> Response {
             let port = CALIBRATION_PORT.load(Ordering::Relaxed);
             Response::CalibCurrentPort(port)
         }
-        WriteReadCommand::CalibSetRegressionValues(values) => {
-            let data = MaxCalibration {
-                outputs: values,
-                ..Default::default()
-            };
-            store_calibration_data(&data).await;
-            Response::Ack
-        }
-        WriteReadCommand::DacSetVoltage(channel, bipolar_range, value) => {
-            info!(
-                "Setting voltage value to {} on channel {}. -5 to 5V range: {}",
-                value, channel, bipolar_range
-            );
-            let range = if bipolar_range {
-                DACRANGE::RgNeg5_5v
-            } else {
-                DACRANGE::Rg0_10v
-            };
+        WriteReadCommand::DacSetVoltage(channel, range, value) => {
             MAX_CHANNEL
                 .send((
                     channel,
-                    MaxCmd::ConfigurePort(Mode::Mode5(ConfigMode5(range)), None),
+                    MaxCmd::ConfigurePort(Mode::Mode5(ConfigMode5(range.into())), None),
                 ))
                 .await;
             MAX_VALUES_DAC[channel].store(value, Ordering::Relaxed);
@@ -117,10 +102,15 @@ async fn process_write_read(command: WriteReadCommand) -> Response {
 async fn process_write(command: WriteCommand, sender: &mut I2cMsgSender) {
     match command {
         WriteCommand::CalibStart => {
-            sender.send(I2cMessage::StartCalibration).await;
+            sender.send(I2cMessage::CalibStart).await;
         }
         WriteCommand::CalibPlugInPort(port) => {
-            sender.send(I2cMessage::PlugInPort(port)).await;
+            sender.send(I2cMessage::CalibPlugInPort(port)).await;
+        }
+        WriteCommand::CalibSetRegOutValues(values) => {
+            sender
+                .send(I2cMessage::CalibSetRegressionValues(values))
+                .await;
         }
         WriteCommand::SysReset => {
             cortex_m::peripheral::SCB::sys_reset();
