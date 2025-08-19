@@ -5,10 +5,10 @@ use libfp::{
     utils::{is_close, split_unsigned_value},
 };
 
-use libfp::Config;
+use libfp::{Config, Range};
 use smart_leds::colors::{BLUE, CYAN, GREEN, MAGENTA, ORANGE, RED, WHITE, YELLOW};
 
-use crate::app::{App, Led, Range, RGB8};
+use crate::app::{App, Led, RGB8};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 0;

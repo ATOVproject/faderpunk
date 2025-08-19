@@ -10,10 +10,10 @@ use libfp::{
 };
 use serde::{Deserialize, Serialize};
 
-use libfp::{Config, Waveform};
+use libfp::{Config, Range, Waveform};
 
 use crate::{
-    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, Range, SceneEvent},
+    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, SceneEvent},
     storage::ParamStore,
     tasks::leds::LedMode,
 };

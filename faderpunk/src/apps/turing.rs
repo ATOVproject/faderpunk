@@ -8,12 +8,12 @@ use libfp::{
     constants::{ATOV_BLUE, ATOV_RED, LED_HIGH, LED_MID},
     quantizer::{Key, Note},
     utils::is_close,
-    Config, Param, Value,
+    Config, Param, Range, Value,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, Range, SceneEvent,
+    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent,
 };
 
 pub const CHANNELS: usize = 1;

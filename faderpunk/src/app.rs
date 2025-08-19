@@ -7,7 +7,7 @@ use max11300::config::{
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
 
-use libfp::{ext::BrightnessExt, quantizer::Quantizer, utils::scale_bits_12_7};
+use libfp::{ext::BrightnessExt, quantizer::Quantizer, utils::scale_bits_12_7, Range};
 
 const QUANTIZER_RANGER: usize = 9 * 12;
 
@@ -27,15 +27,6 @@ pub use crate::{
     tasks::{clock::ClockEvent, leds::Led},
 };
 pub use smart_leds::{colors, RGB8};
-
-pub enum Range {
-    // 0 - 10V
-    _0_10V,
-    // 0 - 5V
-    _0_5V,
-    // -5 - 5V
-    _Neg5_5V,
-}
 
 #[derive(Clone, Copy)]
 pub struct Leds<const N: usize> {

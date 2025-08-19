@@ -19,11 +19,11 @@ use libfp::{
         ATOV_BLUE, ATOV_PURPLE, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MAX, LED_MID,
     },
     quantizer::{Key, Note},
-    Config, Param, Value,
+    Config, Param, Range, Value,
 };
 
 use crate::{
-    app::{App, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, Range, SceneEvent, RGB8},
+    app::{App, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, SceneEvent, RGB8},
     storage::{ParamSlot, ParamStore},
 };
 
