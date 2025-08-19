@@ -30,7 +30,7 @@ use crate::{
 use super::clock::ClockEvent;
 
 midly::stack_buffer! {
-    struct UartRxBuffer([u8; 3]);
+    struct UartRxBuffer([u8; 64]);
 }
 
 const MIDI_CHANNEL_SIZE: usize = 16;
@@ -191,7 +191,7 @@ pub async fn start_midi_loops<'a>(
     };
 
     let uart_rx = async {
-        let mut uart_rx_buffer = [0u8; 16];
+        let mut uart_rx_buffer = [0u8; 64];
         let mut midi_stream = MidiStream::<UartRxBuffer>::default();
         let event_publisher = EVENT_PUBSUB.publisher().unwrap();
         loop {
