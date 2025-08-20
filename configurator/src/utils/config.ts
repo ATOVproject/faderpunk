@@ -1,4 +1,4 @@
-import { ClockSrc, Layout } from "@atov/fp-config";
+import { ClockSrc, I2cMode, Layout } from "@atov/fp-config";
 
 import {
   receiveBatchMessages,
@@ -10,12 +10,14 @@ export const setGlobalConfig = async (
   dev: USBDevice,
   clock_src: ClockSrc,
   reset_src: ClockSrc,
+  i2c_mode: I2cMode,
 ) => {
   await sendMessage(dev, {
     tag: "SetGlobalConfig",
     value: {
       clock_src,
       reset_src,
+      i2c_mode,
     },
   });
 };
@@ -100,12 +102,16 @@ export const setAppParams = async (
     }
   };
 
-  // Create fixed-length tuple of 4 values (APP_MAX_PARAMS = 4)
-  const values: [any, any, any, any] = [
+  // Create fixed-length tuple of 8 values (APP_MAX_PARAMS = 8)
+  const values: [any, any, any, any, any, any, any, any] = [
     paramValues.length > 0 ? transformValue(paramValues[0]) : undefined,
     paramValues.length > 1 ? transformValue(paramValues[1]) : undefined,
     paramValues.length > 2 ? transformValue(paramValues[2]) : undefined,
     paramValues.length > 3 ? transformValue(paramValues[3]) : undefined,
+    paramValues.length > 4 ? transformValue(paramValues[0]) : undefined,
+    paramValues.length > 5 ? transformValue(paramValues[1]) : undefined,
+    paramValues.length > 6 ? transformValue(paramValues[2]) : undefined,
+    paramValues.length > 7 ? transformValue(paramValues[3]) : undefined,
   ];
 
   return sendMessage(dev, {
