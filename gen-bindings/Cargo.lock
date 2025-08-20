@@ -362,9 +362,9 @@ dependencies = [
 
 [[package]]
 name = "max11300"
-version = "0.4.3"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d72fa632892d815e79497e4762acd7dd63e4725490ba1ea9582d4e971898bd08"
+checksum = "775d3875cef4f32fcc98857108a89aab9985c21b8c9d0138f4fb50e4be24f238"
 dependencies = [
  "critical-section",
  "embassy-sync",
