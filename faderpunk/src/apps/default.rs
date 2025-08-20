@@ -113,6 +113,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     muted_glob.set(muted).await;
     att_glob.set(att).await;
 
+    let on_release = true;
+
     leds.set(
         0,
         Led::Button,
@@ -133,6 +135,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         let mut old_midi = 0;
         let mut attval = 0;
         let mut shift_old = false;
+        let mut button_old = false;
 
         loop {
             app.delay_millis(1).await;
@@ -191,27 +194,52 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
                 shift_old = false;
             }
+
+            if !button_old && buttons.is_button_pressed(0) {
+                button_old = true;
+            }
+            if button_old && !buttons.is_button_pressed(0) {
+                if on_release {
+                    let muted = storage
+                        .modify_and_save(
+                            |s| {
+                                s.muted = !s.muted;
+                                s.muted
+                            },
+                            None,
+                        )
+                        .await;
+                    muted_glob.set(muted).await;
+                    if muted {
+                        leds.reset(0, Led::Button);
+                    } else {
+                        leds.set(0, Led::Button, LED_COLOR, 100);
+                    }
+                }
+                button_old = false;
+            }
         }
     };
 
     let fut2 = async {
         loop {
             buttons.wait_for_down(0).await;
-
-            let muted = storage
-                .modify_and_save(
-                    |s| {
-                        s.muted = !s.muted;
-                        s.muted
-                    },
-                    None,
-                )
-                .await;
-            muted_glob.set(muted).await;
-            if muted {
-                leds.reset(0, Led::Button);
-            } else {
-                leds.set(0, Led::Button, LED_COLOR, 100);
+            if !on_release {
+                let muted = storage
+                    .modify_and_save(
+                        |s| {
+                            s.muted = !s.muted;
+                            s.muted
+                        },
+                        None,
+                    )
+                    .await;
+                muted_glob.set(muted).await;
+                if muted {
+                    leds.reset(0, Led::Button);
+                } else {
+                    leds.set(0, Led::Button, LED_COLOR, 100);
+                }
             }
         }
     };
