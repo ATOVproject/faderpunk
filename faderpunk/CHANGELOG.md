@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.5.0...faderpunk-v0.6.0) (2025-08-20)
+
+
+### Features
+
+* add -5V to 5V range to manual calibration ([f6cee85](https://github.com/ATOVproject/faderpunk/commit/f6cee85878316bb552e7ba28f405bb2b6b556fcb))
+* **calibration:** add first version of automatic calibration ([2679d6b](https://github.com/ATOVproject/faderpunk/commit/2679d6b955d5b2e50e9ac3028050ecac5450f90a))
+* **calibration:** move manual calibration to i2c startup ([83a0c03](https://github.com/ATOVproject/faderpunk/commit/83a0c03e97c0fba81c4545b0734cb066556f4e1e))
+* **config:** separate layout from global config ([54d8690](https://github.com/ATOVproject/faderpunk/commit/54d869014c2299812519a4b47cc0b8a9a069a09f))
+* **i2c:** prepare for i2c leader/follower/calibration modes ([2269d84](https://github.com/ATOVproject/faderpunk/commit/2269d841e35dd07a73397bd2a234977b944e2fc7))
+* improve semi-automatic calibration ([71d1f4e](https://github.com/ATOVproject/faderpunk/commit/71d1f4e46590adc99d62477ad577860ae5554331))
+* move Range to libfp ([a349b55](https://github.com/ATOVproject/faderpunk/commit/a349b55924c98180409e89da698f7b392b2b9323))
+
+
+### Bug Fixes
+
+* actually respond to i2c read requests ([0295d37](https://github.com/ATOVproject/faderpunk/commit/0295d37b3a53708652b073a89a9f122e641a24d1))
+* **midi:** improve midi subscriber instantiation ([a43277a](https://github.com/ATOVproject/faderpunk/commit/a43277ace4ea4a64ac6c68fa8c85f64acc9d2fe6))
+* **midi:** increase uart rx buffer size ([49194df](https://github.com/ATOVproject/faderpunk/commit/49194df521d6739d7d285faa42c795f544f45b7f))
+* **midi:** make wait_for_message method public ([5618706](https://github.com/ATOVproject/faderpunk/commit/56187062690ac313c656db5d703c12da4c1ca451))
+* **midi:** properly handle larger usb midi packets ([94c757f](https://github.com/ATOVproject/faderpunk/commit/94c757f7d7e35f874c1a849c5adeac501d50c2e5))
+
 ## [0.5.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.4.2...faderpunk-v0.5.0) (2025-08-14)
 
 
