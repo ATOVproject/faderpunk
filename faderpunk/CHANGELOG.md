@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.6.0...faderpunk-v0.6.1) (2025-08-20)
+
+
+### Bug Fixes
+
+* make a change to force rebuild ([5ba1572](https://github.com/ATOVproject/faderpunk/commit/5ba1572459a6b40e63b009938e9fc017a456d2c9))
+
 ## [0.6.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.5.0...faderpunk-v0.6.0) (2025-08-20)
 
 
