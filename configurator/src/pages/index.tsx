@@ -12,7 +12,7 @@ import {
   TableCell,
 } from "@heroui/table";
 import { button as buttonStyles } from "@heroui/theme";
-import { ClockSrc, Param } from "@atov/fp-config";
+import { ClockSrc, I2cMode, Param } from "@atov/fp-config";
 
 import { AppConfigDrawer } from "@/components/app-config-drawer";
 import { title } from "@/components/primitives";
@@ -47,6 +47,7 @@ export default function IndexPage() {
   >([]);
   const [clockSrc, setClockSrc] = useState<ClockSrc>({ tag: "Internal" });
   const [resetSrc, setResetSrc] = useState<ClockSrc>({ tag: "Internal" });
+  const i2cMode: I2cMode = { tag: "Follower" };
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedAppForConfig, setSelectedAppForConfig] = useState<{
     appId: string;
@@ -292,7 +293,9 @@ export default function IndexPage() {
             <Button
               type="button"
               variant="bordered"
-              onPress={() => setGlobalConfig(usbDevice, clockSrc, resetSrc)}
+              onPress={() =>
+                setGlobalConfig(usbDevice, clockSrc, resetSrc, i2cMode)
+              }
             >
               Set config
             </Button>
