@@ -20,6 +20,7 @@ fn main() {
             libfp::ConfigMsgOut,
             libfp::Curve,
             libfp::GlobalConfig,
+            libfp::I2cMode,
             libfp::Layout,
             libfp::Param,
             libfp::Value,
