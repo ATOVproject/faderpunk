@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.2.0...configurator-v0.2.1) (2025-08-21)
+
+
+### Bug Fixes
+
+* **configurator:** fix color param not being sent ([9ba5bc9](https://github.com/ATOVproject/faderpunk/commit/9ba5bc90c3f8f7cfe6ddf721e7f45ae085234d3e))
+
 ## [0.2.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.1.0...configurator-v0.2.0) (2025-08-21)
 
 
