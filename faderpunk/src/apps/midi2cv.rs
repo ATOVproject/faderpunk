@@ -54,7 +54,13 @@ pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI
     })
     .add_param(Param::Color {
         name: "Color",
-        variants: &[Color::Red, Color::Purple, Color::Blue, Color::Yellow],
+        variants: &[
+            Color::Yellow,
+            Color::Purple,
+            Color::Blue,
+            Color::Red,
+            Color::White,
+        ],
     });
 
 // const led_color: RGB8 = ATOV_PURPLE;
