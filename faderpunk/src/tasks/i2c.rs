@@ -79,16 +79,6 @@ async fn process_write_read(command: WriteReadCommand) -> Response {
             let port = CALIBRATION_PORT.load(Ordering::Relaxed);
             Response::CalibCurrentPort(port)
         }
-        WriteReadCommand::DacSetVoltage(channel, range, value) => {
-            MAX_CHANNEL
-                .send((
-                    channel,
-                    MaxCmd::ConfigurePort(Mode::Mode5(ConfigMode5(range.into())), None),
-                ))
-                .await;
-            MAX_VALUES_DAC[channel].store(value, Ordering::Relaxed);
-            Response::CalibVoltageSet(channel)
-        }
         WriteReadCommand::SysReset => {
             cortex_m::peripheral::SCB::sys_reset();
         }
@@ -111,6 +101,15 @@ async fn process_write(command: WriteCommand, sender: &mut I2cMsgSender) {
             sender
                 .send(I2cMessage::CalibSetRegressionValues(values))
                 .await;
+        }
+        WriteCommand::DacSetVoltage(channel, range, value) => {
+            MAX_CHANNEL
+                .send((
+                    channel,
+                    MaxCmd::ConfigurePort(Mode::Mode5(ConfigMode5(range.into())), None),
+                ))
+                .await;
+            MAX_VALUES_DAC[channel].store(value, Ordering::Relaxed);
         }
         WriteCommand::SysReset => {
             cortex_m::peripheral::SCB::sys_reset();
