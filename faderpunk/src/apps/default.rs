@@ -3,6 +3,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::{ATOV_PURPLE, ATOV_RED, LED_MID},
     utils::{attenuate_bipolar, clickless, is_close, split_unsigned_value},
+    Color,
 };
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +12,7 @@ use libfp::{Config, Curve, Param, Range, Value};
 use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 6;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
     .add_param(Param::Curve {
@@ -28,9 +29,22 @@ pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute 
         name: "MIDI CC",
         min: 1,
         max: 128,
+    })
+    .add_param(Param::Bool {
+        name: "Mute on release",
+    })
+    .add_param(Param::Color {
+        name: "Color",
+        variants: &[
+            Color::Yellow,
+            Color::Purple,
+            Color::Blue,
+            Color::Red,
+            Color::White,
+        ],
     });
 
-const LED_COLOR: RGB8 = ATOV_PURPLE;
+// const led_color.into(): RGB8 = ATOV_PURPLE;
 const BUTTON_BRIGHTNESS: u8 = LED_MID;
 
 // TODO: Make a macro to generate this.
@@ -57,6 +71,8 @@ pub struct Params<'a> {
     bipolar: ParamSlot<'a, bool, PARAMS>,
     midi_channel: ParamSlot<'a, i32, PARAMS>,
     midi_cc: ParamSlot<'a, i32, PARAMS>,
+    on_release: ParamSlot<'a, bool, PARAMS>,
+    color: ParamSlot<'a, Color, PARAMS>,
 }
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
@@ -70,6 +86,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             Value::bool(false),
             Value::i32(1),
             Value::i32(32),
+            Value::bool(false),
+            Value::Color(Color::Yellow),
         ],
         app.app_id,
         app.start_channel,
@@ -80,6 +98,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         bipolar: ParamSlot::new(&param_store, 1),
         midi_channel: ParamSlot::new(&param_store, 2),
         midi_cc: ParamSlot::new(&param_store, 3),
+        on_release: ParamSlot::new(&param_store, 4),
+        color: ParamSlot::new(&param_store, 5),
     };
 
     let app_loop = async {
@@ -103,6 +123,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let midi_cc = params.midi_cc.get().await;
     let curve = params.curve.get().await;
     let midi = app.use_midi_output(midi_chan as u8);
+    let led_color = params.color.get().await;
 
     let muted_glob = app.make_global(false);
     let att_glob = app.make_global(4095);
@@ -113,12 +134,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     muted_glob.set(muted).await;
     att_glob.set(att).await;
 
-    let on_release = true;
+    let on_release = params.on_release.get().await;
 
     leds.set(
         0,
         Led::Button,
-        LED_COLOR,
+        led_color.into(),
         if muted { 0 } else { BUTTON_BRIGHTNESS },
     );
 
@@ -154,8 +175,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
                 if !buttons.is_shift_pressed() {
                     let led1 = split_unsigned_value(outval as u16);
-                    leds.set(0, Led::Top, LED_COLOR, led1[0]);
-                    leds.set(0, Led::Bottom, LED_COLOR, led1[1]);
+                    leds.set(0, Led::Top, led_color.into(), led1[0]);
+                    leds.set(0, Led::Bottom, led_color.into(), led1[1]);
                 } else {
                     leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
                     leds.set(0, Led::Bottom, ATOV_RED, (att / 16) as u8);
@@ -172,7 +193,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
                     leds.set(0, Led::Bottom, ATOV_RED, 0);
                 } else {
-                    leds.set(0, Led::Top, LED_COLOR, (outval / 16.) as u8);
+                    leds.set(0, Led::Top, led_color.into(), (outval / 16.) as u8);
                 }
                 outval = clickless(outval, val);
                 attval = ((outval as u32 * att as u32) / 4095) as u16;
@@ -213,7 +234,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if muted {
                         leds.reset(0, Led::Button);
                     } else {
-                        leds.set(0, Led::Button, LED_COLOR, 100);
+                        leds.set(0, Led::Button, led_color.into(), 100);
                     }
                 }
                 button_old = false;
@@ -238,7 +259,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if muted {
                     leds.reset(0, Led::Button);
                 } else {
-                    leds.set(0, Led::Button, LED_COLOR, 100);
+                    leds.set(0, Led::Button, led_color.into(), 100);
                 }
             }
         }
@@ -276,7 +297,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if muted {
                         leds.reset(0, Led::Button);
                     } else {
-                        leds.set(0, Led::Button, LED_COLOR, 100);
+                        leds.set(0, Led::Button, led_color.into(), 100);
                     }
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,

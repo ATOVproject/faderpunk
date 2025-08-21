@@ -9,7 +9,7 @@ use libfp::{
     constants::{ATOV_RED, ATOV_YELLOW, LED_LOW, LED_MID},
     quantizer::{Key, Note},
     utils::is_close,
-    Config, Param, Range, Value,
+    Color, Config, Param, Range, Value,
 };
 
 use crate::app::{
@@ -17,7 +17,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 5;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Note Fader", "Play notes manually or on clock")
     .add_param(Param::i32 {
@@ -39,6 +39,16 @@ pub static CONFIG: Config<PARAMS> = Config::new("Note Fader", "Play notes manual
         name: "GATE %",
         min: 1,
         max: 100,
+    })
+    .add_param(Param::Color {
+        name: "Color",
+        variants: &[
+            Color::Yellow,
+            Color::Purple,
+            Color::Blue,
+            Color::Red,
+            Color::White,
+        ],
     });
 
 pub struct Params<'a> {
@@ -46,6 +56,7 @@ pub struct Params<'a> {
     note: ParamSlot<'a, i32, PARAMS>,
     span: ParamSlot<'a, i32, PARAMS>,
     gatel: ParamSlot<'a, i32, PARAMS>,
+    color: ParamSlot<'a, Color, PARAMS>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -74,6 +85,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             Value::i32(48),
             Value::i32(24),
             Value::i32(50),
+            Value::Color(Color::Yellow),
         ],
         app.app_id,
         app.start_channel,
@@ -84,6 +96,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         note: ParamSlot::new(&param_store, 1),
         span: ParamSlot::new(&param_store, 2),
         gatel: ParamSlot::new(&param_store, 3),
+        color: ParamSlot::new(&param_store, 4),
     };
 
     let app_loop = async {
@@ -128,7 +141,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     const LED_BRIGHTNESS: u8 = LED_MID;
 
-    const LED_COLOR: RGB<u8> = ATOV_YELLOW;
+    // const led_color.into(): RGB<u8> = ATOV_YELLOW;
+    let led_color = params.color.get().await;
 
     let (res, mute, att) = storage
         .query(|s| (s.fader_saved, s.mute_saved, s.clocked))
@@ -138,17 +152,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     glob_muted.set(mute).await;
     div_glob.set(resolution[res as usize / 345]).await;
     if mute {
-        leds.set(0, Led::Button, LED_COLOR, 0);
-        leds.set(0, Led::Top, LED_COLOR, 0);
-        leds.set(0, Led::Bottom, LED_COLOR, 0);
+        leds.set(0, Led::Button, led_color.into(), 0);
+        leds.set(0, Led::Top, led_color.into(), 0);
+        leds.set(0, Led::Bottom, led_color.into(), 0);
     } else {
-        leds.set(0, Led::Button, LED_COLOR, LED_BRIGHTNESS);
+        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
     }
 
     let trigger_note = async |_| {
         let fadval = (fader.get_value() as i32 * (span + 3) / 120) as u16;
 
-        leds.set(0, Led::Top, LED_COLOR, LED_BRIGHTNESS);
+        leds.set(0, Led::Top, led_color.into(), LED_BRIGHTNESS);
 
         let out = ((quantizer.get_quantized_voltage(fadval)) * 410.) as u16;
 
@@ -162,7 +176,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         jack.set_value(out);
         let note = (out as u32 * 120 / 4095 + base_note as u32) as u16;
         midi.send_note_on(note as u8, 4095).await;
-        leds.set(0, Led::Button, LED_COLOR, LED_BRIGHTNESS);
+        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
         note
     };
 
@@ -199,7 +213,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note as u8).await;
-                            leds.set(0, Led::Top, LED_COLOR, 0);
+                            leds.set(0, Led::Top, led_color.into(), 0);
                             note_on = false;
                         }
 
@@ -231,7 +245,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if muted {
                     leds.reset_all();
                 } else {
-                    leds.set(0, Led::Button, LED_COLOR, LED_BRIGHTNESS);
+                    leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                 }
             } else {
                 let mode = clocked_glob.toggle().await;
@@ -280,12 +294,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     glob_muted.set(mute).await;
                     div_glob.set(resolution[res as usize / 345]).await;
                     if mute {
-                        leds.set(0, Led::Button, LED_COLOR, LED_LOW);
+                        leds.set(0, Led::Button, led_color.into(), LED_LOW);
 
-                        leds.set(0, Led::Top, LED_COLOR, 0);
-                        leds.set(0, Led::Bottom, LED_COLOR, 0);
+                        leds.set(0, Led::Top, led_color.into(), 0);
+                        leds.set(0, Led::Bottom, led_color.into(), 0);
                     } else {
-                        leds.set(0, Led::Button, LED_COLOR, LED_BRIGHTNESS);
+                        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                     }
                     latched_glob.set(false).await;
                 }
@@ -329,8 +343,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if button_old && !buttons.is_button_pressed(0) {
                     button_old = false;
                     midi.send_note_off(note as u8).await;
-                    leds.set(0, Led::Top, LED_COLOR, 0);
-                    leds.set(0, Led::Button, LED_COLOR, LED_LOW);
+                    leds.set(0, Led::Top, led_color.into(), 0);
+                    leds.set(0, Led::Button, led_color.into(), LED_LOW);
                 }
             }
         }

@@ -5,10 +5,10 @@
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_BLUE, ATOV_RED, LED_HIGH, LED_MID},
+    constants::{ATOV_RED, LED_HIGH, LED_MID},
     quantizer::{Key, Note},
     utils::is_close,
-    Config, Param, Range, Value,
+    Color, Config, Param, Range, Value,
 };
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +17,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 3;
+pub const PARAMS: usize = 4;
 
 // TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
@@ -41,6 +41,16 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "CC number",
     min: 1,
     max: 128,
+})
+.add_param(Param::Color {
+    name: "Color",
+    variants: &[
+        Color::Yellow,
+        Color::Purple,
+        Color::Blue,
+        Color::Red,
+        Color::White,
+    ],
 });
 // .add_param(Param::i32 {
 //     //is it possible to have this apear only if CC
@@ -53,6 +63,7 @@ pub struct Params<'a> {
     midi_mode: ParamSlot<'a, i32, PARAMS>,
     midi_channel: ParamSlot<'a, i32, PARAMS>,
     midi_cc: ParamSlot<'a, i32, PARAMS>,
+    color: ParamSlot<'a, Color, PARAMS>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -78,7 +89,12 @@ impl AppStorage for Storage {}
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     let param_store = ParamStore::new(
-        [Value::i32(1), Value::i32(1), Value::i32(1)],
+        [
+            Value::i32(1),
+            Value::i32(1),
+            Value::i32(1),
+            Value::Color(Color::Yellow),
+        ],
         app.app_id,
         app.start_channel,
     );
@@ -87,6 +103,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         midi_mode: ParamSlot::new(&param_store, 0),
         midi_channel: ParamSlot::new(&param_store, 1),
         midi_cc: ParamSlot::new(&param_store, 2),
+        color: ParamSlot::new(&param_store, 3),
     };
 
     let app_loop = async {
@@ -108,6 +125,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut clock = app.use_clock();
     let die = app.use_die();
     let mut quantizer = app.use_quantizer();
+    let led_color = params.color.get().await;
 
     //Fix get this from global setting
     quantizer.set_scale(Key::Chromatic, Note::C, Note::C);
@@ -136,7 +154,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
-    leds.set(0, Led::Button, ATOV_BLUE, LED_MID);
+    leds.set(0, Led::Button, led_color.into(), LED_MID);
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
@@ -188,7 +206,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         // );
 
                         jack.set_value(out);
-                        leds.set(0, Led::Top, ATOV_BLUE, (register_scalled / 16) as u8);
+                        leds.set(0, Led::Top, led_color.into(), (register_scalled / 16) as u8);
                         // info!("{}", register_scalled);
                         if midi_mode == 1 {
                             // let note = (out as u32 * 120 / 4095 + base_note as u32) as u16;

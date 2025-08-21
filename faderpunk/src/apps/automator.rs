@@ -6,6 +6,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::{ATOV_RED, ATOV_WHITE, LED_MID},
     utils::{attenuate, attenuate_bipolar, clickless, split_unsigned_value},
+    Color,
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +19,7 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 5;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Automator", "Fader movement recording")
     .add_param(Param::Curve {
@@ -35,6 +36,16 @@ pub static CONFIG: Config<PARAMS> = Config::new("Automator", "Fader movement rec
         name: "MIDI CC",
         min: 1,
         max: 128,
+    })
+    .add_param(Param::Color {
+        name: "Color",
+        variants: &[
+            Color::Yellow,
+            Color::Purple,
+            Color::Blue,
+            Color::Red,
+            Color::White,
+        ],
     });
 
 #[derive(Serialize, Deserialize)]
@@ -51,6 +62,7 @@ pub struct Params<'a> {
     bipolar: ParamSlot<'a, bool, PARAMS>,
     midi_channel: ParamSlot<'a, i32, PARAMS>,
     midi_cc: ParamSlot<'a, i32, PARAMS>,
+    color: ParamSlot<'a, Color, PARAMS>,
 }
 
 impl Default for Storage {
@@ -71,6 +83,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             Value::bool(false),
             Value::i32(1),
             Value::i32(32),
+            Value::Color(Color::Yellow),
         ],
         app.app_id,
         app.start_channel,
@@ -81,6 +94,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         bipolar: ParamSlot::new(&param_store, 1),
         midi_channel: ParamSlot::new(&param_store, 2),
         midi_cc: ParamSlot::new(&param_store, 3),
+        color: ParamSlot::new(&param_store, 4),
     };
 
     let app_loop = async {
@@ -95,12 +109,11 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-const LED_COLOR: RGB8 = ATOV_WHITE;
-
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
+    let led_color = params.color.get().await;
 
     let midi_chan = params.midi_channel.get().await;
     let cc: u8 = params.midi_cc.get().await as u8;
@@ -139,7 +152,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     att_glob.set(storage.query(|s| s.att_saved).await).await;
 
-    leds.set(0, Led::Button, LED_COLOR, 100);
+    leds.set(0, Led::Button, led_color.into(), 100);
 
     let update_output = async {
         let mut outval = 0.;
@@ -153,7 +166,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let color = if recording_glob.get().await {
                 ATOV_RED
             } else {
-                LED_COLOR
+                led_color.into()
             };
 
             if latched.get().await {
@@ -252,7 +265,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         buffer[index] = val;
                         leds.set(0, Led::Button, ATOV_RED, LED_MID);
                     } else {
-                        leds.set(0, Led::Button, LED_COLOR, LED_MID);
+                        leds.set(0, Led::Button, led_color.into(), LED_MID);
                     }
 
                     if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
@@ -321,7 +334,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 recording_glob.set(false).await;
                 buffer_glob.set([0; 384]).await;
                 length_glob.set(384).await;
-                leds.set(0, Led::Button, LED_COLOR, LED_MID);
+                leds.set(0, Led::Button, led_color.into(), LED_MID);
                 latched.set(false).await;
             } else {
                 rec_flag.set(true).await;
