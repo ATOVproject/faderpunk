@@ -155,10 +155,6 @@ async fn main(spawner: Spawner) {
 
     tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
 
-    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
-
-    tasks::clock::start_clock(&spawner, aux_inputs).await;
-
     let layout = load_layout().await;
     let mut global_config = load_global_config().await;
 
@@ -169,6 +165,10 @@ async fn main(spawner: Spawner) {
     }
 
     tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20, &global_config).await;
+
+    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
+
+    tasks::clock::start_clock(&spawner, aux_inputs).await;
 
     spawn_core1(
         p.CORE1,

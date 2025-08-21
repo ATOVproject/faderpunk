@@ -254,7 +254,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                 );
             } else {
                 // Blink LED red if calibration didn't succeeed
-                flash_led(chan, Led::Button, ATOV_RED, None);
+                flash_led(ui_no, Led::Button, ATOV_RED, None);
                 loop {
                     Timer::after_secs(10).await;
                 }
@@ -300,14 +300,14 @@ async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) -> Regr
                 for led_no in 0..=prev_ui_no {
                     set_led_color(led_no, Led::Button, ATOV_GREEN);
                 }
-                flash_led(chan, Led::Button, ATOV_YELLOW, None);
+                flash_led(ui_no, Led::Button, ATOV_YELLOW, None);
                 defmt::info!(
                     "Plug multimeter into jack {} now, then press button {}",
                     chan,
                     ui_no,
                 );
                 wait_for_button_press(ui_no).await;
-                flash_led(chan, Led::Button, ATOV_GREEN, None);
+                flash_led(ui_no, Led::Button, ATOV_GREEN, None);
                 CALIBRATION_PORT.store(chan, Ordering::Relaxed);
             }
             I2cMessage::CalibSetRegressionValues(output_values) => {
@@ -357,7 +357,7 @@ pub async fn run_calibration(mut msg_receiver: I2cMsgReceiver) {
         }
     }
 
-    loop {
-        Timer::after_secs(10).await;
-    }
+    // Wait for 2 seconds, then restart the device
+    Timer::after_secs(2).await;
+    cortex_m::peripheral::SCB::sys_reset();
 }
