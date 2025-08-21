@@ -97,6 +97,8 @@ export const setAppParams = async (
         return { tag: "Curve", value: paramValue.value };
       case "Waveform":
         return { tag: "Waveform", value: paramValue.value };
+      case "Color":
+        return { tag: "Color", value: paramValue.value };
       default:
         return undefined;
     }

@@ -1,7 +1,8 @@
 import { Select, SelectItem } from "@heroui/select";
 import { ComponentProps } from "react";
 
-interface WaveformParamInputProps extends Omit<ComponentProps<typeof Select>, 'children'> {
+interface WaveformParamInputProps
+  extends Omit<ComponentProps<typeof Select>, "children"> {
   variants: readonly ("Triangle" | "Saw" | "Rect" | "Sine")[];
 }
 
