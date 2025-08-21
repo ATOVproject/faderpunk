@@ -108,10 +108,10 @@ export const setAppParams = async (
     paramValues.length > 1 ? transformValue(paramValues[1]) : undefined,
     paramValues.length > 2 ? transformValue(paramValues[2]) : undefined,
     paramValues.length > 3 ? transformValue(paramValues[3]) : undefined,
-    paramValues.length > 4 ? transformValue(paramValues[0]) : undefined,
-    paramValues.length > 5 ? transformValue(paramValues[1]) : undefined,
-    paramValues.length > 6 ? transformValue(paramValues[2]) : undefined,
-    paramValues.length > 7 ? transformValue(paramValues[3]) : undefined,
+    paramValues.length > 4 ? transformValue(paramValues[4]) : undefined,
+    paramValues.length > 5 ? transformValue(paramValues[5]) : undefined,
+    paramValues.length > 6 ? transformValue(paramValues[6]) : undefined,
+    paramValues.length > 7 ? transformValue(paramValues[7]) : undefined,
   ];
 
   return sendMessage(dev, {
