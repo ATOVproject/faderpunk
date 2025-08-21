@@ -1,3 +1,5 @@
+use core::char::ToUppercase;
+
 use defmt::info;
 use embassy_futures::{
     join::{join4, join5},
@@ -9,8 +11,9 @@ use libfp::{
     utils::{
         attenuate_bipolar, bits_7_16, clickless, is_close, scale_bits_7_12, split_unsigned_value,
     },
+    Color, Range,
 };
-use midly::MidiMessage;
+use midly::{MidiMessage, PitchBend};
 use serde::{Deserialize, Serialize};
 
 use libfp::{
@@ -18,19 +21,16 @@ use libfp::{
     Config, Curve, Param, Value,
 };
 
-use crate::app::{
-    App, AppStorage, Led, ManagedStorage, MidiReceiver, MidiSender, ParamSlot, ParamStore, Range,
-    SceneEvent, RGB8,
-};
+use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 6;
 
 pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI to CV")
     .add_param(Param::i32 {
-        name: "Mode, 0 = cc, 1 = pitch, 2 = gate, 3 = vel, 4 = atouch",
+        name: "Mode, 0=cc, 1=pitch, 2=gate, 3=vel, 4 =AT, 5=Bend",
         min: 0,
-        max: 4,
+        max: 5,
     })
     .add_param(Param::Curve {
         name: "Curve",
@@ -46,9 +46,18 @@ pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI
         name: "MIDI CC",
         min: 1,
         max: 128,
+    })
+    .add_param(Param::i32 {
+        name: "Bend Range",
+        min: 1,
+        max: 24,
+    })
+    .add_param(Param::Color {
+        name: "Color",
+        variants: &[Color::Red, Color::Purple, Color::Blue, Color::Yellow],
     });
 
-const LED_COLOR: RGB8 = ATOV_PURPLE;
+// const led_color: RGB8 = ATOV_PURPLE;
 const BUTTON_BRIGHTNESS: u8 = LED_MID;
 
 // TODO: Make a macro to generate this.
@@ -76,6 +85,8 @@ pub struct Params<'a> {
     // bipolar: ParamSlot<'a, bool, PARAMS>,
     midi_channel: ParamSlot<'a, i32, PARAMS>,
     midi_cc: ParamSlot<'a, i32, PARAMS>,
+    bend_range: ParamSlot<'a, i32, PARAMS>,
+    color: ParamSlot<'a, Color, PARAMS>,
 }
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
@@ -90,6 +101,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             // Value::bool(false),
             Value::i32(1),
             Value::i32(32),
+            Value::i32(12),
+            Value::Color(Color::Blue),
         ],
         app.app_id,
         app.start_channel,
@@ -101,6 +114,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         // bipolar: ParamSlot::new(&param_store, 1),
         midi_channel: ParamSlot::new(&param_store, 2),
         midi_cc: ParamSlot::new(&param_store, 3),
+        bend_range: ParamSlot::new(&param_store, 4),
+        color: ParamSlot::new(&param_store, 5),
     };
 
     let app_loop = async {
@@ -123,12 +138,19 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let midi_chan = params.midi_channel.get().await;
     let midi_cc = params.midi_cc.get().await;
     let curve = params.curve.get().await;
-    let midi_in = app.use_midi_input(midi_chan as u8 - 1);
+    let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
+    let bend_range = params.bend_range.get().await;
+
+    let color = params.color.get().await;
+    let led_color = color.into();
+
+    // info!("{}", led_color);
 
     let muted_glob = app.make_global(false);
     let att_glob = app.make_global(4095);
     let latched_glob = app.make_global(false);
     let offset_glob = app.make_global(0);
+    let pitch_glob = app.make_global(0);
 
     let muted = storage.query(|s| s.muted).await;
     let att = storage.query(|s| s.att_saved).await;
@@ -142,18 +164,27 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     leds.set(
         0,
         Led::Button,
-        LED_COLOR,
+        led_color,
         if muted { 0 } else { BUTTON_BRIGHTNESS },
     );
 
-    // let jack = if !params.bipolar.get().await {
-    //     app.make_out_jack(0, Range::_0_10V).await
-    // } else {
-    //     app.make_out_jack(0, Range::_Neg5_5V).await
-    // };
+    let jack = if mode != 5 {
+        info!("range 0-10V");
+        app.make_out_jack(0, Range::_0_10V).await
+    } else {
+        info!("range +/-5V");
+        app.make_out_jack(0, Range::_Neg5_5V).await
+    };
 
-    let jack = app.make_out_jack(0, Range::_0_10V).await;
-    jack.set_value(0);
+    if mode == 5 || mode == 1 {
+        jack.set_value(2048);
+        offset_glob.set(2048).await;
+    } else {
+        jack.set_value(0);
+    }
+
+    // let jack = app.make_out_jack(0, Range::_0_10V).await;
+    // jack.set_value(0);
 
     let fut1 = async {
         let mut outval = 0.;
@@ -165,7 +196,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
         loop {
             app.delay_millis(1).await;
-            if mode == 0 {
+            if mode == 0 || mode == 4 {
                 let muted = muted_glob.get().await;
                 if !buttons.is_shift_pressed() {
                     fadval = fader.get_value();
@@ -184,7 +215,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
                     leds.set(0, Led::Bottom, ATOV_RED, 0);
                 } else {
-                    leds.set(0, Led::Top, LED_COLOR, (outval / 16.) as u8);
+                    leds.set(0, Led::Top, led_color, (outval / 16.) as u8);
                 }
                 outval = clickless(outval, val);
                 attval = ((outval as u32 * att as u32) / 4095) as u16;
@@ -199,6 +230,35 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     latched_glob.set(false).await;
 
                     shift_old = false;
+                }
+            }
+            if mode == 5 {
+                if !muted_glob.get().await {
+                    let offset = offset_glob.get().await;
+                    outval = clickless(outval, offset);
+                    jack.set_value(outval as u16);
+                } else {
+                    let offset = 2048;
+                    outval = clickless(outval, offset);
+                    jack.set_value(outval as u16);
+                }
+            }
+            if mode == 1 {
+                let offset = if !muted_glob.get().await {
+                    offset_glob.get().await
+                } else {
+                    2047
+                };
+
+                let pitch = pitch_glob.get().await;
+                outval = clickless(outval, offset);
+                let out = (pitch as i32 + outval as i32 - 2047).clamp(0, 4095) as u16;
+                // //info!("outval ={}, pitch = {} out = {}", outval, pitch, out);
+                jack.set_value(out);
+            } else {
+                if buttons.is_shift_pressed() {
+                    leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
+                    leds.set(0, Led::Bottom, ATOV_RED, 0);
                 }
             }
         }
@@ -221,7 +281,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if muted {
                 leds.reset(0, Led::Button);
             } else {
-                leds.set(0, Led::Button, LED_COLOR, 100);
+                leds.set(0, Led::Button, led_color, 100);
+            }
+            if mode == 3 {
+                jack.set_value(0);
+                leds.set(0, Led::Top, led_color, 0);
             }
         }
     };
@@ -262,46 +326,73 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
                 MidiMessage::NoteOn { key, vel } => {
                     if mode == 1 {
-                        let mut note_in = bits_7_16(key);
-                        note_in = (note_in as u32 * 410 / 12) as u16;
-                        let oct = (fader.get_value() as i32 * 10 / 4095) - 5;
-                        let note_out = (note_in as i32 + oct * 410).clamp(0, 4095) as u16;
-                        jack.set_value(note_out);
-                        leds.set(0, Led::Top, LED_COLOR, (note_out / 16) as u8);
-                        info!("{}", note_out)
+                        if !muted_glob.get().await {
+                            let mut note_in = bits_7_16(key);
+                            note_in = (note_in as u32 * 410 / 12) as u16;
+                            let oct = (fader.get_value() as i32 * 10 / 4095) - 5;
+                            let note_out = (note_in as i32 + oct * 410).clamp(0, 4095) as u16;
+                            // jack.set_value(note_out);
+                            pitch_glob.set(note_out).await;
+                            leds.set(0, Led::Top, led_color, (note_out / 16) as u8);
+                        }
                     }
                     if mode == 2 {
-                        jack.set_value(4095);
-                        note_num += 1;
-                        leds.set(0, Led::Top, LED_COLOR, LED_MID);
-                        info!("note on num = {}", note_num);
+                        if !muted_glob.get().await {
+                            jack.set_value(4095);
+                            note_num += 1;
+                            leds.set(0, Led::Top, led_color, LED_MID);
+                        } else {
+                            note_num = 0;
+                        }
+
+                        //info!("note on num = {}", note_num);
                     }
                     if mode == 3 {
-                        let vel_out = scale_bits_7_12(vel);
+                        let vel_out = if !muted_glob.get().await {
+                            scale_bits_7_12(vel)
+                        } else {
+                            0
+                        };
                         jack.set_value(vel_out);
-                        leds.set(0, Led::Top, LED_COLOR, (vel_out / 16) as u8);
-                        info!("Velocity: {} ", vel_out)
+
+                        leds.set(0, Led::Top, led_color, (vel_out / 16) as u8);
+                        //info!("Velocity: {} ", vel_out)
                     }
                 }
                 MidiMessage::NoteOff { key, vel } => {
                     if mode == 2 {
                         note_num = (note_num - 1).max(0);
-                        info!("note off num = {}", note_num);
+                        //info!("note off num = {}", note_num);
                         if note_num == 0 {
                             jack.set_value(0);
-                            leds.set(0, Led::Top, LED_COLOR, 0);
+                            leds.set(0, Led::Top, led_color, 0);
                         }
                     }
                 }
                 MidiMessage::Aftertouch { key, vel } => {
-                    info!("aftertouch");
-                    if mode == 4 {
-                        let vel_out = scale_bits_7_12(key);
-                        jack.set_value(vel_out);
-                    }
+                    //info!("aftertouch");
                 }
                 MidiMessage::PitchBend { bend } => {
-                    info!("Bend!")
+                    //info!("mode = {}", mode);
+                    if mode == 5 || mode == 1 {
+                        let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
+                        offset_glob.set(out).await;
+                        leds.set(0, Led::Top, led_color, (bend.as_f32() * 255.) as u8);
+                        leds.set(0, Led::Bottom, led_color, (bend.as_f32() * -255.) as u8);
+                        //info!("Bend! = {}, bend range = {}", bend.as_f32(), out);
+                    }
+                    // if mode == 1 {
+                    //     let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
+                    //     offset_glob.set(out).await;
+                    //     //info!("Bend! = {}, bend range = {}", bend.as_f32(), out);
+                    // }
+                }
+                MidiMessage::ChannelAftertouch { vel } => {
+                    if mode == 4 {
+                        //info!("ch aftertouch");
+                        let val = scale_bits_7_12(vel);
+                        offset_glob.set(val).await
+                    }
                 }
 
                 _ => {}
@@ -319,7 +410,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if muted {
                         leds.reset(0, Led::Button);
                     } else {
-                        leds.set(0, Led::Button, LED_COLOR, 100);
+                        leds.set(0, Led::Button, led_color, 100);
                     }
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
