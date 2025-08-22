@@ -21,6 +21,7 @@ use crate::{
     tasks::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
         clock::{ClockSubscriber, CLOCK_PUBSUB},
+        i2c::{I2cLeaderMessage, I2cLeaderSender, I2C_CONNECTED},
         leds::{set_led_mode, LedMode, LedMsg},
         max::{MaxCmd, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender as MidiChannelSender,
@@ -337,6 +338,29 @@ pub enum SceneEvent {
 }
 
 #[derive(Clone, Copy)]
+pub struct I2cOutput<const N: usize> {
+    i2c_sender: I2cLeaderSender,
+    start_channel: usize,
+}
+
+impl<const N: usize> I2cOutput<N> {
+    pub fn new(start_channel: usize, i2c_sender: I2cLeaderSender) -> Self {
+        Self {
+            i2c_sender,
+            start_channel,
+        }
+    }
+
+    pub async fn send_fader_value(&self, chan: usize, value: u16) {
+        if I2C_CONNECTED.load(Ordering::Relaxed) {
+            let chan = chan.clamp(0, N - 1);
+            let msg = I2cLeaderMessage::FaderValue(self.start_channel + chan, value);
+            self.i2c_sender.send(msg).await;
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct MidiOutput {
     midi_sender: MidiChannelSender,
     midi_channel: u4,
@@ -507,6 +531,7 @@ pub struct App<const N: usize> {
     pub app_id: u8,
     pub start_channel: usize,
     event_pubsub: &'static EventPubSubChannel,
+    i2c_sender: I2cLeaderSender,
     max_sender: MaxSender,
     midi_sender: MidiChannelSender,
 }
@@ -516,15 +541,17 @@ impl<const N: usize> App<N> {
         app_id: u8,
         start_channel: usize,
         event_pubsub: &'static EventPubSubChannel,
+        i2c_sender: I2cLeaderSender,
         max_sender: MaxSender,
         midi_sender: MidiChannelSender,
     ) -> Self {
         Self {
             app_id,
-            start_channel,
+            event_pubsub,
+            i2c_sender,
             max_sender,
             midi_sender,
-            event_pubsub,
+            start_channel,
         }
     }
 
@@ -627,6 +654,10 @@ impl<const N: usize> App<N> {
 
     pub fn use_midi_output(&self, midi_channel: u8) -> MidiOutput {
         MidiOutput::new(midi_channel.into(), self.midi_sender)
+    }
+
+    pub fn use_i2c_output(&self) -> I2cOutput<N> {
+        I2cOutput::new(self.start_channel, self.i2c_sender)
     }
 
     pub async fn wait_for_scene_event(&self) -> SceneEvent {

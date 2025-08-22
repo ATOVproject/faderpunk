@@ -77,7 +77,7 @@ impl LayoutManager {
                 };
 
                 if should_spawn {
-                    spawn_app_by_id(app_id, start_channel, self.spawner, &self.exit_signals).await;
+                    spawn_app_by_id(app_id, start_channel, self.spawner, &self.exit_signals);
                     let mut current_layout = self.layout.lock().await;
                     current_layout[start_channel] = Some((app_id, channels));
                 }

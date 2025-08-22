@@ -13,7 +13,7 @@ use crate::app::Led;
 use crate::events::{InputEvent, EVENT_PUBSUB};
 use crate::storage::store_calibration_data;
 use crate::tasks::buttons::BUTTON_PRESSED;
-use crate::tasks::i2c::{I2cMessage, I2cMsgReceiver};
+use crate::tasks::i2c::{I2cFollowerMessage, I2cFollowerReceiver};
 use crate::tasks::leds::{set_led_mode, LedMode, LedMsg};
 use crate::tasks::max::{
     MaxCalibration, MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_FADER,
@@ -57,9 +57,9 @@ async fn wait_for_button_press(channel: usize) -> bool {
     }
 }
 
-async fn wait_for_start_cmd(msg_receiver: &mut I2cMsgReceiver) {
+async fn wait_for_start_cmd(msg_receiver: &mut I2cFollowerReceiver) {
     loop {
-        if let I2cMessage::CalibStart = msg_receiver.receive().await {
+        if let I2cFollowerMessage::CalibStart = msg_receiver.receive().await {
             return;
         }
     }
@@ -282,7 +282,9 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
     output_results
 }
 
-async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) -> RegressionValuesOutput {
+async fn run_automatic_output_calibration(
+    receiver: &mut I2cFollowerReceiver,
+) -> RegressionValuesOutput {
     CALIBRATION_PORT.store(usize::MAX, Ordering::Relaxed);
 
     for i in 0..CHANNELS {
@@ -295,7 +297,7 @@ async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) -> Regr
 
     loop {
         match receiver.receive().await {
-            I2cMessage::CalibPlugInPort(chan) => {
+            I2cFollowerMessage::CalibPlugInPort(chan) => {
                 let ui_no = chan % 17;
                 let prev_ui_no = if chan == 0 {
                     0
@@ -315,7 +317,7 @@ async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) -> Regr
                 flash_led(ui_no, Led::Button, Color::Green, None);
                 CALIBRATION_PORT.store(chan, Ordering::Relaxed);
             }
-            I2cMessage::CalibSetRegressionValues(output_values) => {
+            I2cFollowerMessage::CalibSetRegressionValues(output_values) => {
                 return output_values;
             }
             _ => {}
@@ -323,7 +325,7 @@ async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) -> Regr
     }
 }
 
-pub async fn run_calibration(mut msg_receiver: I2cMsgReceiver) {
+pub async fn run_calibration(mut msg_receiver: I2cFollowerReceiver) {
     CALIBRATING.store(true, Ordering::Relaxed);
 
     set_led_color(0, Led::Button, Color::Yellow);

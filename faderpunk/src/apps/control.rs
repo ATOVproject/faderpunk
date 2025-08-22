@@ -157,6 +157,7 @@ pub async fn run(
     let fader = app.use_faders();
     let leds = app.use_leds();
     let midi = app.use_midi_output(midi_chan as u8 - 1);
+    let i2c = app.use_i2c_output();
 
     let muted_glob = app.make_global(storage.query(|s| s.muted));
     let output_glob = app.make_global(0);
@@ -316,8 +317,10 @@ pub async fn run(
 
             match latch_layer_glob.get() {
                 LatchLayer::Main => {
-                    // Send MIDI
-                    midi.send_cc(midi_cc as u8, output_glob.get()).await;
+                    let out = output_glob.get();
+                    // Send MIDI & I2C messages
+                    midi.send_cc(midi_cc as u8, out).await;
+                    i2c.send_fader_value(0, out).await;
                 }
                 LatchLayer::Alt => {
                     // Now we commit to storage

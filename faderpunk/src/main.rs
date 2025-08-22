@@ -34,13 +34,15 @@ use libfp::quantizer::Quantizer;
 use libfp::I2cMode;
 use static_cell::StaticCell;
 
+use crate::tasks::global_config::GLOBAL_CONFIG_WATCH;
+
 use {defmt_rtt as _, panic_probe as _};
 
 use layout::{LayoutManager, LAYOUT_MANAGER, LAYOUT_WATCH};
 use storage::{load_calibration_data, load_global_config, load_layout};
 use tasks::{
-    buttons::BUTTON_PRESSED, fram::MAX_DATA_LEN, global_config::GLOBAL_CONFIG_WATCH,
-    max::MAX_CHANNEL, midi::MIDI_CHANNEL,
+    buttons::BUTTON_PRESSED, fram::MAX_DATA_LEN, i2c::I2C_LEADER_CHANNEL, max::MAX_CHANNEL,
+    midi::MIDI_CHANNEL,
 };
 
 // Program metadata for `picotool info`.

@@ -48,6 +48,7 @@ linreg = { git = "https://github.com/ATOVproject/linreg-rs" }
 log = "0.4.27"
 max11300 = "0.5.0"
 midly = { version = "0.5.3", default-features = false }
+mii = "0.2.0"
 panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 pio = "0.3.0"
 portable-atomic = { version = "1.11.1", features = ["critical-section"] }

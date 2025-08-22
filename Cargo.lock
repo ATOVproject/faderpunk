@@ -714,6 +714,7 @@ dependencies = [
  "log",
  "max11300",
  "midly",
+ "mii",
  "panic-probe",
  "pio",
  "portable-atomic",
@@ -1046,6 +1047,12 @@ name = "midly"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "207d755f4cb882d20c4da58d707ca9130a0c9bc5061f657a4f299b8e36362b7a"
+
+[[package]]
+name = "mii"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11e67a72c8f43d89c57894d7177502a7314344fddcae71d30e797166473bd973"
 
 [[package]]
 name = "nb"

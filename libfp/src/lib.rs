@@ -272,7 +272,7 @@ impl GlobalConfig {
     pub const fn new() -> Self {
         Self {
             clock: ClockConfig::new(),
-            i2c_mode: I2cMode::Follower,
+            i2c_mode: I2cMode::Leader,
             led_brightness: 150,
             quantizer_key: Key::Chromatic,
             quantizer_tonic: Note::C,
