@@ -262,10 +262,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 // //info!("outval ={}, pitch = {} out = {}", outval, pitch, out);
                 jack.set_value(out);
             } else {
-                if buttons.is_shift_pressed() {
-                    leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
-                    leds.set(0, Led::Bottom, ATOV_RED, 0);
-                }
+                // if buttons.is_shift_pressed() {
+                //     leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
+                //     leds.set(0, Led::Bottom, ATOV_RED, 0);
+                // }
             }
         }
     };
@@ -375,9 +375,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         }
                     }
                 }
-                MidiMessage::Aftertouch { key, vel } => {
-                    //info!("aftertouch");
-                }
                 MidiMessage::PitchBend { bend } => {
                     //info!("mode = {}", mode);
                     if mode == 5 || mode == 1 {
@@ -395,7 +392,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
                 MidiMessage::ChannelAftertouch { vel } => {
                     if mode == 4 {
-                        //info!("ch aftertouch");
+                        info!("ch aftertouch");
                         let val = scale_bits_7_12(vel);
                         offset_glob.set(val).await
                     }
