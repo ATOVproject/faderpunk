@@ -1,23 +1,33 @@
+use core::sync::atomic::AtomicBool;
+
 use defmt::{error, info};
 use embassy_executor::Spawner;
-use embassy_rp::i2c::{self, Async, I2c};
+use embassy_rp::i2c::{self, Async};
 use embassy_rp::i2c_slave::{self, Command, I2cSlave};
 use embassy_rp::peripherals::{I2C0, PIN_20, PIN_21};
 use embassy_rp::Peri;
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex};
 use embassy_sync::channel::{Channel, Receiver, Sender};
-use libfp::types::RegressionValuesOutput;
-use libfp::{I2cMode, I2C_ADDRESS, I2C_ADDRESS_CALIBRATION};
+use embassy_time::Timer;
+use embedded_hal_async::i2c::I2c;
 use max11300::config::{ConfigMode5, Mode};
+use mii::{
+    devices::{ansible, er301, telexo},
+    Command as MiiCommand,
+};
 use portable_atomic::Ordering;
 
-use libfp::i2c_proto::{
-    DeviceStatus, ErrorCode, Response, WriteCommand, WriteReadCommand, MAX_MESSAGE_SIZE,
+use libfp::{
+    i2c_proto::{
+        DeviceStatus, ErrorCode, Response, WriteCommand, WriteReadCommand, MAX_MESSAGE_SIZE,
+    },
+    types::RegressionValuesOutput,
+    I2cMode, I2C_ADDRESS_CALIBRATION,
 };
 use postcard::{from_bytes, to_slice};
 
 use crate::tasks::calibration::{run_calibration, CALIBRATION_PORT};
-use crate::tasks::global_config::{self, get_global_config};
+use crate::tasks::global_config::get_global_config;
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
 use crate::Irqs;
 
@@ -25,15 +35,38 @@ use super::max::MAX_VALUES_DAC;
 
 pub type I2cDevice = I2cSlave<'static, I2C0>;
 
-pub enum I2cMessage {
+pub enum I2cFollowerMessage {
     CalibStart,
     CalibPlugInPort(usize),
     CalibSetRegressionValues(RegressionValuesOutput),
 }
 
-pub static I2C_CHANNEL: Channel<ThreadModeRawMutex, I2cMessage, 8> = Channel::new();
-pub type I2cMsgReceiver = Receiver<'static, ThreadModeRawMutex, I2cMessage, 8>;
-pub type I2cMsgSender = Sender<'static, ThreadModeRawMutex, I2cMessage, 8>;
+pub enum I2cLeaderMessage {
+    FaderValue(usize, u16),
+}
+
+const I2C_LEADER_CHANNEL_SIZE: usize = 16;
+const I2C_FOLLOWER_CHANNEL_SIZE: usize = 8;
+
+pub static I2C_CONNECTED: AtomicBool = AtomicBool::new(false);
+
+pub static I2C_LEADER_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    I2cLeaderMessage,
+    I2C_LEADER_CHANNEL_SIZE,
+> = Channel::new();
+pub type I2cLeaderSender =
+    Sender<'static, CriticalSectionRawMutex, I2cLeaderMessage, I2C_LEADER_CHANNEL_SIZE>;
+
+pub static I2C_FOLLOWER_CHANNEL: Channel<
+    ThreadModeRawMutex,
+    I2cFollowerMessage,
+    I2C_FOLLOWER_CHANNEL_SIZE,
+> = Channel::new();
+pub type I2cFollowerReceiver =
+    Receiver<'static, ThreadModeRawMutex, I2cFollowerMessage, I2C_FOLLOWER_CHANNEL_SIZE>;
+pub type I2cFollowerSender =
+    Sender<'static, ThreadModeRawMutex, I2cFollowerMessage, I2C_FOLLOWER_CHANNEL_SIZE>;
 
 pub async fn start_i2c(
     spawner: &Spawner,
@@ -44,8 +77,8 @@ pub async fn start_i2c(
     let global_config = get_global_config();
     match global_config.i2c_mode {
         I2cMode::Calibration => {
-            let msg_receiver = I2C_CHANNEL.receiver();
-            let msg_sender = I2C_CHANNEL.sender();
+            let msg_receiver = I2C_FOLLOWER_CHANNEL.receiver();
+            let msg_sender = I2C_FOLLOWER_CHANNEL.sender();
             let mut i2c0_config = i2c_slave::Config::default();
             i2c0_config.addr = I2C_ADDRESS_CALIBRATION;
             let i2c_device = i2c_slave::I2cSlave::new(i2c0, scl, sda, Irqs, i2c0_config);
@@ -55,20 +88,122 @@ pub async fn start_i2c(
             run_calibration(msg_receiver).await;
         }
         I2cMode::Follower => {
-            let msg_receiver = I2C_CHANNEL.receiver();
-            let msg_sender = I2C_CHANNEL.sender();
-            let mut i2c0_config = i2c_slave::Config::default();
-            i2c0_config.addr = I2C_ADDRESS;
-            let i2c_device = i2c_slave::I2cSlave::new(i2c0, scl, sda, Irqs, i2c0_config);
-            spawner
-                .spawn(run_i2c_follower(i2c_device, msg_sender, false))
-                .unwrap();
+            // Currently unimplemented
+            // let msg_receiver = I2C_FOLLOWER_CHANNEL.receiver();
+            // let msg_sender = I2C_FOLLOWER_CHANNEL.sender();
+            // let mut i2c0_config = i2c_slave::Config::default();
+            // i2c0_config.addr = I2C_ADDRESS;
+            // let i2c_device = i2c_slave::I2cSlave::new(i2c0, scl, sda, Irqs, i2c0_config);
+            // spawner
+            //     .spawn(run_i2c_follower(i2c_device, msg_sender, false))
+            //     .unwrap();
         }
         I2cMode::Leader => {
             let mut i2c0_config = i2c::Config::default();
             i2c0_config.frequency = 400_000;
             let i2c0 = i2c::I2c::new_async(i2c0, scl, sda, Irqs, i2c0_config);
             spawner.spawn(run_i2c_leader(i2c0)).unwrap();
+        }
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+struct DiscoveredDevices {
+    ansible: bool,
+    er301: bool,
+    txo: bool,
+}
+
+struct Compat16N<'a> {
+    i2c: &'a mut i2c::I2c<'static, I2C0, Async>,
+    devices: DiscoveredDevices,
+    buffer: [u8; 8],
+    errors: usize,
+}
+
+impl<'a> Compat16N<'a> {
+    async fn new(i2c: &'a mut i2c::I2c<'static, I2C0, Async>) -> Self {
+        // Scan for i2c devices
+        let mut devices = DiscoveredDevices::default();
+
+        for addr in 8..=120 {
+            if i2c.write(addr, &[]).await.is_ok() {
+                match addr {
+                    ansible::ADDRESS => {
+                        devices.ansible = true;
+                        I2C_CONNECTED.store(true, Ordering::Relaxed);
+                    }
+                    er301::ADDRESS => {
+                        devices.er301 = true;
+                        I2C_CONNECTED.store(true, Ordering::Relaxed);
+                    }
+                    a if (telexo::BASE_ADDRESS..telexo::BASE_ADDRESS + 8).contains(&a) => {
+                        devices.txo = true;
+                        I2C_CONNECTED.store(true, Ordering::Relaxed);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Self {
+            i2c,
+            devices,
+            buffer: [0u8; 8],
+            errors: 0,
+        }
+    }
+
+    async fn handle_fader_update(&mut self, chan: usize, value: u16) {
+        // Send to ER-301 if present
+        if self.devices.er301 {
+            let cmd = er301::Commands::SetCv {
+                port: chan as u8,
+                value: value as i16,
+            };
+            if let Ok(msg) = cmd.to_bytes(&mut self.buffer) {
+                if self.i2c.write(er301::ADDRESS, msg).await.is_err() {
+                    error!("I2C write to ER-301 failed");
+                    self.errors += 1;
+                }
+            }
+        }
+
+        // Send to TXo if present
+        if self.devices.txo {
+            let device_index = (chan / 4) as u8;
+            let port = (chan % 4) as u8;
+            let address = telexo::BASE_ADDRESS + device_index;
+            let cmd = telexo::Commands::SetCv {
+                port,
+                value: value as i16,
+            };
+
+            if let Ok(msg) = cmd.to_bytes(&mut self.buffer) {
+                if self.i2c.write(address, msg).await.is_err() {
+                    error!("I2C write to TXo (addr 0x{:02X}) failed", address);
+                    self.errors += 1;
+                }
+            }
+        }
+
+        // Send to Ansible if present
+        if self.devices.ansible {
+            let device_port = ((chan / 4) << 1) as u8;
+            let cmd = ansible::Commands::SetCvFromFader { device_port, value };
+
+            if let Ok(msg) = cmd.to_bytes(&mut self.buffer) {
+                if self.i2c.write(ansible::ADDRESS, msg).await.is_err() {
+                    error!("I2C write to Ansible failed");
+                    self.errors += 1;
+                }
+            }
+        }
+
+        // If we accumulate a lot of errors, we assume that the i2c device was removed.
+        // Disable sending messages
+        if self.errors >= I2C_LEADER_CHANNEL_SIZE {
+            I2C_CONNECTED.store(false, Ordering::Relaxed);
         }
     }
 }
@@ -89,17 +224,17 @@ async fn process_write_read(command: WriteReadCommand) -> Response {
     }
 }
 
-async fn process_write(command: WriteCommand, sender: &mut I2cMsgSender) {
+async fn process_write(command: WriteCommand, sender: &mut I2cFollowerSender) {
     match command {
         WriteCommand::CalibStart => {
-            sender.send(I2cMessage::CalibStart).await;
+            sender.send(I2cFollowerMessage::CalibStart).await;
         }
         WriteCommand::CalibPlugInPort(port) => {
-            sender.send(I2cMessage::CalibPlugInPort(port)).await;
+            sender.send(I2cFollowerMessage::CalibPlugInPort(port)).await;
         }
         WriteCommand::CalibSetRegOutValues(values) => {
             sender
-                .send(I2cMessage::CalibSetRegressionValues(values))
+                .send(I2cFollowerMessage::CalibSetRegressionValues(values))
                 .await;
         }
         WriteCommand::DacSetVoltage(channel, range, value) => {
@@ -120,7 +255,7 @@ async fn process_write(command: WriteCommand, sender: &mut I2cMsgSender) {
 #[embassy_executor::task]
 async fn run_i2c_follower(
     mut i2c_device: I2cDevice,
-    mut msg_sender: I2cMsgSender,
+    mut msg_sender: I2cFollowerSender,
     // TODO: use this to disable calibration i2c commands?
     _calibrating: bool,
 ) {
@@ -177,6 +312,14 @@ async fn run_i2c_follower(
 }
 
 #[embassy_executor::task]
-async fn run_i2c_leader(mut _i2c: I2c<'static, I2C0, Async>) {
-    // TODO: Run i2c leader stuff here
+async fn run_i2c_leader(mut i2c: i2c::I2c<'static, I2C0, Async>) {
+    // Wait for followers to boot
+    Timer::after_secs(10).await;
+
+    let mut compat16n = Compat16N::new(&mut i2c).await;
+
+    loop {
+        let I2cLeaderMessage::FaderValue(chan, value) = I2C_LEADER_CHANNEL.receive().await;
+        compat16n.handle_fader_update(chan, value).await;
+    }
 }

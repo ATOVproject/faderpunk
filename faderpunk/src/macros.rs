@@ -10,7 +10,7 @@ macro_rules! register_apps {
         };
 
         use libfp::ConfigMeta;
-        use crate::{MAX_CHANNEL, MIDI_CHANNEL};
+        use crate::{I2C_LEADER_CHANNEL, MAX_CHANNEL, MIDI_CHANNEL};
         use crate::{app::App, events::EVENT_PUBSUB};
         use embassy_executor::Spawner;
 
@@ -26,8 +26,7 @@ macro_rules! register_apps {
 
         pub const REGISTERED_APP_IDS: [u8; _APP_COUNT] = [$($id),*];
 
-        // IDEA: Currently this doesn't need to be async
-        pub async fn spawn_app_by_id(
+        pub fn spawn_app_by_id(
             app_id: u8,
             start_channel: usize,
             spawner: Spawner,
@@ -40,6 +39,7 @@ macro_rules! register_apps {
                             app_id,
                             start_channel,
                             &EVENT_PUBSUB,
+                            I2C_LEADER_CHANNEL.sender(),
                             MAX_CHANNEL.sender(),
                             MIDI_CHANNEL.sender(),
                         );
