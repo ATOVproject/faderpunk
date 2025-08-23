@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.6.1...faderpunk-v0.7.0) (2025-08-23)
+
+
+### Features
+
+* add color parameters to most apps ([79c716f](https://github.com/ATOVproject/faderpunk/commit/79c716fe5df24caf1c3ff8e846985e668adb212a))
+* **default:** add mute on release proto function ([ef01239](https://github.com/ATOVproject/faderpunk/commit/ef012394756ecf2ff9ef85bcf26d805616107e07))
+* **lfo:** reset messages resets the LFO ([afe84e9](https://github.com/ATOVproject/faderpunk/commit/afe84e92108f2b681072c75b2701dae23d592fac))
+* **midi2cv:** add midi2cv prototype app ([c005ac1](https://github.com/ATOVproject/faderpunk/commit/c005ac1c0d0d7b4827dcde9ff5f7a7057a3b015f))
+* **midi2cv:** add mute and led feedback ([fc0b17e](https://github.com/ATOVproject/faderpunk/commit/fc0b17ec25e20e0ad051326ff0d1f0b643c9b827))
+
+
+### Bug Fixes
+
+* **calibration:** fixes for semi-automatic calibration ([932321b](https://github.com/ATOVproject/faderpunk/commit/932321bad07da39aaa704c64fcc023f7399ea835))
+* **midi2cv:** adjust color order for consistency ([fdfbe3b](https://github.com/ATOVproject/faderpunk/commit/fdfbe3b24914f5632c5890915172b9797d6b5379))
+* **midi2cv:** fix small led bug ([4cac8c5](https://github.com/ATOVproject/faderpunk/commit/4cac8c54ff873bcde61940b23b258dd291ab9120))
+* **midi:** improve midi subscriber instantiation ([46e20f2](https://github.com/ATOVproject/faderpunk/commit/46e20f2763ca7582c6b938ee800d47efb7e26492))
+
 ## [0.6.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.6.0...faderpunk-v0.6.1) (2025-08-20)
 
 

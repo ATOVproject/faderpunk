@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.3.0...libfp-v0.4.0) (2025-08-23)
+
+
+### Features
+
+* **midi2cv:** add midi2cv prototype app ([c005ac1](https://github.com/ATOVproject/faderpunk/commit/c005ac1c0d0d7b4827dcde9ff5f7a7057a3b015f))
+
+
+### Bug Fixes
+
+* **calibration:** fixes for semi-automatic calibration ([932321b](https://github.com/ATOVproject/faderpunk/commit/932321bad07da39aaa704c64fcc023f7399ea835))
+
 ## [0.3.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.2.2...libfp-v0.3.0) (2025-08-20)
 
 
