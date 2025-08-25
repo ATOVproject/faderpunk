@@ -26,7 +26,7 @@ pub fn is_close(a: u16, b: u16) -> bool {
 
 /// Split 0 to 4095 value to two 0-255 u8 used for LEDs
 pub fn split_unsigned_value(input: u16) -> [u8; 2] {
-    let clamped = input.min(4095);
+    let clamped = input.clamp(0, 4095);
     if clamped <= 2047 {
         let neg = ((2047 - clamped) / 8).clamp(0, 255) as u8;
         [0, neg]
