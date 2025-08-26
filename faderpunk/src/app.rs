@@ -182,6 +182,30 @@ impl<const N: usize> Buttons<N> {
         }
     }
 
+    /// Returns the number of the button that was released
+    pub async fn wait_for_any_up(&self) -> (usize, bool) {
+        let mut subscriber = self.event_pubsub.subscriber().unwrap();
+
+        loop {
+            if let InputEvent::ButtonUp(channel) = subscriber.next_message_pure().await {
+                if (self.start_channel..self.start_channel + N).contains(&channel) {
+                    return (channel - self.start_channel, self.is_shift_pressed());
+                }
+            }
+        }
+    }
+
+    /// Returns if shift was pressed during button up
+    pub async fn wait_for_up(&self, chan: usize) -> bool {
+        let chan = chan.clamp(0, N - 1);
+        loop {
+            let (channel, is_shift_pressed) = self.wait_for_any_up().await;
+            if chan == channel {
+                return is_shift_pressed;
+            }
+        }
+    }
+
     pub async fn wait_for_any_long_press(&self) -> (usize, bool) {
         let mut subscriber = self.event_pubsub.subscriber().unwrap();
 

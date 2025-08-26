@@ -151,7 +151,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         let mut old_midi = 0;
         let mut attval = 0;
         let mut shift_old = false;
-        let mut button_old = false;
 
         loop {
             app.delay_millis(1).await;
@@ -166,7 +165,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if muted {
                     val = 2047;
                 } else {
-                    val = curve.at(fadval.into());
+                    val = curve.at(fadval);
                 }
                 if !buttons.is_shift_pressed() {
                     let led1 = split_unsigned_value(outval as u16);
@@ -187,7 +186,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if muted {
                     val = 0;
                 } else {
-                    val = curve.at(fadval.into());
+                    val = curve.at(fadval);
                 }
                 if buttons.is_shift_pressed() {
                     leds.set(0, Led::Top, RED, Brightness::Custom((att / 16) as u8));
@@ -220,55 +219,35 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
                 shift_old = false;
             }
-
-            if !button_old && buttons.is_button_pressed(0) {
-                button_old = true;
-            }
-            if button_old && !buttons.is_button_pressed(0) {
-                if on_release {
-                    let muted = storage
-                        .modify_and_save(
-                            |s| {
-                                s.muted = !s.muted;
-                                s.muted
-                            },
-                            None,
-                        )
-                        .await;
-                    muted_glob.set(muted).await;
-                    if muted {
-                        leds.unset(0, Led::Button);
-                    } else {
-                        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
-                    }
-                }
-                button_old = false;
-            }
         }
     };
 
-    let fut2 = async {
+    // Handles toggle mute logic
+    let button_handler = async {
         loop {
-            buttons.wait_for_down(0).await;
-            if !on_release {
-                let muted = storage
-                    .modify_and_save(
-                        |s| {
-                            s.muted = !s.muted;
-                            s.muted
-                        },
-                        None,
-                    )
-                    .await;
-                muted_glob.set(muted).await;
-                if muted {
-                    leds.unset(0, Led::Button);
-                } else {
-                    leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
-                }
+            if on_release {
+                buttons.wait_for_up(0).await;
+            } else {
+                buttons.wait_for_down(0).await;
+            }
+            let muted = storage
+                .modify_and_save(
+                    |s| {
+                        s.muted = !s.muted;
+                        s.muted
+                    },
+                    None,
+                )
+                .await;
+            muted_glob.set(muted).await;
+            if muted {
+                leds.unset(0, Led::Button);
+            } else {
+                leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
             }
         }
     };
+
     let fut3 = async {
         loop {
             fader.wait_for_change().await;
@@ -310,5 +289,5 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         }
     };
 
-    join4(fut1, fut2, fut3, scene_handler).await;
+    join4(fut1, button_handler, fut3, scene_handler).await;
 }
