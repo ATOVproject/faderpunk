@@ -7,24 +7,9 @@ use libfp::{Brightness, Config, Curve, Param};
 use crate::app::{App, Led, RGB8};
 
 pub const CHANNELS: usize = 3;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("RGB test app", "Fader set color")
-    .add_param(Param::Curve {
-        name: "Curve",
-        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-    })
-    .add_param(Param::Bool { name: "Bipolar" })
-    .add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI CC",
-        min: 1,
-        max: 128,
-    });
+pub static CONFIG: Config<PARAMS> = Config::new("RGB test app", "Fader set color");
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
