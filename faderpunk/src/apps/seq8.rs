@@ -590,8 +590,8 @@ pub async fn run(
                                 let seq = seq_glob.get();
 
                                 let out = quantizer.get_quantized_note(seq[clkindex] / 4).await;
-
                                 lastnote[n] = (out.as_midi() as i32 + base_note) as u8;
+
                                 midi[n].send_note_on(lastnote[n], 4095).await;
                                 gatelength1 = gatelength_glob.get();
                                 cv_out[n].set_value(out.as_counts(range));
