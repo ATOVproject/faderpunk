@@ -1,4 +1,3 @@
-use defmt::{info, Format};
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
@@ -34,7 +33,7 @@ use crate::{
     tasks::{
         buttons::is_scene_button_pressed,
         global_config::{
-            self, get_fader_value_from_config, get_global_config, set_global_config_via_chan,
+            get_fader_value_from_config, get_global_config, set_global_config_via_chan,
         },
     },
     Irqs,
@@ -68,7 +67,7 @@ pub enum MaxCmd {
     GpoSetLow,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Default, Format)]
+#[derive(Clone, Copy, Serialize, Deserialize, Default)]
 pub struct MaxCalibration {
     /// Input calibration data
     pub inputs: RegressionValuesInput,
@@ -205,6 +204,10 @@ async fn read_fader(
         Timer::after_millis(1).await;
 
         let val = fader_port.get_value().await.unwrap();
+
+        // Scale a bit across the dead-zone (~4087 -> 4095)
+        let val = (roundf(val as f32 * 1.002) as u16).clamp(0, 4095);
+
         let latch = &mut fader_latches[channel];
 
         let target_value = if active_layer_index == 0 {
@@ -239,7 +242,6 @@ async fn read_fader(
     }
 }
 
-// TODO: Should we make this message based?
 #[embassy_executor::task]
 async fn process_channel_values(
     max_driver: &'static SharedMax,
