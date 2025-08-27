@@ -47,37 +47,34 @@ impl Layout {
     }
     pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) {
         let mut validated: InnerLayout = [None; GLOBAL_CHANNELS];
-        let mut start_channel = 0;
-        for (app_id, _channels) in self.0.into_iter().flatten() {
-            // We double-check the channels
-            if let Some(channels) = get_channels(app_id) {
-                let last = start_channel + channels;
-                if last > GLOBAL_CHANNELS {
-                    break;
+        let mut occupied = [false; GLOBAL_CHANNELS];
+
+        for (app_id, start_channel, _channels) in self.iter() {
+            // Re-verify the channel count for the app_id. Skip if it's not a valid app_id
+            let Some(channels) = get_channels(app_id) else {
+                continue;
+            };
+
+            let end_channel = start_channel + channels;
+
+            // Check if the app fits within the channel count and doesn't overlap
+            if end_channel <= GLOBAL_CHANNELS
+                && !occupied[start_channel..end_channel].iter().any(|&o| o)
+            {
+                // Mark channels as occupied
+                for occ in occupied.iter_mut().take(end_channel).skip(start_channel) {
+                    *occ = true;
                 }
+                // Add the app to the validated layout
                 validated[start_channel] = Some((app_id, channels));
-                start_channel += channels;
             }
         }
+
         self.0 = validated;
     }
 
     pub fn iter(&self) -> LayoutIter<'_> {
         self.into_iter()
-    }
-
-    pub fn first_free(&self) -> Option<usize> {
-        for i in (0..self.0.len()).rev() {
-            if self.0[i].is_some() {
-                let next_index = i + 1;
-                return if next_index < self.0.len() {
-                    Some(next_index)
-                } else {
-                    None
-                };
-            }
-        }
-        Some(0)
     }
 }
 
