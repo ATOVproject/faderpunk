@@ -76,7 +76,7 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                     .send_msg(ConfigMsgOut::BatchMsgStart(configs.len()))
                     .await
                     .unwrap();
-                for (app_id, channels, config_meta) in configs {
+                for (app_id, channels, config_meta) in configs.into_iter().flatten() {
                     proto
                         .send_msg(ConfigMsgOut::AppConfig(app_id, channels, config_meta))
                         .await
