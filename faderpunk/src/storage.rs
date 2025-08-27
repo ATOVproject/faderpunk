@@ -10,10 +10,13 @@ use serde::{
 
 use libfp::{FromValue, GlobalConfig, Layout, Value, APP_MAX_PARAMS};
 
-use crate::tasks::{
-    configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
-    fram::{read_data, write_with},
-    max::MaxCalibration,
+use crate::{
+    apps::get_channels,
+    tasks::{
+        configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
+        fram::{read_data, write_with},
+        max::MaxCalibration,
+    },
 };
 
 const GLOBAL_CONFIG_RANGE: Range<u32> = 0..256;
@@ -63,7 +66,13 @@ pub async fn load_layout() -> Layout {
     if let Ok(guard) = read_data(LAYOUT_RANGE.start).await {
         let data = guard.data();
         if !data.is_empty() {
-            if let Ok(layout) = from_bytes::<Layout>(data) {
+            if let Ok(mut layout) = from_bytes::<Layout>(data) {
+                drop(guard);
+                // Validate the layout after loading it from fram
+                if layout.validate(get_channels) {
+                    // If the layout changed after validation, store the validated one
+                    store_layout(&layout).await;
+                }
                 return layout;
             }
         }
