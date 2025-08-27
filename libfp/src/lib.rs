@@ -45,7 +45,7 @@ impl Layout {
     pub const fn new() -> Self {
         Self([None; GLOBAL_CHANNELS])
     }
-    pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) {
+    pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) -> bool {
         let mut validated: InnerLayout = [None; GLOBAL_CHANNELS];
         let mut occupied = [false; GLOBAL_CHANNELS];
 
@@ -70,7 +70,10 @@ impl Layout {
             }
         }
 
+        let changed = self.0 != validated;
         self.0 = validated;
+
+        changed
     }
 
     pub fn iter(&self) -> LayoutIter<'_> {
