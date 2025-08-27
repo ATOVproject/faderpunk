@@ -47,7 +47,9 @@ macro_rules! register_apps {
                         spawner.spawn($app_mod::wrapper(app, &exit_signals[start_channel])).unwrap();
                     },
                 )*
-                _ => panic!("Unknown app ID: {}", app_id),
+                _ => {
+                    // Do nothing if app_id isn't valid
+                }
             }
         }
 
@@ -60,14 +62,14 @@ macro_rules! register_apps {
             }
         }
 
-        pub fn get_config(app_id: u8) -> (u8, usize, ConfigMeta<'static>) {
+        pub fn get_config(app_id: u8) -> Option<(u8, usize, ConfigMeta<'static>)> {
             match app_id {
                 $(
                     $id => {
-                        (app_id, $app_mod::CHANNELS, $app_mod::CONFIG.get_meta())
+                        Some((app_id, $app_mod::CHANNELS, $app_mod::CONFIG.get_meta()))
                     },
                 )*
-                _ => panic!("Unknown app ID: {}", app_id),
+                _ => None
             }
         }
     };
