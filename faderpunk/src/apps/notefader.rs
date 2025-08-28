@@ -1,4 +1,3 @@
-use defmt::info;
 use embassy_futures::{
     join::join5,
     select::{select, Either},
@@ -9,13 +8,12 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    colors::RED, ext::FromValue, latch::LatchLayer, utils::is_close, Brightness, Color, Config,
-    Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Param, Range, Value,
+    APP_MAX_PARAMS,
 };
 
-use crate::{
-    app::{App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent},
-    tasks::clock,
+use crate::app::{
+    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
 };
 
 pub const CHANNELS: usize = 1;
@@ -23,37 +21,42 @@ pub const PARAMS: usize = 5;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Note Fader", "Play notes manually or on clock")
-    .add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "Base note",
-        min: 1,
-        max: 128,
-    })
-    .add_param(Param::i32 {
-        name: "Span",
-        min: 1,
-        max: 120,
-    })
-    .add_param(Param::i32 {
-        name: "GATE %",
-        min: 1,
-        max: 100,
-    })
-    .add_param(Param::Color {
-        name: "Color",
-        variants: &[
-            Color::Yellow,
-            Color::Pink,
-            Color::Cyan,
-            Color::Red,
-            Color::White,
-        ],
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "Note Fader",
+    "Play notes manually or on clock",
+    Color::Red,
+    AppIcon::Knob,
+)
+.add_param(Param::i32 {
+    name: "MIDI Channel",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    name: "Base note",
+    min: 1,
+    max: 128,
+})
+.add_param(Param::i32 {
+    name: "Span",
+    min: 1,
+    max: 120,
+})
+.add_param(Param::i32 {
+    name: "GATE %",
+    min: 1,
+    max: 100,
+})
+.add_param(Param::Color {
+    name: "Color",
+    variants: &[
+        Color::Yellow,
+        Color::Pink,
+        Color::Cyan,
+        Color::Red,
+        Color::White,
+    ],
+});
 
 pub struct Params {
     midi_channel: i32,

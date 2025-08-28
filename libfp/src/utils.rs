@@ -19,11 +19,6 @@ pub fn bits_7_16(value: u7) -> u16 {
     value.as_int() as u16
 }
 
-/// Return bool of values are close
-pub fn is_close(a: u16, b: u16) -> bool {
-    a.abs_diff(b) < 100
-}
-
 /// Split 0 to 4095 value to two 0-255 u8 used for LEDs
 pub fn split_unsigned_value(input: u16) -> [u8; 2] {
     let clamped = input.clamp(0, 4095);

@@ -16,7 +16,4 @@ register_apps!(
     15 => cv2midi,
     16 => cv2midinote,
     17 => euclid,
-    252 => calibration,
-    253 => calibration_unipolar,
-    254 => rgbtest,
 );

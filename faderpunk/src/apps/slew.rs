@@ -4,11 +4,10 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    colors::RED,
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
-    Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
+    utils::{attenuverter, slew_limiter, split_signed_value, split_unsigned_value},
+    AppIcon, Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -18,17 +17,22 @@ pub const PARAMS: usize = 1;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
-pub static CONFIG: Config<PARAMS> =
-    Config::new("Slew Limiter", "Slows CV changes").add_param(Param::Color {
-        name: "Color",
-        variants: &[
-            Color::Yellow,
-            Color::Pink,
-            Color::Cyan,
-            Color::Red,
-            Color::White,
-        ],
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "Slew Limiter",
+    "slows CV changes",
+    Color::Yellow,
+    AppIcon::ArrowCircle,
+)
+.add_param(Param::Color {
+    name: "Color",
+    variants: &[
+        Color::Yellow,
+        Color::Pink,
+        Color::Cyan,
+        Color::Red,
+        Color::White,
+    ],
+});
 
 pub struct Params {
     color: Color,

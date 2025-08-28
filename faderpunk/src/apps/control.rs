@@ -5,7 +5,7 @@ use libfp::{
     ext::FromValue,
     latch::LatchLayer,
     utils::{attenuate_bipolar, clickless, split_unsigned_value},
-    Brightness, Color, APP_MAX_PARAMS,
+    AppIcon, Brightness, Color, APP_MAX_PARAMS,
 };
 use libm::roundf;
 use serde::{Deserialize, Serialize};
@@ -17,38 +17,43 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 6;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Control", "Simple MIDI/CV controller")
-    .add_param(Param::Curve {
-        name: "Curve",
-        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-    })
-    .add_param(Param::Range {
-        name: "Range",
-        variants: &[Range::_0_10V, Range::_Neg5_5V],
-    })
-    .add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI CC",
-        min: 1,
-        max: 128,
-    })
-    .add_param(Param::Bool {
-        name: "Mute on release",
-    })
-    .add_param(Param::Color {
-        name: "Color",
-        variants: &[
-            Color::Yellow,
-            Color::Pink,
-            Color::Cyan,
-            Color::Red,
-            Color::White,
-        ],
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "Control",
+    "Simple MIDI/CV controller",
+    Color::Violet,
+    AppIcon::SignalBars,
+)
+.add_param(Param::Curve {
+    name: "Curve",
+    variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+})
+.add_param(Param::Range {
+    name: "Range",
+    variants: &[Range::_0_10V, Range::_Neg5_5V],
+})
+.add_param(Param::i32 {
+    name: "MIDI Channel",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    name: "MIDI CC",
+    min: 1,
+    max: 128,
+})
+.add_param(Param::Bool {
+    name: "Mute on release",
+})
+.add_param(Param::Color {
+    name: "Color",
+    variants: &[
+        Color::Yellow,
+        Color::Pink,
+        Color::Cyan,
+        Color::Red,
+        Color::White,
+    ],
+});
 
 pub struct Params {
     curve: Curve,

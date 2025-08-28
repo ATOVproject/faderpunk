@@ -7,57 +7,50 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, Brightness, Color, Config, Curve, Param, Range, Value,
-    APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Curve, Param, Range,
+    Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 4;
-enum Midi {
-    None,
-    Note,
-    CC,
-}
 
 // TODO: How to add param for midi-cc base number that it just works as a default?
-pub static CONFIG: Config<PARAMS> =
-    Config::new("Turing+", "Classic turing machine, with clock input")
-        .add_param(Param::i32 {
-            //I want to be able to choose between none, CC and note
-            name: "MIDI 0=off, 1=Note, 2=CC",
-            min: 0,
-            max: 2,
-        })
-        .add_param(Param::i32 {
-            //is it possible to have this apear only if CC or note are selected
-            name: "Midi channel",
-            min: 1,
-            max: 16,
-        })
-        .add_param(Param::i32 {
-            //is it possible to have this apear only if CC or note are selected
-            name: "CC number",
-            min: 1,
-            max: 128,
-        })
-        .add_param(Param::Color {
-            name: "Color",
-            variants: &[
-                Color::Yellow,
-                Color::Pink,
-                Color::Cyan,
-                Color::Red,
-                Color::White,
-            ],
-        });
-// .add_param(Param::i32 {
-//     //is it possible to have this apear only if CC
-//     name: "Scale",
-//     min: 0,
-//     max: 127,
-// });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "Turing+",
+    "Classic turing machine, with clock input",
+    Color::Orange,
+    AppIcon::SnareDrum,
+)
+.add_param(Param::i32 {
+    //I want to be able to choose between none, CC and note
+    name: "MIDI 0=off, 1=Note, 2=CC",
+    min: 0,
+    max: 2,
+})
+.add_param(Param::i32 {
+    //is it possible to have this apear only if CC or note are selected
+    name: "Midi channel",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    //is it possible to have this apear only if CC or note are selected
+    name: "CC number",
+    min: 1,
+    max: 128,
+})
+.add_param(Param::Color {
+    name: "Color",
+    variants: &[
+        Color::Yellow,
+        Color::Pink,
+        Color::Cyan,
+        Color::Red,
+        Color::White,
+    ],
+});
 
 pub struct Params {
     midi_mode: i32,

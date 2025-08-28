@@ -6,8 +6,8 @@ use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
-    constants::BJORKLUND_PATTERNS, ext::FromValue, latch::LatchLayer, Brightness, Color, Config,
-    Param, Value, APP_MAX_PARAMS,
+    constants::BJORKLUND_PATTERNS, ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color,
+    Config, Param, Value, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -20,37 +20,42 @@ pub const PARAMS: usize = 5;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Euclid", "Euclidean sequencer")
-    .add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI NOTE 1",
-        min: 1,
-        max: 128,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI NOTE 2",
-        min: 1,
-        max: 128,
-    })
-    .add_param(Param::i32 {
-        name: "GATE %",
-        min: 1,
-        max: 100,
-    })
-    .add_param(Param::Color {
-        name: "Color",
-        variants: &[
-            Color::Yellow,
-            Color::Pink,
-            Color::Blue,
-            Color::Red,
-            Color::White,
-        ],
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "Euclid",
+    "Euclidean sequencer",
+    Color::Cyan,
+    AppIcon::DotMatrix,
+)
+.add_param(Param::i32 {
+    name: "MIDI Channel",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    name: "MIDI NOTE 1",
+    min: 1,
+    max: 128,
+})
+.add_param(Param::i32 {
+    name: "MIDI NOTE 2",
+    min: 1,
+    max: 128,
+})
+.add_param(Param::i32 {
+    name: "GATE %",
+    min: 1,
+    max: 100,
+})
+.add_param(Param::Color {
+    name: "Color",
+    variants: &[
+        Color::Yellow,
+        Color::Pink,
+        Color::Blue,
+        Color::Red,
+        Color::White,
+    ],
+});
 
 pub struct Params {
     midi_channel: i32,

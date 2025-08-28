@@ -15,37 +15,44 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
-use libfp::{ext::FromValue, Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS};
+use libfp::{
+    ext::FromValue, AppIcon, Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
+};
 
 use crate::app::{
     App, AppParams, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, ParamStore,
-    SceneEvent, RGB8,
+    SceneEvent,
 };
 
 pub const CHANNELS: usize = 8;
 pub const PARAMS: usize = 4;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Sequencer", "4 x 16 step CV/gate sequencers")
-    .add_param(Param::i32 {
-        name: "MIDI Channel 1",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI Channel 2",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI Channel 3",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI Channel 4",
-        min: 1,
-        max: 16,
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "Sequencer",
+    "4 x 16 step CV/gate sequencers",
+    Color::Violet,
+    AppIcon::SnareDrum,
+)
+.add_param(Param::i32 {
+    name: "MIDI Channel 1",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    name: "MIDI Channel 2",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    name: "MIDI Channel 3",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    name: "MIDI Channel 4",
+    min: 1,
+    max: 16,
+});
 
 pub struct Params {
     midi_channel1: i32,
