@@ -23,8 +23,8 @@ use midly::{
 use libfp::ClockSrc;
 
 use crate::{
-    events::{InputEvent, CONFIG_CHANGE_WATCH, EVENT_PUBSUB},
-    tasks::clock::CLOCK_PUBSUB,
+    events::{InputEvent, EVENT_PUBSUB},
+    tasks::{clock::CLOCK_PUBSUB, global_config::GLOBAL_CONFIG_WATCH},
 };
 
 use super::clock::ClockEvent;
@@ -156,7 +156,7 @@ pub async fn start_midi_loops<'a>(
                     tx.write(msg).await.unwrap();
                     match LiveEvent::parse(msg) {
                         Ok(event) => {
-                            let cfg = CONFIG_CHANGE_WATCH.try_get().unwrap();
+                            let cfg = GLOBAL_CONFIG_WATCH.try_get().unwrap();
                             match event {
                                 LiveEvent::Realtime(msg) => match msg {
                                     SystemRealtime::TimingClock => {
@@ -202,7 +202,7 @@ pub async fn start_midi_loops<'a>(
         let event_publisher = EVENT_PUBSUB.publisher().unwrap();
         loop {
             if let Ok(bytes_read) = uart1_rx.read(&mut uart_rx_buffer).await {
-                let cfg = CONFIG_CHANGE_WATCH.try_get().unwrap();
+                let cfg = GLOBAL_CONFIG_WATCH.try_get().unwrap();
                 midi_stream.feed(
                     &uart_rx_buffer[..bytes_read],
                     |event: LiveEvent| match event {

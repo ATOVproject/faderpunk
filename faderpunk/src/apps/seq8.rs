@@ -18,7 +18,6 @@ use libfp::{
     constants::{
         ATOV_BLUE, ATOV_PURPLE, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MAX, LED_MID,
     },
-    quantizer::{Key, Note},
     Config, Param, Range, Value,
 };
 
@@ -112,15 +111,16 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 }
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
-    let buttons = app.use_buttons();
-    let faders = app.use_faders();
-    let mut clk = app.use_clock();
-    let led = app.use_leds();
-
+    let range = Range::_0_10V;
     let midi_chan1 = params.midi_channel1.get().await;
     let midi_chan2 = params.midi_channel2.get().await;
     let midi_chan3 = params.midi_channel3.get().await;
     let midi_chan4 = params.midi_channel4.get().await;
+
+    let buttons = app.use_buttons();
+    let faders = app.use_faders();
+    let mut clk = app.use_clock();
+    let led = app.use_leds();
 
     let midi = [
         app.use_midi_output(midi_chan1 as u8 - 1),
@@ -144,10 +144,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         app.make_gate_jack(7, 4095).await,
     ];
 
-    let mut quantizer = app.use_quantizer();
-
-    //Fix get this from global setting
-    quantizer.set_scale(Key::Major, Note::C, Note::C);
+    let mut quantizer = app.use_quantizer(range);
 
     let page_glob: Global<usize> = app.make_global(0);
     let led_flag_glob: Global<bool> = app.make_global(true);
@@ -583,13 +580,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             if gateseq[clkindex] {
                                 let seq = seq_glob.get().await;
 
-                                let out = ((quantizer.get_quantized_voltage(seq[clkindex] / 4))
-                                    * 410.) as u16;
+                                let out = quantizer.get_quantized_note(seq[clkindex] / 4).await;
 
-                                lastnote[n] = (out as u32 * 120 / 4095 + base_note as u32) as u8;
+                                lastnote[n] = (out.as_midi() as i32 + base_note) as u8;
                                 midi[n].send_note_on(lastnote[n], 4095).await;
                                 gatelength1 = gatelength_glob.get().await;
-                                cv_out[n].set_value(out);
+                                cv_out[n].set_value(out.as_counts(range));
                                 gate_out[n].set_high().await;
                             } else {
                                 gate_out[n].set_low().await;

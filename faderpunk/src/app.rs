@@ -1,3 +1,5 @@
+use core::cell::RefCell;
+
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::Timer;
@@ -7,9 +9,12 @@ use max11300::config::{
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
 
-use libfp::{ext::BrightnessExt, quantizer::Quantizer, utils::scale_bits_12_7, Range};
-
-const QUANTIZER_RANGER: usize = 9 * 12;
+use libfp::{
+    ext::BrightnessExt,
+    quantizer::{Pitch, QuantizerState},
+    utils::scale_bits_12_7,
+    Range,
+};
 
 use crate::{
     events::{EventPubSubChannel, EventPubSubSubscriber, InputEvent},
@@ -20,6 +25,7 @@ use crate::{
         max::{MaxCmd, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender as MidiChannelSender,
     },
+    QUANTIZER,
 };
 
 pub use crate::{
@@ -444,6 +450,27 @@ impl Die {
     }
 }
 
+pub struct Quantizer {
+    range: Range,
+    state: RefCell<QuantizerState>,
+}
+
+impl Quantizer {
+    pub fn new(range: Range) -> Self {
+        Self {
+            range,
+            state: RefCell::new(QuantizerState::default()),
+        }
+    }
+    /// Quantize a note
+    pub async fn get_quantized_note(&self, value: u16) -> Pitch {
+        let value = value.clamp(0, 4095);
+        let quantizer = QUANTIZER.get().lock().await;
+        let mut state = self.state.borrow_mut();
+        quantizer.get_quantized_note(&mut state, value, self.range)
+    }
+}
+
 #[derive(Debug)]
 pub enum AppError {
     DeserializeFailed,
@@ -560,8 +587,8 @@ impl<const N: usize> App<N> {
         Clock::new()
     }
 
-    pub fn use_quantizer(&self) -> Quantizer<QUANTIZER_RANGER> {
-        Quantizer::default()
+    pub fn use_quantizer(&self, range: Range) -> Quantizer {
+        Quantizer::new(range)
     }
 
     pub fn use_midi_input(&self, midi_channel: u8) -> MidiInput {

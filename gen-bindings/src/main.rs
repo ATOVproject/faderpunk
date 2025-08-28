@@ -21,7 +21,9 @@ fn main() {
             libfp::Curve,
             libfp::GlobalConfig,
             libfp::I2cMode,
+            libfp::Key,
             libfp::Layout,
+            libfp::Note,
             libfp::Param,
             libfp::Value,
             libfp::Waveform

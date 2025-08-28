@@ -26,15 +26,21 @@ use embassy_rp::{
     peripherals::{I2C0, I2C1, PIO0},
     pio,
 };
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::lazy_lock::LazyLock;
+use embassy_sync::mutex::Mutex;
 use fm24v10::{Address, Fm24v10};
+use libfp::quantizer::Quantizer;
 use libfp::I2cMode;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-use events::{CONFIG_CHANGE_WATCH, LAYOUT_CHANGE_WATCH};
-use layout::{LayoutManager, LAYOUT_MANAGER};
+use layout::{LayoutManager, LAYOUT_MANAGER, LAYOUT_WATCH};
 use storage::{load_calibration_data, load_global_config, load_layout};
-use tasks::{buttons::BUTTON_PRESSED, fram::MAX_DATA_LEN, max::MAX_CHANNEL, midi::MIDI_CHANNEL};
+use tasks::{
+    buttons::BUTTON_PRESSED, fram::MAX_DATA_LEN, global_config::GLOBAL_CONFIG_WATCH,
+    max::MAX_CHANNEL, midi::MIDI_CHANNEL,
+};
 
 // Program metadata for `picotool info`.
 // This isn't needed, but it's recomended to have these minimal entries.
@@ -68,10 +74,13 @@ static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 /// FRAM write buffer
 static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 
+pub static QUANTIZER: LazyLock<Mutex<CriticalSectionRawMutex, Quantizer>> =
+    LazyLock::new(|| Mutex::new(Quantizer::default()));
+
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
     let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
-    let mut receiver = LAYOUT_CHANGE_WATCH.receiver().unwrap();
+    let mut receiver = LAYOUT_WATCH.receiver().unwrap();
     loop {
         let layout = receiver.changed().await;
         lm.spawn_layout(layout).await;
@@ -170,6 +179,8 @@ async fn main(spawner: Spawner) {
 
     tasks::clock::start_clock(&spawner, aux_inputs).await;
 
+    tasks::global_config::start_global_config(&spawner).await;
+
     spawn_core1(
         p.CORE1,
         unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
@@ -182,8 +193,8 @@ async fn main(spawner: Spawner) {
     );
 
     // Initialize the device with the loaded config and layout
-    let config_sender = CONFIG_CHANGE_WATCH.sender();
-    let layout_sender = LAYOUT_CHANGE_WATCH.sender();
+    let config_sender = GLOBAL_CONFIG_WATCH.sender();
+    let layout_sender = LAYOUT_WATCH.sender();
 
     config_sender.send(global_config);
     layout_sender.send(layout);

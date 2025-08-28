@@ -14,7 +14,7 @@ use embassy_time::Ticker;
 
 use libfp::{utils::bpm_to_clock_duration, ClockSrc};
 
-use crate::{Spawner, CONFIG_CHANGE_WATCH};
+use crate::{Spawner, GLOBAL_CONFIG_WATCH};
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
 
@@ -55,7 +55,7 @@ pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
 // TODO:
 // This task is responsible for handling an external clock signal. It correctly waits for a configuration change if it's not the active clock. However, once active, it only waits for a hardware pin event (pin.wait_for_falling_edge().await). If a configuration change happens while it's waiting for the pin, this task will not notice until after the next clock tick arrives. The correct way to handle waiting for multiple different events is with the embassy_futures::select::select macro, which ensures the task wakes up for whichever event happens first.
 async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
-    let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
+    let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
     let mut current_config = config_receiver.get().await;
     let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
 
@@ -103,7 +103,7 @@ async fn run_clock(aux_inputs: AuxInputs) {
         Mutex::new(Ticker::every(bpm_to_clock_duration(120.0, PPQN)));
 
     let internal_fut = async {
-        let mut config_receiver = CONFIG_CHANGE_WATCH.receiver().unwrap();
+        let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
         let mut current_config = config_receiver.get().await;
         let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
 

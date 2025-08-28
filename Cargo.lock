@@ -975,6 +975,7 @@ dependencies = [
  "defmt 1.0.1",
  "embassy-time",
  "heapless 0.7.17",
+ "libm",
  "max11300",
  "midly",
  "postcard",
