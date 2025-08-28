@@ -1,11 +1,22 @@
 use embassy_executor::Spawner;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use embassy_sync::{
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    mutex::Mutex,
+    signal::Signal,
+    watch::Watch,
+};
 use embassy_time::Timer;
 use static_cell::StaticCell;
 
 use libfp::{Layout, GLOBAL_CHANNELS};
 
 use crate::apps::spawn_app_by_id;
+
+// Receiver: layout spawn loop
+const LAYOUT_WATCH_SUBSCRIBERS: usize = 1;
+
+pub static LAYOUT_WATCH: Watch<CriticalSectionRawMutex, Layout, LAYOUT_WATCH_SUBSCRIBERS> =
+    Watch::new_with(Layout::new());
 
 pub static LAYOUT_MANAGER: StaticCell<LayoutManager> = StaticCell::new();
 
