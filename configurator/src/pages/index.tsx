@@ -238,12 +238,28 @@ export default function IndexPage() {
               disabled={!selectedApps.length}
               type="button"
               variant="bordered"
-              onPress={() =>
-                setLayout(
+              onPress={async () => {
+                await setLayout(
                   usbDevice,
                   selectedApps.map((app) => Number(app.appId)),
-                )
-              }
+                );
+                let layout = await getLayout(usbDevice);
+
+                if (layout && layout.tag == "Layout") {
+                  const appsWithChannels = layout.value[0]
+                    .map((app_data, index) =>
+                      app_data
+                        ? { appId: app_data[0].toString(), startChannel: index }
+                        : null,
+                    )
+                    .filter((app) => app !== null) as {
+                    appId: string;
+                    startChannel: number;
+                  }[];
+
+                  setSelectedApps(appsWithChannels);
+                }
+              }}
             >
               Set layout
             </Button>
