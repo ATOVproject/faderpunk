@@ -15,7 +15,7 @@ use libfp::{
     ext::FromValue,
     latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, split_unsigned_value},
-    Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
+    AppIcon, Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 pub const CHANNELS: usize = 1;
@@ -23,17 +23,22 @@ pub const PARAMS: usize = 2;
 
 const LED_COLOR: Color = Color::Violet;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Random CC/CV", "Generate random values on clock")
-    .add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI CC",
-        min: 1,
-        max: 128,
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "Random CC/CV",
+    "Generate random values on clock",
+    Color::Green,
+    AppIcon::CircleCircle,
+)
+.add_param(Param::i32 {
+    name: "MIDI Channel",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    name: "MIDI CC",
+    min: 1,
+    max: 128,
+});
 
 pub struct Params {
     midi_channel: i32,

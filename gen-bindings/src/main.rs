@@ -15,6 +15,7 @@ fn main() {
         javascript::GenerationSettings::enable_all(),
         generate_bindings!(
             libfp::ClockConfig,
+            libfp::AppIcon,
             libfp::ClockSrc,
             libfp::Color,
             libfp::ConfigMsgIn,

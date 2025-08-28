@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     latch::LatchLayer,
     utils::{attenuate_bipolar, split_unsigned_value},
-    Brightness, Color, Curve, Value, APP_MAX_PARAMS,
+    AppIcon, Brightness, Color, Curve, Value, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +22,8 @@ use crate::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 0;
 
-pub static CONFIG: Config<PARAMS> = Config::new("LFO", "Wooooosh");
+pub static CONFIG: Config<PARAMS> =
+    Config::new("LFO", "Wooooosh", Color::Blue, AppIcon::Speaker);
 
 pub struct Params {}
 

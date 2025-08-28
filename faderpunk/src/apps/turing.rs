@@ -8,8 +8,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, utils::is_close, Brightness, Color, Config, Curve, Param,
-    Range, Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Curve, Param, Range,
+    Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -23,6 +23,8 @@ pub const PARAMS: usize = 4;
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing",
     "Classic turing machine, synched to internal clock",
+    Color::Blue,
+    AppIcon::DotMatrix,
 )
 .add_param(Param::Enum {
     name: "MIDI",

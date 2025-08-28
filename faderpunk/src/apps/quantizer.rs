@@ -1,33 +1,35 @@
-use defmt::info;
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
-    ext::FromValue,
-    latch::LatchLayer,
-    utils::{attenuate_bipolar, clickless, is_close, split_unsigned_value},
-    Brightness, Color, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, utils::split_unsigned_value, AppIcon, Brightness, Color,
+    APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
-use libfp::{Config, Curve, Param, Range, Value};
+use libfp::{Config, Param, Range, Value};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 1;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Quantizer", "Quantize CV passing through")
-    .add_param(Param::Color {
-        name: "Color",
-        variants: &[
-            Color::Yellow,
-            Color::Pink,
-            Color::Cyan,
-            Color::Red,
-            Color::White,
-        ],
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "Quantizer",
+    "Quantize CV passing through",
+    Color::Red,
+    AppIcon::Speaker,
+)
+.add_param(Param::Color {
+    name: "Color",
+    variants: &[
+        Color::Yellow,
+        Color::Pink,
+        Color::Cyan,
+        Color::Red,
+        Color::White,
+    ],
+});
 
 pub struct Params {
     color: Color,

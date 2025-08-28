@@ -3,8 +3,8 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
-    Brightness, Color, APP_MAX_PARAMS,
+    utils::{attenuate, attenuate_bipolar, split_unsigned_value},
+    AppIcon, Brightness, Color, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -17,28 +17,33 @@ pub const PARAMS: usize = 4;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
-pub static CONFIG: Config<PARAMS> = Config::new("CV2MIDI", "CV to MIDI cc")
-    .add_param(Param::Bool { name: "Bipolar" })
-    .add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI CC",
-        min: 1,
-        max: 128,
-    })
-    .add_param(Param::Color {
-        name: "Color",
-        variants: &[
-            Color::Yellow,
-            Color::Pink,
-            Color::Blue,
-            Color::Red,
-            Color::White,
-        ],
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "CV2MIDI",
+    "CV to MIDI cc",
+    Color::Yellow,
+    AppIcon::ArrowCircle,
+)
+.add_param(Param::Bool { name: "Bipolar" })
+.add_param(Param::i32 {
+    name: "MIDI Channel",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    name: "MIDI CC",
+    min: 1,
+    max: 128,
+})
+.add_param(Param::Color {
+    name: "Color",
+    variants: &[
+        Color::Yellow,
+        Color::Pink,
+        Color::Blue,
+        Color::Red,
+        Color::White,
+    ],
+});
 
 pub struct Params {
     bipolar: bool,

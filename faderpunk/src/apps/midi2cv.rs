@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{bits_7_16, clickless, is_close, scale_bits_7_12},
-    Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
+    utils::{bits_7_16, clickless, scale_bits_7_12},
+    AppIcon, Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -19,41 +19,46 @@ pub const PARAMS: usize = 6;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
-pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI to CV")
-    .add_param(Param::Enum {
-        name: "Mode",
-        variants: &["CC", "Pitch", "Gate", "Velocity", "AT", "Bend"],
-    })
-    .add_param(Param::Curve {
-        name: "Curve",
-        variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-    })
-    // .add_param(Param::Bool { name: "Bipolar" })
-    .add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI CC",
-        min: 1,
-        max: 128,
-    })
-    .add_param(Param::i32 {
-        name: "Bend Range",
-        min: 1,
-        max: 24,
-    })
-    .add_param(Param::Color {
-        name: "Color",
-        variants: &[
-            Color::Yellow,
-            Color::Pink,
-            Color::Cyan,
-            Color::Red,
-            Color::White,
-        ],
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "MIDI2CV",
+    "Multifunctional MIDI to CV",
+    Color::Green,
+    AppIcon::SignalBars,
+)
+.add_param(Param::Enum {
+    name: "Mode",
+    variants: &["CC", "Pitch", "Gate", "Velocity", "AT", "Bend"],
+})
+.add_param(Param::Curve {
+    name: "Curve",
+    variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+})
+// .add_param(Param::Bool { name: "Bipolar" })
+.add_param(Param::i32 {
+    name: "MIDI Channel",
+    min: 1,
+    max: 16,
+})
+.add_param(Param::i32 {
+    name: "MIDI CC",
+    min: 1,
+    max: 128,
+})
+.add_param(Param::i32 {
+    name: "Bend Range",
+    min: 1,
+    max: 24,
+})
+.add_param(Param::Color {
+    name: "Color",
+    variants: &[
+        Color::Yellow,
+        Color::Pink,
+        Color::Cyan,
+        Color::Red,
+        Color::White,
+    ],
+});
 
 pub struct Params {
     mode: usize,

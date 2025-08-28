@@ -5,8 +5,8 @@ use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, Brightness, Color, Config, Curve, Param, Range, Value,
-    APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Curve, Param, Range,
+    Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -14,12 +14,17 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 1;
 
-pub static CONFIG: Config<PARAMS> =
-    Config::new("AD Envelope", "variable curve AD, ASR or looping AD").add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    });
+pub static CONFIG: Config<PARAMS> = Config::new(
+    "AD Envelope",
+    "variable curve AD, ASR or looping AD",
+    Color::Blue,
+    AppIcon::Knob,
+)
+.add_param(Param::i32 {
+    name: "MIDI Channel",
+    min: 1,
+    max: 16,
+});
 
 pub struct Params {
     midi_channel: i32,

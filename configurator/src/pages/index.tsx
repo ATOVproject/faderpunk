@@ -12,7 +12,7 @@ import {
   TableCell,
 } from "@heroui/table";
 import { button as buttonStyles } from "@heroui/theme";
-import { ClockSrc, I2cMode, Param } from "@atov/fp-config";
+import { AppIcon, ClockSrc, Color, I2cMode, Param } from "@atov/fp-config";
 
 import { AppConfigDrawer } from "@/components/app-config-drawer";
 import { title } from "@/components/primitives";
@@ -32,6 +32,8 @@ export type ParsedApp = {
   name: string;
   description: string;
   paramCount: string;
+  color: Color;
+  icon: AppIcon;
   params: Param[];
 };
 
@@ -77,7 +79,9 @@ export default function IndexPage() {
               paramCount: app.value[2][0].toString(),
               name: app.value[2][1] as string,
               description: app.value[2][2] as string,
-              params: app.value[2][3],
+              color: app.value[2][3],
+              icon: app.value[2][4],
+              params: app.value[2][5],
             };
 
             parsedApps.set(appConfig.appId, appConfig);

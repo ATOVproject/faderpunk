@@ -46,7 +46,7 @@ pub const CALIBRATION_SCALE_FACTOR: i64 = 1 << 16;
 pub const CALIBRATION_VERSION_LATEST: u8 = 2;
 pub const CALIB_FILE_MAGIC: [u8; 4] = *b"FPBC";
 
-pub type ConfigMeta<'a> = (usize, &'a str, &'a str, &'a [Param]);
+pub type ConfigMeta<'a> = (usize, &'a str, &'a str, Color, AppIcon, &'a [Param]);
 
 /// The config layout is a layout with all the apps in the appropriate spots
 // (app_id, channels)
@@ -465,6 +465,21 @@ impl From<Brightness> for u8 {
     }
 }
 
+#[derive(Clone, Copy, Default, Serialize, Deserialize, PostcardBindings)]
+pub enum AppIcon {
+    #[default]
+    Knob,
+    SineWave,
+    Die,
+    SquareWave,
+    CircleCircle,
+    SnareDrum,
+    ArrowCircle,
+    DotMatrix,
+    Speaker,
+    SignalBars,
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Serialize, PostcardBindings)]
 pub enum Param {
@@ -601,13 +616,22 @@ pub struct Config<const N: usize> {
     name: &'static str,
     description: &'static str,
     params: [Param; N],
+    color: Color,
+    icon: AppIcon,
 }
 
 impl<const N: usize> Config<N> {
-    pub const fn new(name: &'static str, description: &'static str) -> Self {
+    pub const fn new(
+        name: &'static str,
+        description: &'static str,
+        color: Color,
+        icon: AppIcon,
+    ) -> Self {
         assert!(N <= APP_MAX_PARAMS, "Too many params");
         Config {
+            color,
             description,
+            icon,
             len: 0,
             name,
             params: [const { Param::None }; N],
@@ -618,7 +642,9 @@ impl<const N: usize> Config<N> {
         self.params[self.len] = param;
         let new_len = self.len + 1;
         Config {
+            color: self.color,
             description: self.description,
+            icon: self.icon,
             len: new_len,
             name: self.name,
             params: self.params,
@@ -626,7 +652,14 @@ impl<const N: usize> Config<N> {
     }
 
     pub fn get_meta(&self) -> ConfigMeta<'_> {
-        (N, self.name, self.description, &self.params)
+        (
+            N,
+            self.name,
+            self.description,
+            self.color,
+            self.icon,
+            &self.params,
+        )
     }
 }
 
