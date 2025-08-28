@@ -5,15 +5,19 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
+use libfp::constants::LED_MID;
 use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
+use portable_atomic::{AtomicU8, Ordering};
 use smart_leds::colors::BLACK;
-use smart_leds::{gamma, SmartLedsWriteAsync, RGB8};
+use smart_leds::{brightness, gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
 
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
 const NUM_LEDS: usize = 50;
 const LED_OVERLAY_CHANNEL_SIZE: usize = 16;
+
+pub static LED_BRIGHTNESS: AtomicU8 = AtomicU8::new(LED_MID);
 
 static LED_SIGNALS: [Signal<CriticalSectionRawMutex, LedMsg>; NUM_LEDS] =
     [const { Signal::new() }; NUM_LEDS];
@@ -161,7 +165,13 @@ impl LedProcessor {
                 }
             }
         }
-        self.ws.write(gamma(self.buffer.iter().cloned())).await.ok();
+        self.ws
+            .write(brightness(
+                gamma(self.buffer.iter().cloned()),
+                LED_BRIGHTNESS.load(Ordering::Relaxed),
+            ))
+            .await
+            .ok();
     }
 }
 

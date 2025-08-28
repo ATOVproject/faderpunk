@@ -48,7 +48,10 @@ pub async fn load_global_config() -> GlobalConfig {
             }
         }
     }
-    GlobalConfig::new()
+    // Fallback global config. We store it directly to start fresh
+    let global_config = GlobalConfig::new();
+    store_global_config(&global_config).await;
+    global_config
 }
 
 pub async fn store_layout(layout: &Layout) {
@@ -77,7 +80,10 @@ pub async fn load_layout() -> Layout {
             }
         }
     }
-    Layout::new()
+    // Fallback layout. We store it directly to start fresh
+    let layout = Layout::new();
+    store_layout(&layout).await;
+    layout
 }
 
 pub async fn store_calibration_data(data: &MaxCalibration) {

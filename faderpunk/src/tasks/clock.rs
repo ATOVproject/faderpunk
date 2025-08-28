@@ -1,4 +1,7 @@
-use embassy_futures::join::join5;
+use embassy_futures::{
+    join::join5,
+    select::{select, Either},
+};
 use embassy_rp::{
     gpio::{Input, Pull},
     peripherals::{PIN_1, PIN_2, PIN_3},
@@ -45,15 +48,13 @@ pub enum ClockEvent {
 
 #[derive(Clone, Copy)]
 pub enum ClockCmd {
-    SetBpm(f64),
+    SetBpm(f32),
 }
 
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(run_clock(aux_inputs)).unwrap();
 }
 
-// TODO:
-// This task is responsible for handling an external clock signal. It correctly waits for a configuration change if it's not the active clock. However, once active, it only waits for a hardware pin event (pin.wait_for_falling_edge().await). If a configuration change happens while it's waiting for the pin, this task will not notice until after the next clock tick arrives. The correct way to handle waiting for multiple different events is with the embassy_futures::select::select macro, which ensures the task wakes up for whichever event happens first.
 async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
     let mut current_config = config_receiver.get().await;
@@ -69,21 +70,23 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
             continue;
         }
 
-        // TODO: Config here changes only after a tick, we need to use select
-        pin.wait_for_falling_edge().await;
-        pin.wait_for_low().await;
+        match select(pin.wait_for_falling_edge(), config_receiver.changed()).await {
+            Either::First(()) => {
+                // Pin event happened.
+                pin.wait_for_low().await;
 
-        let clock_event = if current_config.reset_src == clock_src {
-            ClockEvent::Reset
-        } else {
-            ClockEvent::Tick
-        };
+                let clock_event = if current_config.reset_src == clock_src {
+                    ClockEvent::Reset
+                } else {
+                    ClockEvent::Tick
+                };
 
-        clock_publisher.publish(clock_event).await;
-
-        // Check if config has changed after waiting
-        if let Some(new_config) = config_receiver.try_get() {
-            current_config = new_config;
+                clock_publisher.publish(clock_event).await;
+            }
+            Either::Second(new_config) => {
+                // Config change happened.
+                current_config = new_config;
+            }
         }
     }
 }
