@@ -3,11 +3,10 @@ use embassy_futures::{join::join5, select::select};
 
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
-use smart_leds::{colors::RED, RGB};
+use smart_leds::colors::RED;
 
 use libfp::{
-    constants::{ATOV_RED, ATOV_YELLOW, LED_LOW, LED_MID},
-    quantizer::{Key, Note},
+    constants::{ATOV_RED, LED_LOW, LED_MID},
     utils::is_close,
     Color, Config, Param, Range, Value,
 };
@@ -112,19 +111,18 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 }
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
-    let mut clock = app.use_clock();
-    let mut quantizer = app.use_quantizer();
-
-    quantizer.set_scale(Key::PentatonicMinor, Note::C, Note::C);
-
-    let fader = app.use_faders();
-    let buttons = app.use_buttons();
-    let leds = app.use_leds();
-
+    let range = Range::_0_10V;
     let midi_chan = params.midi_channel.get().await;
     let gatel = params.gatel.get().await;
     let base_note = params.note.get().await;
     let span = params.span.get().await;
+
+    let mut clock = app.use_clock();
+    let quantizer = app.use_quantizer(range);
+
+    let fader = app.use_faders();
+    let buttons = app.use_buttons();
+    let leds = app.use_leds();
 
     let midi = app.use_midi_output(midi_chan as u8 - 1);
 
@@ -164,20 +162,20 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
         leds.set(0, Led::Top, led_color.into(), LED_BRIGHTNESS);
 
-        let out = ((quantizer.get_quantized_voltage(fadval)) * 410.) as u16;
+        let out = quantizer.get_quantized_note(fadval);
 
         info!(
             "bit : {}, voltage: {}, corrected out: {}",
             fadval,
-            quantizer.get_quantized_voltage(fadval),
-            out
+            out.as_v_oct(),
+            out.as_counts(range)
         );
 
-        jack.set_value(out);
-        let note = (out as u32 * 120 / 4095 + base_note as u32) as u16;
+        jack.set_value(out.as_counts(range));
+        let note = out.as_midi() as i32 + base_note;
         midi.send_note_on(note as u8, 4095).await;
         leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
-        note
+        note as u16
     };
 
     let fut1 = async {

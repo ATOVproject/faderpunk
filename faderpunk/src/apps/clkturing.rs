@@ -7,13 +7,12 @@ use serde::{Deserialize, Serialize};
 use smart_leds::colors::RED;
 
 use libfp::{
-    constants::{ATOV_BLUE, ATOV_RED, LED_HIGH, LED_MID},
-    quantizer::{Key, Note},
+    constants::{ATOV_RED, LED_HIGH, LED_MID},
     utils::is_close,
     Color, Config, Param, Range, Value,
 };
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8};
+use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 4;
@@ -121,17 +120,17 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 }
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
+    let range = Range::_0_10V;
+    let midi_mode = params.midi_mode.get().await;
+    let midi_cc = params.midi_cc.get().await;
+    let led_color = params.color.get().await;
+    let midi_chan = params.midi_channel.get().await;
+
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
     let die = app.use_die();
 
-    let midi_mode = params.midi_mode.get().await;
-    let midi_cc = params.midi_cc.get().await;
-
-    let led_color = params.color.get().await;
-
-    let midi_chan = params.midi_channel.get().await;
     let midi = app.use_midi_output(midi_chan as u8 - 1);
 
     // let mut prob_glob = app.make_global_with_store(0, StorageSlot::A);
@@ -145,18 +144,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let recall_flag = app.make_global(false);
     let midi_note = app.make_global(0);
 
-    let mut quantizer = app.use_quantizer();
-
-    //Fix get this from global setting
-    quantizer.set_scale(Key::Chromatic, Note::C, Note::C);
+    let mut quantizer = app.use_quantizer(range);
 
     let latched_glob = app.make_global(true);
 
     leds.set(0, Led::Button, led_color.into(), LED_MID);
     leds.set(1, Led::Button, led_color.into(), LED_MID);
 
-    let input = app.make_in_jack(0, Range::_0_10V).await;
-    let output = app.make_out_jack(1, Range::_0_10V).await;
+    let input = app.make_in_jack(0, range).await;
+    let output = app.make_out_jack(1, range).await;
 
     let base_note = 48;
 
@@ -190,15 +186,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 let register_scalled = scale_to_12bit(register, length as u8);
                 att_reg = (register_scalled as u32 * att_glob.get().await / 4095) as u16;
 
-                let out = ((quantizer.get_quantized_voltage(att_reg)) * 410.0) as u16;
+                let out = quantizer.get_quantized_note(att_reg);
                 // let out = att_reg;
 
-                output.set_value(out);
+                output.set_value(out.as_counts(range));
                 leds.set(0, Led::Top, led_color.into(), (register_scalled / 16) as u8);
                 leds.set(1, Led::Top, led_color.into(), (att_reg / 16) as u8);
                 // info!("{}", register_scalled);
                 if midi_mode == 1 {
-                    let note = (out as u32 * 120 / 4095 + base_note as u32) as u8;
+                    let note = out.as_midi();
                     midi.send_note_on(note, 4095).await;
 
                     midi_note.set(note).await;

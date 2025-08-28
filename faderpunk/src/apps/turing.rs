@@ -6,7 +6,6 @@ use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
     constants::{ATOV_RED, LED_HIGH, LED_MID},
-    quantizer::{Key, Note},
     utils::is_close,
     Color, Config, Param, Range, Value,
 };
@@ -119,21 +118,19 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 }
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
+    let range = Range::_0_10V;
+    let midi_mode = params.midi_mode.get().await;
+    let midi_cc = params.midi_cc.get().await;
+    let midi_chan = params.midi_channel.get().await;
+
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
     let die = app.use_die();
-    let mut quantizer = app.use_quantizer();
+    let quantizer = app.use_quantizer(range);
     let led_color = params.color.get().await;
 
-    //Fix get this from global setting
-    quantizer.set_scale(Key::Chromatic, Note::C, Note::C);
-
-    let midi_mode = params.midi_mode.get().await;
-    let midi_cc = params.midi_cc.get().await;
-
-    let midi_chan = params.midi_channel.get().await;
     let midi = app.use_midi_output(midi_chan as u8 - 1);
 
     // let mut prob_glob = app.make_global_with_store(0, StorageSlot::A);
@@ -195,7 +192,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         let register_scalled = scale_to_12bit(register, length as u8);
                         att_reg = (register_scalled as u32 * att_glob.get().await / 4095) as u16;
 
-                        let out = (quantizer.get_quantized_voltage(att_reg) * 410.0) as u16;
+                        let out = quantizer.get_quantized_note(att_reg);
                         // let out = att_reg;
 
                         // info!(
@@ -205,14 +202,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         //     out
                         // );
 
-                        jack.set_value(out);
+                        jack.set_value(out.as_counts(Range::_0_10V));
                         leds.set(0, Led::Top, led_color.into(), (register_scalled / 16) as u8);
                         // info!("{}", register_scalled);
                         if midi_mode == 1 {
-                            // let note = (out as u32 * 120 / 4095 + base_note as u32) as u16;
-
-                            let note = (out as u32 * 120 / 4095 + base_note as u32) as u8;
-                            midi.send_note_on(note as u8, 4095).await;
+                            let note = out.as_midi();
+                            midi.send_note_on(note, 4095).await;
 
                             midi_note.set(note).await;
                         }

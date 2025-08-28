@@ -7,7 +7,7 @@ use max11300::config::{
 use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
 
-use libfp::{ext::BrightnessExt, quantizer::Quantizer, utils::scale_bits_12_7, Range};
+use libfp::{ext::BrightnessExt, quantizer::Pitch, utils::scale_bits_12_7, Range};
 
 const QUANTIZER_RANGER: usize = 9 * 12;
 
@@ -20,6 +20,7 @@ use crate::{
         max::{MaxCmd, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::MidiSender as MidiChannelSender,
     },
+    QUANTIZER,
 };
 
 pub use crate::{
@@ -444,6 +445,22 @@ impl Die {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct Quantizer {
+    range: Range,
+}
+
+impl Quantizer {
+    pub fn new(range: Range) -> Self {
+        Self { range }
+    }
+    pub fn get_quantized_note(&self, value: u16) -> Pitch {
+        QUANTIZER
+            .get()
+            .lock(|q| q.get_quantized_note(value, self.range))
+    }
+}
+
 #[derive(Debug)]
 pub enum AppError {
     DeserializeFailed,
@@ -560,8 +577,8 @@ impl<const N: usize> App<N> {
         Clock::new()
     }
 
-    pub fn use_quantizer(&self) -> Quantizer<QUANTIZER_RANGER> {
-        Quantizer::default()
+    pub fn use_quantizer(&self, range: Range) -> Quantizer {
+        Quantizer::new(range)
     }
 
     pub fn use_midi_input(&self, midi_channel: u8) -> MidiInput {

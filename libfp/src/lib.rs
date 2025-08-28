@@ -165,11 +165,62 @@ pub enum I2cMode {
     Follower,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[repr(u8)]
+pub enum Note {
+    #[default]
+    C = 0,
+    CSharp = 1,
+    D = 2,
+    DSharp = 3,
+    E = 4,
+    F = 5,
+    FSharp = 6,
+    G = 7,
+    GSharp = 8,
+    A = 9,
+    ASharp = 10,
+    B = 11,
+}
+
+impl From<u8> for Note {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Note::C,
+            1 => Note::CSharp,
+            2 => Note::D,
+            3 => Note::DSharp,
+            4 => Note::E,
+            5 => Note::F,
+            6 => Note::FSharp,
+            7 => Note::G,
+            8 => Note::GSharp,
+            9 => Note::A,
+            10 => Note::ASharp,
+            11 => Note::B,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
+pub enum Key {
+    Chromatic = 0b111111111111,
+    Major = 0b101011010101,
+    Minor = 0b101101011010,
+    PentatonicMajor = 0b101010010100,
+    PentatonicMinor = 0b100101010010,
+    Purvi = 0b110010111001,
+    Todi = 0b110100111001,
+}
+
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]
 pub struct GlobalConfig {
     pub clock_src: ClockSrc,
     pub reset_src: ClockSrc,
     pub i2c_mode: I2cMode,
+    pub quantizer_key: Key,
+    pub quantizer_tonic: Note,
 }
 
 #[allow(clippy::new_without_default)]
@@ -179,6 +230,8 @@ impl GlobalConfig {
             clock_src: ClockSrc::Internal,
             reset_src: ClockSrc::None,
             i2c_mode: I2cMode::Follower,
+            quantizer_key: Key::PentatonicMajor,
+            quantizer_tonic: Note::C,
         }
     }
 }

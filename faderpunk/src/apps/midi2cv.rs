@@ -1,25 +1,15 @@
-use core::char::ToUppercase;
-
 use defmt::info;
-use embassy_futures::{
-    join::{join4, join5},
-    select::select,
-};
+use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_PURPLE, ATOV_RED, LED_MID},
-    utils::{
-        attenuate_bipolar, bits_7_16, clickless, is_close, scale_bits_7_12, split_unsigned_value,
-    },
+    constants::{ATOV_RED, LED_MID},
+    utils::{bits_7_16, clickless, is_close, scale_bits_7_12},
     Color, Range,
 };
-use midly::{MidiMessage, PitchBend};
+use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
-use libfp::{
-    quantizer::{self, Key, Note},
-    Config, Curve, Param, Value,
-};
+use libfp::{Config, Curve, Param, Value};
 
 use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8};
 
@@ -137,35 +127,34 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 }
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
-    let buttons = app.use_buttons();
-    let fader = app.use_faders();
-    let leds = app.use_leds();
-
+    let range = Range::_0_10V;
     let midi_chan = params.midi_channel.get().await;
     let midi_cc = params.midi_cc.get().await;
     let curve = params.curve.get().await;
-    let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
     let bend_range = params.bend_range.get().await;
-
     let color = params.color.get().await;
-    let led_color = color.into();
+    let mode = params.mode.get().await;
 
     // info!("{}", led_color);
 
+    let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
     let muted_glob = app.make_global(false);
     let att_glob = app.make_global(4095);
     let latched_glob = app.make_global(false);
     let offset_glob = app.make_global(0);
     let pitch_glob = app.make_global(0);
+    let buttons = app.use_buttons();
+    let fader = app.use_faders();
+    let leds = app.use_leds();
 
     let muted = storage.query(|s| s.muted).await;
     let att = storage.query(|s| s.att_saved).await;
     muted_glob.set(muted).await;
     att_glob.set(att).await;
 
-    let mut quantizer = app.use_quantizer();
+    let led_color = color.into();
 
-    let mode = params.mode.get().await;
+    let quantizer = app.use_quantizer(range);
 
     leds.set(
         0,
