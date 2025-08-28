@@ -18,6 +18,10 @@ export const setGlobalConfig = async (
       clock_src,
       reset_src,
       i2c_mode,
+      internal_bpm: 120,
+      quantizer_key: { tag: "PentatonicMajor" },
+      quantizer_tonic: { tag: "C" },
+      led_brightness: 150,
     },
   });
 };
