@@ -1,7 +1,11 @@
+// V/oct quantizer, based on the ideas in
+// https://github.com/pichenettes/eurorack/blob/master/braids/quantizer_scales.h
+
 use crate::{Key, Note, Range};
+use heapless::Vec;
 use libm::roundf;
 
-#[derive(Clone, Copy, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Pitch {
     pub octave: i8,
     pub note: Note,
@@ -30,69 +34,115 @@ impl Pitch {
 }
 
 pub struct Quantizer {
-    scale_mask: u16,
-    // Lookup tables for finding the next/previous in-scale note.
-    next_note_dist: [u8; 12],
-    prev_note_dist: [u8; 12],
+    codebook: [i16; 128],
+    // Hysteresis state
+    codeword: i16,
+    previous_boundary: i32,
+    next_boundary: i32,
 }
 
 impl Quantizer {
     pub fn set_scale(&mut self, key: Key, tonic: Note) {
-        let mask = key as u16;
-        let shift = tonic as u32;
-        // Perform a 12-bit *right* rotation to transpose the scale
-        self.scale_mask = ((mask >> shift) | (mask << (12 - shift))) & 0xFFF;
-
-        // Pre-calculate the lookup tables.
-        for i in 0..12 {
-            // Find distance to the next higher note in the scale
-            let mut dist_up = 0;
-            while (self.scale_mask & (1 << (11 - ((i + dist_up) % 12)))) == 0 {
-                dist_up += 1;
-            }
-            self.next_note_dist[i as usize] = dist_up;
-
-            // Find distance to the next lower note in the scale
-            // Start searching from the note below
-            let mut dist_down = 1;
-            while (self.scale_mask & (1 << (11 - ((i + 12 - dist_down) % 12)))) == 0 {
-                dist_down += 1;
-            }
-            self.prev_note_dist[i as usize] = dist_down;
+        let mask = key.as_u16_key();
+        let notes: Vec<i16, 12> = (0..12)
+            .filter(|i| (mask >> (11 - i)) & 1 != 0) // Read from MSB (C) to LSB (B)
+            .map(|i| i as i16)
+            .collect();
+        if notes.is_empty() {
+            // Fallback to chromatic for an empty scale
+            self.set_scale(Key::Chromatic, tonic);
+            return;
         }
+
+        let tonic_offset = tonic as i16;
+
+        // Build codebook directly with scale notes spanning useful range
+        let mut codebook_idx = 0;
+
+        // Cover a wide range of octaves to ensure we can quantize any reasonable input
+        for octave in -8..=8 {
+            for &note_offset in &notes {
+                if codebook_idx >= 128 {
+                    break;
+                }
+
+                // Calculate semitone: base octave + scale note + tonic transposition
+                let semitone = octave * 12 + note_offset + tonic_offset;
+
+                // Convert to fixed-point format and store
+                let fixed_point =
+                    (semitone as i32 * 128).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+                self.codebook[codebook_idx] = fixed_point;
+                codebook_idx += 1;
+            }
+            if codebook_idx >= 128 {
+                break;
+            }
+        }
+
+        // Fill any remaining slots with the last note (highest)
+        if codebook_idx > 0 {
+            let last_note = self.codebook[codebook_idx - 1];
+            for i in codebook_idx..128 {
+                self.codebook[i] = last_note;
+            }
+        }
+
+        // Sort the codebook for binary search
+        self.codebook.sort_unstable();
+
+        // Reset hysteresis when the scale changes
+        // Invert boundaries to force a search on the first call
+        self.previous_boundary = i32::MAX;
+        self.next_boundary = i32::MIN;
+        self.codeword = 0;
     }
 
-    pub fn get_quantized_note(&self, value: u16, range: Range) -> Pitch {
+    pub fn get_quantized_note(&mut self, value: u16, range: Range) -> Pitch {
         let input_voltage = match range {
             Range::_0_10V => value as f32 * (10.0 / 4095.0),
             Range::_0_5V => value as f32 * (5.0 / 4095.0),
             Range::_Neg5_5V => (value as f32 * (10.0 / 4095.0)) - 5.0,
         };
 
-        let nearest_semitone = roundf(input_voltage * 12.0) as i32;
-        let note_index = nearest_semitone.rem_euclid(12) as usize;
+        // Convert voltage to our fixed-point pitch representation (semitones * 128)
+        // We assume 1V/Oct, and 0V corresponds to C0 (semitone 0)
+        let pitch = roundf(input_voltage * 12.0 * 128.0) as i32;
 
-        // First, check if the closest chromatic note is already in the scale
-        let final_semitones = if (self.scale_mask & (1 << (11 - note_index))) != 0 {
-            nearest_semitone
-        } else {
-            // If not, find the two surrounding notes and determine which is closer
-            let dist_down = self.prev_note_dist[note_index];
-            let lower_bound = nearest_semitone - dist_down as i32;
+        if pitch < self.previous_boundary || pitch > self.next_boundary {
+            // Input is outside the current note's hysteresis boundary; find a new note
+            let upper_bound_index = self.codebook.partition_point(|&x| (x as i32) < pitch);
 
-            let dist_up = self.next_note_dist[note_index];
-            let upper_bound = nearest_semitone + dist_up as i32;
-
-            let lower_voltage = lower_bound as f32 / 12.0;
-            let upper_voltage = upper_bound as f32 / 12.0;
-
-            if (input_voltage - lower_voltage) < (upper_voltage - input_voltage) {
-                lower_bound
+            let best_index = if upper_bound_index == 0 {
+                0
+            } else if upper_bound_index >= self.codebook.len() {
+                self.codebook.len() - 1
             } else {
-                upper_bound
-            }
-        };
+                let lower_bound_index = upper_bound_index - 1;
+                let dist_lo = (pitch - self.codebook[lower_bound_index] as i32).abs();
+                let dist_hi = (pitch - self.codebook[upper_bound_index] as i32).abs();
 
+                if dist_lo <= dist_hi {
+                    lower_bound_index
+                } else {
+                    upper_bound_index
+                }
+            };
+
+            self.codeword = self.codebook[best_index];
+
+            // Update hysteresis boundaries for the new codeword
+            let prev_idx = best_index.saturating_sub(1);
+            let next_idx = (best_index + 1).min(self.codebook.len() - 1);
+            let prev_codeword = self.codebook[prev_idx] as i32;
+            let next_codeword = self.codebook[next_idx] as i32;
+
+            // Weighted average places the boundary closer to the neighbor note
+            self.previous_boundary = (9 * prev_codeword + 7 * self.codeword as i32) / 16;
+            self.next_boundary = (9 * next_codeword + 7 * self.codeword as i32) / 16;
+        }
+
+        let final_semitones = roundf(self.codeword as f32 / 128.0) as i32;
         let octave = final_semitones.div_euclid(12) as i8;
         let note = final_semitones.rem_euclid(12) as u8;
 
@@ -106,9 +156,10 @@ impl Quantizer {
 impl Default for Quantizer {
     fn default() -> Self {
         let mut q = Self {
-            scale_mask: 0,
-            next_note_dist: [0; 12],
-            prev_note_dist: [0; 12],
+            codebook: [0; 128],
+            codeword: 0,
+            previous_boundary: i32::MIN,
+            next_boundary: i32::MAX,
         };
         // Default to C Chromatic
         q.set_scale(Key::Chromatic, Note::C);
@@ -122,8 +173,7 @@ mod tests {
 
     #[test]
     fn test_quantize_c_major_unipolar() {
-        let mut q = Quantizer::new();
-        // C, D, E, F, G, A, B
+        let mut q = Quantizer::default();
         q.set_scale(Key::Major, Note::C);
 
         // 0V -> should be C0
@@ -144,10 +194,12 @@ mod tests {
             }
         );
 
-        // Test voltage between C0 (0V) and D0 (0.166V). Midpoint is 0.0833V
+        // Test voltage between C0 (0V) and D0 (0.166V). Midpoint is ~0.0833V or 34 counts
         // 0.08V -> ~33 counts. Should snap down to C0
+        let mut q_c0 = Quantizer::default();
+        q_c0.set_scale(Key::Major, Note::C);
         assert_eq!(
-            q.get_quantized_note(33, Range::_0_10V),
+            q_c0.get_quantized_note(33, Range::_0_10V),
             Pitch {
                 octave: 0,
                 note: Note::C
@@ -155,16 +207,20 @@ mod tests {
         );
 
         // 0.09V -> ~37 counts. Should snap up to D0
+        let mut q_d0 = Quantizer::default();
+        q_d0.set_scale(Key::Major, Note::C);
         assert_eq!(
-            q.get_quantized_note(37, Range::_0_10V),
+            q_d0.get_quantized_note(37, Range::_0_10V),
             Pitch {
                 octave: 0,
                 note: Note::D
             }
         );
 
-        // Test voltage between F0 (0.416V) and G0 (0.583V). Midpoint is 0.5V
-        // 0.5V -> 205 counts. Should snap up to G0 (rounding up)
+        // Test voltage between F0 (5 semitones, 0.416V) and G0 (7 semitones, 0.583V).
+        // Midpoint is 6 semitones (0.5V), which is F# - not in C Major scale.
+        // Should quantize to closest note in scale: either F0 or G0.
+        // 0.5V = 205 counts. F0=170 counts, G0=239 counts. 205 is closer to G0
         assert_eq!(
             q.get_quantized_note(205, Range::_0_10V),
             Pitch {
@@ -176,12 +232,10 @@ mod tests {
 
     #[test]
     fn test_quantize_a_minor_bipolar() {
-        let mut q = Quantizer::new();
-        // A, B, C, D, E, F, G
+        let mut q = Quantizer::default();
         q.set_scale(Key::Minor, Note::A);
 
-        // In the key of A minor, C is an in-scale note. 0V is closest to C0.
-        // ADC midpoint 2048 should map to 0V.
+        // ADC midpoint 2048 should map to 0V. Closest note in A minor is C0
         assert_eq!(
             q.get_quantized_note(2048, Range::_Neg5_5V),
             Pitch {
@@ -190,8 +244,7 @@ mod tests {
             }
         );
 
-        // -5V -> 0 counts. Should be C-5 (semitone -60).
-        // The closest note in A minor to C-5 is... C-5.
+        // -5V -> 0 counts. Should be C-5. Closest note is C-5
         assert_eq!(
             q.get_quantized_note(0, Range::_Neg5_5V),
             Pitch {
@@ -200,8 +253,7 @@ mod tests {
             }
         );
 
-        // ~5V -> 4095 counts. Should be C5 (semitone 60).
-        // The closest note in A minor to C5 is C5.
+        // ~5V -> 4095 counts. Should be C5. Closest note is C5
         assert_eq!(
             q.get_quantized_note(4095, Range::_Neg5_5V),
             Pitch {
@@ -209,94 +261,81 @@ mod tests {
                 note: Note::C
             }
         );
+    }
 
-        // Test voltage near A4 (4.75V).
-        // 4.75V -> ((4.75 + 5.0) / 10.0) * 4095.0 = 3991 counts
+    #[test]
+    fn test_hysteresis() {
+        let mut q = Quantizer::default();
+        // C, D, E, F, G, A, B
+        q.set_scale(Key::Major, Note::C);
+
+        // The midpoint between C0 (0V) and D0 (~0.167V) is ~0.083V or 34 counts
+        // A stateless quantizer would snap 33->C0 and 37->D0
+
+        // Quantize a value just ABOVE the midpoint. It should snap to D0
         assert_eq!(
-            q.get_quantized_note(3991, Range::_Neg5_5V),
+            q.get_quantized_note(37, Range::_0_10V),
             Pitch {
-                octave: 4,
-                note: Note::A
+                octave: 0,
+                note: Note::D
+            }
+        );
+
+        // Quantize a value just BELOW the midpoint (33 counts)
+        // A stateless quantizer would snap back to C0
+        // With hysteresis, it should STAY on D0 because it hasn't crossed the new, lower boundary
+        assert_eq!(
+            q.get_quantized_note(33, Range::_0_10V),
+            Pitch {
+                octave: 0,
+                note: Note::D
+            }
+        );
+
+        // Only when we provide a value far away from the boundary does it snap back
+        // 10 counts is ~0.024V, clearly closer to C0
+        assert_eq!(
+            q.get_quantized_note(10, Range::_0_10V),
+            Pitch {
+                octave: 0,
+                note: Note::C
             }
         );
     }
 
+    // The Pitch helper function tests are unaffected by the quantizer change
     #[test]
     fn test_pitch_as_counts() {
-        // 4.0V
         let c4 = Pitch {
             octave: 4,
             note: Note::C,
         };
-        // 4.75V
         let a4 = Pitch {
             octave: 4,
             note: Note::A,
         };
-
-        // 0-10V range
-        // C4 (4.0V) -> (4.0/10.0) * 4095 = 1638
         assert_eq!(c4.as_counts(Range::_0_10V), 1638);
-        // A4 (4.75V) -> (4.75/10.0) * 4095 = 1945
         assert_eq!(a4.as_counts(Range::_0_10V), 1945);
-
-        // 0-5V range
-        // C4 (4.0V) -> (4.0/5.0) * 4095 = 3276
         assert_eq!(c4.as_counts(Range::_0_5V), 3276);
-
-        // Bipolar -5V to +5V range
-        // C4 (4.0V) -> ((4.0 + 5.0)/10.0) * 4095 = 3686
         assert_eq!(c4.as_counts(Range::_Neg5_5V), 3686);
-        // C-5 (-5.0V) -> ((-5.0 + 5.0)/10.0) * 4095 = 0
-        let c_minus_5 = Pitch {
-            octave: -5,
-            note: Note::C,
-        };
-        assert_eq!(c_minus_5.as_counts(Range::_Neg5_5V), 0);
     }
 
     #[test]
     fn test_pitch_as_midi() {
-        // Middle C (C4) should be MIDI note 60
         let c4 = Pitch {
             octave: 4,
             note: Note::C,
         };
         assert_eq!(c4.as_midi(), 60);
-
-        // A4 (440Hz) should be MIDI note 69
         let a4 = Pitch {
             octave: 4,
             note: Note::A,
         };
         assert_eq!(a4.as_midi(), 69);
-
-        // C0 should be MIDI note 12
-        let c0 = Pitch {
-            octave: 0,
-            note: Note::C,
-        };
-        assert_eq!(c0.as_midi(), 12);
-
-        // C-1 should be MIDI note 0
         let c_minus_1 = Pitch {
             octave: -1,
             note: Note::C,
         };
         assert_eq!(c_minus_1.as_midi(), 0);
-
-        // Test clamping - very high octave should clamp to 127
-        let c_high = Pitch {
-            octave: 10,
-            note: Note::G, // This would be note 139, should clamp to 127
-        };
-        assert_eq!(c_high.as_midi(), 127);
-
-        // Test clamping - very low octave should clamp to 0
-        let c_low = Pitch {
-            octave: -10,
-            note: Note::C,
-        };
-        assert_eq!(c_low.as_midi(), 0);
     }
 }

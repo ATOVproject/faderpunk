@@ -455,9 +455,12 @@ impl Quantizer {
         Self { range }
     }
     pub fn get_quantized_note(&self, value: u16) -> Pitch {
-        QUANTIZER
-            .get()
-            .lock(|q| q.get_quantized_note(value, self.range))
+        // SAFETY: Not called re-entrantly
+        unsafe {
+            QUANTIZER
+                .get()
+                .lock_mut(|q| q.get_quantized_note(value, self.range))
+        }
     }
 }
 

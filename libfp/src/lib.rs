@@ -165,7 +165,7 @@ pub enum I2cMode {
     Follower,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
 #[repr(u8)]
 pub enum Note {
     #[default]
@@ -181,6 +181,14 @@ pub enum Note {
     A = 9,
     ASharp = 10,
     B = 11,
+}
+
+impl Note {
+    pub fn new_from_u12(value: u16) -> Self {
+        let value = value.clamp(0, 4095);
+        // SAFETY: calculated value is guaranteed to be between 0 and 15
+        unsafe { core::mem::transmute((value / 342) as u8) }
+    }
 }
 
 impl From<u8> for Note {
@@ -204,15 +212,55 @@ impl From<u8> for Note {
 }
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
-#[repr(u16)]
+#[repr(u8)]
 pub enum Key {
-    Chromatic = 0b111111111111,
-    Major = 0b101011010101,
-    Minor = 0b101101011010,
-    PentatonicMajor = 0b101010010100,
-    PentatonicMinor = 0b100101010010,
-    Purvi = 0b110010111001,
-    Todi = 0b110100111001,
+    Chromatic,
+    Major,
+    Minor,
+    PentatonicMajor,
+    PentatonicMinor,
+    Purvi,
+    Todi,
+    Dorian,
+    Phrygian,
+    Lydian,
+    Mixolydian,
+    Locrian,
+    HarmonicMinor,
+    MelodicMinor,
+    WholeTone,
+    Hirajoshi,
+}
+
+impl Key {
+    /// Create a new Key from 0-4095
+    pub fn new_from_u12(value: u16) -> Self {
+        let value = value.clamp(0, 4095);
+        // SAFETY: calculated value is guaranteed to be between 0 and 15
+        unsafe { core::mem::transmute((value / 256) as u8) }
+    }
+
+    /// Get the u16 bitmask
+    pub fn as_u16_key(&self) -> u16 {
+        match self {
+            Key::Chromatic => 0b111111111111,
+            Key::Major => 0b101011010101,
+            Key::Minor => 0b101101011010,
+            Key::PentatonicMajor => 0b101010010100,
+            Key::PentatonicMinor => 0b100101010010,
+            Key::Purvi => 0b110010111001,
+            Key::Todi => 0b110100111001,
+            Key::Dorian => 0b101101010110,
+            Key::Phrygian => 0b110101011010,
+            Key::Lydian => 0b101010110101,
+            Key::Mixolydian => 0b101011010110,
+            Key::Locrian => 0b110101101100,
+            Key::HarmonicMinor => 0b101101011001,
+            Key::MelodicMinor => 0b101101010101,
+            Key::WholeTone => 0b101010101010,
+            Key::Hirajoshi => 0b101100011000,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]
