@@ -7,7 +7,7 @@ use embassy_rp::Peri;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use libfp::types::RegressionValuesOutput;
-use libfp::{GlobalConfig, I2cMode, I2C_ADDRESS, I2C_ADDRESS_CALIBRATION};
+use libfp::{I2cMode, I2C_ADDRESS, I2C_ADDRESS_CALIBRATION};
 use max11300::config::{ConfigMode5, Mode};
 use portable_atomic::Ordering;
 
@@ -16,9 +16,9 @@ use libfp::i2c_proto::{
 };
 use postcard::{from_bytes, to_slice};
 
-use crate::storage::store_calibration_data;
 use crate::tasks::calibration::{run_calibration, CALIBRATION_PORT};
-use crate::tasks::max::{MaxCalibration, MaxCmd, MAX_CHANNEL};
+use crate::tasks::global_config::{self, get_global_config};
+use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
 use crate::Irqs;
 
 use super::max::MAX_VALUES_DAC;
@@ -40,8 +40,8 @@ pub async fn start_i2c(
     i2c0: Peri<'static, I2C0>,
     scl: Peri<'static, PIN_21>,
     sda: Peri<'static, PIN_20>,
-    global_config: &GlobalConfig,
 ) {
+    let global_config = get_global_config();
     match global_config.i2c_mode {
         I2cMode::Calibration => {
             let msg_receiver = I2C_CHANNEL.receiver();

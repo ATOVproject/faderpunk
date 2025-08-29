@@ -12,6 +12,8 @@ use smart_leds::colors::BLACK;
 use smart_leds::{brightness, gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
 
+use crate::tasks::global_config::{self, get_global_config};
+
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
 const NUM_LEDS: usize = 50;
@@ -50,6 +52,7 @@ pub enum LedMode {
     Static(RGB8),
     FadeOut(RGB8),
     Flash(RGB8, Option<usize>),
+    StaticFade(RGB8, u16),
 }
 
 impl LedMode {
@@ -61,6 +64,11 @@ impl LedMode {
                 color,
                 times,
                 step: 0,
+            },
+            LedMode::StaticFade(color, delay_ms) => LedEffect::StaticFade {
+                color,
+                delay_ms,
+                elapsed_frames: 0,
             },
         }
     }
@@ -80,6 +88,11 @@ enum LedEffect {
         color: RGB8,
         times: Option<usize>,
         step: u8,
+    },
+    StaticFade {
+        color: RGB8,
+        delay_ms: u16,
+        elapsed_frames: u64,
     },
 }
 
@@ -128,6 +141,29 @@ impl LedEffect {
                 }
 
                 result
+            }
+            LedEffect::StaticFade {
+                color,
+                delay_ms,
+                elapsed_frames,
+            } => {
+                // Calculate elapsed time in milliseconds based on frames
+                let elapsed_ms = *elapsed_frames * T;
+
+                if elapsed_ms >= *delay_ms as u64 {
+                    let color = *color;
+                    // Time has elapsed, transition to fade out
+                    *self = LedEffect::FadeOut {
+                        from: color,
+                        step: 0,
+                    };
+                    // Return the color one more time before starting fade
+                    color
+                } else {
+                    // Still in static phase
+                    *elapsed_frames += 1;
+                    *color
+                }
             }
         }
     }
@@ -231,13 +267,17 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
                     LedMsg::Set(mode) => {
                         leds.base_layer[i] = mode.into_effect();
                     }
-                    LedMsg::Reset => {
-                        if let LedEffect::Static { color } = leds.base_layer[i] {
+                    LedMsg::Reset => match leds.base_layer[i] {
+                        LedEffect::Static { color } => {
                             leds.base_layer[i] = LedMode::FadeOut(color).into_effect();
-                        } else {
+                        }
+                        LedEffect::StaticFade { color, .. } => {
+                            leds.base_layer[i] = LedMode::FadeOut(color).into_effect();
+                        }
+                        _ => {
                             leds.base_layer[i] = LedEffect::Off;
                         }
-                    }
+                    },
                 }
             }
         }

@@ -48,10 +48,7 @@ pub async fn load_global_config() -> GlobalConfig {
             }
         }
     }
-    // Fallback global config. We store it directly to start fresh
-    let global_config = GlobalConfig::new();
-    store_global_config(&global_config).await;
-    global_config
+    GlobalConfig::new()
 }
 
 pub async fn store_layout(layout: &Layout) {

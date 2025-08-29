@@ -1,5 +1,5 @@
 use embassy_futures::{
-    join::join5,
+    join::join4,
     select::{select, Either},
 };
 use embassy_rp::{
@@ -8,16 +8,14 @@ use embassy_rp::{
     Peri,
 };
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
-    channel::Channel,
-    mutex::Mutex,
+    blocking_mutex::raw::CriticalSectionRawMutex,
     pubsub::{PubSubChannel, Subscriber},
 };
 use embassy_time::Ticker;
 
 use libfp::{utils::bpm_to_clock_duration, ClockSrc};
 
-use crate::{Spawner, GLOBAL_CONFIG_WATCH};
+use crate::{tasks::global_config::get_global_config, Spawner, GLOBAL_CONFIG_WATCH};
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
 
@@ -30,7 +28,6 @@ type AuxInputs = (
 pub type ClockSubscriber =
     Subscriber<'static, CriticalSectionRawMutex, ClockEvent, CLOCK_PUBSUB_SIZE, 16, 5>;
 
-pub static CLOCK_CMD_CHANNEL: Channel<ThreadModeRawMutex, ClockCmd, 4> = Channel::new();
 pub static CLOCK_PUBSUB: PubSubChannel<
     CriticalSectionRawMutex,
     ClockEvent,
@@ -44,11 +41,6 @@ pub enum ClockEvent {
     Tick,
     Start,
     Reset,
-}
-
-#[derive(Clone, Copy)]
-pub enum ClockCmd {
-    SetBpm(f32),
 }
 
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
@@ -91,44 +83,47 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     }
 }
 
-// TODO: read config from eeprom and pass in config object
 #[embassy_executor::task]
 async fn run_clock(aux_inputs: AuxInputs) {
     let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
     let atom = Input::new(atom_pin, Pull::Up);
     let meteor = Input::new(meteor_pin, Pull::Up);
     let cube = Input::new(hexagon_pin, Pull::Up);
-    // TODO: Get PPQN from config somehow (and keep updated)
-    const PPQN: u8 = 24;
-
-    // TODO: get ms AND ppqn from eeprom (or config somehow??!)
-    let internal_clock: Mutex<NoopRawMutex, Ticker> =
-        Mutex::new(Ticker::every(bpm_to_clock_duration(120.0, PPQN)));
 
     let internal_fut = async {
         let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
-        let mut current_config = config_receiver.get().await;
         let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
+
+        let mut config = get_global_config();
+        // TODO: Get PPQN from config
+        const PPQN: u8 = 24;
+        let mut ticker = Ticker::every(bpm_to_clock_duration(config.internal_bpm, PPQN));
 
         loop {
             // TODO: How to handle internal reset?
-            let should_be_active = current_config.clock_src == ClockSrc::Internal;
+            let should_be_active = config.clock_src == ClockSrc::Internal;
 
-            if !should_be_active {
-                current_config = config_receiver.changed().await;
-                // Re-check active condition with new config
-                continue;
-            }
+            // This future only resolves on a tick when the internal clock is active.
+            // Otherwise, it pends forever, preventing ticks from being generated.
+            let tick_fut = async {
+                if should_be_active {
+                    ticker.next().await;
+                } else {
+                    core::future::pending::<()>().await;
+                }
+            };
 
-            // TODO: Config here changes only after a tick, we need to use select
-            let mut clock = internal_clock.lock().await;
-            clock.next().await;
-
-            clock_publisher.publish(ClockEvent::Tick).await;
-
-            // Check if config has changed after waiting
-            if let Some(new_config) = config_receiver.try_get() {
-                current_config = new_config;
+            match select(tick_fut, config_receiver.changed()).await {
+                Either::First(_) => {
+                    clock_publisher.publish(ClockEvent::Tick).await;
+                }
+                Either::Second(new_config) => {
+                    config = new_config;
+                    // Adjust ticker if oly the bpm changed
+                    if let ClockSrc::Internal = config.clock_src {
+                        ticker = Ticker::every(bpm_to_clock_duration(config.internal_bpm, PPQN));
+                    }
+                }
             }
         }
     };
@@ -137,13 +132,5 @@ async fn run_clock(aux_inputs: AuxInputs) {
     let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor);
     let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube);
 
-    let msg_fut = async {
-        loop {
-            let ClockCmd::SetBpm(bpm) = CLOCK_CMD_CHANNEL.receive().await;
-            let mut clock = internal_clock.lock().await;
-            *clock = Ticker::every(bpm_to_clock_duration(bpm, PPQN));
-        }
-    };
-
-    join5(internal_fut, atom_fut, meteor_fut, cube_fut, msg_fut).await;
+    join4(internal_fut, atom_fut, meteor_fut, cube_fut).await;
 }

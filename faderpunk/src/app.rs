@@ -19,7 +19,7 @@ use libfp::{
 use crate::{
     events::{EventPubSubChannel, EventPubSubSubscriber, InputEvent},
     tasks::{
-        buttons::BUTTON_PRESSED,
+        buttons::{is_channel_button_pressed, is_shift_button_pressed},
         clock::{ClockSubscriber, CLOCK_PUBSUB},
         leds::{set_led_mode, LedMode, LedMsg},
         max::{MaxCmd, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
@@ -205,11 +205,11 @@ impl<const N: usize> Buttons<N> {
 
     pub fn is_button_pressed(&self, chan: usize) -> bool {
         let chan = chan.clamp(0, N - 1);
-        BUTTON_PRESSED[self.start_channel + chan].load(Ordering::Relaxed)
+        is_channel_button_pressed(self.start_channel + chan)
     }
 
     pub fn is_shift_pressed(&self) -> bool {
-        BUTTON_PRESSED[17].load(Ordering::Relaxed)
+        is_shift_button_pressed()
     }
 }
 

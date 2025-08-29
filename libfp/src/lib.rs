@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub mod constants;
 pub mod ext;
 pub mod i2c_proto;
+pub mod latch;
 pub mod quantizer;
 pub mod types;
 pub mod utils;
@@ -184,14 +185,6 @@ pub enum Note {
     B = 11,
 }
 
-impl Note {
-    pub fn new_from_u12(value: u16) -> Self {
-        let value = value.clamp(0, 4095);
-        // SAFETY: calculated value is guaranteed to be between 0 and 15
-        unsafe { core::mem::transmute((value / 342) as u8) }
-    }
-}
-
 impl From<u8> for Note {
     fn from(value: u8) -> Self {
         match value {
@@ -213,6 +206,7 @@ impl From<u8> for Note {
 }
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[repr(u8)]
 pub enum Key {
     Chromatic,
     Major,
@@ -233,13 +227,6 @@ pub enum Key {
 }
 
 impl Key {
-    /// Create a new Key from 0-4095
-    pub fn new_from_u12(value: u16) -> Self {
-        let value = value.clamp(0, 4095);
-        // SAFETY: calculated value is guaranteed to be between 0 and 15
-        unsafe { core::mem::transmute((value / 256) as u8) }
-    }
-
     /// Get the u16 bitmask
     pub fn as_u16_key(&self) -> u16 {
         match self {

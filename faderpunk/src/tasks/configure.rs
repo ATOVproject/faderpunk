@@ -13,8 +13,8 @@ use libfp::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS};
 
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
 use crate::layout::LAYOUT_WATCH;
-use crate::storage::{store_global_config, store_layout};
-use crate::tasks::global_config::GLOBAL_CONFIG_WATCH;
+use crate::storage::store_layout;
+use crate::tasks::global_config::{get_global_config, GLOBAL_CONFIG_WATCH};
 
 use super::transport::{WebEndpoints, USB_MAX_PACKET_SIZE};
 
@@ -89,9 +89,9 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 proto.send_msg(ConfigMsgOut::Layout(layout)).await.unwrap();
             }
             ConfigMsgIn::GetGlobalConfig => {
-                let global_config = GLOBAL_CONFIG_WATCH.try_get().unwrap();
+                let config = get_global_config();
                 proto
-                    .send_msg(ConfigMsgOut::GlobalConfig(global_config))
+                    .send_msg(ConfigMsgOut::GlobalConfig(config))
                     .await
                     .unwrap();
             }
@@ -114,8 +114,6 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 // TODO: This should answer to refresh UI
             }
             ConfigMsgIn::SetGlobalConfig(global_config) => {
-                // TODO: Should we really do this here??
-                store_global_config(&global_config).await;
                 let sender = GLOBAL_CONFIG_WATCH.sender();
                 sender.send(global_config);
             }
