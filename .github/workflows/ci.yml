@@ -14,7 +14,7 @@ permissions:
   contents: read
 jobs:
   lint:
-    name: Formatting and Linting
+    name: Formatting, linting, tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -23,10 +23,17 @@ jobs:
           toolchain: stable
           components: rustfmt
           targets: thumbv8m.main-none-eabihf
-      - run: cargo fmt -- --check
-      # TODO: enable later
-      # - run: cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf -- -D warnings
-      - run: cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf
+      - name: Run formatting check
+        run: cargo fmt -- --check
+      - name: Run clippy
+        # TODO: enable later
+        # cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf -- -D warnings
+        # cargo clippy -p libfp -- -D warnings
+        run: |
+          cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf
+          cargo clippy -p libfp
+      - name: Run tests on libfp
+        run: cargo test --lib -p libfp
   check-configurator:
     name: Generate bindings and build configurator
     runs-on: ubuntu-latest
