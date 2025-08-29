@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     constants::LED_MID,
-    quantizer::{Key, Note},
     utils::{attenuverter, clickless, is_close, split_unsigned_value},
     Color, Config, Param, Range, Value,
 };
@@ -74,16 +73,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let mut quantizer = app.use_quantizer();
-
-    quantizer.set_scale(Key::Chromatic, Note::C, Note::C);
 
     let led_color = params.color.get().await;
 
     leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
     leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-    let _input = app.make_in_jack(0, Range::_0_10V).await;
-    let _output = app.make_out_jack(1, Range::_0_10V).await;
+
+    let range = Range::_0_10V;
+    let _input = app.make_in_jack(0, range).await;
+    let output = app.make_out_jack(1, range).await;
 
     let oct_glob = app.make_global(4095);
     let latched_glob = app.make_global([false; 2]);
@@ -98,40 +96,27 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
     leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
 
+    let range = Range::_0_10V;
+
+    let mut quantizer = app.use_quantizer(range);
     let fut1 = async {
         let mut old_button = [false; 2];
-        let mut oct = 0.;
-        let mut st = 0.;
+        let mut oct = 0;
+        let mut st = 0;
 
         loop {
             app.delay_millis(1).await;
 
-            let inval = _input.get_value() as f32 / 410.;
+            let inval = _input.get_value();
             // let inval = _input.get_value() as f32 / 410. - 0.029268293;
 
-            oct = (oct_glob.get().await * 10 / 4095) as f32 - 5.;
+            oct = (((oct_glob.get().await * 10 / 4095) as f32 - 5.) * 410.) as u16;
 
-            st = (st_glob.get().await * 12 / 4095) as f32 / 12.;
-            // info!("inval {}", inval);
+            st = ((st_glob.get().await * 12 / 4095) as f32 * 410.) as u16;
 
-            let outval = quantizer.get_quantized_voltage(((inval + oct + st) * 410.) as u16) * 410.;
-            // let outval = quantizer.get_quantized_voltage(410);
-            info!(
-                "quantizer input {}, outval {}",
-                ((inval + oct + st) * 410.) as u16,
-                outval
-            );
-            // info!("{}", attack_glob.get().await);
+            let outval = quantizer.get_quantized_note(inval + oct as u16 + st as u16);
 
-            _output.set_value(outval as u16);
-
-            // let slew_led = split_unsigned_value(inval as u16);
-            // leds.set(0, Led::Top, led_color.into(), slew_led[0]);
-            // leds.set(0, Led::Bottom, led_color.into(), slew_led[1]);
-
-            // let out_led = split_unsigned_value(outval);
-            // leds.set(1, Led::Top, led_color.into(), out_led[0]);
-            // leds.set(1, Led::Bottom, led_color.into(), out_led[1]);
+            output.set_value(outval.as_counts(range));
 
             for n in 0..2 {
                 if !old_button[n] && buttons.is_button_pressed(n) {
