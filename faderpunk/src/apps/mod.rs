@@ -13,6 +13,7 @@ register_apps!(
     12 => notefader,
     13 => midi2cv,
     14 => offset_att,
+    15 => euclid,
     252 => calibration,
     253 => calibration_unipolar,
     254 => rgbtest,
