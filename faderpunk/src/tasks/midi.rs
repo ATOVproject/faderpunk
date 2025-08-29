@@ -24,7 +24,7 @@ use libfp::ClockSrc;
 
 use crate::{
     events::{InputEvent, EVENT_PUBSUB},
-    tasks::{clock::CLOCK_PUBSUB, global_config::GLOBAL_CONFIG_WATCH},
+    tasks::{clock::CLOCK_PUBSUB, global_config::get_global_config},
 };
 
 use super::clock::ClockEvent;
@@ -156,21 +156,21 @@ pub async fn start_midi_loops<'a>(
                     tx.write(msg).await.unwrap();
                     match LiveEvent::parse(msg) {
                         Ok(event) => {
-                            let cfg = GLOBAL_CONFIG_WATCH.try_get().unwrap();
+                            let config = get_global_config();
                             match event {
                                 LiveEvent::Realtime(msg) => match msg {
                                     SystemRealtime::TimingClock => {
-                                        if let ClockSrc::MidiUsb = cfg.clock_src {
+                                        if let ClockSrc::MidiUsb = config.clock_src {
                                             clock_publisher.publish(ClockEvent::Tick).await;
                                         }
                                     }
                                     SystemRealtime::Start => {
-                                        if let ClockSrc::MidiUsb = cfg.reset_src {
+                                        if let ClockSrc::MidiUsb = config.reset_src {
                                             clock_publisher.publish(ClockEvent::Start).await;
                                         }
                                     }
                                     SystemRealtime::Stop => {
-                                        if let ClockSrc::MidiUsb = cfg.reset_src {
+                                        if let ClockSrc::MidiUsb = config.reset_src {
                                             clock_publisher.publish(ClockEvent::Reset).await;
                                         }
                                     }
@@ -202,23 +202,23 @@ pub async fn start_midi_loops<'a>(
         let event_publisher = EVENT_PUBSUB.publisher().unwrap();
         loop {
             if let Ok(bytes_read) = uart1_rx.read(&mut uart_rx_buffer).await {
-                let cfg = GLOBAL_CONFIG_WATCH.try_get().unwrap();
+                let config = get_global_config();
                 midi_stream.feed(
                     &uart_rx_buffer[..bytes_read],
                     |event: LiveEvent| match event {
                         LiveEvent::Realtime(msg) => match msg {
                             SystemRealtime::TimingClock => {
-                                if let ClockSrc::MidiIn = cfg.clock_src {
+                                if let ClockSrc::MidiIn = config.clock_src {
                                     clock_publisher.publish_immediate(ClockEvent::Tick);
                                 }
                             }
                             SystemRealtime::Start => {
-                                if let ClockSrc::MidiIn = cfg.reset_src {
+                                if let ClockSrc::MidiIn = config.reset_src {
                                     clock_publisher.publish_immediate(ClockEvent::Start);
                                 }
                             }
                             SystemRealtime::Stop => {
-                                if let ClockSrc::MidiIn = cfg.reset_src {
+                                if let ClockSrc::MidiIn = config.reset_src {
                                     clock_publisher.publish_immediate(ClockEvent::Reset);
                                 }
                             }

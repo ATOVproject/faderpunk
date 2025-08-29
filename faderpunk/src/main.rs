@@ -33,6 +33,7 @@ use fm24v10::{Address, Fm24v10};
 use libfp::quantizer::Quantizer;
 use libfp::I2cMode;
 use static_cell::StaticCell;
+
 use {defmt_rtt as _, panic_probe as _};
 
 use layout::{LayoutManager, LAYOUT_MANAGER, LAYOUT_WATCH};
@@ -154,17 +155,10 @@ async fn main(spawner: Spawner) {
     // AUX inputs
     let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
 
+    // Initialize fram first, otherwise we can't load any config
     tasks::fram::start_fram(&spawner, fram).await;
 
-    tasks::leds::start_leds(&spawner, spi1).await;
-
-    tasks::buttons::start_buttons(&spawner, buttons).await;
-
     let calibration_data = load_calibration_data().await;
-
-    tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
-
-    let layout = load_layout().await;
     let mut global_config = load_global_config().await;
 
     // Load calibration if there is no calibration data or
@@ -173,7 +167,17 @@ async fn main(spawner: Spawner) {
         global_config.i2c_mode = I2cMode::Calibration;
     }
 
-    tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20, &global_config).await;
+    // Send off global config to all tasks that need it
+    let config_sender = GLOBAL_CONFIG_WATCH.sender();
+    config_sender.send(global_config);
+
+    tasks::leds::start_leds(&spawner, spi1).await;
+
+    tasks::buttons::start_buttons(&spawner, buttons).await;
+
+    tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
+
+    tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20).await;
 
     tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
 
@@ -192,10 +196,9 @@ async fn main(spawner: Spawner) {
         },
     );
 
-    // Initialize the device with the loaded config and layout
-    let config_sender = GLOBAL_CONFIG_WATCH.sender();
-    let layout_sender = LAYOUT_WATCH.sender();
+    let layout = load_layout().await;
 
-    config_sender.send(global_config);
+    // We're off to the races! Spawn our layout!
+    let layout_sender = LAYOUT_WATCH.sender();
     layout_sender.send(layout);
 }

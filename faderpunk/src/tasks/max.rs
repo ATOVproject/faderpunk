@@ -1,4 +1,4 @@
-use defmt::Format;
+use defmt::{info, Format};
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
@@ -13,12 +13,15 @@ use embassy_sync::{
     mutex::Mutex,
 };
 use embassy_time::Timer;
-use libfp::types::{RegressionValuesInput, RegressionValuesOutput};
+use libfp::{
+    latch::AnalogLatch,
+    types::{RegressionValuesInput, RegressionValuesOutput},
+};
 use libm::roundf;
 use max11300::{
     config::{
-        ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, DeviceConfig, Mode, Port, ADCCTL,
-        ADCRANGE, AVR, DACREF, NSAMPLES, THSHDN,
+        ConfigMode0, ConfigMode7, DeviceConfig, Mode, Port, ADCCTL, ADCRANGE, AVR, DACREF,
+        NSAMPLES, THSHDN,
     },
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
@@ -28,6 +31,12 @@ use static_cell::StaticCell;
 
 use crate::{
     events::{InputEvent, EVENT_PUBSUB},
+    tasks::{
+        buttons::is_scene_button_pressed,
+        global_config::{
+            self, get_fader_value_from_config, get_global_config, set_global_config_via_chan,
+        },
+    },
     Irqs,
 };
 
@@ -160,10 +169,33 @@ async fn read_fader(
     sm0.set_config(&cfg);
     sm0.set_enable(true);
 
+    let global_config = get_global_config();
+
+    // Initialize first layer values (main function)
+    let mut main_fader_values: [u16; 16] = [0; 16];
+    for chan in 0..16 {
+        let channel = 15 - chan;
+        sm0.tx().wait_push(chan as u32).await;
+        Timer::after_millis(1).await;
+        let value = fader_port.get_value().await.unwrap();
+        main_fader_values[channel] = value;
+        // Also initialize the shared state
+        MAX_VALUES_FADER[channel].store(value, Ordering::Relaxed);
+    }
+
+    // Initialize second layer values (global settings)
+    let mut global_settings_fader_values: [u16; 16] =
+        core::array::from_fn(|channel| get_fader_value_from_config(channel, &global_config));
+
+    let mut fader_latches: [AnalogLatch; 16] =
+        core::array::from_fn(|channel| AnalogLatch::new(main_fader_values[channel]));
+
     let mut chan: usize = 0;
-    let mut prev_values: [u16; 16] = [0; 16];
 
     loop {
+        // global config mode: 1, normal mode: 0
+        let active_layer_index = if is_scene_button_pressed() { 1 } else { 0 };
+
         // Channels are in reverse
         let channel = 15 - chan;
         // send the channel value to the PIO state machine to trigger the program
@@ -173,17 +205,35 @@ async fn read_fader(
         Timer::after_millis(1).await;
 
         let val = fader_port.get_value().await.unwrap();
-        let diff = (val as i16 - prev_values[channel] as i16).unsigned_abs();
-        // resolution of 256 should cover the full MIDI 1.0 range
-        prev_values[channel] = val;
+        let latch = &mut fader_latches[channel];
 
-        if diff >= 4 {
-            event_publisher
-                .publish(InputEvent::FaderChange(channel))
-                .await;
+        let target_value = if active_layer_index == 0 {
+            main_fader_values[channel]
+        } else {
+            global_settings_fader_values[channel]
+        };
+
+        if let Some(new_value) = latch.update(val, active_layer_index, target_value) {
+            let diff = (new_value as i32 - target_value as i32).abs();
+            match active_layer_index {
+                0 => {
+                    if diff >= 4 {
+                        event_publisher
+                            .publish(InputEvent::FaderChange(channel))
+                            .await;
+                        main_fader_values[channel] = new_value;
+                    }
+                    MAX_VALUES_FADER[channel].store(new_value, Ordering::Relaxed)
+                }
+                1 => {
+                    if diff >= 4 {
+                        set_global_config_via_chan(channel, new_value);
+                        global_settings_fader_values[channel] = new_value;
+                    }
+                }
+                _ => {}
+            }
         }
-
-        MAX_VALUES_FADER[channel].store(val, Ordering::Relaxed);
 
         chan = (chan + 1) % 16;
     }
@@ -209,7 +259,6 @@ async fn process_channel_values(
                     let calibrated_value = if target_dac_value == 0 {
                         // If the target is 0, the output MUST be 0
                         0
-                    // TODO: Is this fast enough, can we safely do that in this tight loop?
                     } else if CALIBRATING.load(Ordering::Relaxed) {
                         target_dac_value
                     } else if let Some(data) = calibration_data {

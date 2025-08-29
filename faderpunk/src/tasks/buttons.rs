@@ -45,6 +45,21 @@ pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
     spawner.spawn(run_buttons(buttons)).unwrap();
 }
 
+#[inline(always)]
+pub fn is_channel_button_pressed(channel: usize) -> bool {
+    BUTTON_PRESSED[channel.clamp(0, 15)].load(Ordering::Relaxed)
+}
+
+#[inline(always)]
+pub fn is_shift_button_pressed() -> bool {
+    BUTTON_PRESSED[17].load(Ordering::Relaxed)
+}
+
+#[inline(always)]
+pub fn is_scene_button_pressed() -> bool {
+    BUTTON_PRESSED[16].load(Ordering::Relaxed)
+}
+
 // Process button using debounce and state synchronization logic
 async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &EventPubSubPublisher) {
     loop {
