@@ -414,38 +414,38 @@ impl MidiInput {
 }
 
 pub struct Global<T: Sized> {
-    inner: Mutex<NoopRawMutex, T>,
+    inner: RefCell<T>,
 }
 
 impl<T: Sized + Copy> Global<T> {
     pub fn new(initial: T) -> Self {
         Self {
-            inner: Mutex::new(initial),
+            inner: RefCell::new(initial),
         }
     }
 
-    pub async fn get(&self) -> T {
-        let value = self.inner.lock().await;
+    pub fn get(&self) -> T {
+        let value = self.inner.borrow();
         *value
     }
 
-    pub async fn set(&self, val: T) {
-        let mut value = self.inner.lock().await;
+    pub fn set(&self, val: T) {
+        let mut value = self.inner.borrow_mut();
         *value = val
     }
 
-    pub async fn modify<F>(&self, modifier: F) -> T
+    pub fn modify<F, R>(&self, modifier: F) -> R
     where
-        F: FnOnce(&mut T) -> T,
+        F: FnOnce(&mut T) -> R,
     {
-        let mut value = self.inner.lock().await;
+        let mut value = self.inner.borrow_mut();
         modifier(&mut *value)
     }
 }
 
 impl Global<bool> {
-    pub async fn toggle(&self) -> bool {
-        let mut value = self.inner.lock().await;
+    pub fn toggle(&self) -> bool {
+        let mut value = self.inner.borrow_mut();
         *value = !*value;
         *value
     }
@@ -454,7 +454,7 @@ impl Global<bool> {
 impl<T: Sized + Copy + Default> Default for Global<T> {
     fn default() -> Self {
         Global {
-            inner: Mutex::new(T::default()),
+            inner: RefCell::new(T::default()),
         }
     }
 }

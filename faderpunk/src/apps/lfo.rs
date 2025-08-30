@@ -89,9 +89,9 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let wave_saved = storage.query(|s| s.wave_saved).await;
     let att_saved = storage.query(|s| s.att_saved).await;
     let clocked = storage.query(|s| s.clocked_saved).await;
-    clocked_glob.set(clocked).await;
-    att_glob.set(att_saved).await;
-    glob_wave.set(wave_saved).await;
+    clocked_glob.set(clocked);
+    att_glob.set(att_saved);
+    glob_wave.set(wave_saved);
 
     let color = match wave_saved {
         Waveform::Sine => YELLOW,
@@ -103,10 +103,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     leds.set(0, Led::Button, color, Brightness::Lower);
 
-    glob_lfo_speed
-        .set(curve.at(fader_saved) as f32 * 0.015 + 0.0682)
-        .await;
-    div_glob.set(resolution[fader_saved as usize / 500]).await;
+    glob_lfo_speed.set(curve.at(fader_saved) as f32 * 0.015 + 0.0682);
+    div_glob.set(resolution[fader_saved as usize / 500]);
     let mut count = 0;
     let mut quant_speed: f32 = 6.;
 
@@ -117,18 +115,18 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             let sync = storage.query(|s| s.clocked_saved).await;
 
             count += 1;
-            if tick_flag.get().await {
+            if tick_flag.get() {
                 //add timeout
-                let div = div_glob.get().await;
+                let div = div_glob.get();
                 quant_speed = 4095. / ((count * div) as f32 / 24.);
                 // info!("speed = {}, count = {}, div = {}", quant_speed, count, div);
                 count = 0;
-                tick_flag.set(false).await;
+                tick_flag.set(false);
             }
 
-            let wave = glob_wave.get().await;
-            let lfo_speed = glob_lfo_speed.get().await;
-            let lfo_pos = glob_lfo_pos.get().await;
+            let wave = glob_wave.get();
+            let lfo_speed = glob_lfo_speed.get();
+            let lfo_pos = glob_lfo_pos.get();
 
             // let next_pos = (lfo_pos + lfo_speed) % 4096.0;
 
@@ -138,7 +136,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 (lfo_pos + lfo_speed) % 4096.0
             };
 
-            let att = att_glob.get().await;
+            let att = att_glob.get();
 
             let val = attenuate_bipolar(wave.at(next_pos as usize), att);
 
@@ -161,14 +159,14 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 leds.unset(0, Led::Bottom);
             }
 
-            glob_lfo_pos.set(next_pos).await;
+            glob_lfo_pos.set(next_pos);
 
             if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
                 shift_old = true;
             }
             if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
                 shift_old = false;
             }
         }
@@ -181,14 +179,12 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             let stored_faders = storage.query(|s| s.fader_saved).await;
 
             if !buttons.is_shift_pressed() {
-                if !latched_glob.get().await && is_close(fader_val, stored_faders) {
-                    latched_glob.set(true).await;
+                if !latched_glob.get() && is_close(fader_val, stored_faders) {
+                    latched_glob.set(true);
                 }
-                if latched_glob.get().await {
-                    glob_lfo_speed
-                        .set(curve.at(fader_val) as f32 * 0.015 + 0.0682)
-                        .await;
-                    div_glob.set(resolution[fader_val as usize / 500]).await;
+                if latched_glob.get() {
+                    glob_lfo_speed.set(curve.at(fader_val) as f32 * 0.015 + 0.0682);
+                    div_glob.set(resolution[fader_val as usize / 500]);
                     // info!("div = {}", div_glob.get().await);
 
                     storage
@@ -202,11 +198,11 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         .await;
                 }
             } else {
-                if !latched_glob.get().await && is_close(fader_val, att_glob.get().await) {
-                    latched_glob.set(true).await;
+                if !latched_glob.get() && is_close(fader_val, att_glob.get()) {
+                    latched_glob.set(true);
                 }
-                if latched_glob.get().await {
-                    att_glob.set(fader_val).await;
+                if latched_glob.get() {
+                    att_glob.set(fader_val);
                     storage
                         .modify_and_save(
                             |s| {
@@ -226,9 +222,9 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             buttons.wait_for_down(0).await;
 
             if !buttons.is_shift_pressed() {
-                let mut wave = glob_wave.get().await;
-                glob_wave.set(wave.cycle()).await;
-                wave = glob_wave.get().await;
+                let mut wave = glob_wave.get();
+                glob_wave.set(wave.cycle());
+                wave = glob_wave.get();
 
                 let color = get_color_for(wave);
                 leds.set(0, Led::Button, color, Brightness::Lower);
@@ -243,7 +239,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     )
                     .await;
             } else {
-                glob_lfo_pos.set(0.0).await;
+                glob_lfo_pos.set(0.0);
             }
         }
     };
@@ -262,7 +258,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         None,
                     )
                     .await;
-                clocked_glob.set(clocked).await;
+                clocked_glob.set(clocked);
                 if clocked {
                     leds.set_mode(0, Led::Button, LedMode::Flash(color, Some(4)));
                 }
@@ -273,10 +269,10 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         loop {
             match clk.wait_for_event(24).await {
                 ClockEvent::Tick => {
-                    tick_flag.set(true).await;
+                    tick_flag.set(true);
                 }
                 ClockEvent::Reset => {
-                    glob_lfo_pos.set(0.0).await;
+                    glob_lfo_pos.set(0.0);
                 }
                 _ => {}
             }
@@ -291,17 +287,15 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     let fader_saved = storage.query(|s| s.fader_saved).await;
                     let wave_saved = storage.query(|s| s.wave_saved).await;
                     let att_saved = storage.query(|s| s.att_saved).await;
-                    att_glob.set(att_saved).await;
-                    glob_wave.set(wave_saved).await;
+                    att_glob.set(att_saved);
+                    glob_wave.set(wave_saved);
 
-                    glob_lfo_speed
-                        .set(curve.at(fader_saved) as f32 * 0.015 + 0.0682)
-                        .await;
-                    div_glob.set(resolution[fader_saved as usize / 500]).await;
+                    glob_lfo_speed.set(curve.at(fader_saved) as f32 * 0.015 + 0.0682);
+                    div_glob.set(resolution[fader_saved as usize / 500]);
 
                     let color = get_color_for(wave_saved);
                     leds.set(0, Led::Button, color, Brightness::Lower);
-                    latched_glob.set(false).await;
+                    latched_glob.set(false);
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }

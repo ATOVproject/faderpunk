@@ -111,15 +111,17 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 }
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
-    let buttons = app.use_buttons();
-    let fader = app.use_faders();
-    let leds = app.use_leds();
-
     let midi_chan = params.midi_channel.get().await;
     let midi_cc = params.midi_cc.get().await;
     let curve = params.curve.get().await;
-    let midi = app.use_midi_output(midi_chan as u8);
     let led_color = params.color.get().await;
+    let bipolar = params.bipolar.get().await;
+    let on_release = params.on_release.get().await;
+
+    let buttons = app.use_buttons();
+    let fader = app.use_faders();
+    let leds = app.use_leds();
+    let midi = app.use_midi_output(midi_chan as u8);
 
     let muted_glob = app.make_global(false);
     let att_glob = app.make_global(4095);
@@ -127,10 +129,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let muted = storage.query(|s| s.muted).await;
     let att = storage.query(|s| s.att_saved).await;
-    muted_glob.set(muted).await;
-    att_glob.set(att).await;
-
-    let on_release = params.on_release.get().await;
+    muted_glob.set(muted);
+    att_glob.set(att);
 
     if muted {
         leds.unset(0, Led::Button);
@@ -138,7 +138,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
     }
 
-    let jack = if !params.bipolar.get().await {
+    let jack = if !bipolar {
         app.make_out_jack(0, Range::_0_10V).await
     } else {
         app.make_out_jack(0, Range::_Neg5_5V).await
@@ -154,14 +154,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
         loop {
             app.delay_millis(1).await;
-            let muted = muted_glob.get().await;
+            let muted = muted_glob.get();
             if !buttons.is_shift_pressed() {
                 fadval = fader.get_value();
             }
-            let att = att_glob.get().await;
+            let att = att_glob.get();
 
             // if buttons.is_shift_pressed() {
-            if params.bipolar.get().await {
+            if bipolar {
                 if muted {
                     val = 2047;
                 } else {
@@ -211,11 +211,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             }
 
             if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
                 shift_old = true;
             }
             if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
 
                 shift_old = false;
             }
@@ -239,7 +239,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     None,
                 )
                 .await;
-            muted_glob.set(muted).await;
+            muted_glob.set(muted);
             if muted {
                 leds.unset(0, Led::Button);
             } else {
@@ -253,11 +253,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             fader.wait_for_change().await;
             let fader_val = fader.get_value();
 
-            if !latched_glob.get().await && is_close(fader_val, att_glob.get().await) {
-                latched_glob.set(true).await;
+            if !latched_glob.get() && is_close(fader_val, att_glob.get()) {
+                latched_glob.set(true);
             }
-            if buttons.is_shift_pressed() && latched_glob.get().await {
-                att_glob.set(fader_val).await;
+            if buttons.is_shift_pressed() && latched_glob.get() {
+                att_glob.set(fader_val);
                 storage
                     .modify_and_save(
                         |s| {
@@ -277,7 +277,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
                     let muted = storage.query(|s| s.muted).await;
-                    muted_glob.set(muted).await;
+                    muted_glob.set(muted);
                     if muted {
                         leds.unset(0, Led::Button);
                     } else {

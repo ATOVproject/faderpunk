@@ -111,7 +111,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     for n in 0..2 {
         times[n] = Curve::Logarithmic.at(stored_faders[n]) as f32 + minispeed;
     }
-    times_glob.set(times).await;
+    times_glob.set(times);
 
     let mut outval = 0;
     let mut shift_old = false;
@@ -126,39 +126,37 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             app.delay_millis(1).await;
             timer += 1;
             let mode = storage.query(|s| s.mode_saved).await;
-            let times = times_glob.get().await;
+            let times = times_glob.get();
             let curve_setting = storage.query(|s| s.curve_saved).await;
 
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
                 // catching rising edge
-                gate_on_glob.set(gate_on_glob.get().await + 1).await
+                gate_on_glob.modify(|g| *g += 1);
             }
             if inputval <= 406 && oldinputval > 406 {
-                gate_on_glob
-                    .set((gate_on_glob.get().await - 1).max(0))
-                    .await
+                gate_on_glob.modify(|g| (*g - 1).max(0));
             }
             oldinputval = inputval;
 
-            if gate_on_glob.get().await > 0 && !old_gate {
+            if gate_on_glob.get() > 0 && !old_gate {
                 env_state = 1;
                 old_gate = true;
                 start_time = timer;
             }
 
             if timer == start_time {
-                gate_on_glob.set(gate_on_glob.get().await + 1).await;
+                gate_on_glob.set(gate_on_glob.get() + 1);
 
                 t2g = true;
                 info!(
                     "gate on, gate count = {}, t2g = {}",
-                    gate_on_glob.get().await,
+                    gate_on_glob.get(),
                     t2g
                 );
             }
 
-            if gate_on_glob.get().await == 0 && old_gate == true {
+            if gate_on_glob.get() == 0 && old_gate == true {
                 if mode == 1 {
                     env_state = 2;
                 }
@@ -168,14 +166,12 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 && t2g == true
                 && storage.query(|s: &Storage| s.min_gate_saved).await != 4095
             {
-                gate_on_glob
-                    .set((gate_on_glob.get().await - 1).max(0))
-                    .await;
+                gate_on_glob.modify(|g| (*g - 1).max(0));
 
                 t2g = false;
                 info!(
                     "gate off, gate count = {}, t2g = {}",
-                    gate_on_glob.get().await,
+                    gate_on_glob.get(),
                     t2g
                 );
             }
@@ -216,7 +212,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
                 leds.set(1, Led::Top, WHITE, Brightness::Custom((outval / 16) as u8));
 
-                if vals == 0.0 && mode == 2 && gate_on_glob.get().await != 0 {
+                if vals == 0.0 && mode == 2 && gate_on_glob.get() != 0 {
                     env_state = 1;
                 }
             }
@@ -224,7 +220,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             output.set_value(outval);
             if shift_old {
                 leds.set(1, Led::Button, color[mode as usize], Brightness::Lower);
-                if gate_on_glob.get().await > 0 {
+                if gate_on_glob.get() > 0 {
                     leds.set(0, Led::Button, RED, Brightness::Low);
                 } else {
                     leds.set(0, Led::Button, RED, Brightness::Lower);
@@ -254,19 +250,17 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             }
 
             if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set([false; 2]).await;
+                latched_glob.set([false; 2]);
                 shift_old = true;
             }
             if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set([false; 2]).await;
+                latched_glob.set([false; 2]);
 
                 shift_old = false;
             }
 
             if button_old && !buttons.is_button_pressed(0) && buttons.is_shift_pressed() {
-                gate_on_glob
-                    .set((gate_on_glob.get().await - 1).max(0))
-                    .await;
+                gate_on_glob.modify(|g| (*g - 1).max(0));
             }
             // info!("{}", gate_on_glob.get().await);
 
@@ -277,16 +271,16 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let fut2 = async {
         loop {
             let chan: usize = faders.wait_for_any_change().await;
-            let mut latched = latched_glob.get().await;
+            let mut latched = latched_glob.get();
             let vals = faders.get_all_values();
 
             if !buttons.is_shift_pressed() {
-                let mut times = times_glob.get().await;
+                let mut times = times_glob.get();
                 let mut stored_faders = storage.query(|s| s.fader_saved).await;
 
                 if is_close(vals[chan], stored_faders[chan]) {
                     latched[chan] = true;
-                    latched_glob.set(latched).await;
+                    latched_glob.set(latched);
                 }
 
                 if latched[chan] {
@@ -306,12 +300,12 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
                     times[chan] = Curve::Logarithmic.at(vals[chan]) as f32 + minispeed;
                     // (4096.0 - CURVE_EXP[vals[chan] as usize] as f32) * fadstep + minispeed;
-                    times_glob.set(times).await;
+                    times_glob.set(times);
                 }
             } else if chan == 1 {
                 if is_close(vals[chan], storage.query(|s| s.att_saved).await) {
                     latched[chan] = true;
-                    latched_glob.set(latched).await;
+                    latched_glob.set(latched);
                 }
                 if latched[chan] {
                     storage
@@ -330,7 +324,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     storage.query(|s: &Storage| s.min_gate_saved).await,
                 ) {
                     latched[chan] = true;
-                    latched_glob.set(latched).await;
+                    latched_glob.set(latched);
                 }
                 if latched[chan] {
                     storage
@@ -378,7 +372,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     )
                     .await;
             } else if chan == 0 {
-                gate_on_glob.set(gate_on_glob.get().await + 1).await;
+                gate_on_glob.modify(|g| *g += 1);
                 // info!("here 2, gate count = {}", gate_on_glob.get().await)
             }
         }
@@ -389,12 +383,10 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         loop {
             match midi_in.wait_for_message().await {
                 MidiMessage::NoteOn { key, vel } => {
-                    gate_on_glob.set(gate_on_glob.get().await + 1).await;
+                    gate_on_glob.modify(|g| *g += 1);
                 }
                 MidiMessage::NoteOff { key, vel } => {
-                    gate_on_glob
-                        .set((gate_on_glob.get().await - 1).max(0))
-                        .await;
+                    gate_on_glob.modify(|g| (*g - 1).max(0));
                 }
 
                 _ => {}
@@ -428,8 +420,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     for n in 0..2 {
                         times[n] = Curve::Logarithmic.at(stored_faders[n]) as f32 + minispeed;
                     }
-                    times_glob.set(times).await;
-                    latched_glob.set([false; 2]).await;
+                    times_glob.set(times);
+                    latched_glob.set([false; 2]);
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }

@@ -149,7 +149,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     // buffer_glob.set(buffer_saved).await;
     // length_glob.set(length_saved).await;
 
-    att_glob.set(storage.query(|s| s.att_saved).await).await;
+    att_glob.set(storage.query(|s| s.att_saved).await);
 
     leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
 
@@ -158,19 +158,19 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         let mut shift_old = false;
         loop {
             app.delay_millis(1).await;
-            let index = index_glob.get().await;
-            let buffer = buffer_glob.get().await;
-            let mut offset = offset_glob.get().await;
-            let att = att_glob.get().await;
-            let color = if recording_glob.get().await {
+            let index = index_glob.get();
+            let buffer = buffer_glob.get();
+            let mut offset = offset_glob.get();
+            let att = att_glob.get();
+            let color = if recording_glob.get() {
                 RED
             } else {
                 led_color.into()
             };
 
-            if latched.get().await {
+            if latched.get() {
                 offset = fader.get_value();
-                offset_glob.set(offset).await;
+                offset_glob.set(offset);
             }
 
             let val = (buffer[index] + offset).min(4095);
@@ -203,11 +203,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             };
 
             if !shift_old && buttons.is_shift_pressed() {
-                latched.set(false).await;
+                latched.set(false);
                 shift_old = true;
             }
             if shift_old && !buttons.is_shift_pressed() {
-                latched.set(false).await;
+                latched.set(false);
 
                 shift_old = false;
             }
@@ -220,25 +220,25 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 ClockEvent::Reset => {
                     index = 0;
                     recording = false;
-                    recording_glob.set(recording).await;
+                    recording_glob.set(recording);
                 }
                 ClockEvent::Tick => {
-                    length = length_glob.get().await;
+                    length = length_glob.get();
 
                     index %= length;
 
-                    index_glob.set(index).await;
-                    recording = recording_glob.get().await;
+                    index_glob.set(index);
+                    recording = recording_glob.get();
 
                     if index == 0 && recording {
                         //stop recording at max length
                         recording = false;
-                        recording_glob.set(recording).await;
+                        recording_glob.set(recording);
                         length = 384;
-                        length_glob.set(length).await;
-                        buffer_glob.set(buffer).await;
-                        offset_glob.set(0).await;
-                        latched.set(false).await;
+                        length_glob.set(length);
+                        buffer_glob.set(buffer);
+                        offset_glob.set(0);
+                        latched.set(false);
                         // storage
                         //     .modify(|s| {
                         //         s.buffer_saved.set(buffer);
@@ -247,16 +247,16 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         //     .await;
                     }
 
-                    if rec_flag.get().await && index % 96 == 0 {
+                    if rec_flag.get() && index % 96 == 0 {
                         index = 0;
                         recording = true;
                         buffer = [0; 384];
-                        buffer_glob.set(buffer).await;
-                        recording_glob.set(recording).await;
-                        rec_flag.set(false).await;
+                        buffer_glob.set(buffer);
+                        recording_glob.set(recording);
+                        rec_flag.set(false);
                         length = 384;
-                        length_glob.set(length).await;
-                        latched.set(true).await
+                        length_glob.set(length);
+                        latched.set(true);
                     }
 
                     if recording {
@@ -270,12 +270,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
                         //finish recording
                         recording = !recording;
-                        recording_glob.set(recording).await;
+                        recording_glob.set(recording);
                         length = index;
-                        length_glob.set(length).await;
-                        buffer_glob.set(buffer).await;
-                        offset_glob.set(0).await;
-                        latched.set(false).await;
+                        length_glob.set(length);
+                        buffer_glob.set(buffer);
+                        offset_glob.set(0);
+                        latched.set(false);
                         // storage
                         //     .modify(|s| {
                         //         s.buffer_saved.set(buffer);
@@ -300,15 +300,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             fader.wait_for_change().await;
             let val = fader.get_value();
             if !buttons.is_shift_pressed() {
-                if is_close(val, offset_glob.get().await) && !latched.get().await {
-                    latched.set(true).await
+                if is_close(val, offset_glob.get()) && !latched.get() {
+                    latched.set(true)
                 }
             } else {
-                if !latched.get().await && is_close(val, att_glob.get().await) {
-                    latched.set(true).await;
+                if !latched.get() && is_close(val, att_glob.get()) {
+                    latched.set(true);
                 }
-                if latched.get().await {
-                    att_glob.set(val).await;
+                if latched.get() {
+                    att_glob.set(val);
 
                     leds.set(0, Led::Top, RED, Brightness::Custom((val / 16) as u8));
 
@@ -330,13 +330,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             buttons.wait_for_down(0).await;
             if buttons.is_shift_pressed() {
-                recording_glob.set(false).await;
-                buffer_glob.set([0; 384]).await;
-                length_glob.set(384).await;
+                recording_glob.set(false);
+                buffer_glob.set([0; 384]);
+                length_glob.set(384);
                 leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
-                latched.set(false).await;
+                latched.set(false);
             } else {
-                rec_flag.set(true).await;
+                rec_flag.set(true);
             }
         }
     };

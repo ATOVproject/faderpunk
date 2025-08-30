@@ -111,6 +111,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let gatel = params.gatel.get().await;
     let base_note = params.note.get().await;
     let span = params.span.get().await;
+    let led_color = params.color.get().await;
 
     let mut clock = app.use_clock();
     let quantizer = app.use_quantizer(range);
@@ -134,16 +135,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
-    // const led_color.into(): RGB<u8> = ATOV_YELLOW;
-    let led_color = params.color.get().await;
-
     let (res, mute, att) = storage
         .query(|s| (s.fader_saved, s.mute_saved, s.clocked))
         .await;
 
-    clocked_glob.set(att).await;
-    glob_muted.set(mute).await;
-    div_glob.set(resolution[res as usize / 345]).await;
+    clocked_glob.set(att);
+    glob_muted.set(mute);
+    div_glob.set(resolution[res as usize / 345]);
     if mute {
         leds.unset(0, Led::Button);
         leds.unset(0, Led::Top);
@@ -185,11 +183,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     note_on = false;
                 }
                 ClockEvent::Tick => {
-                    let muted = glob_muted.get().await;
+                    let muted = glob_muted.get();
 
-                    let div = div_glob.get().await;
+                    let div = div_glob.get();
 
-                    if clkn % div == 0 && clocked_glob.get().await {
+                    if clkn % div == 0 && clocked_glob.get() {
                         if !muted {
                             if note_on {
                                 midi.send_note_off(note as u8).await;
@@ -223,7 +221,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             buttons.wait_for_down(0).await;
             if !buttons.is_shift_pressed() {
-                let muted = glob_muted.toggle().await;
+                let muted = glob_muted.toggle();
 
                 storage
                     .modify_and_save(
@@ -241,7 +239,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                 }
             } else {
-                let mode = clocked_glob.toggle().await;
+                let mode = clocked_glob.toggle();
                 storage
                     .modify_and_save(
                         |s| {
@@ -264,10 +262,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if buttons.is_shift_pressed() {
                 let fad_saved = storage.query(|s| s.fader_saved).await;
                 if is_close(fad, fad_saved) {
-                    latched_glob.set(true).await;
+                    latched_glob.set(true);
                 }
-                if latched_glob.get().await {
-                    div_glob.set(resolution[fad as usize / 345]).await;
+                if latched_glob.get() {
+                    div_glob.set(resolution[fad as usize / 345]);
                     storage.modify_and_save(|s| s.fader_saved = fad, None).await;
                 }
             }
@@ -283,9 +281,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         .query(|s| (s.fader_saved, s.mute_saved, s.clocked))
                         .await;
 
-                    clocked_glob.set(clk).await;
-                    glob_muted.set(mute).await;
-                    div_glob.set(resolution[res as usize / 345]).await;
+                    clocked_glob.set(clk);
+                    glob_muted.set(mute);
+                    div_glob.set(resolution[res as usize / 345]);
                     if mute {
                         leds.set(0, Led::Button, led_color.into(), Brightness::Lowest);
 
@@ -294,7 +292,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     } else {
                         leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                     }
-                    latched_glob.set(false).await;
+                    latched_glob.set(false);
                 }
 
                 SceneEvent::SaveScene(scene) => {
@@ -313,23 +311,23 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             // latching on pressing and depressing shift
             app.delay_millis(1).await;
             if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
                 let base: u8 = LED_BRIGHTNESS.into();
                 leds.set(
                     0,
                     Led::Bottom,
                     RED,
-                    Brightness::Custom(base * clocked_glob.get().await as u8),
+                    Brightness::Custom(base * clocked_glob.get() as u8),
                 );
                 shift_old = true;
             }
             if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
                 shift_old = false;
             }
 
             // use this to trigger notes
-            if !clocked_glob.get().await && !buttons.is_shift_pressed() {
+            if !clocked_glob.get() && !buttons.is_shift_pressed() {
                 if !button_old && buttons.is_button_pressed(0) {
                     button_old = true;
                     note = trigger_note(note).await;

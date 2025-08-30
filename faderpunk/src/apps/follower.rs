@@ -75,14 +75,11 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
     let curve = Curve::Exponential;
+    let led_color = params.color.get().await;
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let led_color = params.color.get().await;
-
-    leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-    leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
     let _input = app.make_in_jack(0, Range::_Neg5_5V).await;
     let _output = app.make_out_jack(1, Range::_Neg5_5V).await;
 
@@ -99,10 +96,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let offset = storage.query(|s| s.offset_saved).await;
     let att = storage.query(|s| s.att_saved).await;
 
-    offset_glob.set(offset).await;
-    att_glob.set(att).await;
-    attack_glob.set(curve.at(stored_faders[0])).await;
-    decay_glob.set(curve.at(stored_faders[1])).await;
+    offset_glob.set(offset);
+    att_glob.set(att);
+    attack_glob.set(curve.at(stored_faders[0]));
+    decay_glob.set(curve.at(stored_faders[1]));
 
     leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
     leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
@@ -113,16 +110,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let mut inval = _input.get_value();
             inval = rectify(inval);
 
-            oldval = slew_limiter(
-                oldval,
-                inval,
-                attack_glob.get().await,
-                decay_glob.get().await,
-            )
-            .clamp(0., 4095.);
+            oldval =
+                slew_limiter(oldval, inval, attack_glob.get(), decay_glob.get()).clamp(0., 4095.);
 
-            let att = att_glob.get().await;
-            let offset = offset_glob.get().await;
+            let att = att_glob.get();
+            let offset = offset_glob.get();
 
             let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
 
@@ -166,13 +158,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             }
 
             if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set([false; 2]).await;
+                latched_glob.set([false; 2]);
                 shift_old = true;
                 leds.unset(0, Led::Button);
                 leds.unset(1, Led::Button);
             }
             if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set([false; 2]).await;
+                latched_glob.set([false; 2]);
                 shift_old = false;
 
                 leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
@@ -185,23 +177,23 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             let chan = faders.wait_for_any_change().await;
             let vals = faders.get_all_values();
-            let mut latched = latched_glob.get().await;
+            let mut latched = latched_glob.get();
 
             if !buttons.is_shift_pressed() {
                 storage.load(None).await;
                 let mut stored_faders = storage.query(|s| s.fader_saved).await;
                 if is_close(stored_faders[chan], vals[chan]) {
                     latched[chan] = true;
-                    latched_glob.set(latched).await;
+                    latched_glob.set(latched);
                 }
                 if latched[chan] {
                     if chan == 0 {
-                        attack_glob.set(curve.at(vals[chan])).await;
+                        attack_glob.set(curve.at(vals[chan]));
                         stored_faders[chan] = vals[chan];
                     }
 
                     if chan == 1 {
-                        decay_glob.set(curve.at(vals[chan])).await;
+                        decay_glob.set(curve.at(vals[chan]));
                         stored_faders[chan] = vals[chan];
                     }
 
@@ -217,14 +209,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
             } else {
                 if chan == 0 {
-                    let offset = offset_glob.get().await;
+                    let offset = offset_glob.get();
                     if is_close((offset + 2047) as u16, vals[chan]) {
                         latched[chan] = true;
-                        latched_glob.set(latched).await;
+                        latched_glob.set(latched);
                     }
 
                     if latched[chan] {
-                        offset_glob.set(vals[chan] as i32 - 2047).await;
+                        offset_glob.set(vals[chan] as i32 - 2047);
                         storage
                             .modify_and_save(
                                 |s| {
@@ -238,13 +230,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
 
                 if chan == 1 {
-                    let att = att_glob.get().await;
+                    let att = att_glob.get();
                     if is_close(att, vals[chan]) {
                         latched[chan] = true;
-                        latched_glob.set(latched).await;
+                        latched_glob.set(latched);
                     }
                     if latched[chan] {
-                        att_glob.set(vals[chan]).await;
+                        att_glob.set(vals[chan]);
 
                         storage
                             .modify_and_save(
@@ -267,7 +259,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if !is_shift_pressed {
                 // if chan == 0 {
                 //     leds.reset(0, Led::Button);
-                //     attack_glob.set(0).await;
+                //     attack_glob.set(0);
                 //     storage
                 //         .modify_and_save(
                 //             |s| {
@@ -280,7 +272,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 // }
                 // if chan == 1 {
                 //     leds.reset(1, Led::Button);
-                //     decay_glob.set(0).await;
+                //     decay_glob.set(0);
                 //     storage
                 //         .modify_and_save(
                 //             |s| {
@@ -293,7 +285,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 // }
             } else {
                 if chan == 0 {
-                    offset_glob.set(0).await;
+                    offset_glob.set(0);
                     storage
                         .modify_and_save(
                             |s| {
@@ -305,7 +297,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         .await;
                 }
                 if chan == 1 {
-                    att_glob.set(4095).await;
+                    att_glob.set(4095);
                     storage
                         .modify_and_save(
                             |s| {
@@ -330,10 +322,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     let offset = storage.query(|s| s.offset_saved).await;
                     let att = storage.query(|s| s.att_saved).await;
 
-                    offset_glob.set(offset).await;
-                    att_glob.set(att).await;
-                    attack_glob.set(curve.at(stored_faders[0])).await;
-                    decay_glob.set(curve.at(stored_faders[1])).await;
+                    offset_glob.set(offset);
+                    att_glob.set(att);
+                    attack_glob.set(curve.at(stored_faders[0]));
+                    decay_glob.set(curve.at(stored_faders[1]));
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }

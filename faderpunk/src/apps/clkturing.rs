@@ -125,7 +125,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let fader = app.use_faders();
     let leds = app.use_leds();
     let die = app.use_die();
-
     let midi = app.use_midi_output(midi_chan as u8 - 1);
 
     // let mut prob_glob = app.make_global_with_store(0, StorageSlot::A);
@@ -139,7 +138,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let recall_flag = app.make_global(false);
     let midi_note = app.make_global(0);
 
-    let mut quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range);
 
     let latched_glob = app.make_global(true);
 
@@ -154,9 +153,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let (att, length, mut register) = storage
         .query(|s| (s.att_saved, s.length_saved, s.register_saved))
         .await;
-    att_glob.set(att as u32).await;
-    length_glob.set(length).await;
-    register_glob.set(register).await;
+    att_glob.set(att as u32);
+    length_glob.set(length);
+    register_glob.set(register);
 
     let fut1 = async {
         let mut att_reg = 0;
@@ -165,12 +164,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
         loop {
             app.delay_millis(1).await;
-            let length = length_glob.get().await;
+            let length = length_glob.get();
 
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
-                register = register_glob.get().await;
-                let prob = prob_glob.get().await;
+                register = register_glob.get();
+                let prob = prob_glob.get();
                 let rand = die.roll().clamp(100, 3900);
 
                 let rotation = rotate_select_bit(register, prob, rand, length);
@@ -179,7 +178,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 //leds.set(0, Led::Button, led_color.into(), 100 * rotation.1 as u8);
 
                 let register_scalled = scale_to_12bit(register, length as u8);
-                att_reg = (register_scalled as u32 * att_glob.get().await / 4095) as u16;
+                att_reg = (register_scalled as u32 * att_glob.get() / 4095) as u16;
 
                 let out = quantizer.get_quantized_note(att_reg).await;
                 // let out = att_reg;
@@ -202,7 +201,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     let note = out.as_midi();
                     midi.send_note_on(note, 4095).await;
 
-                    midi_note.set(note).await;
+                    midi_note.set(note);
                 }
                 if midi_mode == 2 {
                     midi.send_cc(midi_cc as u8 - 1, att_reg).await;
@@ -215,10 +214,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 leds.unset(0, Led::Bottom);
 
                 if midi_mode == 1 {
-                    let note = midi_note.get().await;
+                    let note = midi_note.get();
                     midi.send_note_off(note).await;
                 }
-                register_glob.set(register).await;
+                register_glob.set(register);
             }
             oldinputval = inputval;
         }
@@ -229,16 +228,16 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             let chan = fader.wait_for_any_change().await;
             let val = fader.get_all_values();
-            let att = att_glob.get().await;
-            let prob = prob_glob.get().await;
+            let att = att_glob.get();
+            let prob = prob_glob.get();
 
             if chan == 1 {
                 if is_close(att as u16, val[chan]) {
-                    latched_glob.set(true).await;
+                    latched_glob.set(true);
                 }
 
-                if latched_glob.get().await {
-                    att_glob.set(val[chan] as u32).await;
+                if latched_glob.get() {
+                    att_glob.set(val[chan] as u32);
                     storage
                         .modify_and_save(|s| s.att_saved = val[chan], None)
                         .await;
@@ -246,11 +245,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             }
             if chan == 0 {
                 if is_close(prob, val[chan]) {
-                    latched_glob.set(true).await;
+                    latched_glob.set(true);
                 }
 
-                if latched_glob.get().await {
-                    prob_glob.set(val[chan]).await;
+                if latched_glob.get() {
+                    prob_glob.set(val[chan]);
                 }
             }
         }
@@ -262,11 +261,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let fut3 = async {
         loop {
             let shift = buttons.wait_for_down(0).await;
-            // latched_glob.set(false).await;
-            let mut length = length_rec.get().await;
-            if shift && rec_flag.get().await {
+            // latched_glob.set(false);
+            let mut length = length_rec.get();
+            if shift && rec_flag.get() {
                 length += 1;
-                length_rec.set(length.min(16)).await;
+                length_rec.set(length.min(16));
             }
         }
     };
@@ -278,26 +277,26 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             app.delay_millis(1).await;
             if buttons.is_shift_pressed() {
                 if !shift_old {
-                    latched_glob.set(false).await;
+                    latched_glob.set(false);
                     shift_old = true;
-                    rec_flag.set(true).await;
-                    length_rec.set(0).await;
+                    rec_flag.set(true);
+                    length_rec.set(0);
                 }
                 leds.set(
                     0,
                     Led::Top,
                     RED,
-                    Brightness::Custom((att_glob.get().await / 16) as u8),
+                    Brightness::Custom((att_glob.get() / 16) as u8),
                 );
             }
             if !buttons.is_shift_pressed() && shift_old {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
                 shift_old = false;
-                rec_flag.set(false).await;
-                let length = length_rec.get().await;
+                rec_flag.set(false);
+                let length = length_rec.get();
                 if length > 1 {
-                    length_glob.set(length - 1).await;
-                    // let note = midi_note.get().await;
+                    length_glob.set(length - 1);
+                    // let note = midi_note.get();
                     // midi.send_note_off(note).await;
                     storage
                         .modify_and_save(|s| s.length_saved = length, None)
@@ -308,12 +307,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if buttons.is_button_pressed(0) {
                 //button going down
                 if !button_old {
-                    latched_glob.set(false).await;
+                    latched_glob.set(false);
                     button_old = true;
                 }
             }
             if !buttons.is_button_pressed(0) && button_old {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
                 button_old = false;
                 leds.unset(0, Led::Bottom);
             }
@@ -329,14 +328,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         .query(|s| (s.att_saved, s.length_saved, s.register_saved))
                         .await;
 
-                    att_glob.set(att as u32).await;
-                    length_glob.set(length).await;
-                    register_glob.set(register).await;
-                    recall_flag.set(true).await;
-                    prob_glob.set(0).await;
+                    att_glob.set(att as u32);
+                    length_glob.set(length);
+                    register_glob.set(register);
+                    recall_flag.set(true);
+                    prob_glob.set(0);
 
                     //Add recall routine
-                    latched_glob.set(false).await;
+                    latched_glob.set(false);
                 }
 
                 SceneEvent::SaveScene(scene) => {

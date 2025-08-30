@@ -15,7 +15,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    colors::{TEAL, PURPLE, WHITE, YELLOW},
+    colors::{PURPLE, TEAL, WHITE, YELLOW},
     Brightness, Config, Param, Range, Value,
 };
 
@@ -142,7 +142,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         app.make_gate_jack(7, 4095).await,
     ];
 
-    let mut quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range);
 
     let page_glob: Global<usize> = app.make_global(0);
     let led_flag_glob: Global<bool> = app.make_global(true);
@@ -162,7 +162,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let mut shift_old = false;
     let mut lastnote = [0; 4];
-    let mut gatelength1 = gatelength_glob.get().await;
+    let mut gatelength1 = gatelength_glob.get();
 
     let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel, legato_seq_saved) =
         storage
@@ -178,18 +178,18 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             })
             .await;
 
-    seq_glob.set(seq_saved.get()).await;
-    gateseq_glob.set(gateseq_saved.get()).await;
-    seq_length_glob.set(seq_length_saved).await;
-    legatoseq_glob.set(legato_seq_saved.get()).await;
+    seq_glob.set(seq_saved.get());
+    gateseq_glob.set(gateseq_saved.get());
+    seq_length_glob.set(seq_length_saved);
+    legatoseq_glob.set(legato_seq_saved.get());
 
     for n in 0..4 {
         clockres[n] = resolution[clockres[n]];
         gatel[n] = (clockres[n] * gatel[n] as usize / 256) as u8;
         gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
     }
-    clockres_glob.set(clockres).await;
-    gatelength_glob.set(gatel).await;
+    clockres_glob.set(clockres);
+    gatelength_glob.set(gatel);
 
     let fut1 = async {
         loop {
@@ -197,11 +197,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             app.delay_millis(1).await;
             if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set([false; 8]).await;
+                latched_glob.set([false; 8]);
                 shift_old = true;
             }
             if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set([false; 8]).await;
+                latched_glob.set([false; 8]);
                 shift_old = false;
             }
         }
@@ -213,26 +213,26 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             let chan = faders.wait_for_any_change().await;
             let vals = faders.get_all_values();
-            let page = page_glob.get().await;
+            let page = page_glob.get();
 
-            let mut seq = seq_glob.get().await;
-            let mut seq_length = seq_length_glob.get().await;
+            let mut seq = seq_glob.get();
+            let mut seq_length = seq_length_glob.get();
 
-            // let mut seq_length = seq_length_glob.get_array().await;
-            // let mut seq = seq_glob.get_array().await;
+            // let mut seq_length = seq_length_glob.get_array();
+            // let mut seq = seq_glob.get_array();
 
             let _shift = buttons.is_shift_pressed();
-            let mut latched = latched_glob.get().await;
+            let mut latched = latched_glob.get();
 
             if !_shift {
                 if is_close(vals[chan], seq[chan + (page * 8)]) && !_shift {
                     latched[chan] = true;
-                    latched_glob.set(latched).await;
+                    latched_glob.set(latched);
                 }
 
                 if chan < 8 && latched[chan] {
                     seq[chan + (page * 8)] = vals[chan];
-                    seq_glob.set(seq).await;
+                    seq_glob.set(seq);
                     storage.modify_and_save(|s| s.seq.set(seq), None).await;
                 }
             }
@@ -240,25 +240,25 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if _shift {
                 if (vals[0] / 256 + 1) as u8 == seq_length[page / 2] && _shift {
                     latched[0] = true;
-                    latched_glob.set(latched).await;
+                    latched_glob.set(latched);
                     //info!("latching!");
                 }
                 // add check for latching
                 if chan == 0 {
                     if (vals[chan] / 256 + 1) as u8 == seq_length[page / 2] {
                         latched[chan] = true;
-                        latched_glob.set(latched).await;
+                        latched_glob.set(latched);
                     }
                     //fader 1 + shift
                     if latched[chan] {
                         seq_length[page / 2] = (((vals[0]) / 256) + 1) as u8;
-                        seq_length_glob.set(seq_length).await;
+                        seq_length_glob.set(seq_length);
                         //info!("{}", seq_length[page / 2]);
                         storage
                             .modify_and_save(|s| s.seq_length = seq_length, None)
                             .await;
 
-                        length_flag.set(true).await;
+                        length_flag.set(true);
                     }
                 }
                 if chan == 1 {
@@ -267,7 +267,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
                     if (vals[chan] / 512) == res_saved[page / 2] as u16 {
                         latched[chan] = true;
-                        latched_glob.set(latched).await;
+                        latched_glob.set(latched);
                     }
 
                     if latched[chan] {
@@ -278,14 +278,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             )
                             .await;
 
-                        let mut clockres = clockres_glob.get().await;
+                        let mut clockres = clockres_glob.get();
                         clockres[page / 2] = resolution[(vals[1] / 512) as usize];
-                        clockres_glob.set(clockres).await;
+                        clockres_glob.set(clockres);
 
-                        let mut gatelength = gatelength_glob.get().await;
+                        let mut gatelength = gatelength_glob.get();
                         gatelength[page / 2] =
                             gatelength[page / 2].clamp(1, clockres[page / 2] as u8);
-                        gatelength_glob.set(gatelength).await;
+                        gatelength_glob.set(gatelength);
                     }
                 }
 
@@ -297,12 +297,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if (vals[chan] / 16).abs_diff(gatelength_saved[page / 2] as u16) < 10 {
                         // do the latching
                         latched[chan] = true;
-                        latched_glob.set(latched).await;
+                        latched_glob.set(latched);
                     }
 
                     if latched[chan] {
-                        let mut gatelength = gatelength_glob.get().await;
-                        let clockres = clockres_glob.get().await;
+                        let mut gatelength = gatelength_glob.get();
+                        let clockres = clockres_glob.get();
                         gatelength_saved[page / 2] = (vals[chan] / 16) as u8;
                         storage
                             .modify_and_save(|s| s.gate_length = gatelength_saved, None)
@@ -315,13 +315,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         gatelength[page / 2] =
                             gatelength[page / 2].clamp(1, clockres[page / 2] as u8 - 1);
 
-                        gatelength_glob.set(gatelength).await;
+                        gatelength_glob.set(gatelength);
                     }
 
                     //add saving
                 }
             }
-            led_flag_glob.set(true).await;
+            led_flag_glob.set(true);
         }
     };
 
@@ -330,17 +330,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
-            let mut gateseq = gateseq_glob.get().await;
-            let mut legato_seq = legatoseq_glob.get().await;
+            let mut gateseq = gateseq_glob.get();
+            let mut legato_seq = legatoseq_glob.get();
 
-            // let mut gateseq = gateseq_glob.get_array().await;
-            let page = page_glob.get().await;
+            // let mut gateseq = gateseq_glob.get_array();
+            let page = page_glob.get();
             if !is_shift_pressed {
                 gateseq[chan + (page * 8)] = !gateseq[chan + (page * 8)];
-                gateseq_glob.set(gateseq).await;
+                gateseq_glob.set(gateseq);
 
                 legato_seq[chan + (page * 8)] = false;
-                legatoseq_glob.set(legato_seq).await;
+                legatoseq_glob.set(legato_seq);
 
                 storage
                     .modify_and_save(|s| s.gateseq.set(gateseq), None)
@@ -349,12 +349,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     .modify_and_save(|s| s.legato_seq.set(legato_seq), None)
                     .await;
 
-                // gateseq_glob.set_array(gateseq).await;
-                // gateseq_glob.save().await;
-                led_flag_glob.set(true).await;
+                // gateseq_glob.set_array(gateseq);
+                // gateseq_glob.save();
+                led_flag_glob.set(true);
             } else {
-                page_glob.set(chan).await;
-                latched_glob.set([false; 8]).await
+                page_glob.set(chan);
+                latched_glob.set([false; 8])
             }
         }
     };
@@ -365,17 +365,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_long_press().await;
 
-            // let mut gateseq = gateseq_glob.get_array().await;
-            let page = page_glob.get().await;
+            // let mut gateseq = gateseq_glob.get_array();
+            let page = page_glob.get();
 
             if !is_shift_pressed {
-                let mut legato_seq = legatoseq_glob.get().await;
+                let mut legato_seq = legatoseq_glob.get();
                 legato_seq[chan + (page * 8)] = !legato_seq[chan + (page * 8)];
-                legatoseq_glob.set(legato_seq).await;
+                legatoseq_glob.set(legato_seq);
 
-                let mut gateseq = gateseq_glob.get().await;
+                let mut gateseq = gateseq_glob.get();
                 gateseq[chan + (page * 8)] = true;
-                gateseq_glob.set(gateseq).await;
+                gateseq_glob.set(gateseq);
 
                 storage
                     .modify_and_save(|s| s.gateseq.set(gateseq), None)
@@ -384,8 +384,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     .modify_and_save(|s| s.legato_seq.set(legato_seq), None)
                     .await;
 
-                // gateseq_glob.set_array(gateseq).await;
-                // gateseq_glob.save().await;
+                // gateseq_glob.set_array(gateseq);
+                // gateseq_glob.save();
             }
         }
     };
@@ -424,17 +424,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                       // },
             ];
             app.delay_millis(16).await;
-            let clockres = clockres_glob.get().await;
+            let clockres = clockres_glob.get();
 
-            //if buttons.is_shift_pressed().await;
+            //if buttons.is_shift_pressed();
             if buttons.is_shift_pressed() {
-                let clockn = clockn_glob.get().await;
+                let clockn = clockn_glob.get();
 
-                //let seq_length = seq_length_glob.get_array().await;
+                //let seq_length = seq_length_glob.get_array();
 
-                let seq_length = seq_length_glob.get().await;
+                let seq_length = seq_length_glob.get();
 
-                let page = page_glob.get().await;
+                let page = page_glob.get();
                 let mut bright = Brightness::Lower;
                 for n in 0..=7 {
                     if n == page {
@@ -469,18 +469,18 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             if !buttons.is_shift_pressed() {
                 // LED stuff
-                let page = page_glob.get().await;
+                let page = page_glob.get();
 
-                let seq = seq_glob.get().await;
-                let gateseq = gateseq_glob.get().await;
-                let seq_length = seq_length_glob.get().await;
+                let seq = seq_glob.get();
+                let gateseq = gateseq_glob.get();
+                let seq_length = seq_length_glob.get();
 
-                // let gateseq = gateseq_glob.get_array().await;
-                // let seq_length = seq_length_glob.get_array().await; //use this to highlight active notes
-                // let seq = seq_glob.get_array().await;
+                // let gateseq = gateseq_glob.get_array();
+                // let seq_length = seq_length_glob.get_array(); //use this to highlight active notes
+                // let seq = seq_glob.get_array();
 
                 let mut color = colors[0];
-                let clockn = clockn_glob.get().await; // this should go
+                let clockn = clockn_glob.get(); // this should go
 
                 if page / 2 == 0 {
                     color = colors[0];
@@ -495,7 +495,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     color = colors[3];
                 }
 
-                let legato_seq = legatoseq_glob.get().await;
+                let legato_seq = legatoseq_glob.get();
 
                 for n in 0..=7 {
                     led.set(
@@ -553,7 +553,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 led.set(page, Led::Bottom, color, Brightness::Default);
             }
 
-            led_flag_glob.set(false).await;
+            led_flag_glob.set(false);
         }
     };
 
@@ -561,16 +561,16 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         //sequencer functions
 
         loop {
-            //let stor = storage.lock().await;
+            //let stor = storage.lock();
 
-            let gateseq = gateseq_glob.get().await;
-            let seq_length = seq_length_glob.get().await;
-            let clockres = clockres_glob.get().await;
-            let legato_seq = legatoseq_glob.get().await;
+            let gateseq = gateseq_glob.get();
+            let seq_length = seq_length_glob.get();
+            let clockres = clockres_glob.get();
+            let legato_seq = legatoseq_glob.get();
 
-            let mut clockn = clockn_glob.get().await;
+            let mut clockn = clockn_glob.get();
 
-            // let gateseq = gateseq_glob.get_array().await;
+            // let gateseq = gateseq_glob.get_array();
 
             match clk.wait_for_event(1).await {
                 ClockEvent::Reset => {
@@ -588,13 +588,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                                 (clockn / clockres[n] % seq_length[n] as usize) + (n * 16);
                             midi[n].send_note_off(lastnote[n]).await;
                             if gateseq[clkindex] {
-                                let seq = seq_glob.get().await;
+                                let seq = seq_glob.get();
 
                                 let out = quantizer.get_quantized_note(seq[clkindex] / 4).await;
 
                                 lastnote[n] = (out.as_midi() as i32 + base_note) as u8;
                                 midi[n].send_note_on(lastnote[n], 4095).await;
-                                gatelength1 = gatelength_glob.get().await;
+                                gatelength1 = gatelength_glob.get();
                                 cv_out[n].set_value(out.as_counts(range));
                                 gate_out[n].set_high().await;
                             } else {
@@ -615,7 +615,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 _ => {}
             }
 
-            clockn_glob.set(clockn).await;
+            clockn_glob.set(clockn);
         }
     };
 
@@ -660,18 +660,18 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     //     )
                     //     .await;
 
-                    seq_glob.set(seq_saved.get()).await;
-                    gateseq_glob.set(gateseq_saved.get()).await;
-                    seq_length_glob.set(seq_length_saved).await;
-                    legatoseq_glob.set(legato_seq_saved.get()).await;
+                    seq_glob.set(seq_saved.get());
+                    gateseq_glob.set(gateseq_saved.get());
+                    seq_length_glob.set(seq_length_saved);
+                    legatoseq_glob.set(legato_seq_saved.get());
 
                     for n in 0..4 {
                         clockres[n] = resolution[clockres[n]];
                         gatel[n] = (clockres[n] * gatel[n] as usize / 256) as u8;
                         gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
                     }
-                    clockres_glob.set(clockres).await;
-                    gatelength_glob.set(gatel).await;
+                    clockres_glob.set(clockres);
+                    gatelength_glob.set(gatel);
                 }
                 SceneEvent::SaveScene(scene) => {
                     storage.save(Some(scene)).await;

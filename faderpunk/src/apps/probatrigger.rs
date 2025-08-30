@@ -106,17 +106,19 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 }
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
+    let midi_chan = params.midi_channel.get().await;
+    let note = params.note.get().await;
+    let gatel = params.gatel.get().await;
+    let led_color = params.color.get().await;
+    let curve = params.curve.get().await;
+
     let mut clock = app.use_clock();
     let die = app.use_die();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
 
-    let midi_chan = params.midi_channel.get().await;
-    let note = params.note.get().await;
-    let gatel = params.gatel.get().await;
     let midi = app.use_midi_output(midi_chan as u8 - 1);
-    let led_color = params.color.get().await;
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
@@ -124,8 +126,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let prob_glob = app.make_global(4095);
 
     let jack = app.make_gate_jack(0, 4095).await;
-
-    let curve = params.curve.get().await;
 
     let resolution = [368, 184, 92, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
@@ -139,9 +139,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         .query(|s| (s.fader_saved, s.mute_saved, s.prob_saved))
         .await;
 
-    prob_glob.set(att).await;
-    glob_muted.set(mute).await;
-    div_glob.set(resolution[res as usize / 345]).await;
+    prob_glob.set(att);
+    glob_muted.set(mute);
+    div_glob.set(resolution[res as usize / 345]);
     if mute {
         leds.unset(0, Led::Button);
         leds.unset(0, Led::Top);
@@ -162,9 +162,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     jack.set_low().await;
                 }
                 ClockEvent::Tick => {
-                    let muted = glob_muted.get().await;
-                    let val = prob_glob.get().await;
-                    let div = div_glob.get().await;
+                    let muted = glob_muted.get();
+                    let val = prob_glob.get();
+                    let div = div_glob.get();
 
                     if clkn % div == 0 {
                         if curve.at(val) >= rndval && !muted {
@@ -200,7 +200,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let fut2 = async {
         loop {
             buttons.wait_for_any_down().await;
-            let muted = glob_muted.toggle().await;
+            let muted = glob_muted.toggle();
 
             storage
                 .modify_and_save(
@@ -230,19 +230,19 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if buttons.is_shift_pressed() {
                 let fad_saved = storage.query(|s| s.fader_saved).await;
                 if is_close(fad, fad_saved) {
-                    latched_glob.set(true).await;
+                    latched_glob.set(true);
                 }
-                if latched_glob.get().await {
-                    div_glob.set(resolution[fad as usize / 345]).await;
+                if latched_glob.get() {
+                    div_glob.set(resolution[fad as usize / 345]);
                     storage.modify_and_save(|s| s.fader_saved = fad, None).await;
                 }
             } else {
-                let prob = prob_glob.get().await;
+                let prob = prob_glob.get();
                 if is_close(fad, prob) {
-                    latched_glob.set(true).await;
+                    latched_glob.set(true);
                 }
-                if latched_glob.get().await {
-                    prob_glob.set(fad).await;
+                if latched_glob.get() {
+                    prob_glob.set(fad);
                     storage.modify_and_save(|s| s.prob_saved = fad, None).await;
                 }
             }
@@ -258,9 +258,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         .query(|s| (s.fader_saved, s.mute_saved, s.prob_saved))
                         .await;
 
-                    prob_glob.set(att).await;
-                    glob_muted.set(mute).await;
-                    div_glob.set(resolution[res as usize / 345]).await;
+                    prob_glob.set(att);
+                    glob_muted.set(mute);
+                    div_glob.set(resolution[res as usize / 345]);
                     if mute {
                         leds.unset(0, Led::Button);
                         jack.set_low().await;
@@ -269,7 +269,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     } else {
                         leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                     }
-                    latched_glob.set(false).await;
+                    latched_glob.set(false);
                 }
 
                 SceneEvent::SaveScene(scene) => {
@@ -287,11 +287,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             app.delay_millis(1).await;
             if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
                 shift_old = true;
             }
             if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set(false).await;
+                latched_glob.set(false);
                 shift_old = false;
             }
         }
