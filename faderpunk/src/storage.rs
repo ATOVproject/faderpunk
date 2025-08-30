@@ -1,4 +1,4 @@
-use core::{marker::PhantomData, ops::Range};
+use core::{cell::RefCell, marker::PhantomData, ops::Range};
 
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use heapless::Vec;
@@ -399,7 +399,7 @@ pub trait AppStorage:
 
 pub struct ManagedStorage<S: AppStorage> {
     app_id: u8,
-    inner: Mutex<NoopRawMutex, S>,
+    inner: RefCell<S>,
     start_channel: usize,
 }
 
@@ -407,7 +407,7 @@ impl<S: AppStorage> ManagedStorage<S> {
     pub fn new(app_id: u8, start_channel: usize) -> Self {
         Self {
             app_id,
-            inner: Mutex::new(S::default()),
+            inner: RefCell::new(S::default()),
             start_channel,
         }
     }
@@ -418,7 +418,7 @@ impl<S: AppStorage> ManagedStorage<S> {
             let data = guard.data();
             if !data.is_empty() && data[0] == self.app_id {
                 if let Ok(val) = from_bytes::<S>(&data[1..]) {
-                    let mut inner = self.inner.lock().await;
+                    let mut inner = self.inner.borrow_mut();
                     *inner = val;
                 }
             }
@@ -428,10 +428,9 @@ impl<S: AppStorage> ManagedStorage<S> {
     pub async fn save(&self, scene: Option<u8>) {
         let address = AppStorageAddress::new(self.start_channel, scene).into();
 
-        let inner = self.inner.lock().await;
-
         let res = write_with(address, |buf| {
             buf[0] = self.app_id;
+            let inner = self.inner.borrow_mut();
             let len = to_slice(&*inner, &mut buf[1..])?.len();
             Ok(len + 1)
         })
@@ -442,19 +441,19 @@ impl<S: AppStorage> ManagedStorage<S> {
         }
     }
 
-    pub async fn query<F, R>(&self, accessor: F) -> R
+    pub fn query<F, R>(&self, accessor: F) -> R
     where
         F: FnOnce(&S) -> R,
     {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.borrow();
         accessor(&*guard)
     }
 
-    pub async fn modify<F, R>(&self, modifier: F) -> R
+    pub fn modify<F, R>(&self, modifier: F) -> R
     where
         F: FnOnce(&mut S) -> R,
     {
-        let mut guard = self.inner.lock().await;
+        let mut guard = self.inner.borrow_mut();
         modifier(&mut *guard)
     }
 
@@ -464,11 +463,14 @@ impl<S: AppStorage> ManagedStorage<S> {
     {
         let address = AppStorageAddress::new(self.start_channel, scene).into();
 
-        let mut inner = self.inner.lock().await;
-        let result = modifier(&mut *inner);
+        let result = {
+            let mut inner = self.inner.borrow_mut();
+            modifier(&mut *inner)
+        };
 
         let res = write_with(address, |buf| {
             buf[0] = self.app_id;
+            let inner = self.inner.borrow();
             let len = to_slice(&*inner, &mut buf[1..])?.len();
             Ok(len + 1)
         })

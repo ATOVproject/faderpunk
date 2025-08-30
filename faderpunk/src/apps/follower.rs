@@ -80,8 +80,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let _input = app.make_in_jack(0, Range::_Neg5_5V).await;
-    let _output = app.make_out_jack(1, Range::_Neg5_5V).await;
+    let input = app.make_in_jack(0, Range::_Neg5_5V).await;
+    let output = app.make_out_jack(1, Range::_Neg5_5V).await;
 
     let attack_glob = app.make_global(1);
     let decay_glob = app.make_global(1);
@@ -92,9 +92,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut oldval = 0.;
     let mut shift_old = false;
 
-    let stored_faders = storage.query(|s| s.fader_saved).await;
-    let offset = storage.query(|s| s.offset_saved).await;
-    let att = storage.query(|s| s.att_saved).await;
+    let (stored_faders, offset, att) =
+        storage.query(|s| (s.fader_saved, s.offset_saved, s.att_saved));
 
     offset_glob.set(offset);
     att_glob.set(att);
@@ -107,7 +106,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let fut1 = async {
         loop {
             app.delay_millis(1).await;
-            let mut inval = _input.get_value();
+            let mut inval = input.get_value();
             inval = rectify(inval);
 
             oldval =
@@ -118,7 +117,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
 
-            _output.set_value(outval as u16);
+            output.set_value(outval);
 
             if !buttons.is_shift_pressed() {
                 let slew_led = split_unsigned_value(oldval as u16);
@@ -180,8 +179,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let mut latched = latched_glob.get();
 
             if !buttons.is_shift_pressed() {
-                storage.load(None).await;
-                let mut stored_faders = storage.query(|s| s.fader_saved).await;
+                let mut stored_faders = storage.query(|s| s.fader_saved);
                 if is_close(stored_faders[chan], vals[chan]) {
                     latched[chan] = true;
                     latched_glob.set(latched);
@@ -318,9 +316,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
 
-                    let stored_faders = storage.query(|s| s.fader_saved).await;
-                    let offset = storage.query(|s| s.offset_saved).await;
-                    let att = storage.query(|s| s.att_saved).await;
+                    let (stored_faders, offset, att) =
+                        storage.query(|s| (s.fader_saved, s.offset_saved, s.att_saved));
 
                     offset_glob.set(offset);
                     att_glob.set(att);

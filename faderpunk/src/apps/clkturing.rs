@@ -150,9 +150,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let base_note = 48;
 
-    let (att, length, mut register) = storage
-        .query(|s| (s.att_saved, s.length_saved, s.register_saved))
-        .await;
+    let (att, length, mut register) =
+        storage.query(|s| (s.att_saved, s.length_saved, s.register_saved));
     att_glob.set(att as u32);
     length_glob.set(length);
     register_glob.set(register);
@@ -324,9 +323,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let (att, length, register) = storage
-                        .query(|s| (s.att_saved, s.length_saved, s.register_saved))
-                        .await;
+                    let (att, length, register) =
+                        storage.query(|s| (s.att_saved, s.length_saved, s.register_saved));
 
                     att_glob.set(att as u32);
                     length_glob.set(length);

@@ -75,7 +75,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let mut midi_in = app.use_midi_input(2);
 
     let times_glob = app.make_global([0.0682, 0.0682]);
-    let mode_glob = app.make_global(0); //0 AD, 1, ASR, 2 Looping AD
     let latched_glob = app.make_global([false; 2]);
 
     let gate_on_glob = app.make_global(0);
@@ -91,8 +90,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let color = [YELLOW, TEAL, PURPLE];
 
-    let curve_setting = storage.query(|s| s.curve_saved).await;
-    let stored_faders = storage.query(|s| s.fader_saved).await;
+    let (curve_setting, stored_faders, att_saved) =
+        storage.query(|s| (s.curve_saved, s.fader_saved, s.att_saved));
 
     leds.set(
         0,
@@ -125,9 +124,9 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         loop {
             app.delay_millis(1).await;
             timer += 1;
-            let mode = storage.query(|s| s.mode_saved).await;
+            let mode = storage.query(|s| s.mode_saved);
             let times = times_glob.get();
-            let curve_setting = storage.query(|s| s.curve_saved).await;
+            let curve_setting = storage.query(|s| s.curve_saved);
 
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
@@ -162,9 +161,9 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 }
                 old_gate = false;
             }
-            if timer - start_time > storage.query(|s: &Storage| s.min_gate_saved).await as u32
+            if timer - start_time > storage.query(|s: &Storage| s.min_gate_saved) as u32
                 && t2g == true
-                && storage.query(|s: &Storage| s.min_gate_saved).await != 4095
+                && storage.query(|s: &Storage| s.min_gate_saved) != 4095
             {
                 gate_on_glob.modify(|g| (*g - 1).max(0));
 
@@ -216,7 +215,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     env_state = 1;
                 }
             }
-            outval = attenuate(outval, storage.query(|s| s.att_saved).await);
+            outval = attenuate(outval, storage.query(|s| s.att_saved));
             output.set_value(outval);
             if shift_old {
                 leds.set(1, Led::Button, color[mode as usize], Brightness::Lower);
@@ -226,10 +225,10 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     leds.set(0, Led::Button, RED, Brightness::Lower);
                 }
 
-                let att = storage.query(|s| s.att_saved).await;
+                let att = storage.query(|s| s.att_saved);
                 leds.set(1, Led::Top, RED, Brightness::Custom((att / 16) as u8));
-                if timer % storage.query(|s: &Storage| s.min_gate_saved).await as u32 + 200
-                    < storage.query(|s: &Storage| s.min_gate_saved).await as u32
+                if timer % storage.query(|s: &Storage| s.min_gate_saved) as u32 + 200
+                    < storage.query(|s: &Storage| s.min_gate_saved) as u32
                 {
                     leds.set(0, Led::Top, RED, Brightness::Low);
                 } else {
@@ -276,7 +275,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
             if !buttons.is_shift_pressed() {
                 let mut times = times_glob.get();
-                let mut stored_faders = storage.query(|s| s.fader_saved).await;
+                let mut stored_faders = storage.query(|s| s.fader_saved);
 
                 if is_close(vals[chan], stored_faders[chan]) {
                     latched[chan] = true;
@@ -303,7 +302,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     times_glob.set(times);
                 }
             } else if chan == 1 {
-                if is_close(vals[chan], storage.query(|s| s.att_saved).await) {
+                if is_close(vals[chan], storage.query(|s| s.att_saved)) {
                     latched[chan] = true;
                     latched_glob.set(latched);
                 }
@@ -321,7 +320,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             } else if chan == 0 {
                 if is_close(
                     vals[chan] + 10,
-                    storage.query(|s: &Storage| s.min_gate_saved).await,
+                    storage.query(|s: &Storage| s.min_gate_saved),
                 ) {
                     latched[chan] = true;
                     latched_glob.set(latched);
@@ -345,7 +344,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             if !is_shift_pressed {
-                let mut curve_setting = storage.query(|s| s.curve_saved).await;
+                let mut curve_setting = storage.query(|s| s.curve_saved);
 
                 curve_setting[chan] = curve_setting[chan].cycle();
 
@@ -359,7 +358,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     )
                     .await;
             } else if chan == 1 {
-                let mut mode = storage.query(|s| s.mode_saved).await;
+                let mut mode = storage.query(|s| s.mode_saved);
                 mode = (mode + 1) % 3;
 
                 storage
@@ -400,8 +399,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
 
-                    let curve_setting = storage.query(|s| s.curve_saved).await;
-                    let stored_faders = storage.query(|s| s.fader_saved).await;
+                    let curve_setting = storage.query(|s| s.curve_saved);
+                    let stored_faders = storage.query(|s| s.fader_saved);
 
                     leds.set(
                         0,

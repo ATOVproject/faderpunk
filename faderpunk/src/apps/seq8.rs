@@ -165,18 +165,16 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut gatelength1 = gatelength_glob.get();
 
     let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel, legato_seq_saved) =
-        storage
-            .query(|s| {
-                (
-                    s.seq,
-                    s.gateseq,
-                    s.seq_length,
-                    s.seqres,
-                    s.gate_length,
-                    s.legato_seq,
-                )
-            })
-            .await;
+        storage.query(|s| {
+            (
+                s.seq,
+                s.gateseq,
+                s.seq_length,
+                s.seqres,
+                s.gate_length,
+                s.legato_seq,
+            )
+        });
 
     seq_glob.set(seq_saved.get());
     gateseq_glob.set(gateseq_saved.get());
@@ -263,7 +261,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
                 if chan == 1 {
                     // add latching to this
-                    let res_saved = storage.query(|s| s.seqres).await;
+                    let res_saved = storage.query(|s| s.seqres);
 
                     if (vals[chan] / 512) == res_saved[page / 2] as u16 {
                         latched[chan] = true;
@@ -292,7 +290,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if chan == 2 {
                     // add latching to this
 
-                    let mut gatelength_saved = storage.query(|s| s.gate_length).await; // get saved fader value
+                    let mut gatelength_saved = storage.query(|s| s.gate_length); // get saved fader value
 
                     if (vals[chan] / 16).abs_diff(gatelength_saved[page / 2] as u16) < 10 {
                         // do the latching
@@ -354,7 +352,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 led_flag_glob.set(true);
             } else {
                 page_glob.set(chan);
-                latched_glob.set([false; 8])
+                latched_glob.set([false; 8]);
             }
         }
     };
@@ -632,18 +630,16 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         mut clockres,
                         mut gatel,
                         legato_seq_saved,
-                    ) = storage
-                        .query(|s| {
-                            (
-                                s.seq,
-                                s.gateseq,
-                                s.seq_length,
-                                s.seqres,
-                                s.gate_length,
-                                s.legato_seq,
-                            )
-                        })
-                        .await;
+                    ) = storage.query(|s| {
+                        (
+                            s.seq,
+                            s.gateseq,
+                            s.seq_length,
+                            s.seqres,
+                            s.gate_length,
+                            s.legato_seq,
+                        )
+                    });
 
                     // storage
                     //     .modify_and_save(

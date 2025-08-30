@@ -146,8 +146,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let fader = app.use_faders();
     let leds = app.use_leds();
 
-    let muted = storage.query(|s| s.muted).await;
-    let att = storage.query(|s| s.att_saved).await;
+    let (muted, att) = storage.query(|s| (s.muted, s.att_saved));
     muted_glob.set(muted);
     att_glob.set(att);
 
@@ -180,7 +179,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     // jack.set_value(0);
 
     let fut1 = async {
-        let mut outval = 0.;
+        let mut outval = 0;
         let mut val = fader.get_value();
         let mut fadval = fader.get_value();
         let mut old_midi = 0;
@@ -212,7 +211,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         0,
                         Led::Top,
                         led_color,
-                        Brightness::Custom((outval / 16.) as u8),
+                        Brightness::Custom((outval as f32 / 16.0) as u8),
                     );
                 }
                 outval = clickless(outval, val);
@@ -318,7 +317,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if mode == 0 {
                         if bits_7_16(controller) == midi_cc as u16 {
                             let val = scale_bits_7_12(value);
-                            offset_glob.set(val)
+                            offset_glob.set(val);
                         }
                     }
                 }
@@ -406,7 +405,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if mode == 4 {
                         info!("ch aftertouch");
                         let val = scale_bits_7_12(vel);
-                        offset_glob.set(val)
+                        offset_glob.set(val);
                     }
                 }
 
@@ -420,7 +419,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let muted = storage.query(|s| s.muted).await;
+                    let muted = storage.query(|s| s.muted);
                     muted_glob.set(muted);
                     if muted {
                         leds.unset(0, Led::Button);

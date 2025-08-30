@@ -11,6 +11,7 @@ use portable_atomic::Ordering;
 
 use libfp::{
     ext::BrightnessExt,
+    latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
     utils::scale_bits_12_7,
     Brightness, Range,
@@ -429,17 +430,18 @@ impl<T: Sized + Copy> Global<T> {
         *value
     }
 
-    pub fn set(&self, val: T) {
+    pub fn set(&self, val: T) -> T {
         let mut value = self.inner.borrow_mut();
-        *value = val
+        *value = val;
+        *value
     }
 
     pub fn modify<F, R>(&self, modifier: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
-        let mut value = self.inner.borrow_mut();
-        modifier(&mut *value)
+        let mut guard = self.inner.borrow_mut();
+        modifier(&mut *guard)
     }
 }
 
@@ -538,6 +540,10 @@ impl<const N: usize> App<N> {
 
     pub fn make_global<T: Sized + Copy>(&self, initial: T) -> Global<T> {
         Global::new(initial)
+    }
+
+    pub fn make_latch(&self, initial: u16) -> AnalogLatch {
+        AnalogLatch::new(initial)
     }
 
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
