@@ -1,4 +1,5 @@
 use embassy_time::Duration;
+use libm::roundf;
 use midly::num::u7;
 
 pub const fn bpm_to_clock_duration(bpm: f32, ppqn: u8) -> Duration {
@@ -89,7 +90,7 @@ pub fn attenuverter(input: u16, modulation: u16) -> u16 {
 
 /// Slew limiter
 pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f32 {
-    let min_slew = 200.;
+    let min_slew = 200.0;
     let max_slew = 0.5;
     let delta = input as i32 - prev as i32;
     if delta > 0 {
@@ -112,7 +113,6 @@ pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f3
 }
 
 /// Very short slew meant to avoid clicks
-pub fn clickless(prev: f32, input: u16) -> f32 {
-    let output = (prev * 15. + input as f32) / 16.;
-    output
+pub fn clickless(prev: u16, input: u16) -> u16 {
+    roundf((prev as f32 * 15.0 + input as f32) / 16.0) as u16
 }

@@ -13,6 +13,8 @@ use crate::app::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 5;
 
+const LED_BRIGHTNESS: Brightness = Brightness::Lower;
+
 pub static CONFIG: Config<PARAMS> = Config::new("Note Fader", "Play notes manually or on clock")
     .add_param(Param::i32 {
         name: "MIDI Channel",
@@ -133,11 +135,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let mut clkn = 0;
 
-    const LED_BRIGHTNESS: Brightness = Brightness::Lower;
-
-    let (res, mute, att) = storage
-        .query(|s| (s.fader_saved, s.mute_saved, s.clocked))
-        .await;
+    let (res, mute, att) = storage.query(|s| (s.fader_saved, s.mute_saved, s.clocked));
 
     clocked_glob.set(att);
     glob_muted.set(mute);
@@ -260,7 +258,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let fad = fader.get_value();
 
             if buttons.is_shift_pressed() {
-                let fad_saved = storage.query(|s| s.fader_saved).await;
+                let fad_saved = storage.query(|s| s.fader_saved);
                 if is_close(fad, fad_saved) {
                     latched_glob.set(true);
                 }
@@ -277,9 +275,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let (res, mute, clk) = storage
-                        .query(|s| (s.fader_saved, s.mute_saved, s.clocked))
-                        .await;
+                    let (res, mute, clk) =
+                        storage.query(|s| (s.fader_saved, s.mute_saved, s.clocked));
 
                     clocked_glob.set(clk);
                     glob_muted.set(mute);

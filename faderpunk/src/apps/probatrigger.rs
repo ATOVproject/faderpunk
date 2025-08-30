@@ -135,9 +135,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let mut rndval = die.roll();
 
-    let (res, mute, att) = storage
-        .query(|s| (s.fader_saved, s.mute_saved, s.prob_saved))
-        .await;
+    let (res, mute, att) = storage.query(|s| (s.fader_saved, s.mute_saved, s.prob_saved));
 
     prob_glob.set(att);
     glob_muted.set(mute);
@@ -228,7 +226,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let fad = fader.get_value();
 
             if buttons.is_shift_pressed() {
-                let fad_saved = storage.query(|s| s.fader_saved).await;
+                let fad_saved = storage.query(|s| s.fader_saved);
                 if is_close(fad, fad_saved) {
                     latched_glob.set(true);
                 }
@@ -254,9 +252,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let (res, mute, att) = storage
-                        .query(|s| (s.fader_saved, s.mute_saved, s.prob_saved))
-                        .await;
+                    let (res, mute, att) =
+                        storage.query(|s| (s.fader_saved, s.mute_saved, s.prob_saved));
 
                     prob_glob.set(att);
                     glob_muted.set(mute);

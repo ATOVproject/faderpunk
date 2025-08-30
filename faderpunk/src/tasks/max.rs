@@ -13,7 +13,7 @@ use embassy_sync::{
 };
 use embassy_time::Timer;
 use libfp::{
-    latch::AnalogLatch,
+    latch::{AnalogLatch, LatchLayer},
     types::{RegressionValuesInput, RegressionValuesOutput},
 };
 use libm::roundf;
@@ -192,8 +192,12 @@ async fn read_fader(
     let mut chan: usize = 0;
 
     loop {
-        // global config mode: 1, normal mode: 0
-        let active_layer_index = if is_scene_button_pressed() { 1 } else { 0 };
+        // global config mode: Alt, normal mode: Main
+        let active_layer = if is_scene_button_pressed() {
+            LatchLayer::Alt
+        } else {
+            LatchLayer::Main
+        };
 
         // Channels are in reverse
         let channel = 15 - chan;
@@ -210,16 +214,15 @@ async fn read_fader(
 
         let latch = &mut fader_latches[channel];
 
-        let target_value = if active_layer_index == 0 {
-            main_fader_values[channel]
-        } else {
-            global_settings_fader_values[channel]
+        let target_value = match active_layer {
+            LatchLayer::Main => main_fader_values[channel],
+            LatchLayer::Alt => global_settings_fader_values[channel],
         };
 
-        if let Some(new_value) = latch.update(val, active_layer_index, target_value) {
+        if let Some(new_value) = latch.update(val, active_layer, target_value) {
             let diff = (new_value as i32 - target_value as i32).abs();
-            match active_layer_index {
-                0 => {
+            match active_layer {
+                LatchLayer::Main => {
                     if diff >= 4 {
                         event_publisher
                             .publish(InputEvent::FaderChange(channel))
@@ -228,13 +231,12 @@ async fn read_fader(
                     }
                     MAX_VALUES_FADER[channel].store(new_value, Ordering::Relaxed)
                 }
-                1 => {
+                LatchLayer::Alt => {
                     if diff >= 4 {
                         set_global_config_via_chan(channel, new_value);
                         global_settings_fader_values[channel] = new_value;
                     }
                 }
-                _ => {}
             }
         }
 

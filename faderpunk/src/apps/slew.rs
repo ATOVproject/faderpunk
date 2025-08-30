@@ -93,9 +93,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut oldval = 0.;
     let mut shift_old = false;
 
-    let stored_faders = storage.query(|s| s.fader_saved).await;
-    let offset = storage.query(|s| s.offset_saved).await;
-    let att = storage.query(|s| s.att_saved).await;
+    let (stored_faders, offset, att) =
+        storage.query(|s| (s.fader_saved, s.offset_saved, s.att_saved));
 
     offset_glob.set(offset);
     att_glob.set(att);
@@ -203,7 +202,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             if !buttons.is_shift_pressed() {
                 storage.load(None).await;
-                let mut stored_faders = storage.query(|s| s.fader_saved).await;
+                let mut stored_faders = storage.query(|s| s.fader_saved);
                 if is_close(stored_faders[chan], vals[chan]) {
                     latched[chan] = true;
                     latched_glob.set(latched);
@@ -339,9 +338,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let stored_faders = storage.query(|s| s.fader_saved).await;
-                    let offset = storage.query(|s| s.offset_saved).await;
-                    let att = storage.query(|s| s.att_saved).await;
+
+                    let stored_faders = storage.query(|s| s.fader_saved);
+                    let offset = storage.query(|s| s.offset_saved);
+                    let att = storage.query(|s| s.att_saved);
+
                     offset_glob.set(offset);
                     att_glob.set(att);
                     attack_glob.set(curve.at(stored_faders[0]));

@@ -1,3 +1,20 @@
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(usize)]
+pub enum LatchLayer {
+    Main,
+    Alt,
+}
+
+impl From<bool> for LatchLayer {
+    fn from(is_alternate_layer: bool) -> Self {
+        if is_alternate_layer {
+            Self::Alt
+        } else {
+            Self::Main
+        }
+    }
+}
+
 /// A stateless machine that implements "catch-up" or "pickup" logic for a fader or knob.
 ///
 /// This struct determines when a physical fader should take control of a value.
@@ -5,7 +22,7 @@
 /// The caller is responsible for maintaining the state and passing the relevant value to the `update` method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnalogLatch {
-    active_layer_index: usize,
+    active_layer: LatchLayer,
     is_latched: bool,
     prev_value: u16,
     prev_target: u16,
@@ -19,7 +36,7 @@ impl AnalogLatch {
     pub fn new(initial_value: u16) -> Self {
         Self {
             // Default to layer 0 being active.
-            active_layer_index: 0,
+            active_layer: LatchLayer::Main,
             // Assume we are latched to the initial value.
             is_latched: true,
             // The fader's last known position is its starting position.
@@ -30,8 +47,8 @@ impl AnalogLatch {
     }
 
     /// Returns the index of the layer that the latch is currently focused on.
-    pub fn active_layer(&self) -> usize {
-        self.active_layer_index
+    pub fn active_layer(&self) -> LatchLayer {
+        self.active_layer
     }
 
     /// Returns `true` if the fader is currently in control of the active layer's value.
@@ -56,12 +73,12 @@ impl AnalogLatch {
     pub fn update(
         &mut self,
         value: u16,
-        new_active_layer_index: usize,
+        new_active_layer: LatchLayer,
         active_layer_target_value: u16,
     ) -> Option<u16> {
         // Did the user switch layers?
-        if new_active_layer_index != self.active_layer_index {
-            self.active_layer_index = new_active_layer_index;
+        if new_active_layer != self.active_layer {
+            self.active_layer = new_active_layer;
             // Unlatch unless the fader is already at the new target value.
             self.is_latched = value == active_layer_target_value;
             self.prev_target = active_layer_target_value;
@@ -114,7 +131,7 @@ mod tests {
     #[test]
     fn test_new_creates_latched_state() {
         let latch = AnalogLatch::new(100);
-        assert_eq!(latch.active_layer(), 0);
+        assert_eq!(latch.active_layer(), LatchLayer::Main);
         assert!(latch.is_latched());
     }
 
@@ -123,12 +140,12 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Moving fader while latched should update value
-        let result = latch.update(150, 0, 100);
+        let result = latch.update(150, LatchLayer::Main, 100);
         assert_eq!(result, Some(150));
         assert!(latch.is_latched());
 
         // No movement should return None
-        let result = latch.update(150, 0, 100);
+        let result = latch.update(150, LatchLayer::Main, 100);
         assert_eq!(result, None);
         assert!(latch.is_latched());
     }
@@ -138,10 +155,10 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Switch to layer 1, fader moves to the new target value
-        let result = latch.update(200, 1, 200);
+        let result = latch.update(200, LatchLayer::Alt, 200);
         // The fader's physical value changed, so the change should be reported
         assert_eq!(result, Some(200));
-        assert_eq!(latch.active_layer(), 1);
+        assert_eq!(latch.active_layer(), LatchLayer::Alt);
         // Should remain latched
         assert!(latch.is_latched());
     }
@@ -151,9 +168,9 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Switch to layer 1, fader not at target value
-        let result = latch.update(100, 1, 200);
+        let result = latch.update(100, LatchLayer::Alt, 200);
         assert_eq!(result, None);
-        assert_eq!(latch.active_layer(), 1);
+        assert_eq!(latch.active_layer(), LatchLayer::Alt);
         // Should become unlatched
         assert!(!latch.is_latched());
     }
@@ -163,11 +180,11 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Switch layers and unlatch
-        latch.update(100, 1, 150);
+        latch.update(100, LatchLayer::Alt, 150);
         assert!(!latch.is_latched());
 
         // Move fader upward past target
-        let result = latch.update(160, 1, 150);
+        let result = latch.update(160, LatchLayer::Alt, 150);
         assert_eq!(result, Some(160));
         assert!(latch.is_latched());
     }
@@ -177,11 +194,11 @@ mod tests {
         let mut latch = AnalogLatch::new(200);
 
         // Switch layers and unlatch
-        latch.update(200, 1, 150);
+        latch.update(200, LatchLayer::Alt, 150);
         assert!(!latch.is_latched());
 
         // Move fader downward past target
-        let result = latch.update(140, 1, 150);
+        let result = latch.update(140, LatchLayer::Alt, 150);
         assert_eq!(result, Some(140));
         assert!(latch.is_latched());
     }
@@ -191,11 +208,11 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Switch layers and unlatch
-        latch.update(100, 1, 150);
+        latch.update(100, LatchLayer::Alt, 150);
         assert!(!latch.is_latched());
 
         // Move fader to exact target value
-        let result = latch.update(150, 1, 150);
+        let result = latch.update(150, LatchLayer::Alt, 150);
         assert_eq!(result, Some(150));
         assert!(latch.is_latched());
     }
@@ -205,11 +222,11 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Switch layers and unlatch
-        latch.update(100, 1, 200);
+        latch.update(100, LatchLayer::Alt, 200);
         assert!(!latch.is_latched());
 
         // Move fader but not past target
-        let result = latch.update(150, 1, 200);
+        let result = latch.update(150, LatchLayer::Alt, 200);
         assert_eq!(result, None);
         assert!(!latch.is_latched());
     }
@@ -219,20 +236,20 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Switch layers and unlatch
-        latch.update(100, 1, 200);
+        latch.update(100, LatchLayer::Alt, 200);
         assert!(!latch.is_latched());
 
         // Multiple movements without crossing target
-        let result = latch.update(120, 1, 200);
+        let result = latch.update(120, LatchLayer::Alt, 200);
         assert_eq!(result, None);
         assert!(!latch.is_latched());
 
-        let result = latch.update(180, 1, 200);
+        let result = latch.update(180, LatchLayer::Alt, 200);
         assert_eq!(result, None);
         assert!(!latch.is_latched());
 
         // Finally cross the target
-        let result = latch.update(220, 1, 200);
+        let result = latch.update(220, LatchLayer::Alt, 200);
         assert_eq!(result, Some(220));
         assert!(latch.is_latched());
     }
@@ -242,13 +259,13 @@ mod tests {
         let mut latch = AnalogLatch::new(150);
 
         // Switch layers, fader starts at exact target value
-        let result = latch.update(150, 1, 150);
+        let result = latch.update(150, LatchLayer::Alt, 150);
         assert_eq!(result, None);
         // Should be latched since at target
         assert!(latch.is_latched());
 
         // Any movement should update value
-        let result = latch.update(160, 1, 150);
+        let result = latch.update(160, LatchLayer::Alt, 150);
         assert_eq!(result, Some(160));
         assert!(latch.is_latched());
     }
@@ -260,12 +277,12 @@ mod tests {
         // Switch layer and move from 0 to 50. The target for the new layer is 0.
         // The movement from prev_value(0) to value(50) crosses the target(0),
         // so it should latch immediately.
-        let result = latch.update(50, 1, 0);
+        let result = latch.update(50, LatchLayer::Alt, 0);
         assert_eq!(result, Some(50));
         assert!(latch.is_latched());
 
         // Cross back to zero
-        let result = latch.update(0, 1, 0);
+        let result = latch.update(0, LatchLayer::Alt, 0);
         assert_eq!(result, Some(0));
         assert!(latch.is_latched());
     }
@@ -277,33 +294,14 @@ mod tests {
         // Switch layer and move. The target is u16::MAX.
         // The movement from prev_value(MAX) to value(MAX-100) crosses the target(MAX),
         // so it should latch immediately
-        let result = latch.update(u16::MAX - 100, 1, u16::MAX);
+        let result = latch.update(u16::MAX - 100, LatchLayer::Alt, u16::MAX);
         assert_eq!(result, Some(u16::MAX - 100));
         assert!(latch.is_latched());
 
         // Cross back to max
-        let result = latch.update(u16::MAX, 1, u16::MAX);
+        let result = latch.update(u16::MAX, LatchLayer::Alt, u16::MAX);
         assert_eq!(result, Some(u16::MAX));
         assert!(latch.is_latched());
-    }
-
-    #[test]
-    fn test_rapid_layer_switching() {
-        let mut latch = AnalogLatch::new(100);
-
-        // Rapid layer switches
-        latch.update(100, 1, 200);
-        assert_eq!(latch.active_layer(), 1);
-        assert!(!latch.is_latched());
-
-        latch.update(100, 2, 100);
-        assert_eq!(latch.active_layer(), 2);
-        // Back to exact match
-        assert!(latch.is_latched());
-
-        latch.update(100, 0, 150);
-        assert_eq!(latch.active_layer(), 0);
-        assert!(!latch.is_latched());
     }
 
     #[test]
@@ -314,7 +312,7 @@ mod tests {
         // The target value for the active layer changes from 100 to 200 internally,
         // but the fader's physical position is still 100
         // No layer switch occurs
-        let result = latch.update(100, 0, 200);
+        let result = latch.update(100, LatchLayer::Main, 200);
 
         // The fader has not moved, so the result should be None
         assert_eq!(result, None);
@@ -323,12 +321,12 @@ mod tests {
         assert!(!latch.is_latched());
 
         // Move the fader towards the new target, but not past it
-        let result = latch.update(150, 0, 200);
+        let result = latch.update(150, LatchLayer::Main, 200);
         assert_eq!(result, None);
         assert!(!latch.is_latched());
 
         // Now, cross the new target value
-        let result = latch.update(210, 0, 200);
+        let result = latch.update(210, LatchLayer::Main, 200);
         assert_eq!(result, Some(210));
         assert!(latch.is_latched());
     }
@@ -338,13 +336,13 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Multiple movements should all stay latched
-        assert_eq!(latch.update(120, 0, 100), Some(120));
+        assert_eq!(latch.update(120, LatchLayer::Main, 100), Some(120));
         assert!(latch.is_latched());
 
-        assert_eq!(latch.update(150, 0, 100), Some(150));
+        assert_eq!(latch.update(150, LatchLayer::Main, 100), Some(150));
         assert!(latch.is_latched());
 
-        assert_eq!(latch.update(80, 0, 100), Some(80));
+        assert_eq!(latch.update(80, LatchLayer::Main, 100), Some(80));
         assert!(latch.is_latched());
     }
 
@@ -353,12 +351,12 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Move fader to 150
-        assert_eq!(latch.update(150, 0, 100), Some(150));
+        assert_eq!(latch.update(150, LatchLayer::Main, 100), Some(150));
         assert!(latch.is_latched());
 
         // Target externally changes to 150 (where fader already is)
         // Should stay latched since we're already at the target
-        assert_eq!(latch.update(150, 0, 150), None);
+        assert_eq!(latch.update(150, LatchLayer::Main, 150), None);
         assert!(latch.is_latched());
     }
 
@@ -367,19 +365,19 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Target changes externally
-        assert_eq!(latch.update(100, 0, 200), None);
+        assert_eq!(latch.update(100, LatchLayer::Main, 200), None);
         assert!(!latch.is_latched());
 
         // Target changes again before we reach it
-        assert_eq!(latch.update(100, 0, 150), None);
+        assert_eq!(latch.update(100, LatchLayer::Main, 150), None);
         assert!(!latch.is_latched());
 
         // Move toward new target
-        assert_eq!(latch.update(140, 0, 150), None);
+        assert_eq!(latch.update(140, LatchLayer::Main, 150), None);
         assert!(!latch.is_latched());
 
         // Cross it
-        assert_eq!(latch.update(160, 0, 150), Some(160));
+        assert_eq!(latch.update(160, LatchLayer::Main, 150), Some(160));
         assert!(latch.is_latched());
     }
 
@@ -388,16 +386,16 @@ mod tests {
         let mut latch = AnalogLatch::new(100);
 
         // Move fader away
-        assert_eq!(latch.update(150, 0, 100), Some(150));
+        assert_eq!(latch.update(150, LatchLayer::Main, 100), Some(150));
         assert!(latch.is_latched());
 
         // Target changes externally to 200, causing unlatch
-        assert_eq!(latch.update(150, 0, 200), None);
+        assert_eq!(latch.update(150, LatchLayer::Main, 200), None);
         assert!(!latch.is_latched());
 
         // Move back toward original position (100)
         // but target is still 200, so no latch
-        assert_eq!(latch.update(100, 0, 200), None);
+        assert_eq!(latch.update(100, LatchLayer::Main, 200), None);
         assert!(!latch.is_latched());
     }
 
@@ -407,16 +405,16 @@ mod tests {
 
         // Target changes to exactly where we are
         // Should latch immediately
-        assert_eq!(latch.update(100, 0, 100), None);
+        assert_eq!(latch.update(100, LatchLayer::Main, 100), None);
         assert!(latch.is_latched());
 
         // Unlatch by external change
-        assert_eq!(latch.update(100, 0, 200), None);
+        assert_eq!(latch.update(100, LatchLayer::Main, 200), None);
         assert!(!latch.is_latched());
 
         // Target changes back to our position
         // Should latch immediately even without movement
-        assert_eq!(latch.update(100, 0, 100), None);
+        assert_eq!(latch.update(100, LatchLayer::Main, 100), None);
         assert!(latch.is_latched());
     }
 }

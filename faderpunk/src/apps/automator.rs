@@ -118,6 +118,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let cc: u8 = params.midi_cc.get().await as u8;
     let midi = app.use_midi_output(midi_chan as u8 - 1);
     let curve = params.curve.get().await;
+    let bipolar = params.bipolar.get().await;
 
     let mut clock = app.use_clock();
 
@@ -149,12 +150,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     // buffer_glob.set(buffer_saved).await;
     // length_glob.set(length_saved).await;
 
-    att_glob.set(storage.query(|s| s.att_saved).await);
+    att_glob.set(storage.query(|s| s.att_saved));
 
     leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
 
     let update_output = async {
-        let mut outval = 0.;
+        let mut outval = 0;
         let mut shift_old = false;
         loop {
             app.delay_millis(1).await;
@@ -176,8 +177,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let val = (buffer[index] + offset).min(4095);
 
             outval = clickless(outval, val);
-            if !params.bipolar.get().await {
-                let out = curve.at(attenuate(outval as u16, att));
+            if !bipolar {
+                let out = curve.at(attenuate(outval, att));
                 jack.set_value(out);
                 if !buttons.is_shift_pressed() {
                     leds.set(0, Led::Top, color, Brightness::Custom((out / 16) as u8));
@@ -185,7 +186,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     leds.set(0, Led::Top, RED, Brightness::Custom((att / 16) as u8));
                 }
             } else {
-                let out = curve.at(attenuate_bipolar(outval as u16, att));
+                let out = curve.at(attenuate_bipolar(outval, att));
                 jack.set_value(out);
                 if !buttons.is_shift_pressed() {
                     let ledint = split_unsigned_value(out);
@@ -198,8 +199,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
             }
             if last_midi / 16 != (val) / 16 {
-                midi.send_cc(cc as u8, attenuate(outval as u16, att)).await;
-                last_midi = outval as u16;
+                midi.send_cc(cc as u8, attenuate(outval, att)).await;
+                last_midi = outval;
             };
 
             if !shift_old && buttons.is_shift_pressed() {
@@ -301,7 +302,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let val = fader.get_value();
             if !buttons.is_shift_pressed() {
                 if is_close(val, offset_glob.get()) && !latched.get() {
-                    latched.set(true)
+                    latched.set(true);
                 }
             } else {
                 if !latched.get() && is_close(val, att_glob.get()) {

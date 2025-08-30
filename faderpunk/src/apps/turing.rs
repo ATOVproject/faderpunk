@@ -151,9 +151,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
-    let (att, length, mut register, res) = storage
-        .query(|s| (s.att_saved, s.length_saved, s.register_saved, s.res_saved))
-        .await;
+    let (att, length, mut register, res) =
+        storage.query(|s| (s.att_saved, s.length_saved, s.register_saved, s.res_saved));
     att_glob.set(att as u32);
     length_glob.set(length);
     register_glob.set(register);
@@ -267,7 +266,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let prob = prob_glob.get();
 
             if buttons.is_button_pressed(0) {
-                let res = storage.query(|s| s.res_saved).await;
+                let res = storage.query(|s| s.res_saved);
                 if res == val / 512 {
                     latched_glob.set(true);
                 }
@@ -369,8 +368,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
                     let (att, length, register, res) = storage
-                        .query(|s| (s.att_saved, s.length_saved, s.register_saved, s.res_saved))
-                        .await;
+                        .query(|s| (s.att_saved, s.length_saved, s.register_saved, s.res_saved));
 
                     att_glob.set(att as u32);
                     length_glob.set(length);
