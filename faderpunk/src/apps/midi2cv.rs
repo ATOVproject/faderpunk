@@ -148,8 +148,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let muted = storage.query(|s| s.muted).await;
     let att = storage.query(|s| s.att_saved).await;
-    muted_glob.set(muted).await;
-    att_glob.set(att).await;
+    muted_glob.set(muted);
+    att_glob.set(att);
 
     let led_color = color.into();
 
@@ -171,7 +171,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     if mode == 5 || mode == 1 {
         jack.set_value(2048);
-        offset_glob.set(2048).await;
+        offset_glob.set(2048);
     } else {
         jack.set_value(0);
     }
@@ -190,12 +190,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         loop {
             app.delay_millis(1).await;
             if mode == 0 || mode == 4 {
-                let muted = muted_glob.get().await;
+                let muted = muted_glob.get();
                 if !buttons.is_shift_pressed() {
                     fadval = fader.get_value();
                 }
-                let att = att_glob.get().await;
-                let offset = offset_glob.get().await;
+                let att = att_glob.get();
+                let offset = offset_glob.get();
 
                 // if buttons.is_shift_pressed() {
 
@@ -221,18 +221,18 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 jack.set_value(attval);
 
                 if !shift_old && buttons.is_shift_pressed() {
-                    latched_glob.set(false).await;
+                    latched_glob.set(false);
                     shift_old = true;
                 }
                 if shift_old && !buttons.is_shift_pressed() {
-                    latched_glob.set(false).await;
+                    latched_glob.set(false);
 
                     shift_old = false;
                 }
             }
             if mode == 5 {
-                if !muted_glob.get().await {
-                    let offset = offset_glob.get().await;
+                if !muted_glob.get() {
+                    let offset = offset_glob.get();
                     outval = clickless(outval, offset);
                     jack.set_value(outval as u16);
                 } else {
@@ -242,13 +242,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
             }
             if mode == 1 {
-                let offset = if !muted_glob.get().await {
-                    offset_glob.get().await
+                let offset = if !muted_glob.get() {
+                    offset_glob.get()
                 } else {
                     2047
                 };
 
-                let pitch = pitch_glob.get().await;
+                let pitch = pitch_glob.get();
                 outval = clickless(outval, offset);
                 let out = (pitch as i32 + outval as i32 - 2047).clamp(0, 4095) as u16;
                 // //info!("outval ={}, pitch = {} out = {}", outval, pitch, out);
@@ -275,7 +275,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     None,
                 )
                 .await;
-            muted_glob.set(muted).await;
+            muted_glob.set(muted);
             if muted {
                 leds.unset(0, Led::Button);
             } else {
@@ -292,11 +292,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             fader.wait_for_change().await;
             let fader_val = fader.get_value();
 
-            if !latched_glob.get().await && is_close(fader_val, att_glob.get().await) {
-                latched_glob.set(true).await;
+            if !latched_glob.get() && is_close(fader_val, att_glob.get()) {
+                latched_glob.set(true);
             }
-            if buttons.is_shift_pressed() && latched_glob.get().await {
-                att_glob.set(fader_val).await;
+            if buttons.is_shift_pressed() && latched_glob.get() {
+                att_glob.set(fader_val);
                 storage
                     .modify_and_save(
                         |s| {
@@ -316,21 +316,21 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             match midi_in.wait_for_message().await {
                 MidiMessage::Controller { controller, value } => {
                     if mode == 0 {
-                        if bits_7_16(controller) == params.midi_cc.get().await as u16 {
+                        if bits_7_16(controller) == midi_cc as u16 {
                             let val = scale_bits_7_12(value);
-                            offset_glob.set(val).await
+                            offset_glob.set(val)
                         }
                     }
                 }
                 MidiMessage::NoteOn { key, vel } => {
                     if mode == 1 {
-                        if !muted_glob.get().await {
+                        if !muted_glob.get() {
                             let mut note_in = bits_7_16(key);
                             note_in = (note_in as u32 * 410 / 12) as u16;
                             let oct = (fader.get_value() as i32 * 10 / 4095) - 5;
                             let note_out = (note_in as i32 + oct * 410).clamp(0, 4095) as u16;
                             // jack.set_value(note_out);
-                            pitch_glob.set(note_out).await;
+                            pitch_glob.set(note_out);
                             leds.set(
                                 0,
                                 Led::Top,
@@ -340,7 +340,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         }
                     }
                     if mode == 2 {
-                        if !muted_glob.get().await {
+                        if !muted_glob.get() {
                             jack.set_value(4095);
                             note_num += 1;
                             leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
@@ -351,7 +351,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         //info!("note on num = {}", note_num);
                     }
                     if mode == 3 {
-                        let vel_out = if !muted_glob.get().await {
+                        let vel_out = if !muted_glob.get() {
                             scale_bits_7_12(vel)
                         } else {
                             0
@@ -381,7 +381,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     //info!("mode = {}", mode);
                     if mode == 5 || mode == 1 {
                         let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
-                        offset_glob.set(out).await;
+                        offset_glob.set(out);
                         leds.set(
                             0,
                             Led::Top,
@@ -398,7 +398,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     }
                     // if mode == 1 {
                     //     let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
-                    //     offset_glob.set(out).await;
+                    //     offset_glob.set(out);
                     //     //info!("Bend! = {}, bend range = {}", bend.as_f32(), out);
                     // }
                 }
@@ -406,7 +406,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if mode == 4 {
                         info!("ch aftertouch");
                         let val = scale_bits_7_12(vel);
-                        offset_glob.set(val).await
+                        offset_glob.set(val)
                     }
                 }
 
@@ -421,7 +421,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
                     let muted = storage.query(|s| s.muted).await;
-                    muted_glob.set(muted).await;
+                    muted_glob.set(muted);
                     if muted {
                         leds.unset(0, Led::Button);
                     } else {
