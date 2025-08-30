@@ -45,6 +45,7 @@ impl Layout {
     pub const fn new() -> Self {
         Self([None; GLOBAL_CHANNELS])
     }
+
     pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) -> bool {
         let mut validated: InnerLayout = [None; GLOBAL_CHANNELS];
         let mut occupied = [false; GLOBAL_CHANNELS];
@@ -446,5 +447,92 @@ impl From<Range> for DACRANGE {
             Range::_0_5V => DACRANGE::Rg0_10v,
             Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Layout;
+
+    fn mock_get_channels(app_id: u8) -> Option<usize> {
+        match app_id {
+            1 => Some(2), // App 1 takes 2 channels
+            2 => Some(4), // App 2 takes 4 channels
+            3 => Some(3), // App 3 takes 3 channels
+            _ => None,    // Any other app_id is invalid
+        }
+    }
+
+    #[test]
+    fn validate_no_changes() {
+        let mut layout = Layout::new();
+        layout.0[0] = Some((1, 2));
+        layout.0[4] = Some((2, 4));
+        let original_layout = layout.0;
+
+        let changed = layout.validate(mock_get_channels);
+
+        assert!(!changed);
+        assert_eq!(layout.0, original_layout);
+    }
+
+    #[test]
+    fn validate_removes_overlapping() {
+        let mut layout = Layout::new();
+        // App 1 is valid
+        layout.0[0] = Some((1, 2));
+        // App 3 overlaps with App 1
+        layout.0[1] = Some((3, 3));
+        // App 2 is also valid and does not overlap with App 1
+        layout.0[5] = Some((2, 4));
+
+        let changed = layout.validate(mock_get_channels);
+
+        assert!(changed);
+        // App 1 should remain
+        assert_eq!(layout.0[0], Some((1, 2)));
+        // App 3 should be removed
+        assert_eq!(layout.0[1], None);
+        // App 2 should remain
+        assert_eq!(layout.0[5], Some((2, 4)));
+    }
+
+    #[test]
+    fn validate_removes_out_of_bounds() {
+        let mut layout = Layout::new();
+        // This app goes from channel 14 up to 18, which is beyond GLOBAL_CHANNELS (16)
+        layout.0[14] = Some((2, 4));
+
+        let changed = layout.validate(mock_get_channels);
+
+        assert!(changed);
+        // The out-of-bounds app should be removed
+        assert_eq!(layout.0[14], None);
+        assert!(layout.0.iter().all(|&app| app.is_none()));
+    }
+
+    #[test]
+    fn validate_removes_invalid_id() {
+        let mut layout = Layout::new();
+        // App ID 99 is not valid according to mock_get_channels
+        layout.0[0] = Some((99, 2));
+
+        let changed = layout.validate(mock_get_channels);
+
+        assert!(changed);
+        assert_eq!(layout.0[0], None);
+    }
+
+    #[test]
+    fn validate_corrects_channel_size() {
+        let mut layout = Layout::new();
+        // The stored channel size is 99, but mock_get_channels returns 2 for app_id 1
+        layout.0[0] = Some((1, 99));
+
+        let changed = layout.validate(mock_get_channels);
+
+        assert!(changed);
+        // The channel size should be corrected to 2
+        assert_eq!(layout.0[0], Some((1, 2)));
     }
 }
