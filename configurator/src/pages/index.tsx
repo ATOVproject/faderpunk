@@ -26,31 +26,28 @@ import {
   setLayout,
 } from "@/utils/config";
 
+export type ParsedApp = {
+  appId: number;
+  channels: string;
+  name: string;
+  description: string;
+  paramCount: string;
+  params: Param[];
+};
+
 // TODO: Load all available apps including their possible configurations from the device
 export default function IndexPage() {
   const [usbDevice, setUsbDevice] = useState<USBDevice | null>(null);
-  const [apps, setApps] = useState<
-    Map<
-      string,
-      {
-        appId: string;
-        channels: string;
-        name: string;
-        description: string;
-        paramCount: string;
-        params: Param[];
-      }
-    >
-  >(new Map());
+  const [apps, setApps] = useState<Map<number, ParsedApp>>(new Map());
   const [selectedApps, setSelectedApps] = useState<
-    { appId: string; startChannel: number }[]
+    { appId: number; startChannel: number }[]
   >([]);
   const [clockSrc, setClockSrc] = useState<ClockSrc>({ tag: "Internal" });
   const [resetSrc, setResetSrc] = useState<ClockSrc>({ tag: "Internal" });
   const i2cMode: I2cMode = { tag: "Follower" };
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedAppForConfig, setSelectedAppForConfig] = useState<{
-    appId: string;
+    appId: number;
     startChannel: number;
   } | null>(null);
 
@@ -66,7 +63,7 @@ export default function IndexPage() {
 
       if (appsData) {
         // Parse apps data into a Map for easy lookup by app ID
-        const parsedApps = new Map();
+        const parsedApps = new Map<number, ParsedApp>();
 
         appsData
           .filter(
@@ -75,7 +72,7 @@ export default function IndexPage() {
           )
           .forEach((app) => {
             const appConfig = {
-              appId: app.value[0].toString(),
+              appId: app.value[0],
               channels: app.value[1].toString(),
               paramCount: app.value[2][0].toString(),
               name: app.value[2][1] as string,
@@ -97,12 +94,10 @@ export default function IndexPage() {
       if (layout && layout.tag == "Layout") {
         const appsWithChannels = layout.value[0]
           .map((app_data, index) =>
-            app_data
-              ? { appId: app_data[0].toString(), startChannel: index }
-              : null,
+            app_data ? { appId: app_data[0], startChannel: index } : null,
           )
           .filter((app) => app !== null) as {
-          appId: string;
+          appId: number;
           startChannel: number;
         }[];
 
@@ -113,7 +108,7 @@ export default function IndexPage() {
     }
   }, []);
 
-  const handleAddApp = useCallback((appId: string) => {
+  const handleAddApp = useCallback((appId: number) => {
     setSelectedApps((prev) => {
       if (prev.length >= 16) {
         return prev;
@@ -140,7 +135,7 @@ export default function IndexPage() {
   }, []);
 
   const handleChipClick = useCallback(
-    (app: { appId: string; startChannel: number }) => {
+    (app: { appId: number; startChannel: number }) => {
       setSelectedAppForConfig(app);
       setIsDrawerOpen(true);
     },
@@ -198,7 +193,7 @@ export default function IndexPage() {
                         <TableCell>{app.channels}</TableCell>
                         <TableCell>{app.name}</TableCell>
                         <TableCell>{app.description}</TableCell>
-                        <TableCell>{app.paramCount}</TableCell>
+                        <TableCell>{app.params.length}</TableCell>
                         <TableCell>
                           <Button
                             isDisabled={selectedApps.length >= 16}
@@ -241,7 +236,8 @@ export default function IndexPage() {
               onPress={async () => {
                 await setLayout(
                   usbDevice,
-                  selectedApps.map((app) => Number(app.appId)),
+                  selectedApps.map((app) => app.appId),
+                  apps,
                 );
                 let layout = await getLayout(usbDevice);
 
@@ -249,11 +245,11 @@ export default function IndexPage() {
                   const appsWithChannels = layout.value[0]
                     .map((app_data, index) =>
                       app_data
-                        ? { appId: app_data[0].toString(), startChannel: index }
+                        ? { appId: app_data[0], startChannel: index }
                         : null,
                     )
                     .filter((app) => app !== null) as {
-                    appId: string;
+                    appId: number;
                     startChannel: number;
                   }[];
 
