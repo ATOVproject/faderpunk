@@ -1,5 +1,7 @@
 import { ClockSrc, I2cMode, Layout } from "@atov/fp-config";
 
+import { ParsedApp } from "../pages";
+
 import {
   receiveBatchMessages,
   sendAndReceive,
@@ -22,7 +24,11 @@ export const setGlobalConfig = async (
   });
 };
 
-export const setLayout = async (dev: USBDevice, layout: Array<number>) => {
+export const setLayout = async (
+  dev: USBDevice,
+  layout: Array<number>,
+  allApps: Map<number, ParsedApp>,
+) => {
   let send_layout: Layout = [
     [
       undefined,
@@ -44,9 +50,21 @@ export const setLayout = async (dev: USBDevice, layout: Array<number>) => {
     ],
   ];
 
+  let current_chan = 0;
+
   for (let i = 0; i < Math.min(layout.length, 16); i++) {
     if (layout[i]) {
-      send_layout[0][i] = [layout[i], BigInt(0)];
+      const app = allApps.get(layout[i]);
+
+      if (app) {
+        const { channels } = app;
+
+        if (current_chan + parseInt(channels, 10) > 16) {
+          break;
+        }
+        send_layout[0][current_chan] = [layout[i], BigInt(channels)];
+        current_chan += parseInt(channels, 10);
+      }
     }
   }
 

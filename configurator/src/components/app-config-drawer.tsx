@@ -22,9 +22,9 @@ import { getAppParams, setAppParams } from "@/utils/config";
 interface AppConfigDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedApp: { appId: string; startChannel: number } | null;
+  selectedApp: { appId: number; startChannel: number } | null;
   appConfig: {
-    appId: string;
+    appId: number;
     channels: string;
     name: string;
     description: string;
