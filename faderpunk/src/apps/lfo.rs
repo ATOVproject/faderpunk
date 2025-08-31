@@ -3,11 +3,12 @@ use embassy_futures::{
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use heapless::Vec;
 use libfp::{
     colors::{PURPLE, RED, TEAL, WHITE, YELLOW},
     latch::LatchLayer,
     utils::{attenuate_bipolar, split_unsigned_value},
-    Brightness, Curve,
+    Brightness, Curve, Value, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +17,7 @@ use smart_leds::RGB8;
 
 use crate::{
     app::{App, AppStorage, ClockEvent, Led, ManagedStorage, SceneEvent},
-    storage::ParamStore,
+    storage::{AppParams, ParamStore},
     tasks::leds::LedMode,
 };
 
@@ -25,8 +26,29 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new("LFO", "Wooooosh");
 
-#[derive(Serialize, Deserialize)]
+pub struct Params {}
 
+impl Default for Params {
+    fn default() -> Self {
+        Self {}
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        // if values.len() < PARAMS {
+        //     return None;
+        // }
+        Some(Self {})
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct Storage {
     clocked: bool,
     layer_attenuation: u16,
@@ -47,25 +69,30 @@ impl Default for Storage {
 
 impl AppStorage for Storage {}
 
-pub struct Params {}
-
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::new([], app.app_id, app.start_channel);
-    let params = Params {};
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<Storage>) {
+pub async fn run(
+    app: &App<CHANNELS>,
+    _params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
     let output = app.make_out_jack(0, Range::_Neg5_5V).await;
     let fader = app.use_faders();
     let buttons = app.use_buttons();

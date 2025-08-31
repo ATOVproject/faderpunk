@@ -3,11 +3,15 @@
 
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use heapless::Vec;
 use serde::{Deserialize, Serialize};
+use smart_leds::{colors::RED, RGB8};
 
-use libfp::{colors::RED, utils::is_close, Brightness, Color, Config, Param, Range, Value};
+use libfp::{
+    ext::FromValue, utils::is_close, Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
+};
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent};
+use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 4;
@@ -55,14 +59,46 @@ pub static CONFIG: Config<PARAMS> =
 //     max: 127,
 // });
 
-pub struct Params<'a> {
-    midi_mode: ParamSlot<'a, i32, PARAMS>,
-    midi_channel: ParamSlot<'a, i32, PARAMS>,
-    midi_cc: ParamSlot<'a, i32, PARAMS>,
-    color: ParamSlot<'a, Color, PARAMS>,
+pub struct Params {
+    midi_mode: i32,
+    midi_channel: i32,
+    midi_cc: i32,
+    color: Color,
 }
 
-// const led_color.into(): RGB8 = ATOV_BLUE;
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            midi_mode: 1,
+            midi_channel: 1,
+            midi_cc: 1,
+            color: Color::Yellow,
+        }
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
+        Some(Self {
+            midi_mode: i32::from_value(values[0]),
+            midi_channel: i32::from_value(values[1]),
+            midi_cc: i32::from_value(values[2]),
+            color: Color::from_value(values[3]),
+        })
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec.push(self.midi_mode.into()).unwrap();
+        vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.midi_cc.into()).unwrap();
+        vec.push(self.color.into()).unwrap();
+        vec
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
@@ -84,42 +120,33 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::new(
-        [
-            Value::i32(1),
-            Value::i32(1),
-            Value::i32(1),
-            Value::Color(Color::Yellow),
-        ],
-        app.app_id,
-        app.start_channel,
-    );
-
-    let params = Params {
-        midi_mode: ParamSlot::new(&param_store, 0),
-        midi_channel: ParamSlot::new(&param_store, 1),
-        midi_cc: ParamSlot::new(&param_store, 2),
-        color: ParamSlot::new(&param_store, 3),
-    };
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             param_store.load().await;
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
+pub async fn run(
+    app: &App<CHANNELS>,
+    params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
     let range = Range::_0_10V;
-    let midi_mode = params.midi_mode.get().await;
-    let midi_cc = params.midi_cc.get().await;
-    let led_color = params.color.get().await;
-    let midi_chan = params.midi_channel.get().await;
+    let (midi_mode, midi_cc, color, midi_chan) =
+        params.query(|p| (p.midi_mode, p.midi_cc, p.color, p.midi_channel));
+    let led_color: RGB8 = color.into();
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();

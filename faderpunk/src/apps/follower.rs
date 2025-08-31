@@ -3,15 +3,17 @@
 
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
     colors::RED,
+    ext::FromValue,
     utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
-    Brightness, Color, Config, Curve, Param, Range, Value,
+    Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent};
+use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 1;
@@ -29,6 +31,35 @@ pub static CONFIG: Config<PARAMS> = Config::new("Envelope Follower", "Audio ampl
     });
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
+
+pub struct Params {
+    color: Color,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            color: Color::Yellow,
+        }
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
+        Some(Self {
+            color: Color::from_value(values[0]),
+        })
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec.push(self.color.into()).unwrap();
+        vec
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
@@ -49,33 +80,33 @@ impl Default for Storage {
 
 impl AppStorage for Storage {}
 
-pub struct Params<'a> {
-    color: ParamSlot<'a, Color, PARAMS>,
-}
-
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::new([Value::Color(Color::Yellow)], app.app_id, app.start_channel);
-
-    let params = Params {
-        color: ParamSlot::new(&param_store, 0),
-    };
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             param_store.load().await;
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
+pub async fn run(
+    app: &App<CHANNELS>,
+    params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
     let curve = Curve::Exponential;
-    let led_color = params.color.get().await;
+    let led_color = params.query(|p| p.color);
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();

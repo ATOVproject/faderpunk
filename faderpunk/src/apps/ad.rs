@@ -6,18 +6,16 @@
 use defmt::info;
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use heapless::Vec;
 use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
     colors::{PURPLE, RED, TEAL, WHITE, YELLOW},
-    Brightness, Config, Curve, Range,
+    Brightness, Config, Curve, Range, Value, APP_MAX_PARAMS,
 };
 
-use crate::{
-    app::{App, AppStorage, Led, ManagedStorage, SceneEvent},
-    storage::ParamStore,
-};
+use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 0;
@@ -25,8 +23,29 @@ pub const PARAMS: usize = 0;
 pub static CONFIG: Config<PARAMS> =
     Config::new("AD Envelope", "variable curve AD, ASR or looping AD");
 
-#[derive(Serialize, Deserialize)]
+pub struct Params {}
 
+impl Default for Params {
+    fn default() -> Self {
+        Self {}
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        // if values.len() < PARAMS {
+        //     return None;
+        // }
+        Some(Self {})
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct Storage {
     fader_saved: [u16; 2],
     curve_saved: [Curve; 2],
@@ -49,26 +68,31 @@ impl Default for Storage {
 
 impl AppStorage for Storage {}
 
-pub struct Params {}
-
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::new([], app.app_id, app.start_channel);
-    let params = Params {};
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             param_store.load().await;
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<Storage>) {
+pub async fn run(
+    app: &App<CHANNELS>,
+    _params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
@@ -90,8 +114,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let color = [YELLOW, TEAL, PURPLE];
 
-    let (curve_setting, stored_faders, att_saved) =
-        storage.query(|s| (s.curve_saved, s.fader_saved, s.att_saved));
+    let (curve_setting, stored_faders) = storage.query(|s| (s.curve_saved, s.fader_saved));
 
     leds.set(
         0,
@@ -131,7 +154,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
                 // catching rising edge
-                gate_on_glob.modify(|g| *g += 1);
+                gate_on_glob.modify(|g| *g + 1);
             }
             if inputval <= 406 && oldinputval > 406 {
                 gate_on_glob.modify(|g| (*g - 1).max(0));
@@ -155,14 +178,14 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 );
             }
 
-            if gate_on_glob.get() == 0 && old_gate == true {
+            if gate_on_glob.get() == 0 && old_gate {
                 if mode == 1 {
                     env_state = 2;
                 }
                 old_gate = false;
             }
             if timer - start_time > storage.query(|s: &Storage| s.min_gate_saved) as u32
-                && t2g == true
+                && t2g
                 && storage.query(|s: &Storage| s.min_gate_saved) != 4095
             {
                 gate_on_glob.modify(|g| (*g - 1).max(0));
@@ -371,7 +394,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     )
                     .await;
             } else if chan == 0 {
-                gate_on_glob.modify(|g| *g += 1);
+                gate_on_glob.modify(|g| *g + 1);
                 // info!("here 2, gate count = {}", gate_on_glob.get().await)
             }
         }
@@ -382,7 +405,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         loop {
             match midi_in.wait_for_message().await {
                 MidiMessage::NoteOn { key, vel } => {
-                    gate_on_glob.modify(|g| *g += 1);
+                    gate_on_glob.modify(|g| *g + 1);
                 }
                 MidiMessage::NoteOff { key, vel } => {
                     gate_on_glob.modify(|g| (*g - 1).max(0));

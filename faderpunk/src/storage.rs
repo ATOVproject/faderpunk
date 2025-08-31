@@ -1,14 +1,10 @@
-use core::{cell::RefCell, marker::PhantomData, ops::Range};
+use core::{cell::RefCell, ops::Range};
 
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
-use serde::{
-    de::{DeserializeOwned, Error as DeError},
-    Deserialize, Deserializer, Serialize, Serializer,
-};
+use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use libfp::{FromValue, GlobalConfig, Layout, Value, APP_MAX_PARAMS};
+use libfp::{GlobalConfig, Layout, Value, APP_MAX_PARAMS};
 
 use crate::{
     apps::get_channels,
@@ -262,42 +258,46 @@ impl AppParamsAddress {
     }
 }
 
-pub struct ParamStore<const N: usize> {
+pub trait AppParams: Sized + Default + Send + Sync + 'static {
+    fn from_values(values: &[Value]) -> Option<Self>;
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS>;
+}
+
+pub struct ParamStore<P: AppParams> {
     app_id: u8,
-    inner: Mutex<NoopRawMutex, [Value; N]>,
+    inner: RefCell<P>,
     start_channel: usize,
 }
 
-impl<const N: usize> ParamStore<N>
-where
-    [Value; N]: Serialize,
-    [Value; N]: DeserializeOwned,
-{
-    pub fn new(initial: [Value; N], app_id: u8, start_channel: usize) -> Self {
+impl<P: AppParams> ParamStore<P> {
+    pub fn new(app_id: u8, start_channel: usize) -> Self {
         Self {
             app_id,
-            inner: Mutex::new(initial),
+            inner: RefCell::new(P::default()),
             start_channel,
         }
     }
 
-    async fn des(&self, data: &[u8]) -> Option<[Value; N]> {
+    fn des(&self, data: &[u8]) -> Option<P> {
         // First byte is app id
         if data[0] != self.app_id {
             return None;
         }
-        if let Ok(val) = from_bytes::<[Value; N]>(&data[1..]) {
-            return Some(val);
+        if let Ok(val) = from_bytes::<Vec<Value, APP_MAX_PARAMS>>(&data[1..]) {
+            return P::from_values(&val);
         }
         None
     }
 
     async fn save(&self) {
         let address = AppParamsAddress::new(self.start_channel);
-        let inner = self.inner.lock().await;
+        let values = {
+            let guard = self.inner.borrow_mut();
+            guard.to_values()
+        };
         let res = write_with(address.into(), |buf| {
             buf[0] = self.app_id;
-            let len = to_slice(&*inner, &mut buf[1..])?.len();
+            let len = to_slice(&values, &mut buf[1..])?.len();
             Ok(len + 1)
         })
         .await;
@@ -312,30 +312,21 @@ where
         if let Ok(guard) = read_data(address.into()).await {
             let data = guard.data();
             if !data.is_empty() {
-                if let Some(val) = self.des(data).await {
-                    let mut inner = self.inner.lock().await;
+                if let Some(val) = self.des(data) {
+                    drop(guard);
+                    let mut inner = self.inner.borrow_mut();
                     *inner = val;
                 }
             }
         }
     }
 
-    pub async fn get(&self, index: usize) -> Value {
-        let val = self.inner.lock().await;
-        val[index]
-    }
-
-    pub async fn get_all(&self) -> [Value; N] {
-        let val = self.inner.lock().await;
-        *val
-    }
-
-    pub async fn set(&self, index: usize, value: Value) {
-        if index >= N {
-            return;
-        }
-        let mut val = self.inner.lock().await;
-        val[index] = value;
+    pub fn query<F, R>(&self, accessor: F) -> R
+    where
+        F: FnOnce(&P) -> R,
+    {
+        let guard = self.inner.borrow();
+        accessor(&*guard)
     }
 
     pub async fn param_handler(&self) {
@@ -343,52 +334,38 @@ where
         loop {
             match APP_PARAM_SIGNALS[self.start_channel].wait().await {
                 AppParamCmd::SetAppParams { values } => {
+                    let mut guard = self.inner.borrow_mut();
+                    let mut current_values = guard.to_values();
+                    let mut changed = false;
+
                     for (index, &value) in values.iter().enumerate() {
                         if let Some(val) = value {
-                            self.set(index, val).await;
+                            if index < current_values.len() && current_values[index] != val {
+                                current_values[index] = val;
+                                changed = true;
+                            }
                         }
                     }
-                    self.save().await;
-                    // Re-spawn app
-                    break;
+
+                    if changed {
+                        if let Some(new_params) = P::from_values(&current_values) {
+                            *guard = new_params;
+                            drop(guard);
+                            self.save().await;
+                            // Re-spawn app
+                            break;
+                        }
+                    }
                 }
                 AppParamCmd::RequestParamValues => {
-                    let params = self.get_all().await;
-                    let values: Vec<Value, APP_MAX_PARAMS> = Vec::from_slice(&params).unwrap();
+                    let values = {
+                        let guard = self.inner.borrow();
+                        guard.to_values()
+                    };
                     APP_PARAM_CHANNEL.send((self.start_channel, values)).await;
                 }
             }
         }
-    }
-}
-
-pub struct ParamSlot<'a, T, const N: usize>
-where
-    T: FromValue + Into<Value> + Copy,
-{
-    index: usize,
-    values: &'a ParamStore<N>,
-    _phantom: PhantomData<T>,
-}
-
-impl<'a, T, const N: usize> ParamSlot<'a, T, N>
-where
-    T: FromValue + Into<Value> + Copy,
-    [Value; N]: Serialize,
-    [Value; N]: DeserializeOwned,
-{
-    pub fn new(values: &'a ParamStore<N>, index: usize) -> Self {
-        assert!(index < N, "ParamSlot index out of bounds");
-        Self {
-            index,
-            values,
-            _phantom: PhantomData,
-        }
-    }
-
-    pub async fn get(&self) -> T {
-        let value = self.values.get(self.index).await;
-        T::from_value(value)
     }
 }
 
