@@ -1,17 +1,18 @@
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use heapless::Vec;
 use libfp::{
     colors::RED,
+    ext::FromValue,
     latch::LatchLayer,
     utils::{attenuate_bipolar, clickless, split_unsigned_value},
-    Brightness, Color,
+    Brightness, Color, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Range, Value};
-use smart_leds::RGB8;
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent};
+use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 6;
@@ -46,7 +47,54 @@ pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute 
         ],
     });
 
-const LED_BRIGHTNESS: Brightness = Brightness::Lower;
+pub struct Params {
+    curve: Curve,
+    bipolar: bool,
+    midi_channel: i32,
+    midi_cc: i32,
+    on_release: bool,
+    color: Color,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            curve: Curve::Linear,
+            bipolar: false,
+            midi_channel: 1,
+            midi_cc: 32,
+            on_release: false,
+            color: Color::Yellow,
+        }
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
+        Some(Self {
+            curve: Curve::from_value(values[0]),
+            bipolar: bool::from_value(values[1]),
+            midi_channel: i32::from_value(values[2]),
+            midi_cc: i32::from_value(values[3]),
+            on_release: bool::from_value(values[4]),
+            color: Color::from_value(values[5]),
+        })
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec.push(self.curve.into()).unwrap();
+        vec.push(self.bipolar.into()).unwrap();
+        vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.midi_cc.into()).unwrap();
+        vec.push(self.on_release.into()).unwrap();
+        vec.push(self.color.into()).unwrap();
+        vec
+    }
+}
 
 // TODO: Make a macro to generate this.
 #[derive(Serialize, Deserialize)]
@@ -66,59 +114,41 @@ impl Default for Storage {
 
 impl AppStorage for Storage {}
 
-// TODO: Make a macro to generate this.
-pub struct Params<'a> {
-    curve: ParamSlot<'a, Curve, PARAMS>,
-    bipolar: ParamSlot<'a, bool, PARAMS>,
-    midi_channel: ParamSlot<'a, i32, PARAMS>,
-    midi_cc: ParamSlot<'a, i32, PARAMS>,
-    on_release: ParamSlot<'a, bool, PARAMS>,
-    color: ParamSlot<'a, Color, PARAMS>,
-}
-
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::new(
-        [
-            Value::Curve(Curve::Linear),
-            Value::bool(false),
-            Value::i32(1),
-            Value::i32(32),
-            Value::bool(false),
-            Value::Color(Color::Yellow),
-        ],
-        app.app_id,
-        app.start_channel,
-    );
-
-    let params = Params {
-        curve: ParamSlot::new(&param_store, 0),
-        bipolar: ParamSlot::new(&param_store, 1),
-        midi_channel: ParamSlot::new(&param_store, 2),
-        midi_cc: ParamSlot::new(&param_store, 3),
-        on_release: ParamSlot::new(&param_store, 4),
-        color: ParamSlot::new(&param_store, 5),
-    };
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             param_store.load().await;
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
-    let curve = params.curve.get().await;
-    let midi_chan = params.midi_channel.get().await;
-    let midi_cc = params.midi_cc.get().await;
-    let on_release = params.on_release.get().await;
-    let bipolar = params.bipolar.get().await;
-    let led_color: RGB8 = params.color.get().await.into();
+pub async fn run(
+    app: &App<CHANNELS>,
+    params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
+    let (curve, midi_chan, midi_cc, on_release, bipolar, led_color) = params.query(|p| {
+        (
+            p.curve,
+            p.midi_channel,
+            p.midi_cc,
+            p.on_release,
+            p.bipolar,
+            p.color.into(),
+        )
+    });
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
@@ -132,7 +162,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     if muted_glob.get() {
         leds.unset(0, Led::Button);
     } else {
-        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+        leds.set(0, Led::Button, led_color, Brightness::Lower);
     }
 
     let jack = if !bipolar {
@@ -181,8 +211,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     0
                 }
             } else {
-                curve.at(main_layer_value.into())
+                curve.at(main_layer_value)
             };
+
             let out = output_glob.modify(|o| clickless(*o, val));
             let att_layer_value = storage.query(|s| s.att_saved);
             let attenuated = if bipolar {
@@ -205,7 +236,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             0,
                             Led::Top,
                             led_color,
-                            Brightness::Custom((out as f32 / 16.) as u8),
+                            Brightness::Custom((attenuated as f32 / 16.) as u8),
                         );
                         leds.unset(0, Led::Bottom);
                     }
@@ -258,7 +289,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if muted {
                 leds.unset(0, Led::Button);
             } else {
-                leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+                leds.set(0, Led::Button, led_color, Brightness::Lower);
             }
         }
     };
@@ -290,7 +321,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if muted {
                         leds.unset(0, Led::Button);
                     } else {
-                        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+                        leds.set(0, Led::Button, led_color, Brightness::Lower);
                     }
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,

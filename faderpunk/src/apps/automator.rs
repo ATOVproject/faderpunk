@@ -3,19 +3,19 @@
 
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use heapless::Vec;
 use libfp::{
     colors::RED,
+    ext::FromValue,
     utils::{attenuate, attenuate_bipolar, clickless, split_unsigned_value},
-    Brightness, Color,
+    Brightness, Color, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Range, Value};
+use smart_leds::RGB8;
 
-use crate::{
-    app::{App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot},
-    storage::ParamStore,
-};
+use crate::app::{App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 5;
@@ -47,21 +47,56 @@ pub static CONFIG: Config<PARAMS> = Config::new("Automator", "Fader movement rec
         ],
     });
 
+pub struct Params {
+    curve: Curve,
+    bipolar: bool,
+    midi_channel: i32,
+    midi_cc: i32,
+    color: Color,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            curve: Curve::Linear,
+            bipolar: false,
+            midi_channel: 1,
+            midi_cc: 32,
+            color: Color::Yellow,
+        }
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
+        Some(Self {
+            curve: Curve::from_value(values[0]),
+            bipolar: bool::from_value(values[1]),
+            midi_channel: i32::from_value(values[2]),
+            midi_cc: i32::from_value(values[3]),
+            color: Color::from_value(values[4]),
+        })
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec.push(self.curve.into()).unwrap();
+        vec.push(self.bipolar.into()).unwrap();
+        vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.midi_cc.into()).unwrap();
+        vec.push(self.color.into()).unwrap();
+        vec
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     att_saved: u16,
     // buffer_saved: Arr<u16, 384>,
     // length_saved: usize,
-}
-
-impl AppStorage for Storage {}
-
-pub struct Params<'a> {
-    curve: ParamSlot<'a, Curve, PARAMS>,
-    bipolar: ParamSlot<'a, bool, PARAMS>,
-    midi_channel: ParamSlot<'a, i32, PARAMS>,
-    midi_cc: ParamSlot<'a, i32, PARAMS>,
-    color: ParamSlot<'a, Color, PARAMS>,
 }
 
 impl Default for Storage {
@@ -74,51 +109,42 @@ impl Default for Storage {
     }
 }
 
+impl AppStorage for Storage {}
+
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::new(
-        [
-            Value::Curve(Curve::Linear),
-            Value::bool(false),
-            Value::i32(1),
-            Value::i32(32),
-            Value::Color(Color::Yellow),
-        ],
-        app.app_id,
-        app.start_channel,
-    );
-
-    let params = Params {
-        curve: ParamSlot::new(&param_store, 0),
-        bipolar: ParamSlot::new(&param_store, 1),
-        midi_channel: ParamSlot::new(&param_store, 2),
-        midi_cc: ParamSlot::new(&param_store, 3),
-        color: ParamSlot::new(&param_store, 4),
-    };
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             param_store.load().await;
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
+pub async fn run(
+    app: &App<CHANNELS>,
+    params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
+    let (curve, midi_chan, midi_cc, bipolar, color) =
+        params.query(|p| (p.curve, p.midi_channel, p.midi_cc, p.bipolar, p.color));
+
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
-    let led_color = params.color.get().await;
-
-    let midi_chan = params.midi_channel.get().await;
-    let cc: u8 = params.midi_cc.get().await as u8;
     let midi = app.use_midi_output(midi_chan as u8 - 1);
-    let curve = params.curve.get().await;
-    let bipolar = params.bipolar.get().await;
+
+    let led_color: RGB8 = color.into();
 
     let mut clock = app.use_clock();
 
@@ -130,7 +156,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let index_glob = app.make_global(0);
     let latched = app.make_global(false);
 
-    let jack = if !params.bipolar.get().await {
+    let jack = if !bipolar {
         app.make_out_jack(0, Range::_0_10V).await
     } else {
         app.make_out_jack(0, Range::_Neg5_5V).await
@@ -152,7 +178,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     att_glob.set(storage.query(|s| s.att_saved));
 
-    leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
+    leds.set(0, Led::Button, led_color, Brightness::Lower);
 
     let update_output = async {
         let mut outval = 0;
@@ -163,11 +189,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let buffer = buffer_glob.get();
             let mut offset = offset_glob.get();
             let att = att_glob.get();
-            let color = if recording_glob.get() {
-                RED
-            } else {
-                led_color.into()
-            };
+            let color = if recording_glob.get() { RED } else { led_color };
 
             if latched.get() {
                 offset = fader.get_value();
@@ -199,7 +221,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
             }
             if last_midi / 16 != (val) / 16 {
-                midi.send_cc(cc as u8, attenuate(outval, att)).await;
+                midi.send_cc(midi_cc as u8, attenuate(outval, att)).await;
                 last_midi = outval;
             };
 
@@ -334,7 +356,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 recording_glob.set(false);
                 buffer_glob.set([0; 384]);
                 length_glob.set(384);
-                leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
+                leds.set(0, Led::Button, led_color, Brightness::Lower);
                 latched.set(false);
             } else {
                 rec_flag.set(true);

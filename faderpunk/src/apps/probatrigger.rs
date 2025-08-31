@@ -1,11 +1,15 @@
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{utils::is_close, Brightness, Color, Config, Curve, Param, Value};
+use heapless::Vec;
 use serde::{Deserialize, Serialize};
-use smart_leds::colors::RED;
+
+use libfp::{
+    colors::RED, ext::FromValue, utils::is_close, Brightness, Color, Config, Curve, Param, Value,
+    APP_MAX_PARAMS,
+};
 
 use crate::app::{
-    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent,
+    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
 };
 
 pub const CHANNELS: usize = 1;
@@ -45,12 +49,49 @@ pub static CONFIG: Config<PARAMS> =
             ],
         });
 
-pub struct Params<'a> {
-    midi_channel: ParamSlot<'a, i32, PARAMS>,
-    note: ParamSlot<'a, i32, PARAMS>,
-    gatel: ParamSlot<'a, i32, PARAMS>,
-    curve: ParamSlot<'a, Curve, PARAMS>,
-    color: ParamSlot<'a, Color, PARAMS>,
+pub struct Params {
+    midi_channel: i32,
+    note: i32,
+    gatel: i32,
+    curve: Curve,
+    color: Color,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            midi_channel: 1,
+            note: 32,
+            gatel: 50,
+            curve: Curve::Linear,
+            color: Color::Yellow,
+        }
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
+        Some(Self {
+            midi_channel: i32::from_value(values[0]),
+            note: i32::from_value(values[1]),
+            gatel: i32::from_value(values[2]),
+            curve: Curve::from_value(values[3]),
+            color: Color::from_value(values[4]),
+        })
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.note.into()).unwrap();
+        vec.push(self.gatel.into()).unwrap();
+        vec.push(self.curve.into()).unwrap();
+        vec.push(self.color.into()).unwrap();
+        vec
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -73,44 +114,31 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::new(
-        [
-            Value::i32(1),
-            Value::i32(32),
-            Value::i32(50),
-            Value::Curve(Curve::Linear),
-            Value::Color(Color::Yellow),
-        ],
-        app.app_id,
-        app.start_channel,
-    );
-
-    let params = Params {
-        midi_channel: ParamSlot::new(&param_store, 0),
-        note: ParamSlot::new(&param_store, 1),
-        gatel: ParamSlot::new(&param_store, 2),
-        curve: ParamSlot::new(&param_store, 3),
-        color: ParamSlot::new(&param_store, 4),
-    };
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             param_store.load().await;
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
-    let midi_chan = params.midi_channel.get().await;
-    let note = params.note.get().await;
-    let gatel = params.gatel.get().await;
-    let led_color = params.color.get().await;
-    let curve = params.curve.get().await;
+pub async fn run(
+    app: &App<CHANNELS>,
+    params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
+    let (midi_chan, note, gatel, led_color, curve) =
+        params.query(|p| (p.midi_channel, p.note, p.gatel, p.color, p.curve));
 
     let mut clock = app.use_clock();
     let die = app.use_die();

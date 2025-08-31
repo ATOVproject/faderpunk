@@ -12,16 +12,18 @@ use embassy_futures::{
     select::select,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
     colors::{PURPLE, TEAL, WHITE, YELLOW},
-    Brightness, Config, Param, Range, Value,
+    ext::FromValue,
+    Brightness, Config, Param, Range, Value, APP_MAX_PARAMS,
 };
 
-use crate::{
-    app::{App, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, SceneEvent, RGB8},
-    storage::{ParamSlot, ParamStore},
+use crate::app::{
+    App, AppParams, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, ParamStore,
+    SceneEvent, RGB8,
 };
 
 pub const CHANNELS: usize = 8;
@@ -49,6 +51,47 @@ pub static CONFIG: Config<PARAMS> = Config::new("Sequencer", "4 x 16 step CV/gat
         max: 16,
     });
 
+pub struct Params {
+    midi_channel1: i32,
+    midi_channel2: i32,
+    midi_channel3: i32,
+    midi_channel4: i32,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            midi_channel1: 1,
+            midi_channel2: 2,
+            midi_channel3: 3,
+            midi_channel4: 4,
+        }
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
+        Some(Self {
+            midi_channel1: i32::from_value(values[0]),
+            midi_channel2: i32::from_value(values[1]),
+            midi_channel3: i32::from_value(values[2]),
+            midi_channel4: i32::from_value(values[3]),
+        })
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec.push(self.midi_channel1.into()).unwrap();
+        vec.push(self.midi_channel2.into()).unwrap();
+        vec.push(self.midi_channel3.into()).unwrap();
+        vec.push(self.midi_channel4.into()).unwrap();
+        vec
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     seq: Arr<u16, 64>,
@@ -57,13 +100,6 @@ pub struct Storage {
     seq_length: [u8; 4],
     seqres: [usize; 4],
     gate_length: [u8; 4],
-}
-
-pub struct Params<'a> {
-    midi_channel1: ParamSlot<'a, i32, PARAMS>,
-    midi_channel2: ParamSlot<'a, i32, PARAMS>,
-    midi_channel3: ParamSlot<'a, i32, PARAMS>,
-    midi_channel4: ParamSlot<'a, i32, PARAMS>,
 }
 
 impl Default for Storage {
@@ -83,37 +119,38 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::new(
-        [Value::i32(1), Value::i32(2), Value::i32(3), Value::i32(4)],
-        app.app_id,
-        app.start_channel,
-    );
-
-    let params = Params {
-        midi_channel1: ParamSlot::new(&param_store, 0),
-        midi_channel2: ParamSlot::new(&param_store, 1),
-        midi_channel3: ParamSlot::new(&param_store, 2),
-        midi_channel4: ParamSlot::new(&param_store, 3),
-    };
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             param_store.load().await;
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
+pub async fn run(
+    app: &App<CHANNELS>,
+    params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
     let range = Range::_0_10V;
-    let midi_chan1 = params.midi_channel1.get().await;
-    let midi_chan2 = params.midi_channel2.get().await;
-    let midi_chan3 = params.midi_channel3.get().await;
-    let midi_chan4 = params.midi_channel4.get().await;
+    let (midi_chan1, midi_chan2, midi_chan3, midi_chan4) = params.query(|p| {
+        (
+            p.midi_channel1,
+            p.midi_channel2,
+            p.midi_channel3,
+            p.midi_channel4,
+        )
+    });
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();

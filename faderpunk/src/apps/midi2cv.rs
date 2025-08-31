@@ -1,17 +1,19 @@
 use defmt::info;
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{
-    colors::RED,
-    utils::{bits_7_16, clickless, is_close, scale_bits_7_12},
-    Brightness, Color, Range,
-};
+use heapless::Vec;
+
 use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
-use libfp::{Config, Curve, Param, Value};
+use libfp::{
+    colors::RED,
+    ext::FromValue,
+    utils::{bits_7_16, clickless, is_close, scale_bits_7_12},
+    Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
+};
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent};
+use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 6;
@@ -55,7 +57,55 @@ pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI
         ],
     });
 
-// TODO: Make a macro to generate this.
+pub struct Params {
+    mode: i32,
+    curve: Curve,
+    midi_channel: i32,
+    midi_cc: i32,
+    bend_range: i32,
+    color: Color,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            mode: 0,
+            curve: Curve::Linear,
+            midi_channel: 1,
+            midi_cc: 32,
+            bend_range: 12,
+            color: Color::Teal,
+        }
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
+        Some(Self {
+            mode: i32::from_value(values[0]),
+            curve: Curve::from_value(values[1]),
+            midi_channel: i32::from_value(values[2]),
+            midi_cc: i32::from_value(values[3]),
+            bend_range: i32::from_value(values[4]),
+            color: Color::from_value(values[5]),
+        })
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec.push(self.mode.into()).unwrap();
+        vec.push(self.curve.into()).unwrap();
+        vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.midi_cc.into()).unwrap();
+        vec.push(self.bend_range.into()).unwrap();
+        vec.push(self.color.into()).unwrap();
+        vec
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     muted: bool,
@@ -73,68 +123,43 @@ impl Default for Storage {
 
 impl AppStorage for Storage {}
 
-// TODO: Make a macro to generate this.
-pub struct Params<'a> {
-    mode: ParamSlot<'a, i32, PARAMS>,
-    curve: ParamSlot<'a, Curve, PARAMS>,
-    // bipolar: ParamSlot<'a, bool, PARAMS>,
-    midi_channel: ParamSlot<'a, i32, PARAMS>,
-    midi_cc: ParamSlot<'a, i32, PARAMS>,
-    bend_range: ParamSlot<'a, i32, PARAMS>,
-    color: ParamSlot<'a, Color, PARAMS>,
-}
-
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    // TODO: Make a macro to generate this.
-    // TODO: Move Signal (when changed) to store so that we can do params.wait_for_change maybe
-    // TODO: Generate this from the static params defined above
-    let param_store = ParamStore::new(
-        [
-            Value::i32(0),
-            Value::Curve(Curve::Linear),
-            // Value::bool(false),
-            Value::i32(1),
-            Value::i32(32),
-            Value::i32(12),
-            Value::Color(Color::Teal),
-        ],
-        app.app_id,
-        app.start_channel,
-    );
-
-    let params = Params {
-        mode: ParamSlot::new(&param_store, 0),
-        curve: ParamSlot::new(&param_store, 1),
-        // bipolar: ParamSlot::new(&param_store, 1),
-        midi_channel: ParamSlot::new(&param_store, 2),
-        midi_cc: ParamSlot::new(&param_store, 3),
-        bend_range: ParamSlot::new(&param_store, 4),
-        color: ParamSlot::new(&param_store, 5),
-    };
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             param_store.load().await;
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
+pub async fn run(
+    app: &App<CHANNELS>,
+    params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
     let range = Range::_0_10V;
-    let midi_chan = params.midi_channel.get().await;
-    let midi_cc = params.midi_cc.get().await;
-    let curve = params.curve.get().await;
-    let bend_range = params.bend_range.get().await;
-    let color = params.color.get().await;
-    let mode = params.mode.get().await;
 
-    // info!("{}", led_color);
+    let (midi_chan, midi_cc, curve, bend_range, color, mode) = params.query(|p| {
+        (
+            p.midi_channel,
+            p.midi_cc,
+            p.curve,
+            p.bend_range,
+            p.color,
+            p.mode,
+        )
+    });
 
     let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
     let muted_glob = app.make_global(false);

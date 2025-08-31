@@ -4,16 +4,18 @@
 
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8,
+    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent, RGB8,
 };
 
 use libfp::{
     colors::PURPLE,
+    ext::FromValue,
     utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
-    Brightness, Config, Param, Range, Value,
+    Brightness, Config, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 pub const CHANNELS: usize = 1;
@@ -33,9 +35,37 @@ pub static CONFIG: Config<PARAMS> = Config::new("Random CC/CV", "Generate random
         max: 128,
     });
 
-pub struct Params<'a> {
-    midi_channel: ParamSlot<'a, i32, PARAMS>,
-    cc: ParamSlot<'a, i32, PARAMS>,
+pub struct Params {
+    midi_channel: i32,
+    midi_cc: i32,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            midi_channel: 1,
+            midi_cc: 32,
+        }
+    }
+}
+
+impl AppParams for Params {
+    fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
+        Some(Self {
+            midi_channel: i32::from_value(values[0]),
+            midi_cc: i32::from_value(values[1]),
+        })
+    }
+
+    fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
+        let mut vec = Vec::new();
+        vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.midi_cc.into()).unwrap();
+        vec
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -58,32 +88,30 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::new(
-        [Value::i32(1), Value::i32(32)],
-        app.app_id,
-        app.start_channel,
-    );
-
-    let params = Params {
-        midi_channel: ParamSlot::new(&param_store, 0),
-        cc: ParamSlot::new(&param_store, 1),
-    };
+    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
 
     let app_loop = async {
         loop {
             let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
             param_store.load().await;
             storage.load(None).await;
-            select(run(&app, &params, storage), param_store.param_handler()).await;
+            select(
+                run(&app, &param_store, storage),
+                param_store.param_handler(),
+            )
+            .await;
         }
     };
 
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
-    let midi_chan = params.midi_channel.get().await;
-    let cc = params.cc.get().await;
+pub async fn run(
+    app: &App<CHANNELS>,
+    params: &ParamStore<Params>,
+    storage: ManagedStorage<Storage>,
+) {
+    let (midi_chan, cc) = params.query(|p| (p.midi_channel, p.midi_cc));
 
     let mut clock = app.use_clock();
     let rnd = app.use_die();

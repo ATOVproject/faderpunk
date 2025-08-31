@@ -21,6 +21,7 @@ use constants::{
 };
 use smart_leds::RGB8;
 
+use crate::ext::FromValue;
 use colors::{
     CRIMSON, CYAN, GOLD, GREEN, LIME, MAGENTA, ORANGE, PINK, PURPLE, RED, ROYAL_BLUE, SPRING_GREEN,
     TEAL, VIOLET, WHITE, YELLOW,
@@ -124,37 +125,6 @@ impl<'a> IntoIterator for &'a Layout {
         LayoutIter {
             slice: &self.0,
             index: 0,
-        }
-    }
-}
-
-pub trait FromValue: Sized + Default + Copy {
-    fn from_value(value: Value) -> Self;
-}
-
-impl FromValue for bool {
-    fn from_value(value: Value) -> Self {
-        match value {
-            Value::bool(i) => i,
-            _ => Self::default(),
-        }
-    }
-}
-
-impl FromValue for i32 {
-    fn from_value(value: Value) -> Self {
-        match value {
-            Value::i32(i) => i,
-            _ => Self::default(),
-        }
-    }
-}
-
-impl FromValue for usize {
-    fn from_value(value: Value) -> Self {
-        match value {
-            Value::Enum(i) => i,
-            _ => Self::default(),
         }
     }
 }
@@ -288,7 +258,7 @@ impl GlobalConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum Curve {
     #[default]
     Linear,
@@ -324,7 +294,7 @@ impl FromValue for Curve {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum Waveform {
     #[default]
     Triangle,
@@ -485,7 +455,7 @@ pub enum Param {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum Value {
     i32(i32),
     f32(f32),

@@ -30,7 +30,7 @@ use crate::{
 };
 
 pub use crate::{
-    storage::{AppStorage, Arr, ManagedStorage, ParamSlot, ParamStore},
+    storage::{AppParams, AppStorage, Arr, ManagedStorage, ParamStore},
     tasks::{clock::ClockEvent, leds::Led},
 };
 pub use smart_leds::{colors, RGB8};
@@ -436,12 +436,13 @@ impl<T: Sized + Copy> Global<T> {
         *value
     }
 
-    pub fn modify<F, R>(&self, modifier: F) -> R
+    pub fn modify<F>(&self, modifier: F) -> T
     where
-        F: FnOnce(&mut T) -> R,
+        F: FnOnce(&T) -> T,
     {
         let mut guard = self.inner.borrow_mut();
-        modifier(&mut *guard)
+        *guard = modifier(&*guard);
+        *guard
     }
 }
 
