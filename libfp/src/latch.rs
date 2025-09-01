@@ -8,6 +8,7 @@ pub struct AnalogLatch {
     active_layer_index: usize,
     is_latched: bool,
     prev_value: u16,
+    prev_target: u16,
 }
 
 impl AnalogLatch {
@@ -23,6 +24,8 @@ impl AnalogLatch {
             is_latched: true,
             // The fader's last known position is its starting position.
             prev_value: initial_value,
+            // The initial target is the same as the initial value
+            prev_target: initial_value,
         }
     }
 
@@ -61,6 +64,23 @@ impl AnalogLatch {
             self.active_layer_index = new_active_layer_index;
             // Unlatch unless the fader is already at the new target value.
             self.is_latched = value == active_layer_target_value;
+            self.prev_target = active_layer_target_value;
+        } else if self.is_latched {
+            // If we are latched but the target has changed externally, check if we should unlatch.
+            // This happens if the target value is changed by something other than this fader.
+            if self.prev_target != active_layer_target_value {
+                // If the new target equals our current position, stay latched
+                self.is_latched = value == active_layer_target_value;
+                self.prev_target = active_layer_target_value;
+            }
+        } else {
+            // If we are unlatched and the target changes to our current position, latch immediately
+            if self.prev_target != active_layer_target_value && value == active_layer_target_value {
+                self.is_latched = true;
+                self.prev_target = active_layer_target_value;
+            } else if self.prev_target != active_layer_target_value {
+                self.prev_target = active_layer_target_value;
+            }
         }
 
         let mut new_value = None;
@@ -119,10 +139,11 @@ mod tests {
 
         // Switch to layer 1, fader moves to the new target value
         let result = latch.update(200, 1, 200);
-        // The fader's physical value changed, so the change should be reported.
+        // The fader's physical value changed, so the change should be reported
         assert_eq!(result, Some(200));
         assert_eq!(latch.active_layer(), 1);
-        assert!(latch.is_latched()); // Should remain latched
+        // Should remain latched
+        assert!(latch.is_latched());
     }
 
     #[test]
@@ -133,7 +154,8 @@ mod tests {
         let result = latch.update(100, 1, 200);
         assert_eq!(result, None);
         assert_eq!(latch.active_layer(), 1);
-        assert!(!latch.is_latched()); // Should become unlatched
+        // Should become unlatched
+        assert!(!latch.is_latched());
     }
 
     #[test]
@@ -222,7 +244,8 @@ mod tests {
         // Switch layers, fader starts at exact target value
         let result = latch.update(150, 1, 150);
         assert_eq!(result, None);
-        assert!(latch.is_latched()); // Should be latched since at target
+        // Should be latched since at target
+        assert!(latch.is_latched());
 
         // Any movement should update value
         let result = latch.update(160, 1, 150);
@@ -253,7 +276,7 @@ mod tests {
 
         // Switch layer and move. The target is u16::MAX.
         // The movement from prev_value(MAX) to value(MAX-100) crosses the target(MAX),
-        // so it should latch immediately.
+        // so it should latch immediately
         let result = latch.update(u16::MAX - 100, 1, u16::MAX);
         assert_eq!(result, Some(u16::MAX - 100));
         assert!(latch.is_latched());
@@ -275,10 +298,125 @@ mod tests {
 
         latch.update(100, 2, 100);
         assert_eq!(latch.active_layer(), 2);
-        assert!(latch.is_latched()); // Back to exact match
+        // Back to exact match
+        assert!(latch.is_latched());
 
         latch.update(100, 0, 150);
         assert_eq!(latch.active_layer(), 0);
         assert!(!latch.is_latched());
+    }
+
+    #[test]
+    fn test_internal_target_change_while_latched() {
+        let mut latch = AnalogLatch::new(100);
+        assert!(latch.is_latched());
+
+        // The target value for the active layer changes from 100 to 200 internally,
+        // but the fader's physical position is still 100
+        // No layer switch occurs
+        let result = latch.update(100, 0, 200);
+
+        // The fader has not moved, so the result should be None
+        assert_eq!(result, None);
+        // The latch should now be unlatched because the physical position (100)
+        // no longer matches the new target value (200)
+        assert!(!latch.is_latched());
+
+        // Move the fader towards the new target, but not past it
+        let result = latch.update(150, 0, 200);
+        assert_eq!(result, None);
+        assert!(!latch.is_latched());
+
+        // Now, cross the new target value
+        let result = latch.update(210, 0, 200);
+        assert_eq!(result, Some(210));
+        assert!(latch.is_latched());
+    }
+
+    #[test]
+    fn test_multiple_movements_while_latched() {
+        let mut latch = AnalogLatch::new(100);
+
+        // Multiple movements should all stay latched
+        assert_eq!(latch.update(120, 0, 100), Some(120));
+        assert!(latch.is_latched());
+
+        assert_eq!(latch.update(150, 0, 100), Some(150));
+        assert!(latch.is_latched());
+
+        assert_eq!(latch.update(80, 0, 100), Some(80));
+        assert!(latch.is_latched());
+    }
+
+    #[test]
+    fn test_target_changes_to_fader_position() {
+        let mut latch = AnalogLatch::new(100);
+
+        // Move fader to 150
+        assert_eq!(latch.update(150, 0, 100), Some(150));
+        assert!(latch.is_latched());
+
+        // Target externally changes to 150 (where fader already is)
+        // Should stay latched since we're already at the target
+        assert_eq!(latch.update(150, 0, 150), None);
+        assert!(latch.is_latched());
+    }
+
+    #[test]
+    fn test_multiple_target_changes_while_unlatched() {
+        let mut latch = AnalogLatch::new(100);
+
+        // Target changes externally
+        assert_eq!(latch.update(100, 0, 200), None);
+        assert!(!latch.is_latched());
+
+        // Target changes again before we reach it
+        assert_eq!(latch.update(100, 0, 150), None);
+        assert!(!latch.is_latched());
+
+        // Move toward new target
+        assert_eq!(latch.update(140, 0, 150), None);
+        assert!(!latch.is_latched());
+
+        // Cross it
+        assert_eq!(latch.update(160, 0, 150), Some(160));
+        assert!(latch.is_latched());
+    }
+
+    #[test]
+    fn test_return_to_original_target_after_external_change() {
+        let mut latch = AnalogLatch::new(100);
+
+        // Move fader away
+        assert_eq!(latch.update(150, 0, 100), Some(150));
+        assert!(latch.is_latched());
+
+        // Target changes externally to 200, causing unlatch
+        assert_eq!(latch.update(150, 0, 200), None);
+        assert!(!latch.is_latched());
+
+        // Move back toward original position (100)
+        // but target is still 200, so no latch
+        assert_eq!(latch.update(100, 0, 200), None);
+        assert!(!latch.is_latched());
+    }
+
+    #[test]
+    fn test_no_movement_crossover() {
+        let mut latch = AnalogLatch::new(100);
+
+        // Target changes to exactly where we are
+        // Should latch immediately
+        assert_eq!(latch.update(100, 0, 100), None);
+        assert!(latch.is_latched());
+
+        // Unlatch by external change
+        assert_eq!(latch.update(100, 0, 200), None);
+        assert!(!latch.is_latched());
+
+        // Target changes back to our position
+        // Should latch immediately even without movement
+        assert_eq!(latch.update(100, 0, 100), None);
+        assert!(latch.is_latched());
     }
 }
