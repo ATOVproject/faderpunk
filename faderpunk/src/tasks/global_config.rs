@@ -1,3 +1,4 @@
+use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, watch::Watch};
@@ -19,6 +20,8 @@ const INTERNAL_BPM_FADER: usize = 0;
 const QUANTIZER_KEY_FADER: usize = 3;
 const QUANTIZER_TONIC_FADER: usize = 4;
 const LED_BRIGHTNESS_FADER: usize = 15;
+
+const MIN_LED_BRIGHTNESS: u8 = 85;
 
 pub static GLOBAL_CONFIG_WATCH: Watch<
     CriticalSectionRawMutex,
@@ -83,7 +86,9 @@ pub fn set_global_config_via_chan(chan: usize, val: u16) {
         LED_BRIGHTNESS_FADER => {
             global_config_sender.send_if_modified(|c| {
                 if let Some(config) = c {
-                    let new_brightness = (55 + (val / 20)).clamp(55, 255) as u8;
+                    let new_brightness = (MIN_LED_BRIGHTNESS as u16 + (val / 20))
+                        .clamp(MIN_LED_BRIGHTNESS as u16, 255)
+                        as u8;
                     if config.led_brightness != new_brightness {
                         config.led_brightness = new_brightness;
                         return true;
