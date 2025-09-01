@@ -1,15 +1,15 @@
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_PURPLE, ATOV_RED, LED_MID},
+    colors::RED,
     utils::{attenuate_bipolar, clickless, is_close, split_unsigned_value},
-    Color,
+    Brightness, Color,
 };
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Range, Value};
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8};
+use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 6;
@@ -38,14 +38,13 @@ pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute 
         variants: &[
             Color::Yellow,
             Color::Purple,
-            Color::Blue,
+            Color::Teal,
             Color::Red,
             Color::White,
         ],
     });
 
-// const led_color.into(): RGB8 = ATOV_PURPLE;
-const BUTTON_BRIGHTNESS: u8 = LED_MID;
+const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
 // TODO: Make a macro to generate this.
 #[derive(Serialize, Deserialize)]
@@ -77,9 +76,6 @@ pub struct Params<'a> {
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    // TODO: Make a macro to generate this.
-    // TODO: Move Signal (when changed) to store so that we can do params.wait_for_change maybe
-    // TODO: Generate this from the static params defined above
     let param_store = ParamStore::new(
         [
             Value::Curve(Curve::Linear),
@@ -136,12 +132,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let on_release = params.on_release.get().await;
 
-    leds.set(
-        0,
-        Led::Button,
-        led_color.into(),
-        if muted { 0 } else { BUTTON_BRIGHTNESS },
-    );
+    if muted {
+        leds.unset(0, Led::Button);
+    } else {
+        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+    }
 
     let jack = if !params.bipolar.get().await {
         app.make_out_jack(0, Range::_0_10V).await
@@ -175,11 +170,16 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
                 if !buttons.is_shift_pressed() {
                     let led1 = split_unsigned_value(outval as u16);
-                    leds.set(0, Led::Top, led_color.into(), led1[0]);
-                    leds.set(0, Led::Bottom, led_color.into(), led1[1]);
+                    leds.set(0, Led::Top, led_color.into(), Brightness::Custom(led1[0]));
+                    leds.set(
+                        0,
+                        Led::Bottom,
+                        led_color.into(),
+                        Brightness::Custom(led1[1]),
+                    );
                 } else {
-                    leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
-                    leds.set(0, Led::Bottom, ATOV_RED, (att / 16) as u8);
+                    leds.set(0, Led::Top, RED, Brightness::Custom((att / 16) as u8));
+                    leds.set(0, Led::Bottom, RED, Brightness::Custom((att / 16) as u8));
                 }
                 outval = clickless(outval, val);
                 attval = attenuate_bipolar(outval as u16, att);
@@ -190,10 +190,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     val = curve.at(fadval.into());
                 }
                 if buttons.is_shift_pressed() {
-                    leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
-                    leds.set(0, Led::Bottom, ATOV_RED, 0);
+                    leds.set(0, Led::Top, RED, Brightness::Custom((att / 16) as u8));
+                    leds.unset(0, Led::Bottom);
                 } else {
-                    leds.set(0, Led::Top, led_color.into(), (outval / 16.) as u8);
+                    leds.set(
+                        0,
+                        Led::Top,
+                        led_color.into(),
+                        Brightness::Custom((outval / 16.) as u8),
+                    );
                 }
                 outval = clickless(outval, val);
                 attval = ((outval as u32 * att as u32) / 4095) as u16;
@@ -232,9 +237,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         .await;
                     muted_glob.set(muted).await;
                     if muted {
-                        leds.reset(0, Led::Button);
+                        leds.unset(0, Led::Button);
                     } else {
-                        leds.set(0, Led::Button, led_color.into(), 100);
+                        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                     }
                 }
                 button_old = false;
@@ -257,9 +262,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     .await;
                 muted_glob.set(muted).await;
                 if muted {
-                    leds.reset(0, Led::Button);
+                    leds.unset(0, Led::Button);
                 } else {
-                    leds.set(0, Led::Button, led_color.into(), 100);
+                    leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                 }
             }
         }
@@ -295,9 +300,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     let muted = storage.query(|s| s.muted).await;
                     muted_glob.set(muted).await;
                     if muted {
-                        leds.reset(0, Led::Button);
+                        leds.unset(0, Led::Button);
                     } else {
-                        leds.set(0, Led::Button, led_color.into(), 100);
+                        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                     }
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,

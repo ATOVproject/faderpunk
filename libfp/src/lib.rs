@@ -1,10 +1,12 @@
 #![no_std]
 
 use embassy_time::Duration;
+use enum_iterator::{all, cardinality, Sequence};
 use max11300::config::DACRANGE;
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
+pub mod colors;
 pub mod constants;
 pub mod ext;
 pub mod i2c_proto;
@@ -14,10 +16,15 @@ pub mod types;
 pub mod utils;
 
 use constants::{
-    ATOV_BLUE, ATOV_PURPLE, ATOV_RED, ATOV_WHITE, ATOV_YELLOW, CURVE_EXP, CURVE_LOG, WAVEFORM_RECT,
-    WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE, WAVEFORM_TRIANGLE,
+    CURVE_EXP, CURVE_LOG, WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE,
+    WAVEFORM_TRIANGLE,
 };
 use smart_leds::RGB8;
+
+use colors::{
+    CRIMSON, CYAN, GOLD, GREEN, LIME, MAGENTA, ORANGE, PINK, PURPLE, RED, ROYAL_BLUE, SPRING_GREEN,
+    TEAL, VIOLET, WHITE, YELLOW,
+};
 
 /// Total channel size of this device
 pub const GLOBAL_CHANNELS: usize = 16;
@@ -31,6 +38,9 @@ pub const APP_MAX_PARAMS: usize = 8;
 
 /// Length of the startup animation
 pub const STARTUP_ANIMATION_DURATION: Duration = Duration::from_secs(2);
+
+/// Rang in which the LED brightness is scaled
+pub const LED_BRIGHTNESS_RANGE: core::ops::Range<u8> = 65..255;
 
 pub type ConfigMeta<'a> = (usize, &'a str, &'a str, &'a [Param]);
 
@@ -150,6 +160,7 @@ impl FromValue for usize {
 }
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[repr(u8)]
 pub enum ClockSrc {
     None,
     Atom,
@@ -161,6 +172,7 @@ pub enum ClockSrc {
 }
 
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]
+#[repr(u8)]
 pub enum I2cMode {
     Calibration,
     Leader,
@@ -285,12 +297,20 @@ pub enum Curve {
 }
 
 impl Curve {
-    pub fn at(&self, index: usize) -> u16 {
-        let index = index.clamp(0, 4095);
+    pub fn at(&self, value: u16) -> u16 {
+        let value = value.clamp(0, 4095);
         match self {
-            Curve::Linear => index as u16,
-            Curve::Logarithmic => CURVE_LOG[index],
-            Curve::Exponential => CURVE_EXP[index],
+            Curve::Linear => value,
+            Curve::Logarithmic => CURVE_LOG[value as usize],
+            Curve::Exponential => CURVE_EXP[value as usize],
+        }
+    }
+
+    pub fn cycle(&self) -> Curve {
+        match self {
+            Curve::Linear => Curve::Logarithmic,
+            Curve::Logarithmic => Curve::Exponential,
+            Curve::Exponential => Curve::Linear,
         }
     }
 }
@@ -346,25 +366,58 @@ impl FromValue for Waveform {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings)]
+#[derive(
+    Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings, Sequence, PartialEq, Eq,
+)]
+#[repr(usize)]
 pub enum Color {
     #[default]
     White,
     Red,
-    Blue,
+    Lime,
+    RoyalBlue,
+    Magenta,
+    Cyan,
+    Orange,
+    Green,
+    Violet,
+    Pink,
+    SpringGreen,
+    Crimson,
     Yellow,
     Purple,
+    Teal,
+    Gold,
+}
+
+const PALETTE: [RGB8; cardinality::<Color>()] = [
+    WHITE,
+    RED,
+    LIME,
+    ROYAL_BLUE,
+    MAGENTA,
+    CYAN,
+    ORANGE,
+    GREEN,
+    VIOLET,
+    PINK,
+    SPRING_GREEN,
+    CRIMSON,
+    YELLOW,
+    PURPLE,
+    TEAL,
+    GOLD,
+];
+
+impl From<usize> for Color {
+    fn from(value: usize) -> Self {
+        all::<Color>().nth(value % cardinality::<Color>()).unwrap()
+    }
 }
 
 impl From<Color> for RGB8 {
     fn from(value: Color) -> Self {
-        match value {
-            Color::White => ATOV_WHITE,
-            Color::Red => ATOV_RED,
-            Color::Blue => ATOV_BLUE,
-            Color::Yellow => ATOV_YELLOW,
-            Color::Purple => ATOV_PURPLE,
-        }
+        PALETTE[value as usize]
     }
 }
 
@@ -373,6 +426,27 @@ impl FromValue for Color {
         match value {
             Value::Color(c) => c,
             _ => Self::default(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Brightness {
+    Lowest,
+    Lower,
+    Low,
+    Default,
+    Custom(u8),
+}
+
+impl From<Brightness> for u8 {
+    fn from(value: Brightness) -> Self {
+        match value {
+            Brightness::Lowest => 95,
+            Brightness::Lower => 127,
+            Brightness::Low => 191,
+            Brightness::Default => 255,
+            Brightness::Custom(value) => value,
         }
     }
 }

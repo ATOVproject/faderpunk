@@ -6,12 +6,12 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    constants::{ATOV_PURPLE, ATOV_RED, CURVE_EXP, LED_MID},
+    colors::RED,
     utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
-    Color, Config, Param, Range, Value,
+    Brightness, Color, Config, Curve, Param, Range, Value,
 };
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8};
+use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 1;
@@ -22,14 +22,13 @@ pub static CONFIG: Config<PARAMS> = Config::new("Envelope Follower", "Audio ampl
         variants: &[
             Color::Yellow,
             Color::Purple,
-            Color::Blue,
+            Color::Teal,
             Color::Red,
             Color::White,
         ],
     });
 
-// const led_color.into(): RGB8 = ATOV_PURPLE;
-const BUTTON_BRIGHTNESS: u8 = LED_MID;
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
@@ -75,6 +74,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 }
 
 pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStorage<Storage>) {
+    let curve = Curve::Exponential;
+
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
@@ -100,8 +101,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     offset_glob.set(offset).await;
     att_glob.set(att).await;
-    attack_glob.set(CURVE_EXP[stored_faders[0] as usize]).await;
-    decay_glob.set(CURVE_EXP[stored_faders[1] as usize]).await;
+    attack_glob.set(curve.at(stored_faders[0])).await;
+    decay_glob.set(curve.at(stored_faders[1])).await;
 
     leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
     leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
@@ -129,26 +130,46 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             if !buttons.is_shift_pressed() {
                 let slew_led = split_unsigned_value(oldval as u16);
-                leds.set(0, Led::Top, led_color.into(), slew_led[0]);
-                leds.set(0, Led::Bottom, led_color.into(), slew_led[1]);
+                leds.set(
+                    0,
+                    Led::Top,
+                    led_color.into(),
+                    Brightness::Custom(slew_led[0]),
+                );
+                leds.set(
+                    0,
+                    Led::Bottom,
+                    led_color.into(),
+                    Brightness::Custom(slew_led[1]),
+                );
 
                 let out_led = split_unsigned_value(outval);
-                leds.set(1, Led::Top, led_color.into(), out_led[0]);
-                leds.set(1, Led::Bottom, led_color.into(), out_led[1]);
+                leds.set(
+                    1,
+                    Led::Top,
+                    led_color.into(),
+                    Brightness::Custom(out_led[0]),
+                );
+                leds.set(
+                    1,
+                    Led::Bottom,
+                    led_color.into(),
+                    Brightness::Custom(out_led[1]),
+                );
             } else {
                 let off_led = split_signed_value(offset);
-                leds.set(0, Led::Top, ATOV_RED, off_led[0]);
-                leds.set(0, Led::Bottom, ATOV_RED, off_led[1]);
+                leds.set(0, Led::Top, RED, Brightness::Custom(off_led[0]));
+                leds.set(0, Led::Bottom, RED, Brightness::Custom(off_led[1]));
                 let att_led = split_unsigned_value(att);
-                leds.set(1, Led::Top, ATOV_RED, att_led[0]);
-                leds.set(1, Led::Bottom, ATOV_RED, att_led[1]);
+                leds.set(1, Led::Top, RED, Brightness::Custom(att_led[0]));
+                leds.set(1, Led::Bottom, RED, Brightness::Custom(att_led[1]));
             }
 
             if !shift_old && buttons.is_shift_pressed() {
                 latched_glob.set([false; 2]).await;
                 shift_old = true;
-                leds.reset(0, Led::Button);
-                leds.reset(1, Led::Button);
+                leds.unset(0, Led::Button);
+                leds.unset(1, Led::Button);
             }
             if shift_old && !buttons.is_shift_pressed() {
                 latched_glob.set([false; 2]).await;
@@ -175,12 +196,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
                 if latched[chan] {
                     if chan == 0 {
-                        attack_glob.set(CURVE_EXP[vals[chan] as usize]).await;
+                        attack_glob.set(curve.at(vals[chan])).await;
                         stored_faders[chan] = vals[chan];
                     }
 
                     if chan == 1 {
-                        decay_glob.set(CURVE_EXP[vals[chan] as usize]).await;
+                        decay_glob.set(curve.at(vals[chan])).await;
                         stored_faders[chan] = vals[chan];
                     }
 
@@ -311,8 +332,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
                     offset_glob.set(offset).await;
                     att_glob.set(att).await;
-                    attack_glob.set(CURVE_EXP[stored_faders[0] as usize]).await;
-                    decay_glob.set(CURVE_EXP[stored_faders[1] as usize]).await;
+                    attack_glob.set(curve.at(stored_faders[0])).await;
+                    decay_glob.set(curve.at(stored_faders[1])).await;
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }

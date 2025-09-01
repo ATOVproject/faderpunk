@@ -1,9 +1,8 @@
 use defmt::info;
 use embassy_futures::select::select;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::constants::{LED_HIGH, LED_LOW, LED_MAX, LED_MID};
 
-use libfp::{Config, Curve, Param};
+use libfp::{Brightness, Config, Curve, Param};
 
 use crate::app::{App, Led, RGB8};
 
@@ -43,7 +42,12 @@ pub async fn run(app: &App<CHANNELS>) {
     let leds = app.use_leds();
 
     let mut color = [255; 3];
-    let intensities = [LED_LOW, LED_MID, LED_HIGH, LED_MAX];
+    let intensities = [
+        Brightness::Lowest,
+        Brightness::Lower,
+        Brightness::Low,
+        Brightness::Default,
+    ];
     loop {
         let chan = fader.wait_for_any_change().await;
         let val = fader.get_all_values();

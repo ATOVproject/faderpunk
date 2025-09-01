@@ -19,7 +19,7 @@ use crate::{
     },
 };
 
-const GLOBAL_CONFIG_RANGE: Range<u32> = 0..256;
+const GLOBAL_CONFIG_RANGE: Range<u32> = 0..384;
 const LAYOUT_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..512;
 const CALIBRATION_RANGE: Range<u32> = LAYOUT_RANGE.end..1024;
 const APP_STORAGE_RANGE: Range<u32> = CALIBRATION_RANGE.end..122_880;

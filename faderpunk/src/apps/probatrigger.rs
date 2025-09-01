@@ -1,12 +1,8 @@
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{
-    constants::{ATOV_YELLOW, LED_MID},
-    utils::is_close,
-    Color, Config, Curve, Param, Value,
-};
+use libfp::{utils::is_close, Brightness, Color, Config, Curve, Param, Value};
 use serde::{Deserialize, Serialize};
-use smart_leds::{colors::RED, RGB};
+use smart_leds::colors::RED;
 
 use crate::app::{
     App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent,
@@ -14,6 +10,8 @@ use crate::app::{
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 5;
+
+const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
 pub static CONFIG: Config<PARAMS> =
     Config::new("Random Triggers", "Generate random triggers on clock")
@@ -41,7 +39,7 @@ pub static CONFIG: Config<PARAMS> =
             variants: &[
                 Color::Yellow,
                 Color::Purple,
-                Color::Blue,
+                Color::Teal,
                 Color::Red,
                 Color::White,
             ],
@@ -133,8 +131,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let mut clkn = 0;
 
-    const LED_BRIGHTNESS: u8 = LED_MID;
-
     // const led_color.into(): RGB<u8> = ATOV_YELLOW;
 
     let mut rndval = die.roll();
@@ -147,9 +143,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     glob_muted.set(mute).await;
     div_glob.set(resolution[res as usize / 345]).await;
     if mute {
-        leds.set(0, Led::Button, led_color.into(), 0);
-        leds.set(0, Led::Top, led_color.into(), 0);
-        leds.set(0, Led::Bottom, led_color.into(), 0);
+        leds.unset(0, Led::Button);
+        leds.unset(0, Led::Top);
+        leds.unset(0, Led::Bottom);
     } else {
         leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
     }
@@ -171,7 +167,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     let div = div_glob.get().await;
 
                     if clkn % div == 0 {
-                        if curve.at(val as usize) >= rndval && !muted {
+                        if curve.at(val) >= rndval && !muted {
                             jack.set_high().await;
                             leds.set(0, Led::Top, led_color.into(), LED_BRIGHTNESS);
                             midi.send_note_on(note as u8 - 1, 4095).await;
@@ -187,12 +183,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note as u8 - 1).await;
-                            leds.set(0, Led::Top, led_color.into(), 0);
+                            leds.unset(0, Led::Top);
                             note_on = false;
                             jack.set_low().await;
                         }
 
-                        leds.set(0, Led::Bottom, RED, 0);
+                        leds.unset(0, Led::Bottom);
                     }
                     clkn += 1;
                 }
@@ -218,7 +214,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             if muted {
                 jack.set_low().await;
-                leds.reset_all();
+                leds.unset_all();
             } else {
                 leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
             }
@@ -266,10 +262,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     glob_muted.set(mute).await;
                     div_glob.set(resolution[res as usize / 345]).await;
                     if mute {
-                        leds.set(0, Led::Button, led_color.into(), 0);
+                        leds.unset(0, Led::Button);
                         jack.set_low().await;
-                        leds.set(0, Led::Top, led_color.into(), 0);
-                        leds.set(0, Led::Bottom, led_color.into(), 0);
+                        leds.unset(0, Led::Top);
+                        leds.unset(0, Led::Bottom);
                     } else {
                         leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                     }

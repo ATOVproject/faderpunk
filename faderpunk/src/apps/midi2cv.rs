@@ -2,19 +2,21 @@ use defmt::info;
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_RED, LED_MID},
+    colors::RED,
     utils::{bits_7_16, clickless, is_close, scale_bits_7_12},
-    Color, Range,
+    Brightness, Color, Range,
 };
 use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Value};
 
-use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent, RGB8};
+use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 6;
+
+const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
 pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI to CV")
     .add_param(Param::i32 {
@@ -47,14 +49,11 @@ pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI
         variants: &[
             Color::Yellow,
             Color::Purple,
-            Color::Blue,
+            Color::Teal,
             Color::Red,
             Color::White,
         ],
     });
-
-// const led_color: RGB8 = ATOV_PURPLE;
-const BUTTON_BRIGHTNESS: u8 = LED_MID;
 
 // TODO: Make a macro to generate this.
 #[derive(Serialize, Deserialize)]
@@ -98,7 +97,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             Value::i32(1),
             Value::i32(32),
             Value::i32(12),
-            Value::Color(Color::Blue),
+            Value::Color(Color::Teal),
         ],
         app.app_id,
         app.start_channel,
@@ -156,12 +155,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let quantizer = app.use_quantizer(range);
 
-    leds.set(
-        0,
-        Led::Button,
-        led_color,
-        if muted { 0 } else { BUTTON_BRIGHTNESS },
-    );
+    if muted {
+        leds.unset(0, Led::Button);
+    } else {
+        leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
+    }
 
     let jack = if mode != 5 {
         info!("range 0-10V");
@@ -207,10 +205,15 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     val = curve.at((fadval + offset).into());
                 }
                 if buttons.is_shift_pressed() {
-                    leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
-                    leds.set(0, Led::Bottom, ATOV_RED, 0);
+                    leds.set(0, Led::Top, RED, Brightness::Custom((att / 16) as u8));
+                    leds.unset(0, Led::Bottom);
                 } else {
-                    leds.set(0, Led::Top, led_color, (outval / 16.) as u8);
+                    leds.set(
+                        0,
+                        Led::Top,
+                        led_color,
+                        Brightness::Custom((outval / 16.) as u8),
+                    );
                 }
                 outval = clickless(outval, val);
                 attval = ((outval as u32 * att as u32) / 4095) as u16;
@@ -274,13 +277,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 .await;
             muted_glob.set(muted).await;
             if muted {
-                leds.reset(0, Led::Button);
+                leds.unset(0, Led::Button);
             } else {
-                leds.set(0, Led::Button, led_color, 100);
+                leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
             }
             if mode == 3 {
                 jack.set_value(0);
-                leds.set(0, Led::Top, led_color, 0);
+                leds.unset(0, Led::Top);
             }
         }
     };
@@ -328,14 +331,19 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             let note_out = (note_in as i32 + oct * 410).clamp(0, 4095) as u16;
                             // jack.set_value(note_out);
                             pitch_glob.set(note_out).await;
-                            leds.set(0, Led::Top, led_color, (note_out / 16) as u8);
+                            leds.set(
+                                0,
+                                Led::Top,
+                                led_color,
+                                Brightness::Custom((note_out / 16) as u8),
+                            );
                         }
                     }
                     if mode == 2 {
                         if !muted_glob.get().await {
                             jack.set_value(4095);
                             note_num += 1;
-                            leds.set(0, Led::Top, led_color, LED_MID);
+                            leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
                         } else {
                             note_num = 0;
                         }
@@ -350,7 +358,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         };
                         jack.set_value(vel_out);
 
-                        leds.set(0, Led::Top, led_color, (vel_out / 16) as u8);
+                        leds.set(
+                            0,
+                            Led::Top,
+                            led_color,
+                            Brightness::Custom((vel_out / 16) as u8),
+                        );
                         //info!("Velocity: {} ", vel_out)
                     }
                 }
@@ -360,7 +373,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         //info!("note off num = {}", note_num);
                         if note_num == 0 {
                             jack.set_value(0);
-                            leds.set(0, Led::Top, led_color, 0);
+                            leds.unset(0, Led::Top);
                         }
                     }
                 }
@@ -369,8 +382,18 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if mode == 5 || mode == 1 {
                         let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
                         offset_glob.set(out).await;
-                        leds.set(0, Led::Top, led_color, (bend.as_f32() * 255.) as u8);
-                        leds.set(0, Led::Bottom, led_color, (bend.as_f32() * -255.) as u8);
+                        leds.set(
+                            0,
+                            Led::Top,
+                            led_color,
+                            Brightness::Custom((bend.as_f32() * 255.0) as u8),
+                        );
+                        leds.set(
+                            0,
+                            Led::Bottom,
+                            led_color,
+                            Brightness::Custom((bend.as_f32() * -255.0) as u8),
+                        );
                         //info!("Bend! = {}, bend range = {}", bend.as_f32(), out);
                     }
                     // if mode == 1 {
@@ -400,9 +423,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     let muted = storage.query(|s| s.muted).await;
                     muted_glob.set(muted).await;
                     if muted {
-                        leds.reset(0, Led::Button);
+                        leds.unset(0, Led::Button);
                     } else {
-                        leds.set(0, Led::Button, led_color, 100);
+                        leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
                     }
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,

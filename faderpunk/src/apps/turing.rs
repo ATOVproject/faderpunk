@@ -4,11 +4,7 @@
 
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use libfp::{
-    constants::{ATOV_RED, LED_HIGH, LED_MID},
-    utils::is_close,
-    Color, Config, Param, Range, Value,
-};
+use libfp::{colors::RED, utils::is_close, Brightness, Color, Config, Param, Range, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
@@ -46,7 +42,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     variants: &[
         Color::Yellow,
         Color::Purple,
-        Color::Blue,
+        Color::Teal,
         Color::Red,
         Color::White,
     ],
@@ -122,6 +118,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let midi_mode = params.midi_mode.get().await;
     let midi_cc = params.midi_cc.get().await;
     let midi_chan = params.midi_channel.get().await;
+    let led_color = params.color.get().await;
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
@@ -129,7 +126,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut clock = app.use_clock();
     let die = app.use_die();
     let quantizer = app.use_quantizer(range);
-    let led_color = params.color.get().await;
 
     let midi = app.use_midi_output(midi_chan as u8 - 1);
 
@@ -151,7 +147,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
-    leds.set(0, Led::Button, led_color.into(), LED_MID);
+    leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
@@ -203,7 +199,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         // );
 
                         jack.set_value(out.as_counts(Range::_0_10V));
-                        leds.set(0, Led::Top, led_color.into(), (register_scalled / 16) as u8);
+                        leds.set(
+                            0,
+                            Led::Top,
+                            led_color.into(),
+                            Brightness::Custom((register_scalled / 16) as u8),
+                        );
                         // info!("{}", register_scalled);
                         if midi_mode == 1 {
                             let note = out.as_midi();
@@ -216,11 +217,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         }
 
                         if buttons.is_button_pressed(0) && !buttons.is_shift_pressed() {
-                            leds.set(0, Led::Bottom, ATOV_RED, LED_HIGH);
+                            leds.set(0, Led::Bottom, RED, Brightness::Low);
                         }
                     }
                     if clkn % div == div / 2 {
-                        leds.set(0, Led::Bottom, ATOV_RED, 0);
+                        leds.unset(0, Led::Bottom);
 
                         if midi_mode == 1 {
                             let note = midi_note.get().await;
@@ -325,7 +326,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     rec_flag.set(true).await;
                     length_rec.set(0).await;
                 }
-                leds.set(0, Led::Top, ATOV_RED, (att_glob.get().await / 16) as u8);
+                leds.set(
+                    0,
+                    Led::Top,
+                    RED,
+                    Brightness::Custom((att_glob.get().await / 16) as u8),
+                );
             }
             if !buttons.is_shift_pressed() && shift_old {
                 latched_glob.set(false).await;
@@ -352,7 +358,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if !buttons.is_button_pressed(0) && button_old {
                 latched_glob.set(false).await;
                 button_old = false;
-                leds.set(0, Led::Bottom, ATOV_RED, 0);
+                leds.unset(0, Led::Bottom);
             }
         }
     };

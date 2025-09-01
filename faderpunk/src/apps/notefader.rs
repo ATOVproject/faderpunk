@@ -3,13 +3,8 @@ use embassy_futures::{join::join5, select::select};
 
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
-use smart_leds::colors::RED;
 
-use libfp::{
-    constants::{ATOV_RED, LED_LOW, LED_MID},
-    utils::is_close,
-    Color, Config, Param, Range, Value,
-};
+use libfp::{colors::RED, utils::is_close, Brightness, Color, Config, Param, Range, Value};
 
 use crate::app::{
     App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent,
@@ -44,7 +39,7 @@ pub static CONFIG: Config<PARAMS> = Config::new("Note Fader", "Play notes manual
         variants: &[
             Color::Yellow,
             Color::Purple,
-            Color::Blue,
+            Color::Teal,
             Color::Red,
             Color::White,
         ],
@@ -137,7 +132,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let mut clkn = 0;
 
-    const LED_BRIGHTNESS: u8 = LED_MID;
+    const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
     // const led_color.into(): RGB<u8> = ATOV_YELLOW;
     let led_color = params.color.get().await;
@@ -150,9 +145,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     glob_muted.set(mute).await;
     div_glob.set(resolution[res as usize / 345]).await;
     if mute {
-        leds.set(0, Led::Button, led_color.into(), 0);
-        leds.set(0, Led::Top, led_color.into(), 0);
-        leds.set(0, Led::Bottom, led_color.into(), 0);
+        leds.unset(0, Led::Button);
+        leds.unset(0, Led::Top);
+        leds.unset(0, Led::Bottom);
     } else {
         leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
     }
@@ -211,11 +206,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note as u8).await;
-                            leds.set(0, Led::Top, led_color.into(), 0);
+                            leds.unset(0, Led::Top);
                             note_on = false;
                         }
 
-                        leds.set(0, Led::Bottom, ATOV_RED, 0);
+                        leds.unset(0, Led::Bottom);
                     }
                     clkn += 1;
                 }
@@ -241,7 +236,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     .await;
 
                 if muted {
-                    leds.reset_all();
+                    leds.unset_all();
                 } else {
                     leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                 }
@@ -292,10 +287,10 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     glob_muted.set(mute).await;
                     div_glob.set(resolution[res as usize / 345]).await;
                     if mute {
-                        leds.set(0, Led::Button, led_color.into(), LED_LOW);
+                        leds.set(0, Led::Button, led_color.into(), Brightness::Lowest);
 
-                        leds.set(0, Led::Top, led_color.into(), 0);
-                        leds.set(0, Led::Bottom, led_color.into(), 0);
+                        leds.unset(0, Led::Top);
+                        leds.unset(0, Led::Bottom);
                     } else {
                         leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                     }
@@ -319,11 +314,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             app.delay_millis(1).await;
             if !shift_old && buttons.is_shift_pressed() {
                 latched_glob.set(false).await;
+                let base: u8 = LED_BRIGHTNESS.into();
                 leds.set(
                     0,
                     Led::Bottom,
-                    ATOV_RED,
-                    LED_MID * clocked_glob.get().await as u8,
+                    RED,
+                    Brightness::Custom(base * clocked_glob.get().await as u8),
                 );
                 shift_old = true;
             }
@@ -341,8 +337,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if button_old && !buttons.is_button_pressed(0) {
                     button_old = false;
                     midi.send_note_off(note as u8).await;
-                    leds.set(0, Led::Top, led_color.into(), 0);
-                    leds.set(0, Led::Button, led_color.into(), LED_LOW);
+                    leds.unset(0, Led::Top);
+                    leds.set(0, Led::Button, led_color.into(), Brightness::Lowest);
                 }
             }
         }

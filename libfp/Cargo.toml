@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 defmt = "1.0.1"
 embassy-time = "0.4.0"
+enum-iterator = "2.1.0"
 heapless = "0.7.17"
 libm = "0.2.15"
 max11300 = "0.5.0"
