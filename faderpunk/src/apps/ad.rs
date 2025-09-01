@@ -1,15 +1,23 @@
 // TODO :
-// add saving to modes
+// fix when timer is over timer th
+// add trigger on midi
+// Fix the saving
 
 use defmt::info;
-use embassy_futures::{join::join4, select::select};
+use embassy_futures::{
+    join::{join4, join5},
+    select::select,
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    constants::{ATOV_BLUE, ATOV_PURPLE, ATOV_YELLOW, CURVE_EXP, CURVE_LOG, LED_MID},
-    Config,
-    Range,
+    constants::{
+        ATOV_BLUE, ATOV_PURPLE, ATOV_RED, ATOV_YELLOW, CURVE_EXP, CURVE_LOG, LED_HIGH, LED_LOW,
+        LED_MID,
+    },
+    Config, Range,
 };
 
 use crate::{
@@ -33,6 +41,7 @@ pub struct Storage {
     curve_saved: [u8; 2],
     mode_saved: u8,
     att_saved: u16,
+    min_gate_saved: u16,
 }
 
 impl Default for Storage {
@@ -42,6 +51,7 @@ impl Default for Storage {
             curve_saved: [0; 2],
             mode_saved: 0,
             att_saved: 4095,
+            min_gate_saved: 1,
         }
     }
 }
@@ -71,12 +81,14 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
+    let mut midi_in = app.use_midi_input(2);
 
     let times_glob = app.make_global([0.0682, 0.0682]);
     let glob_curve = app.make_global([0, 0]);
     let mode_glob = app.make_global(0); //0 AD, 1, ASR, 2 Looping AD
     let latched_glob = app.make_global([false; 2]);
-    let att_glob = app.make_global(4095);
+
+    let gate_on_glob = app.make_global(0);
 
     let input = app.make_in_jack(0, Range::_0_10V).await;
     let output = app.make_out_jack(1, Range::_0_10V).await;
@@ -91,9 +103,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let curve_setting = storage.query(|s| s.curve_saved).await;
     let stored_faders = storage.query(|s| s.fader_saved).await;
-    let att_saved = storage.query(|s| s.att_saved).await;
-    att_glob.set(att_saved).await;
-    glob_curve.set(curve_setting).await;
 
     leds.set(0, Led::Button, color[curve_setting[0] as usize], LED_MID);
     leds.set(1, Led::Button, color[curve_setting[1] as usize], LED_MID);
@@ -106,23 +115,77 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
     let mut outval = 0;
     let mut shift_old = false;
+    let mut old_gate = false;
+    let mut button_old = false;
+    let mut timer: u32 = 5000;
+    let mut start_time = 0;
+    let mut t2g = false;
 
     let fut1 = async {
         loop {
             app.delay_millis(1).await;
-            let mode = mode_glob.get().await;
+            timer += 1;
+            let mode = storage.query(|s| s.mode_saved).await;
             let times = times_glob.get().await;
-            let curve_setting = glob_curve.get().await;
+            let curve_setting = storage.query(|s| s.curve_saved).await;
 
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
                 // catching rising edge
-                env_state = 1;
+                gate_on_glob.set(gate_on_glob.get().await + 1).await
             }
-            if mode == 1 && inputval <= 406 && oldinputval > 406 {
-                env_state = 2;
+            if inputval <= 406 && oldinputval > 406 {
+                gate_on_glob
+                    .set((gate_on_glob.get().await - 1).max(0))
+                    .await
             }
             oldinputval = inputval;
+
+            if gate_on_glob.get().await > 0 && !old_gate {
+                env_state = 1;
+                old_gate = true;
+                start_time = timer;
+            }
+
+            if timer == start_time {
+                gate_on_glob.set(gate_on_glob.get().await + 1).await;
+
+                t2g = true;
+                info!(
+                    "gate on, gate count = {}, t2g = {}",
+                    gate_on_glob.get().await,
+                    t2g
+                );
+            }
+
+            if gate_on_glob.get().await == 0 && old_gate == true {
+                if mode == 1 {
+                    env_state = 2;
+                }
+                old_gate = false;
+            }
+            if timer - start_time > storage.query(|s: &Storage| s.min_gate_saved).await as u32
+                && t2g == true
+                && storage.query(|s: &Storage| s.min_gate_saved).await != 4095
+            {
+                gate_on_glob
+                    .set((gate_on_glob.get().await - 1).max(0))
+                    .await;
+
+                t2g = false;
+                info!(
+                    "gate off, gate count = {}, t2g = {}",
+                    gate_on_glob.get().await,
+                    t2g
+                );
+            }
+
+            // info!(
+            //     "gate on = {}, old gate = {}, env state = {}",
+            //     gate_on_glob.get().await,
+            //     old_gate,
+            //     env_state
+            // );
 
             if env_state == 1 {
                 if times[0] == minispeed {
@@ -162,7 +225,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 }
                 if curve_setting[1] == 1 {
                     outval = CURVE_EXP[vals as usize];
-                    info!("here!");
                 }
                 if curve_setting[1] == 2 {
                     outval = CURVE_LOG[vals as usize];
@@ -170,20 +232,35 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
                 leds.set(1, Led::Top, WHITE, (outval / 16) as u8);
 
-                if vals == 0.0 && mode == 2 && inputval > 406 {
+                if vals == 0.0 && mode == 2 && gate_on_glob.get().await != 0 {
                     env_state = 1;
                 }
             }
-            outval = attenuate(outval, att_glob.get().await);
+            outval = attenuate(outval, storage.query(|s| s.att_saved).await);
             output.set_value(outval);
             if shift_old {
-                leds.set(0, Led::Button, color[mode as usize], 75);
-                leds.set(1, Led::Button, color[0], 0);
-                let att = att_glob.get().await;
-                leds.set(1, Led::Top, RED, (att / 16) as u8)
+                leds.set(1, Led::Button, color[mode as usize], LED_MID);
+                if gate_on_glob.get().await > 0 {
+                    leds.set(0, Led::Button, ATOV_RED, LED_HIGH);
+                } else {
+                    leds.set(0, Led::Button, ATOV_RED, LED_MID);
+                }
+
+                let att = storage.query(|s| s.att_saved).await;
+                leds.set(1, Led::Top, ATOV_RED, (att / 16) as u8);
+                if timer % storage.query(|s: &Storage| s.min_gate_saved).await as u32 + 200
+                    < storage.query(|s: &Storage| s.min_gate_saved).await as u32
+                {
+                    leds.set(0, Led::Top, ATOV_RED, LED_HIGH);
+                } else {
+                    leds.set(0, Led::Top, color[mode as usize], 0);
+                }
             } else {
                 for n in 0..2 {
-                    leds.set(n, Led::Button, color[curve_setting[n] as usize], 75);
+                    leds.set(n, Led::Button, color[curve_setting[n] as usize], LED_MID);
+                    if outval == 0 {
+                        leds.set(n, Led::Top, color[mode as usize], 0);
+                    }
                 }
             }
 
@@ -196,6 +273,15 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
                 shift_old = false;
             }
+
+            if button_old && !buttons.is_button_pressed(0) && buttons.is_shift_pressed() {
+                gate_on_glob
+                    .set((gate_on_glob.get().await - 1).max(0))
+                    .await;
+            }
+            // info!("{}", gate_on_glob.get().await);
+
+            button_old = buttons.is_button_pressed(0);
         }
     };
 
@@ -234,18 +320,35 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     times_glob.set(times).await;
                 }
             } else if chan == 1 {
-                if is_close(vals[chan], att_glob.get().await) {
+                if is_close(vals[chan], storage.query(|s| s.att_saved).await) {
                     latched[chan] = true;
                     latched_glob.set(latched).await;
                 }
-                if latched[1] {
-                    att_glob.set(vals[chan]).await;
-
+                if latched[chan] {
                     storage
                         .modify_and_save(
                             |s| {
-                                s.att_saved = vals[1];
+                                s.att_saved = vals[chan];
                                 s.att_saved
+                            },
+                            None,
+                        )
+                        .await;
+                }
+            } else if chan == 0 {
+                if is_close(
+                    vals[chan] + 10,
+                    storage.query(|s: &Storage| s.min_gate_saved).await,
+                ) {
+                    latched[chan] = true;
+                    latched_glob.set(latched).await;
+                }
+                if latched[chan] {
+                    storage
+                        .modify_and_save(
+                            |s| {
+                                s.min_gate_saved = vals[chan] + 10;
+                                s.min_gate_saved
                             },
                             None,
                         )
@@ -262,7 +365,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 let mut curve_setting = storage.query(|s| s.curve_saved).await;
 
                 curve_setting[chan] = (curve_setting[chan] + 1) % 3;
-                glob_curve.set(curve_setting).await;
 
                 storage
                     .modify_and_save(
@@ -273,10 +375,9 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         None,
                     )
                     .await;
-            } else if chan == 0 {
-                let mut mode = mode_glob.get().await;
+            } else if chan == 1 {
+                let mut mode = storage.query(|s| s.mode_saved).await;
                 mode = (mode + 1) % 3;
-                mode_glob.set(mode).await;
 
                 storage
                     .modify_and_save(
@@ -287,6 +388,27 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         None,
                     )
                     .await;
+            } else if chan == 0 {
+                gate_on_glob.set(gate_on_glob.get().await + 1).await;
+                // info!("here 2, gate count = {}", gate_on_glob.get().await)
+            }
+        }
+    };
+
+    let fut4 = async {
+        let mut note_num = 0;
+        loop {
+            match midi_in.wait_for_message().await {
+                MidiMessage::NoteOn { key, vel } => {
+                    gate_on_glob.set(gate_on_glob.get().await + 1).await;
+                }
+                MidiMessage::NoteOff { key, vel } => {
+                    gate_on_glob
+                        .set((gate_on_glob.get().await - 1).max(0))
+                        .await;
+                }
+
+                _ => {}
             }
         }
     };
@@ -299,9 +421,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
 
                     let curve_setting = storage.query(|s| s.curve_saved).await;
                     let stored_faders = storage.query(|s| s.fader_saved).await;
-                    let mode = storage.query(|s| s.mode_saved).await;
-                    glob_curve.set(curve_setting).await;
-                    mode_glob.set(mode).await;
 
                     leds.set(0, Led::Button, color[curve_setting[0] as usize], 100);
                     leds.set(1, Led::Button, color[curve_setting[1] as usize], 100);
@@ -318,7 +437,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
         }
     };
 
-    join4(fut1, fut2, fut3, scene_handler).await;
+    join5(fut1, fut2, fut3, fut4, scene_handler).await;
 }
 
 fn is_close(a: u16, b: u16) -> bool {
