@@ -166,13 +166,17 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             }
             let att = att_glob.get().await;
 
-            // if buttons.is_shift_pressed() {
             if params.bipolar.get().await {
                 if muted {
                     val = 2047;
                 } else {
-                    val = curve.at(fadval.into());
+                    if fadval > 2047 {
+                        val = curve.at(((fadval - 2047) * 2).into()) / 2 + 2047;
+                    } else {
+                        val = 2047 - curve.at(((2047 - fadval) * 2).into()) / 2;
+                    }
                 }
+
                 if !buttons.is_shift_pressed() {
                     let led1 = split_unsigned_value(outval as u16);
                     leds.set(0, Led::Top, led_color.into(), led1[0]);
