@@ -14,7 +14,7 @@ use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, Sc
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 6;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
+pub static CONFIG: Config<PARAMS> = Config::new("Control", "Simple control sending CV/MIDI")
     .add_param(Param::Curve {
         name: "Curve",
         variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
