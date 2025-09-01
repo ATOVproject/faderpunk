@@ -1,8 +1,9 @@
 use embassy_futures::select::select;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_PURPLE, LED_MID},
+    colors::PURPLE,
     utils::{is_close, split_unsigned_value},
+    Brightness,
 };
 
 use libfp::{Config, Range};
@@ -15,8 +16,8 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Calibration", "Bipolar range calibration test");
 
-const LED_COLOR: RGB8 = ATOV_PURPLE;
-const BUTTON_BRIGHTNESS: u8 = LED_MID;
+const LED_COLOR: RGB8 = PURPLE;
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
@@ -101,8 +102,8 @@ pub async fn run(app: &App<CHANNELS>) {
                 leds.set(0, Led::Button, color, BUTTON_BRIGHTNESS);
 
                 let led_parts = split_unsigned_value(output_value);
-                leds.set(0, Led::Top, color, led_parts[0]);
-                leds.set(0, Led::Bottom, color, led_parts[1]);
+                leds.set(0, Led::Top, color, Brightness::Custom(led_parts[0]));
+                leds.set(0, Led::Bottom, color, Brightness::Custom(led_parts[1]));
             }
         }
         // If no snap target, keep the previous output_value unchanged

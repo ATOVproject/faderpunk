@@ -5,21 +5,19 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
-use libfp::constants::LED_MID;
+use libfp::LED_BRIGHTNESS_RANGE;
 use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
 use portable_atomic::{AtomicU8, Ordering};
 use smart_leds::colors::BLACK;
 use smart_leds::{brightness, gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
 
-use crate::tasks::global_config::{self, get_global_config};
-
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
 const NUM_LEDS: usize = 50;
 const LED_OVERLAY_CHANNEL_SIZE: usize = 16;
 
-pub static LED_BRIGHTNESS: AtomicU8 = AtomicU8::new(LED_MID);
+pub static LED_BRIGHTNESS: AtomicU8 = AtomicU8::new(LED_BRIGHTNESS_RANGE.end);
 
 static LED_SIGNALS: [Signal<CriticalSectionRawMutex, LedMsg>; NUM_LEDS] =
     [const { Signal::new() }; NUM_LEDS];

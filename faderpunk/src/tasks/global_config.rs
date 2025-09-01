@@ -1,11 +1,11 @@
-use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, watch::Watch};
 use embassy_time::Timer;
-use libfp::{GlobalConfig, Key, Note};
+use libfp::Brightness;
+use libfp::{ext::BrightnessExt, Color, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
 use portable_atomic::Ordering;
-use smart_leds::colors::RED;
+use smart_leds::RGB8;
 
 use crate::app::Led;
 use crate::storage::store_global_config;
@@ -20,8 +20,6 @@ const INTERNAL_BPM_FADER: usize = 0;
 const QUANTIZER_KEY_FADER: usize = 3;
 const QUANTIZER_TONIC_FADER: usize = 4;
 const LED_BRIGHTNESS_FADER: usize = 15;
-
-const MIN_LED_BRIGHTNESS: u8 = 85;
 
 pub static GLOBAL_CONFIG_WATCH: Watch<
     CriticalSectionRawMutex,
@@ -86,9 +84,10 @@ pub fn set_global_config_via_chan(chan: usize, val: u16) {
         LED_BRIGHTNESS_FADER => {
             global_config_sender.send_if_modified(|c| {
                 if let Some(config) = c {
-                    let new_brightness = (MIN_LED_BRIGHTNESS as u16 + (val / 20))
-                        .clamp(MIN_LED_BRIGHTNESS as u16, 255)
-                        as u8;
+                    let new_brightness = (LED_BRIGHTNESS_RANGE.start as u16 + (val / 20)).clamp(
+                        LED_BRIGHTNESS_RANGE.start as u16,
+                        LED_BRIGHTNESS_RANGE.end as u16,
+                    ) as u8;
                     if config.led_brightness != new_brightness {
                         config.led_brightness = new_brightness;
                         return true;
@@ -140,6 +139,8 @@ async fn global_config_change() {
     drop(quantizer);
 
     // Clock has a subscriber to the config (so no need to Initialize it here)
+    // TODO: Shall we blink an LED in the rythm of the clock for a couple of seconds when it was
+    // changed?
 
     // TODO: Actually find good colors or effects to signal the changes to global config
     loop {
@@ -150,17 +151,19 @@ async fn global_config_change() {
             let mut quantizer = QUANTIZER.get().lock().await;
             quantizer.set_scale(config.quantizer_key, config.quantizer_tonic);
             if config.quantizer_key != old.quantizer_key {
+                let color: RGB8 = Color::from(config.quantizer_key as usize).into();
                 set_led_overlay_mode(
                     QUANTIZER_KEY_FADER,
                     Led::Button,
-                    LedMode::StaticFade(RED, 5000),
+                    LedMode::StaticFade(color.scale(Brightness::Lower.into()), 2000),
                 )
                 .await;
             } else {
+                let color: RGB8 = Color::from(config.quantizer_key as usize).into();
                 set_led_overlay_mode(
                     QUANTIZER_TONIC_FADER,
                     Led::Button,
-                    LedMode::StaticFade(RED, 5000),
+                    LedMode::StaticFade(color.scale(Brightness::Lower.into()), 2000),
                 )
                 .await;
             }

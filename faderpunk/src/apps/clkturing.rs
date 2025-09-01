@@ -4,13 +4,8 @@
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
-use smart_leds::colors::RED;
 
-use libfp::{
-    constants::{ATOV_RED, LED_HIGH, LED_MID},
-    utils::is_close,
-    Color, Config, Param, Range, Value,
-};
+use libfp::{colors::RED, utils::is_close, Brightness, Color, Config, Param, Range, Value};
 
 use crate::app::{App, AppStorage, Led, ManagedStorage, ParamSlot, ParamStore, SceneEvent};
 
@@ -48,7 +43,7 @@ pub static CONFIG: Config<PARAMS> =
             variants: &[
                 Color::Yellow,
                 Color::Purple,
-                Color::Blue,
+                Color::Teal,
                 Color::Red,
                 Color::White,
             ],
@@ -148,8 +143,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let latched_glob = app.make_global(true);
 
-    leds.set(0, Led::Button, led_color.into(), LED_MID);
-    leds.set(1, Led::Button, led_color.into(), LED_MID);
+    leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
+    leds.set(1, Led::Button, led_color.into(), Brightness::Lower);
 
     let input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
@@ -190,8 +185,18 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 // let out = att_reg;
 
                 output.set_value(out.as_counts(range));
-                leds.set(0, Led::Top, led_color.into(), (register_scalled / 16) as u8);
-                leds.set(1, Led::Top, led_color.into(), (att_reg / 16) as u8);
+                leds.set(
+                    0,
+                    Led::Top,
+                    led_color.into(),
+                    Brightness::Custom((register_scalled / 16) as u8),
+                );
+                leds.set(
+                    1,
+                    Led::Top,
+                    led_color.into(),
+                    Brightness::Custom((att_reg / 16) as u8),
+                );
                 // info!("{}", register_scalled);
                 if midi_mode == 1 {
                     let note = out.as_midi();
@@ -203,11 +208,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     midi.send_cc(midi_cc as u8 - 1, att_reg).await;
                 }
 
-                leds.set(0, Led::Bottom, ATOV_RED, LED_HIGH);
+                leds.set(0, Led::Bottom, RED, Brightness::Low);
             }
 
             if inputval <= 406 && oldinputval > 406 {
-                leds.set(0, Led::Bottom, ATOV_RED, 0);
+                leds.unset(0, Led::Bottom);
 
                 if midi_mode == 1 {
                     let note = midi_note.get().await;
@@ -278,7 +283,12 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     rec_flag.set(true).await;
                     length_rec.set(0).await;
                 }
-                leds.set(0, Led::Top, RED, (att_glob.get().await / 16) as u8);
+                leds.set(
+                    0,
+                    Led::Top,
+                    RED,
+                    Brightness::Custom((att_glob.get().await / 16) as u8),
+                );
             }
             if !buttons.is_shift_pressed() && shift_old {
                 latched_glob.set(false).await;
@@ -305,7 +315,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if !buttons.is_button_pressed(0) && button_old {
                 latched_glob.set(false).await;
                 button_old = false;
-                leds.set(0, Led::Bottom, ATOV_RED, 0);
+                leds.unset(0, Led::Bottom);
             }
         }
     };

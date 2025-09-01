@@ -4,27 +4,18 @@
 // Fix the saving
 
 use defmt::info;
-use embassy_futures::{
-    join::{join4, join5},
-    select::select,
-};
+use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    constants::{
-        ATOV_BLUE, ATOV_PURPLE, ATOV_RED, ATOV_YELLOW, CURVE_EXP, CURVE_LOG, LED_HIGH, LED_LOW,
-        LED_MID,
-    },
-    Config, Range,
+    colors::{PURPLE, RED, TEAL, WHITE, YELLOW},
+    Brightness, Config, Curve, Range,
 };
 
 use crate::{
-    app::{
-        colors::{RED, WHITE},
-        App, AppStorage, Led, ManagedStorage, SceneEvent,
-    },
+    app::{App, AppStorage, Led, ManagedStorage, SceneEvent},
     storage::ParamStore,
 };
 
@@ -38,7 +29,7 @@ pub static CONFIG: Config<PARAMS> =
 
 pub struct Storage {
     fader_saved: [u16; 2],
-    curve_saved: [u8; 2],
+    curve_saved: [Curve; 2],
     mode_saved: u8,
     att_saved: u16,
     min_gate_saved: u16,
@@ -48,7 +39,7 @@ impl Default for Storage {
     fn default() -> Self {
         Self {
             fader_saved: [2000; 2],
-            curve_saved: [0; 2],
+            curve_saved: [Curve::Linear; 2],
             mode_saved: 0,
             att_saved: 4095,
             min_gate_saved: 1,
@@ -84,7 +75,6 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let mut midi_in = app.use_midi_input(2);
 
     let times_glob = app.make_global([0.0682, 0.0682]);
-    let glob_curve = app.make_global([0, 0]);
     let mode_glob = app.make_global(0); //0 AD, 1, ASR, 2 Looping AD
     let latched_glob = app.make_global([false; 2]);
 
@@ -99,17 +89,27 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     let mut oldinputval = 0;
     let mut env_state = 0;
 
-    let color = [ATOV_YELLOW, ATOV_BLUE, ATOV_PURPLE];
+    let color = [YELLOW, TEAL, PURPLE];
 
     let curve_setting = storage.query(|s| s.curve_saved).await;
     let stored_faders = storage.query(|s| s.fader_saved).await;
 
-    leds.set(0, Led::Button, color[curve_setting[0] as usize], LED_MID);
-    leds.set(1, Led::Button, color[curve_setting[1] as usize], LED_MID);
+    leds.set(
+        0,
+        Led::Button,
+        color[curve_setting[0] as usize],
+        Brightness::Lower,
+    );
+    leds.set(
+        1,
+        Led::Button,
+        color[curve_setting[1] as usize],
+        Brightness::Lower,
+    );
 
     let mut times: [f32; 2] = [0.0682, 0.0682];
     for n in 0..2 {
-        times[n] = CURVE_LOG[stored_faders[n] as usize] as f32 + minispeed;
+        times[n] = Curve::Logarithmic.at(stored_faders[n]) as f32 + minispeed;
     }
     times_glob.set(times).await;
 
@@ -199,38 +199,22 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     }
                     vals = 4094.0;
                 }
-                if curve_setting[0] == 0 {
-                    outval = vals as u16;
-                }
-                if curve_setting[0] == 1 {
-                    outval = CURVE_EXP[vals as usize];
-                }
-                if curve_setting[0] == 2 {
-                    outval = CURVE_LOG[vals as usize];
-                }
+                outval = curve_setting[0].at(vals as u16);
 
-                leds.set(0, Led::Top, WHITE, (outval / 16) as u8);
-                leds.reset(1, Led::Top);
+                leds.set(0, Led::Top, WHITE, Brightness::Custom((outval / 16) as u8));
+                leds.unset(1, Led::Top);
             }
 
             if env_state == 2 {
                 vals -= 4095.0 / times[1];
-                leds.reset(0, Led::Top);
+                leds.unset(0, Led::Top);
                 if vals < 0.0 {
                     env_state = 0;
                     vals = 0.0;
                 }
-                if curve_setting[1] == 0 {
-                    outval = vals as u16;
-                }
-                if curve_setting[1] == 1 {
-                    outval = CURVE_EXP[vals as usize];
-                }
-                if curve_setting[1] == 2 {
-                    outval = CURVE_LOG[vals as usize];
-                }
+                outval = curve_setting[1].at(vals as u16);
 
-                leds.set(1, Led::Top, WHITE, (outval / 16) as u8);
+                leds.set(1, Led::Top, WHITE, Brightness::Custom((outval / 16) as u8));
 
                 if vals == 0.0 && mode == 2 && gate_on_glob.get().await != 0 {
                     env_state = 1;
@@ -239,27 +223,32 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             outval = attenuate(outval, storage.query(|s| s.att_saved).await);
             output.set_value(outval);
             if shift_old {
-                leds.set(1, Led::Button, color[mode as usize], LED_MID);
+                leds.set(1, Led::Button, color[mode as usize], Brightness::Lower);
                 if gate_on_glob.get().await > 0 {
-                    leds.set(0, Led::Button, ATOV_RED, LED_HIGH);
+                    leds.set(0, Led::Button, RED, Brightness::Low);
                 } else {
-                    leds.set(0, Led::Button, ATOV_RED, LED_MID);
+                    leds.set(0, Led::Button, RED, Brightness::Lower);
                 }
 
                 let att = storage.query(|s| s.att_saved).await;
-                leds.set(1, Led::Top, ATOV_RED, (att / 16) as u8);
+                leds.set(1, Led::Top, RED, Brightness::Custom((att / 16) as u8));
                 if timer % storage.query(|s: &Storage| s.min_gate_saved).await as u32 + 200
                     < storage.query(|s: &Storage| s.min_gate_saved).await as u32
                 {
-                    leds.set(0, Led::Top, ATOV_RED, LED_HIGH);
+                    leds.set(0, Led::Top, RED, Brightness::Low);
                 } else {
-                    leds.set(0, Led::Top, color[mode as usize], 0);
+                    leds.unset(0, Led::Top);
                 }
             } else {
                 for n in 0..2 {
-                    leds.set(n, Led::Button, color[curve_setting[n] as usize], LED_MID);
+                    leds.set(
+                        n,
+                        Led::Button,
+                        color[curve_setting[n] as usize],
+                        Brightness::Lower,
+                    );
                     if outval == 0 {
-                        leds.set(n, Led::Top, color[mode as usize], 0);
+                        leds.unset(n, Led::Top);
                     }
                 }
             }
@@ -315,7 +304,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                         )
                         .await;
 
-                    times[chan] = CURVE_LOG[vals[chan] as usize] as f32 + minispeed;
+                    times[chan] = Curve::Logarithmic.at(vals[chan]) as f32 + minispeed;
                     // (4096.0 - CURVE_EXP[vals[chan] as usize] as f32) * fadstep + minispeed;
                     times_glob.set(times).await;
                 }
@@ -364,7 +353,7 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             if !is_shift_pressed {
                 let mut curve_setting = storage.query(|s| s.curve_saved).await;
 
-                curve_setting[chan] = (curve_setting[chan] + 1) % 3;
+                curve_setting[chan] = curve_setting[chan].cycle();
 
                 storage
                     .modify_and_save(
@@ -422,12 +411,22 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     let curve_setting = storage.query(|s| s.curve_saved).await;
                     let stored_faders = storage.query(|s| s.fader_saved).await;
 
-                    leds.set(0, Led::Button, color[curve_setting[0] as usize], 100);
-                    leds.set(1, Led::Button, color[curve_setting[1] as usize], 100);
+                    leds.set(
+                        0,
+                        Led::Button,
+                        color[curve_setting[0] as usize],
+                        Brightness::Lower,
+                    );
+                    leds.set(
+                        1,
+                        Led::Button,
+                        color[curve_setting[1] as usize],
+                        Brightness::Lower,
+                    );
 
                     let mut times: [f32; 2] = [0.0682, 0.0682];
                     for n in 0..2 {
-                        times[n] = CURVE_LOG[stored_faders[n] as usize] as f32 + minispeed;
+                        times[n] = Curve::Logarithmic.at(stored_faders[n]) as f32 + minispeed;
                     }
                     times_glob.set(times).await;
                     latched_glob.set([false; 2]).await;

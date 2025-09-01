@@ -11,13 +11,15 @@ use crate::app::{
 };
 
 use libfp::{
-    constants::{ATOV_PURPLE, LED_MID},
+    colors::PURPLE,
     utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
-    Config, Param, Range, Value,
+    Brightness, Config, Param, Range, Value,
 };
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
+
+const LED_COLOR: RGB8 = PURPLE;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Random CC/CV", "Generate random values on clock")
     .add_param(Param::i32 {
@@ -102,8 +104,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let mut clkn = 0;
     let mut val = 2048;
 
-    const LED_COLOR: RGB8 = ATOV_PURPLE;
-
     let (res, mute, att) = storage
         .query(|s| (s.fader_saved, s.mute_save, s.att_saved))
         .await;
@@ -112,13 +112,13 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     glob_muted.set(mute).await;
     div_glob.set(resolution[res as usize / 345]).await;
     if mute {
-        leds.set(0, Led::Button, LED_COLOR, 0);
+        leds.unset(0, Led::Button);
         output.set_value(2047);
         midi.send_cc(cc as u8, 0).await;
-        leds.set(0, Led::Top, LED_COLOR, 0);
-        leds.set(0, Led::Bottom, LED_COLOR, 0);
+        leds.unset(0, Led::Top);
+        leds.unset(0, Led::Bottom);
     } else {
-        leds.set(0, Led::Button, LED_COLOR, LED_MID);
+        leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
     }
 
     let fut1 = async {
@@ -142,9 +142,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         let b = (rnd.roll() / 16) as u8;
 
                         let color: RGB8 = RGB8 { r, g, b };
-                        leds.set(0, Led::Top, color, ledj[0]);
-                        leds.set(0, Led::Bottom, color, ledj[1]);
-                        leds.set(0, Led::Button, color, 125);
+                        leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
+                        leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
+                        leds.set(0, Led::Button, color, Brightness::Lower);
                         val = rnd.roll();
                     }
                     clkn += 1;
@@ -172,9 +172,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             if muted {
                 output.set_value(2047);
                 midi.send_cc(cc as u8, 0).await;
-                leds.reset_all();
+                leds.unset_all();
             } else {
-                leds.set(0, Led::Button, LED_COLOR, LED_MID);
+                leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
             }
         }
     };
@@ -220,11 +220,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     glob_muted.set(mute).await;
                     div_glob.set(resolution[res as usize / 345]).await;
                     if mute {
-                        leds.set(0, Led::Button, LED_COLOR, LED_MID);
+                        leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
                         output.set_value(2047);
                         midi.send_cc(cc as u8, 0).await;
-                        leds.set(0, Led::Top, LED_COLOR, 0);
-                        leds.set(0, Led::Bottom, LED_COLOR, 0);
+                        leds.unset(0, Led::Top);
+                        leds.unset(0, Led::Bottom);
                     }
                     latched_glob.set(false).await;
                 }

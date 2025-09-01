@@ -4,14 +4,13 @@
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_RED, ATOV_WHITE, LED_MID},
+    colors::RED,
     utils::{attenuate, attenuate_bipolar, clickless, split_unsigned_value},
-    Color,
+    Brightness, Color,
 };
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Range, Value};
-use smart_leds::RGB8;
 
 use crate::{
     app::{App, AppStorage, ClockEvent, Led, ManagedStorage, ParamSlot},
@@ -42,7 +41,7 @@ pub static CONFIG: Config<PARAMS> = Config::new("Automator", "Fader movement rec
         variants: &[
             Color::Yellow,
             Color::Purple,
-            Color::Blue,
+            Color::Teal,
             Color::Red,
             Color::White,
         ],
@@ -152,7 +151,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     att_glob.set(storage.query(|s| s.att_saved).await).await;
 
-    leds.set(0, Led::Button, led_color.into(), 100);
+    leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
 
     let update_output = async {
         let mut outval = 0.;
@@ -164,7 +163,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             let mut offset = offset_glob.get().await;
             let att = att_glob.get().await;
             let color = if recording_glob.get().await {
-                ATOV_RED
+                RED
             } else {
                 led_color.into()
             };
@@ -178,24 +177,24 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
             outval = clickless(outval, val);
             if !params.bipolar.get().await {
-                let out = curve.at(attenuate(outval as u16, att) as usize);
+                let out = curve.at(attenuate(outval as u16, att));
                 jack.set_value(out);
                 if !buttons.is_shift_pressed() {
-                    leds.set(0, Led::Top, color, (out / 16) as u8);
+                    leds.set(0, Led::Top, color, Brightness::Custom((out / 16) as u8));
                 } else {
-                    leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
+                    leds.set(0, Led::Top, RED, Brightness::Custom((att / 16) as u8));
                 }
             } else {
-                let out = curve.at(attenuate_bipolar(outval as u16, att) as usize);
+                let out = curve.at(attenuate_bipolar(outval as u16, att));
                 jack.set_value(out);
                 if !buttons.is_shift_pressed() {
                     let ledint = split_unsigned_value(out);
-                    leds.set(0, Led::Top, color, ledint[0]);
-                    leds.set(0, Led::Bottom, color, ledint[1]);
+                    leds.set(0, Led::Top, color, Brightness::Custom(ledint[0]));
+                    leds.set(0, Led::Bottom, color, Brightness::Custom(ledint[1]));
                 } else {
                     let ledint = split_unsigned_value(att);
-                    leds.set(0, Led::Top, ATOV_RED, ledint[0]);
-                    leds.set(0, Led::Bottom, ATOV_RED, ledint[1]);
+                    leds.set(0, Led::Top, RED, Brightness::Custom(ledint[0]));
+                    leds.set(0, Led::Bottom, RED, Brightness::Custom(ledint[1]));
                 }
             }
             if last_midi / 16 != (val) / 16 {
@@ -263,9 +262,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     if recording {
                         let val = fader.get_value();
                         buffer[index] = val;
-                        leds.set(0, Led::Button, ATOV_RED, LED_MID);
+                        leds.set(0, Led::Button, RED, Brightness::Lower);
                     } else {
-                        leds.set(0, Led::Button, led_color.into(), LED_MID);
+                        leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
                     }
 
                     if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {
@@ -286,7 +285,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     }
 
                     if index == 0 {
-                        leds.reset(0, Led::Button);
+                        leds.unset(0, Led::Button);
                     }
 
                     index += 1;
@@ -311,7 +310,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if latched.get().await {
                     att_glob.set(val).await;
 
-                    leds.set(0, Led::Top, ATOV_RED, (val / 16) as u8);
+                    leds.set(0, Led::Top, RED, Brightness::Custom((val / 16) as u8));
 
                     storage
                         .modify_and_save(
@@ -334,7 +333,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 recording_glob.set(false).await;
                 buffer_glob.set([0; 384]).await;
                 length_glob.set(384).await;
-                leds.set(0, Led::Button, led_color.into(), LED_MID);
+                leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
                 latched.set(false).await;
             } else {
                 rec_flag.set(true).await;

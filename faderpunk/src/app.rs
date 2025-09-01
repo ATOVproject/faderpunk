@@ -13,7 +13,7 @@ use libfp::{
     ext::BrightnessExt,
     quantizer::{Pitch, QuantizerState},
     utils::scale_bits_12_7,
-    Range,
+    Brightness, Range,
 };
 
 use crate::{
@@ -44,32 +44,33 @@ impl<const N: usize> Leds<N> {
         Self { start_channel }
     }
 
-    pub fn set(&self, chan: usize, position: Led, color: RGB8, brightness: u8) {
+    pub fn set(&self, chan: usize, position: Led, color: RGB8, brightness: Brightness) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
-        set_led_mode(
-            channel,
-            position,
-            LedMsg::Set(LedMode::Static(color.scale(brightness))),
-        );
+        let color = if let Brightness::Default = brightness {
+            color
+        } else {
+            color.scale(brightness.into())
+        };
+        set_led_mode(channel, position, LedMsg::Set(LedMode::Static(color)));
     }
     pub fn set_mode(&self, chan: usize, position: Led, mode: LedMode) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
         set_led_mode(channel, position, LedMsg::Set(mode));
     }
 
-    pub fn reset(&self, chan: usize, position: Led) {
+    pub fn unset(&self, chan: usize, position: Led) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
         set_led_mode(channel, position, LedMsg::Reset);
     }
 
-    pub fn reset_chan(&self, chan: usize) {
+    pub fn unset_chan(&self, chan: usize) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
         for position in [Led::Top, Led::Bottom, Led::Button] {
             set_led_mode(channel, position, LedMsg::Reset);
         }
     }
 
-    pub fn reset_all(&self) {
+    pub fn unset_all(&self) {
         for chan in 0..N {
             let channel = self.start_channel + chan.clamp(0, N - 1);
             for position in [Led::Top, Led::Bottom, Led::Button] {
@@ -617,7 +618,7 @@ impl<const N: usize> App<N> {
 
     async fn reset(&self) {
         let leds = self.use_leds();
-        leds.reset_all();
+        leds.unset_all();
         for chan in 0..N {
             self.reconfigure_jack(chan, Mode::Mode0(ConfigMode0), None)
                 .await;

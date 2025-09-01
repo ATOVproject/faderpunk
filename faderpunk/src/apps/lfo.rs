@@ -4,13 +4,14 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_BLUE, ATOV_PURPLE, ATOV_RED, ATOV_WHITE, ATOV_YELLOW, LED_LOW, LED_MID},
+    colors::{PURPLE, RED, TEAL, WHITE, YELLOW},
     utils::{attenuate_bipolar, is_close, split_unsigned_value},
-    Curve,
+    Brightness, Curve,
 };
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Range, Waveform};
+use smart_leds::RGB8;
 
 use crate::{
     app::{App, AppStorage, ClockEvent, Led, ManagedStorage, SceneEvent},
@@ -93,17 +94,17 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     glob_wave.set(wave_saved).await;
 
     let color = match wave_saved {
-        Waveform::Sine => ATOV_YELLOW,
-        Waveform::Triangle => ATOV_PURPLE,
-        Waveform::Saw => ATOV_BLUE,
-        Waveform::SawInv => ATOV_RED,
-        Waveform::Rect => ATOV_WHITE,
+        Waveform::Sine => YELLOW,
+        Waveform::Triangle => PURPLE,
+        Waveform::Saw => TEAL,
+        Waveform::SawInv => RED,
+        Waveform::Rect => WHITE,
     };
 
-    leds.set(0, Led::Button, color, LED_MID);
+    leds.set(0, Led::Button, color, Brightness::Lower);
 
     glob_lfo_speed
-        .set(curve.at(fader_saved as usize) as f32 * 0.015 + 0.0682)
+        .set(curve.at(fader_saved) as f32 * 0.015 + 0.0682)
         .await;
     div_glob.set(resolution[fader_saved as usize / 500]).await;
     let mut count = 0;
@@ -144,26 +145,20 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
             output.set_value(val);
             let led = split_unsigned_value(val);
 
-            let color = match wave {
-                Waveform::Sine => ATOV_YELLOW,
-                Waveform::Triangle => ATOV_PURPLE,
-                Waveform::Saw => ATOV_BLUE,
-                Waveform::SawInv => ATOV_RED,
-                Waveform::Rect => ATOV_WHITE,
-            };
+            let color = get_color_for(wave);
 
             if sync && next_pos as u16 > 2048 {
-                leds.set(0, Led::Button, color, LED_LOW);
+                leds.set(0, Led::Button, color, Brightness::Lowest);
             } else {
-                leds.set(0, Led::Button, color, LED_MID);
+                leds.set(0, Led::Button, color, Brightness::Lower);
             }
 
             if !buttons.is_shift_pressed() {
-                leds.set(0, Led::Top, color, led[0]);
-                leds.set(0, Led::Bottom, color, led[1]);
+                leds.set(0, Led::Top, color, Brightness::Custom(led[0]));
+                leds.set(0, Led::Bottom, color, Brightness::Custom(led[1]));
             } else {
-                leds.set(0, Led::Top, ATOV_RED, ((att / 16) / 2) as u8);
-                leds.set(0, Led::Bottom, ATOV_RED, 0);
+                leds.set(0, Led::Top, RED, Brightness::Custom(((att / 16) / 2) as u8));
+                leds.unset(0, Led::Bottom);
             }
 
             glob_lfo_pos.set(next_pos).await;
@@ -191,9 +186,9 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 }
                 if latched_glob.get().await {
                     glob_lfo_speed
-                        .set(curve.at(fader_val as usize) as f32 * 0.015 + 0.0682)
+                        .set(curve.at(fader_val) as f32 * 0.015 + 0.0682)
                         .await;
-                    div_glob.set(resolution[(fader_val as usize / 500)]).await;
+                    div_glob.set(resolution[fader_val as usize / 500]).await;
                     // info!("div = {}", div_glob.get().await);
 
                     storage
@@ -235,14 +230,8 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                 glob_wave.set(wave.cycle()).await;
                 wave = glob_wave.get().await;
 
-                let color = match wave {
-                    Waveform::Sine => ATOV_YELLOW,
-                    Waveform::Triangle => ATOV_PURPLE,
-                    Waveform::Saw => ATOV_BLUE,
-                    Waveform::SawInv => ATOV_RED,
-                    Waveform::Rect => ATOV_WHITE,
-                };
-                leds.set(0, Led::Button, color, LED_MID);
+                let color = get_color_for(wave);
+                leds.set(0, Led::Button, color, Brightness::Lower);
 
                 storage
                     .modify_and_save(
@@ -306,18 +295,12 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
                     glob_wave.set(wave_saved).await;
 
                     glob_lfo_speed
-                        .set(curve.at(fader_saved as usize) as f32 * 0.015 + 0.0682)
+                        .set(curve.at(fader_saved) as f32 * 0.015 + 0.0682)
                         .await;
                     div_glob.set(resolution[fader_saved as usize / 500]).await;
 
-                    let color = match wave_saved {
-                        Waveform::Sine => ATOV_YELLOW,
-                        Waveform::Triangle => ATOV_PURPLE,
-                        Waveform::Saw => ATOV_BLUE,
-                        Waveform::SawInv => ATOV_RED,
-                        Waveform::Rect => ATOV_WHITE,
-                    };
-                    leds.set(0, Led::Button, color, LED_MID);
+                    let color = get_color_for(wave_saved);
+                    leds.set(0, Led::Button, color, Brightness::Lower);
                     latched_glob.set(false).await;
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
@@ -326,4 +309,14 @@ pub async fn run(app: &App<CHANNELS>, _params: &Params, storage: ManagedStorage<
     };
 
     join(join5(fut1, fut2, fut3, fut4, scene_handler), fut5).await;
+}
+
+fn get_color_for(wave: Waveform) -> RGB8 {
+    match wave {
+        Waveform::Sine => YELLOW,
+        Waveform::Triangle => PURPLE,
+        Waveform::Saw => TEAL,
+        Waveform::SawInv => RED,
+        Waveform::Rect => WHITE,
+    }
 }

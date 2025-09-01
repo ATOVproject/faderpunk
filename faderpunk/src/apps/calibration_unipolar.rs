@@ -1,8 +1,9 @@
 use embassy_futures::select::select;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    constants::{ATOV_PURPLE, LED_MID},
+    colors::PURPLE,
     utils::{is_close, split_unsigned_value},
+    Brightness,
 };
 
 use libfp::{Config, Range};
@@ -15,8 +16,8 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Cal Unipolar", "Unipolar range calibration test");
 
-const LED_COLOR: RGB8 = ATOV_PURPLE;
-const BUTTON_BRIGHTNESS: u8 = LED_MID;
+const LED_COLOR: RGB8 = PURPLE;
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
@@ -32,17 +33,17 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 // Voltage to DAC value mapping for unipolar range (0V to +10V mapped to 0-4095)
 // 0V = 0, 1V = 409.5, 2V = 819, etc.
 const VOLTAGE_TARGETS: [(i32, u16); 11] = [
-    (0, 0),      // 0V
-    (1, 410),    // 1V
-    (2, 819),    // 2V
-    (3, 1229),   // 3V
-    (4, 1638),   // 4V
-    (5, 2048),   // 5V
-    (6, 2457),   // 6V
-    (7, 2867),   // 7V
-    (8, 3276),   // 8V
-    (9, 3686),   // 9V
-    (10, 4095),  // 10V
+    (0, 0),     // 0V
+    (1, 410),   // 1V
+    (2, 819),   // 2V
+    (3, 1229),  // 3V
+    (4, 1638),  // 4V
+    (5, 2048),  // 5V
+    (6, 2457),  // 6V
+    (7, 2867),  // 7V
+    (8, 3276),  // 8V
+    (9, 3686),  // 9V
+    (10, 4095), // 10V
 ];
 
 const SNAP_THRESHOLD: u16 = 50; // How close fader needs to be to snap
@@ -104,8 +105,8 @@ pub async fn run(app: &App<CHANNELS>) {
                 leds.set(0, Led::Button, color, BUTTON_BRIGHTNESS);
 
                 let led_parts = split_unsigned_value(output_value);
-                leds.set(0, Led::Top, color, led_parts[0]);
-                leds.set(0, Led::Bottom, color, led_parts[1]);
+                leds.set(0, Led::Top, color, Brightness::Custom(led_parts[0]));
+                leds.set(0, Led::Bottom, color, Brightness::Custom(led_parts[1]));
             }
         }
         // If no snap target, keep the previous output_value unchanged

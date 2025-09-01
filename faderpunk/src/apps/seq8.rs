@@ -15,10 +15,8 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    constants::{
-        ATOV_BLUE, ATOV_PURPLE, ATOV_WHITE, ATOV_YELLOW, LED_HIGH, LED_LOW, LED_MAX, LED_MID,
-    },
-    Config, Param, Range, Value,
+    colors::{TEAL, PURPLE, WHITE, YELLOW},
+    Brightness, Config, Param, Range, Value,
 };
 
 use crate::{
@@ -396,31 +394,34 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         //LED update
 
         loop {
-            let intensity = [LED_LOW, LED_MID, LED_HIGH, LED_MAX];
+            let intensities = [
+                Brightness::Lowest,
+                Brightness::Lower,
+                Brightness::Low,
+                Brightness::Default,
+            ];
             let colors = [
-                ATOV_YELLOW,
-                ATOV_PURPLE,
-                ATOV_BLUE,
-                ATOV_WHITE, // RGB8 {
-                            //     r: 243,
-                            //     g: 191,
-                            //     b: 78,
-                            // },
-                            // RGB8 {
-                            //     r: 188,
-                            //     g: 77,
-                            //     b: 216,
-                            // },
-                            // RGB8 {
-                            //     r: 78,
-                            //     g: 243,
-                            //     b: 243,
-                            // },
-                            // RGB8 {
-                            //     r: 250,
-                            //     g: 250,
-                            //     b: 250,
-                            // },
+                YELLOW, PURPLE, TEAL,
+                WHITE, // RGB8 {
+                      //     r: 243,
+                      //     g: 191,
+                      //     b: 78,
+                      // },
+                      // RGB8 {
+                      //     r: 188,
+                      //     g: 77,
+                      //     b: 216,
+                      // },
+                      // RGB8 {
+                      //     r: 78,
+                      //     g: 243,
+                      //     b: 243,
+                      // },
+                      // RGB8 {
+                      //     r: 250,
+                      //     g: 250,
+                      //     b: 250,
+                      // },
             ];
             app.delay_millis(16).await;
             let clockres = clockres_glob.get().await;
@@ -434,24 +435,24 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 let seq_length = seq_length_glob.get().await;
 
                 let page = page_glob.get().await;
-                let mut bright = 75;
+                let mut bright = Brightness::Lower;
                 for n in 0..=7 {
                     if n == page {
-                        bright = intensity[3];
+                        bright = intensities[3];
                     } else {
-                        bright = intensity[1];
+                        bright = intensities[1];
                     }
                     led.set(n, Led::Button, colors[n / 2], bright);
                 }
                 for n in 0..=15 {
                     if n < seq_length[page / 2] {
-                        bright = 100
+                        bright = Brightness::Lower;
                     }
                     if n == (clockn / clockres[page / 2]) as u8 % seq_length[page / 2] {
-                        bright = 200
+                        bright = Brightness::Default;
                     }
                     if n >= seq_length[page / 2] {
-                        bright = 0
+                        bright = Brightness::Custom(0);
                     }
                     if n < 8 {
                         led.set(n as usize, Led::Top, RGB8 { r: 255, g: 0, b: 0 }, bright)
@@ -497,32 +498,41 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 let legato_seq = legatoseq_glob.get().await;
 
                 for n in 0..=7 {
-                    led.set(n, Led::Top, color, (seq[n + (page * 8)] / 16) as u8 / 2);
+                    led.set(
+                        n,
+                        Led::Top,
+                        color,
+                        Brightness::Custom((seq[n + (page * 8)] / 16) as u8 / 2),
+                    );
 
                     if gateseq[n + (page * 8)] {
-                        led.set(n, Led::Button, color, intensity[1]);
+                        led.set(n, Led::Button, color, intensities[1]);
                     }
                     if !gateseq[n + (page * 8)] {
-                        led.set(n, Led::Button, color, intensity[0]);
+                        led.set(n, Led::Button, color, intensities[0]);
                     }
                     if legato_seq[n + (page * 8)] {
-                        led.set(n, Led::Button, color, intensity[2]);
+                        led.set(n, Led::Button, color, intensities[2]);
                     }
 
                     let index = seq_length[page / 2] as usize - (page % 2 * 8);
-                    //info!("{}", index);
 
                     if n >= index || index > 16 {
-                        led.set(n, Led::Button, color, 0);
+                        led.unset(n, Led::Button);
                     }
 
                     if (clockn / clockres[n / 2] % seq_length[n / 2] as usize) % 16 - (n % 2) * 8
                         < 8
                     {
                         //this needs changing
-                        led.set(n, Led::Bottom, RGB8 { r: 255, g: 0, b: 0 }, 100)
+                        led.set(
+                            n,
+                            Led::Bottom,
+                            RGB8 { r: 255, g: 0, b: 0 },
+                            Brightness::Lower,
+                        )
                     } else {
-                        led.set(n, Led::Bottom, RGB8 { r: 255, g: 0, b: 0 }, 0)
+                        led.unset(n, Led::Bottom);
                     }
                 }
                 //runing light on buttons
@@ -536,11 +546,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                             - (page % 2) * 8,
                         Led::Button,
                         RGB8 { r: 255, g: 0, b: 0 },
-                        100,
+                        Brightness::Lower,
                     );
                 }
 
-                led.set(page, Led::Bottom, color, 255);
+                led.set(page, Led::Bottom, color, Brightness::Default);
             }
 
             led_flag_glob.set(false).await;
