@@ -481,6 +481,10 @@ pub enum Param {
         name: &'static str,
         variants: &'static [Color],
     },
+    Range {
+        name: &'static str,
+        variants: &'static [Range],
+    },
 }
 
 #[allow(non_camel_case_types)]
@@ -493,6 +497,7 @@ pub enum Value {
     Curve(Curve),
     Waveform(Waveform),
     Color(Color),
+    Range(Range),
 }
 
 impl From<Curve> for Value {
@@ -510,6 +515,12 @@ impl From<Waveform> for Value {
 impl From<Color> for Value {
     fn from(value: Color) -> Self {
         Value::Color(value)
+    }
+}
+
+impl From<Range> for Value {
+    fn from(value: Range) -> Self {
+        Value::Range(value)
     }
 }
 
@@ -594,15 +605,23 @@ impl<const N: usize> Config<N> {
 }
 
 /// Supported DAC ranges
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Eq)]
 #[repr(u8)]
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum Range {
     // 0 - 10V
+    #[default]
     _0_10V,
     // 0 - 5V
     _0_5V,
     // -5 - 5V
     _Neg5_5V,
+}
+
+impl Range {
+    // TODO: We might want to not need this in apps (handle it differently)
+    pub fn is_bipolar(&self) -> bool {
+        *self == Range::_Neg5_5V
+    }
 }
 
 impl From<Range> for DACRANGE {
@@ -611,6 +630,15 @@ impl From<Range> for DACRANGE {
             Range::_0_10V => DACRANGE::Rg0_10v,
             Range::_0_5V => DACRANGE::Rg0_10v,
             Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
+        }
+    }
+}
+
+impl FromValue for Range {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::Range(r) => r,
+            _ => Self::default(),
         }
     }
 }

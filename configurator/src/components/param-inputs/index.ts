@@ -5,3 +5,4 @@ export { EnumParamInput } from "../enum-param-input";
 export { CurveParamInput } from "../curve-param-input";
 export { WaveformParamInput } from "../waveform-param-input";
 export { ColorParamInput } from "../color-param-input";
+export { RangeParamInput } from "../range-param-input";
