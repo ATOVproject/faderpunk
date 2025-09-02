@@ -1,10 +1,11 @@
 use embassy_executor::Spawner;
+use embassy_rp::clocks::RoscRng;
 use embassy_rp::peripherals::SPI1;
 use embassy_rp::spi::{Async, Spi};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
-use embassy_time::Timer;
+use embassy_time::{Duration, Instant, Timer};
 use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
 use libfp::{Brightness, Color, LED_BRIGHTNESS_RANGE};
 use portable_atomic::{AtomicU8, Ordering};
@@ -212,6 +213,10 @@ impl LedProcessor {
                 }
             }
         }
+        self.flush_buffer().await;
+    }
+
+    async fn flush_buffer(&mut self) {
         self.ws
             .write(gamma(brightness(
                 self.buffer.iter().cloned(),
@@ -250,6 +255,8 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
         buffer: [BLACK; NUM_LEDS],
         ws,
     };
+
+    startup_animation(&mut leds).await;
 
     // TODO: find a better way to initialize these
     leds.base_layer[16] = LedEffect::Static {
@@ -307,4 +314,85 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
 
         leds.process().await;
     }
+}
+
+async fn startup_animation(leds: &mut LedProcessor) {
+    let palette: [RGB8; 3] = [Color::Yellow.into(), Color::Cyan.into(), Color::Pink.into()];
+
+    // Glitchy flashes
+    let start_time = Instant::now();
+    let animation_duration = Duration::from_millis(1500);
+
+    while Instant::now().duration_since(start_time) < animation_duration {
+        // 10% chance for a full-strip flash as the base layer
+        if RoscRng::next_u8() < 26 {
+            let flash_color_idx = (RoscRng::next_u8() as usize) % palette.len();
+            leds.buffer.fill(palette[flash_color_idx]);
+        } else {
+            // Otherwise, start with a black background
+            leds.buffer.fill(BLACK);
+        }
+
+        // Layer 2 to 5 "glitch events" on top
+        let num_events = 2 + (RoscRng::next_u8() % 4);
+        for _ in 0..num_events {
+            let event_type = RoscRng::next_u8();
+            let start = (RoscRng::next_u8() as usize) % NUM_LEDS;
+            let max_len = (NUM_LEDS / 2).max(1);
+            let len = 1 + (RoscRng::next_u8() as usize) % max_len;
+
+            // ~65% chance of a colored glitch
+            if event_type < 166 {
+                let color_idx = (RoscRng::next_u8() as usize) % palette.len();
+                let color = palette[color_idx];
+                for i in start..(start + len).min(NUM_LEDS) {
+                    leds.buffer[i] = color;
+                }
+            } else {
+                // ~35% chance of a white static glitch
+                for i in start..(start + len).min(NUM_LEDS) {
+                    let val = 128 + (RoscRng::next_u8() % 128);
+                    leds.buffer[i] = RGB8 {
+                        r: val,
+                        g: val,
+                        b: val,
+                    };
+                }
+            }
+        }
+
+        leds.flush_buffer().await;
+        Timer::after_millis(100).await;
+    }
+
+    // Color sweep
+    for i in 0..NUM_LEDS {
+        leds.buffer[i] = palette[i % palette.len()];
+        if i > 0 {
+            leds.buffer[i - 1] = BLACK;
+        }
+        leds.flush_buffer().await;
+        Timer::after_millis(15).await;
+    }
+    // Clear last LED
+    leds.buffer[NUM_LEDS - 1] = BLACK;
+    leds.flush_buffer().await;
+    Timer::after_millis(250).await;
+
+    // Final Flash
+    leds.buffer.fill(Color::Pink.into());
+    leds.flush_buffer().await;
+    Timer::after_millis(100).await;
+
+    // Fade to black
+    let pink: RGB8 = Color::Pink.into();
+    for i in (0..=255).rev().step_by(8) {
+        let scaled_color = pink.scale(i);
+        leds.buffer.fill(scaled_color);
+        leds.flush_buffer().await;
+        Timer::after_millis(T).await;
+    }
+
+    leds.buffer.fill(BLACK);
+    leds.flush_buffer().await;
 }

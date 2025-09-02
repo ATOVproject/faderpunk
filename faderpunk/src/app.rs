@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use embassy_rp::clocks::RoscRng;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use max11300::config::{
     ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES,
@@ -10,7 +10,6 @@ use midly::{live::LiveEvent, num::u4, MidiMessage};
 use portable_atomic::Ordering;
 
 use libfp::{
-    ext::BrightnessExt,
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
     utils::scale_bits_12_7,
