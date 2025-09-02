@@ -3,6 +3,7 @@
 pub enum LatchLayer {
     Main,
     Alt,
+    Third,
 }
 
 impl From<bool> for LatchLayer {
@@ -55,8 +56,8 @@ impl AnalogLatch {
 
     /// Checks if two values are approximately equal within the jitter tolerance
     fn values_equal(&self, a: u16, b: u16) -> bool {
-        let diff = if a > b { a - b } else { b - a };
-        diff <= self.jitter_tolerance
+        // let diff = if a > b { a - b } else { b - a };
+        a.abs_diff(b) <= self.jitter_tolerance
     }
 
     /// Returns the index of the layer that the latch is currently focused on.
@@ -360,6 +361,51 @@ mod tests {
         // Target externally changes to within tolerance of fader position
         // Should stay latched
         assert_eq!(latch.update(150, LatchLayer::Main, 152), None);
+        assert!(latch.is_latched());
+    }
+
+    #[test]
+    fn test_three_layer_latching() {
+        let mut latch = AnalogLatch::new(100);
+        let mut layer_values = [100, 200, 300];
+
+        // We start on Main, latched at 100
+        assert!(latch.is_latched());
+        assert_eq!(latch.active_layer(), LatchLayer::Main);
+
+        // Switch to Alt layer, target is 200. Fader is at 100, so unlatch.
+        let result = latch.update(100, LatchLayer::Alt, layer_values[1]);
+        assert_eq!(result, None);
+        assert!(!latch.is_latched());
+        assert_eq!(latch.active_layer(), LatchLayer::Alt);
+
+        // Move fader to 200 to latch Alt layer
+        let result = latch.update(200, LatchLayer::Alt, layer_values[1]);
+        assert_eq!(result, Some(200));
+        assert!(latch.is_latched());
+        layer_values[1] = 200;
+
+        // Switch to Third layer, target is 300. Fader is at 200, so unlatch.
+        let result = latch.update(200, LatchLayer::Third, layer_values[2]);
+        assert_eq!(result, None);
+        assert!(!latch.is_latched());
+        assert_eq!(latch.active_layer(), LatchLayer::Third);
+
+        // Move fader to 300 to latch Third layer
+        let result = latch.update(300, LatchLayer::Third, layer_values[2]);
+        assert_eq!(result, Some(300));
+        assert!(latch.is_latched());
+        layer_values[2] = 300;
+
+        // Switch back to Main layer, target is 100. Fader is at 300, so unlatch.
+        let result = latch.update(300, LatchLayer::Main, layer_values[0]);
+        assert_eq!(result, None);
+        assert!(!latch.is_latched());
+        assert_eq!(latch.active_layer(), LatchLayer::Main);
+
+        // Move fader back to 100 to latch Main layer again
+        let result = latch.update(100, LatchLayer::Main, layer_values[0]);
+        assert_eq!(result, Some(100));
         assert!(latch.is_latched());
     }
 }
