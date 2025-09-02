@@ -1,7 +1,6 @@
 #![no_std]
 
 use embassy_time::Duration;
-use enum_iterator::{all, cardinality, Sequence};
 use max11300::config::DACRANGE;
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
@@ -23,8 +22,8 @@ use smart_leds::RGB8;
 
 use crate::ext::FromValue;
 use colors::{
-    CRIMSON, CYAN, GOLD, GREEN, LIME, MAGENTA, ORANGE, PINK, PURPLE, RED, ROYAL_BLUE, SPRING_GREEN,
-    TEAL, VIOLET, WHITE, YELLOW,
+    BLUE, CYAN, GREEN, LIGHT_BLUE, LIME, ORANGE, PALE_GREEN, PINK, RED, ROSE, SALMON, SAND,
+    SKY_BLUE, VIOLET, WHITE, YELLOW,
 };
 
 /// Total channel size of this device
@@ -41,7 +40,7 @@ pub const APP_MAX_PARAMS: usize = 8;
 pub const STARTUP_ANIMATION_DURATION: Duration = Duration::from_secs(2);
 
 /// Rang in which the LED brightness is scaled
-pub const LED_BRIGHTNESS_RANGE: core::ops::Range<u8> = 65..255;
+pub const LED_BRIGHTNESS_RANGE: core::ops::Range<u8> = 185..255;
 
 pub type ConfigMeta<'a> = (usize, &'a str, &'a str, &'a [Param]);
 
@@ -336,58 +335,74 @@ impl FromValue for Waveform {
     }
 }
 
-#[derive(
-    Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings, Sequence, PartialEq, Eq,
-)]
-#[repr(usize)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Eq)]
 pub enum Color {
     #[default]
     White,
+    Yellow,
+    Orange,
     Red,
     Lime,
-    RoyalBlue,
-    Magenta,
-    Cyan,
-    Orange,
     Green,
+    Cyan,
+    SkyBlue,
+    Blue,
     Violet,
     Pink,
-    SpringGreen,
-    Crimson,
-    Yellow,
-    Purple,
-    Teal,
-    Gold,
+    PaleGreen,
+    Sand,
+    Rose,
+    Salmon,
+    LightBlue,
+    Custom(u8, u8, u8),
 }
 
-const PALETTE: [RGB8; cardinality::<Color>()] = [
-    WHITE,
-    RED,
-    LIME,
-    ROYAL_BLUE,
-    MAGENTA,
-    CYAN,
-    ORANGE,
-    GREEN,
-    VIOLET,
-    PINK,
-    SPRING_GREEN,
-    CRIMSON,
-    YELLOW,
-    PURPLE,
-    TEAL,
-    GOLD,
+const PALETTE: [Color; 16] = [
+    Color::White,
+    Color::Pink,
+    Color::Yellow,
+    Color::Cyan,
+    Color::Salmon,
+    Color::Lime,
+    Color::Orange,
+    Color::Green,
+    Color::SkyBlue,
+    Color::Red,
+    Color::PaleGreen,
+    Color::Blue,
+    Color::Sand,
+    Color::Violet,
+    Color::LightBlue,
+    Color::Rose,
 ];
 
 impl From<usize> for Color {
     fn from(value: usize) -> Self {
-        all::<Color>().nth(value % cardinality::<Color>()).unwrap()
+        PALETTE[value]
     }
 }
 
 impl From<Color> for RGB8 {
     fn from(value: Color) -> Self {
-        PALETTE[value as usize]
+        match value {
+            Color::White => WHITE,
+            Color::Pink => PINK,
+            Color::Yellow => YELLOW,
+            Color::Cyan => CYAN,
+            Color::Salmon => SALMON,
+            Color::Lime => LIME,
+            Color::Orange => ORANGE,
+            Color::Green => GREEN,
+            Color::SkyBlue => SKY_BLUE,
+            Color::Red => RED,
+            Color::PaleGreen => PALE_GREEN,
+            Color::Blue => BLUE,
+            Color::Sand => SAND,
+            Color::Violet => VIOLET,
+            Color::LightBlue => LIGHT_BLUE,
+            Color::Rose => ROSE,
+            Color::Custom(r, g, b) => RGB8 { r, g, b },
+        }
     }
 }
 
@@ -412,9 +427,9 @@ pub enum Brightness {
 impl From<Brightness> for u8 {
     fn from(value: Brightness) -> Self {
         match value {
-            Brightness::Lowest => 95,
-            Brightness::Lower => 127,
-            Brightness::Low => 191,
+            Brightness::Lowest => 80,
+            Brightness::Lower => 125,
+            Brightness::Low => 190,
             Brightness::Default => 255,
             Brightness::Custom(value) => value,
         }

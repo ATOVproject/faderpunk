@@ -5,7 +5,6 @@ use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
-use smart_leds::{colors::RED, RGB8};
 
 use libfp::{
     ext::FromValue, utils::is_close, Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
@@ -46,8 +45,8 @@ pub static CONFIG: Config<PARAMS> =
             name: "Color",
             variants: &[
                 Color::Yellow,
-                Color::Purple,
-                Color::Teal,
+                Color::Pink,
+                Color::Cyan,
                 Color::Red,
                 Color::White,
             ],
@@ -144,9 +143,8 @@ pub async fn run(
     storage: ManagedStorage<Storage>,
 ) {
     let range = Range::_0_10V;
-    let (midi_mode, midi_cc, color, midi_chan) =
+    let (midi_mode, midi_cc, led_color, midi_chan) =
         params.query(|p| (p.midi_mode, p.midi_cc, p.color, p.midi_channel));
-    let led_color: RGB8 = color.into();
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
@@ -233,7 +231,7 @@ pub async fn run(
                     midi.send_cc(midi_cc as u8 - 1, att_reg).await;
                 }
 
-                leds.set(0, Led::Bottom, RED, Brightness::Low);
+                leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
             }
 
             if inputval <= 406 && oldinputval > 406 {
@@ -311,7 +309,7 @@ pub async fn run(
                 leds.set(
                     0,
                     Led::Top,
-                    RED,
+                    Color::Red,
                     Brightness::Custom((att_glob.get() / 16) as u8),
                 );
             }

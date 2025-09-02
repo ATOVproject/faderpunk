@@ -7,7 +7,6 @@ use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    colors::RED,
     ext::FromValue,
     utils::{bits_7_16, clickless, is_close, scale_bits_7_12},
     Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
@@ -50,8 +49,8 @@ pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI
         name: "Color",
         variants: &[
             Color::Yellow,
-            Color::Purple,
-            Color::Teal,
+            Color::Pink,
+            Color::Cyan,
             Color::Red,
             Color::White,
         ],
@@ -74,7 +73,7 @@ impl Default for Params {
             midi_channel: 1,
             midi_cc: 32,
             bend_range: 12,
-            color: Color::Teal,
+            color: Color::Yellow,
         }
     }
 }
@@ -229,7 +228,7 @@ pub async fn run(
                     val = curve.at((fadval + offset).into());
                 }
                 if buttons.is_shift_pressed() {
-                    leds.set(0, Led::Top, RED, Brightness::Custom((att / 16) as u8));
+                    leds.set(0, Led::Top, Color::Red, Brightness::Custom((att / 16) as u8));
                     leds.unset(0, Led::Bottom);
                 } else {
                     leds.set(

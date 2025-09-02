@@ -15,11 +15,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
-use libfp::{
-    colors::{PURPLE, TEAL, WHITE, YELLOW},
-    ext::FromValue,
-    Brightness, Config, Param, Range, Value, APP_MAX_PARAMS,
-};
+use libfp::{ext::FromValue, Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS};
 
 use crate::app::{
     App, AppParams, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, ParamStore,
@@ -435,29 +431,7 @@ pub async fn run(
                 Brightness::Low,
                 Brightness::Default,
             ];
-            let colors = [
-                YELLOW, PURPLE, TEAL,
-                WHITE, // RGB8 {
-                      //     r: 243,
-                      //     g: 191,
-                      //     b: 78,
-                      // },
-                      // RGB8 {
-                      //     r: 188,
-                      //     g: 77,
-                      //     b: 216,
-                      // },
-                      // RGB8 {
-                      //     r: 78,
-                      //     g: 243,
-                      //     b: 243,
-                      // },
-                      // RGB8 {
-                      //     r: 250,
-                      //     g: 250,
-                      //     b: 250,
-                      // },
-            ];
+            let colors = [Color::Yellow, Color::Pink, Color::Cyan, Color::White];
             app.delay_millis(16).await;
             let clockres = clockres_glob.get();
 
@@ -490,14 +464,9 @@ pub async fn run(
                         bright = Brightness::Custom(0);
                     }
                     if n < 8 {
-                        led.set(n as usize, Led::Top, RGB8 { r: 255, g: 0, b: 0 }, bright)
+                        led.set(n as usize, Led::Top, Color::Red, bright)
                     } else {
-                        led.set(
-                            n as usize - 8,
-                            Led::Bottom,
-                            RGB8 { r: 255, g: 0, b: 0 },
-                            bright,
-                        )
+                        led.set(n as usize - 8, Led::Bottom, Color::Red, bright)
                     }
                 }
             }
@@ -560,12 +529,7 @@ pub async fn run(
                         < 8
                     {
                         //this needs changing
-                        led.set(
-                            n,
-                            Led::Bottom,
-                            RGB8 { r: 255, g: 0, b: 0 },
-                            Brightness::Lower,
-                        )
+                        led.set(n, Led::Bottom, Color::Red, Brightness::Lower)
                     } else {
                         led.unset(n, Led::Bottom);
                     }
@@ -580,7 +544,7 @@ pub async fn run(
                         (clockn / clockres[page / 2] % seq_length[page / 2] as usize) % 16
                             - (page % 2) * 8,
                         Led::Button,
-                        RGB8 { r: 255, g: 0, b: 0 },
+                        Color::Red,
                         Brightness::Lower,
                     );
                 }

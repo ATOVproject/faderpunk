@@ -14,7 +14,7 @@ use libfp::{
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
     utils::scale_bits_12_7,
-    Brightness, Range,
+    Brightness, Color, Range,
 };
 
 use crate::{
@@ -33,7 +33,7 @@ pub use crate::{
     storage::{AppParams, AppStorage, Arr, ManagedStorage, ParamStore},
     tasks::{clock::ClockEvent, leds::Led},
 };
-pub use smart_leds::{colors, RGB8};
+pub use smart_leds::RGB8;
 
 #[derive(Clone, Copy)]
 pub struct Leds<const N: usize> {
@@ -45,14 +45,13 @@ impl<const N: usize> Leds<N> {
         Self { start_channel }
     }
 
-    pub fn set(&self, chan: usize, position: Led, color: RGB8, brightness: Brightness) {
+    pub fn set(&self, chan: usize, position: Led, color: Color, brightness: Brightness) {
         let channel = self.start_channel + chan.clamp(0, N - 1);
-        let color = if let Brightness::Default = brightness {
-            color
-        } else {
-            color.scale(brightness.into())
-        };
-        set_led_mode(channel, position, LedMsg::Set(LedMode::Static(color)));
+        set_led_mode(
+            channel,
+            position,
+            LedMsg::Set(LedMode::Static(color, brightness)),
+        );
     }
     pub fn set_mode(&self, chan: usize, position: Led, mode: LedMode) {
         let channel = self.start_channel + chan.clamp(0, N - 1);

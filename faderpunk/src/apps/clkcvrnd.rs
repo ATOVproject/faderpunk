@@ -12,16 +12,15 @@ use crate::app::{
 };
 
 use libfp::{
-    colors::PURPLE,
     ext::FromValue,
     utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
-    Brightness, Config, Param, Range, Value, APP_MAX_PARAMS,
+    Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
 
-const LED_COLOR: RGB8 = PURPLE;
+const LED_COLOR: Color = Color::Violet;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Random CC/CV", "Generate random values on clock")
     .add_param(Param::i32 {
@@ -166,7 +165,7 @@ pub async fn run(
                         let g = (rnd.roll() / 16) as u8;
                         let b = (rnd.roll() / 16) as u8;
 
-                        let color: RGB8 = RGB8 { r, g, b };
+                        let color: Color = Color::Custom(r, g, b);
                         leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
                         leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
                         leds.set(0, Led::Button, color, Brightness::Lower);

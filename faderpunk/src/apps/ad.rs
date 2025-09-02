@@ -10,10 +10,7 @@ use heapless::Vec;
 use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
-use libfp::{
-    colors::{PURPLE, RED, TEAL, WHITE, YELLOW},
-    Brightness, Config, Curve, Range, Value, APP_MAX_PARAMS,
-};
+use libfp::{Brightness, Color, Config, Curve, Range, Value, APP_MAX_PARAMS};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
@@ -112,7 +109,7 @@ pub async fn run(
     let mut oldinputval = 0;
     let mut env_state = 0;
 
-    let color = [YELLOW, TEAL, PURPLE];
+    let color = [Color::Yellow, Color::Cyan, Color::Pink];
 
     let (curve_setting, stored_faders) = storage.query(|s| (s.curve_saved, s.fader_saved));
 
@@ -219,7 +216,12 @@ pub async fn run(
                 }
                 outval = curve_setting[0].at(vals as u16);
 
-                leds.set(0, Led::Top, WHITE, Brightness::Custom((outval / 16) as u8));
+                leds.set(
+                    0,
+                    Led::Top,
+                    Color::White,
+                    Brightness::Custom((outval / 16) as u8),
+                );
                 leds.unset(1, Led::Top);
             }
 
@@ -232,7 +234,12 @@ pub async fn run(
                 }
                 outval = curve_setting[1].at(vals as u16);
 
-                leds.set(1, Led::Top, WHITE, Brightness::Custom((outval / 16) as u8));
+                leds.set(
+                    1,
+                    Led::Top,
+                    Color::White,
+                    Brightness::Custom((outval / 16) as u8),
+                );
 
                 if vals == 0.0 && mode == 2 && gate_on_glob.get() != 0 {
                     env_state = 1;
@@ -243,17 +250,22 @@ pub async fn run(
             if shift_old {
                 leds.set(1, Led::Button, color[mode as usize], Brightness::Lower);
                 if gate_on_glob.get() > 0 {
-                    leds.set(0, Led::Button, RED, Brightness::Low);
+                    leds.set(0, Led::Button, Color::Red, Brightness::Low);
                 } else {
-                    leds.set(0, Led::Button, RED, Brightness::Lower);
+                    leds.set(0, Led::Button, Color::Red, Brightness::Lower);
                 }
 
                 let att = storage.query(|s| s.att_saved);
-                leds.set(1, Led::Top, RED, Brightness::Custom((att / 16) as u8));
+                leds.set(
+                    1,
+                    Led::Top,
+                    Color::Red,
+                    Brightness::Custom((att / 16) as u8),
+                );
                 if timer % storage.query(|s: &Storage| s.min_gate_saved) as u32 + 200
                     < storage.query(|s: &Storage| s.min_gate_saved) as u32
                 {
-                    leds.set(0, Led::Top, RED, Brightness::Low);
+                    leds.set(0, Led::Top, Color::Red, Brightness::Low);
                 } else {
                     leds.unset(0, Led::Top);
                 }

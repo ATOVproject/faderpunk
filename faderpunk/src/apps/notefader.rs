@@ -44,8 +44,8 @@ pub static CONFIG: Config<PARAMS> = Config::new("Note Fader", "Play notes manual
         name: "Color",
         variants: &[
             Color::Yellow,
-            Color::Purple,
-            Color::Teal,
+            Color::Pink,
+            Color::Cyan,
             Color::Red,
             Color::White,
         ],
@@ -223,7 +223,7 @@ pub async fn run(
                         }
 
                         if buttons.is_shift_pressed() {
-                            leds.set(0, Led::Bottom, RED, LED_BRIGHTNESS);
+                            leds.set(0, Led::Bottom, Color::Red, LED_BRIGHTNESS);
                         }
                     }
 
@@ -341,7 +341,7 @@ pub async fn run(
                 leds.set(
                     0,
                     Led::Bottom,
-                    RED,
+                    Color::Red,
                     Brightness::Custom(base * clocked_glob.get() as u8),
                 );
                 shift_old = true;

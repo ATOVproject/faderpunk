@@ -5,8 +5,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
-use libfp::LED_BRIGHTNESS_RANGE;
 use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
+use libfp::{Brightness, Color, LED_BRIGHTNESS_RANGE};
 use portable_atomic::{AtomicU8, Ordering};
 use smart_leds::colors::BLACK;
 use smart_leds::{brightness, gamma, SmartLedsWriteAsync, RGB8};
@@ -47,24 +47,30 @@ pub enum Led {
 
 #[derive(Clone, Copy)]
 pub enum LedMode {
-    Static(RGB8),
-    FadeOut(RGB8),
-    Flash(RGB8, Option<usize>),
-    StaticFade(RGB8, u16),
+    Static(Color, Brightness),
+    FadeOut(Color),
+    Flash(Color, Option<usize>),
+    StaticFade(Color, u16),
 }
 
 impl LedMode {
     fn into_effect(self) -> LedEffect {
         match self {
-            LedMode::Static(color) => LedEffect::Static { color },
-            LedMode::FadeOut(from) => LedEffect::FadeOut { from, step: 0 },
+            LedMode::Static(color, brightness) => LedEffect::Static {
+                color: color.into(),
+                brightness: brightness.into(),
+            },
+            LedMode::FadeOut(from) => LedEffect::FadeOut {
+                from: from.into(),
+                step: 0,
+            },
             LedMode::Flash(color, times) => LedEffect::Flash {
-                color,
+                color: color.into(),
                 times,
                 step: 0,
             },
             LedMode::StaticFade(color, delay_ms) => LedEffect::StaticFade {
-                color,
+                color: color.into(),
                 delay_ms,
                 elapsed_frames: 0,
             },
@@ -77,6 +83,7 @@ enum LedEffect {
     Off,
     Static {
         color: RGB8,
+        brightness: u8,
     },
     FadeOut {
         from: RGB8,
@@ -98,7 +105,13 @@ impl LedEffect {
     fn update(&mut self) -> RGB8 {
         match self {
             LedEffect::Off => BLACK,
-            LedEffect::Static { color } => *color,
+            LedEffect::Static { color, brightness } => {
+                if *brightness == 255 {
+                    *color
+                } else {
+                    color.scale(*brightness)
+                }
+            }
             LedEffect::FadeOut { from, step } => {
                 let new_color = from.scale(255 - *step);
                 if *step < 255 {
@@ -200,10 +213,10 @@ impl LedProcessor {
             }
         }
         self.ws
-            .write(brightness(
-                gamma(self.buffer.iter().cloned()),
+            .write(gamma(brightness(
+                self.buffer.iter().cloned(),
                 LED_BRIGHTNESS.load(Ordering::Relaxed),
-            ))
+            )))
             .await
             .ok();
     }
@@ -245,6 +258,7 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
             g: 75,
             b: 75,
         },
+        brightness: 255,
     };
     leds.base_layer[17] = LedEffect::Static {
         color: RGB8 {
@@ -252,6 +266,7 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
             g: 75,
             b: 75,
         },
+        brightness: 255,
     };
 
     loop {
@@ -266,11 +281,17 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
                         leds.base_layer[i] = mode.into_effect();
                     }
                     LedMsg::Reset => match leds.base_layer[i] {
-                        LedEffect::Static { color } => {
-                            leds.base_layer[i] = LedMode::FadeOut(color).into_effect();
+                        LedEffect::Static { color, brightness } => {
+                            leds.base_layer[i] = LedEffect::FadeOut {
+                                from: color.scale(brightness),
+                                step: 0,
+                            }
                         }
                         LedEffect::StaticFade { color, .. } => {
-                            leds.base_layer[i] = LedMode::FadeOut(color).into_effect();
+                            leds.base_layer[i] = LedEffect::FadeOut {
+                                from: color,
+                                step: 0,
+                            }
                         }
                         _ => {
                             leds.base_layer[i] = LedEffect::Off;

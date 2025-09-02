@@ -1,13 +1,11 @@
 use embassy_futures::select::select;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use libfp::{
-    colors::PURPLE,
     utils::{is_close, split_unsigned_value},
-    Brightness,
+    Brightness, Color,
 };
 
 use libfp::{Config, Range};
-use smart_leds::colors::{BLUE, CYAN, GREEN, MAGENTA, ORANGE, RED, WHITE, YELLOW};
 
 use crate::app::{App, Led, RGB8};
 
@@ -16,7 +14,7 @@ pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> = Config::new("Calibration", "Bipolar range calibration test");
 
-const LED_COLOR: RGB8 = PURPLE;
+const LED_COLOR: Color = Color::Violet;
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
@@ -47,17 +45,17 @@ const VOLTAGE_TARGETS: [(i32, u16); 9] = [
 
 const SNAP_THRESHOLD: u16 = 50; // How close fader needs to be to snap
 
-fn get_voltage_color(voltage: i32) -> RGB8 {
+fn get_voltage_color(voltage: i32) -> Color {
     match voltage {
-        -4 => RED,
-        -3 => ORANGE,
-        -2 => YELLOW,
-        -1 => GREEN,
-        0 => WHITE,
-        1 => CYAN,
-        2 => BLUE,
-        3 => MAGENTA,
-        4 => RED,
+        -4 => Color::Red,
+        -3 => Color::Orange,
+        -2 => Color::Yellow,
+        -1 => Color::Green,
+        0 => Color::White,
+        1 => Color::Cyan,
+        2 => Color::Blue,
+        3 => Color::Pink,
+        4 => Color::Lime,
         _ => LED_COLOR,
     }
 }

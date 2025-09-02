@@ -5,15 +5,13 @@ use embassy_futures::{
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
-    colors::{PURPLE, RED, TEAL, WHITE, YELLOW},
     latch::LatchLayer,
     utils::{attenuate_bipolar, split_unsigned_value},
-    Brightness, Curve, Value, APP_MAX_PARAMS,
+    Brightness, Color, Curve, Value, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Range, Waveform};
-use smart_leds::RGB8;
 
 use crate::{
     app::{App, AppStorage, ClockEvent, Led, ManagedStorage, SceneEvent},
@@ -170,7 +168,7 @@ pub async fn run(
                     leds.set(
                         0,
                         Led::Top,
-                        RED,
+                        Color::Red,
                         Brightness::Custom(((attenuation / 16) / 2) as u8),
                     );
                     leds.unset(0, Led::Bottom);
@@ -295,12 +293,12 @@ pub async fn run(
     join(join5(fut1, fut2, fut3, fut4, scene_handler), fut5).await;
 }
 
-fn get_color_for(wave: Waveform) -> RGB8 {
+fn get_color_for(wave: Waveform) -> Color {
     match wave {
-        Waveform::Sine => YELLOW,
-        Waveform::Triangle => PURPLE,
-        Waveform::Saw => TEAL,
-        Waveform::SawInv => RED,
-        Waveform::Rect => WHITE,
+        Waveform::Sine => Color::Yellow,
+        Waveform::Triangle => Color::Pink,
+        Waveform::Saw => Color::Cyan,
+        Waveform::SawInv => Color::Red,
+        Waveform::Rect => Color::White,
     }
 }
