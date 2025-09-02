@@ -17,6 +17,7 @@ import {
   WaveformParamInput,
   ColorParamInput,
   RangeParamInput,
+  NoteParamInput,
 } from "@/components/param-inputs";
 import { getAppParams, setAppParams } from "@/utils/config";
 
@@ -279,6 +280,40 @@ export function AppConfigDrawer({
               if (selectedValue) {
                 handleParamChange(index, {
                   tag: "Range",
+                  value: { tag: selectedValue },
+                });
+              }
+            }}
+          />
+        );
+      case "Note":
+        return (
+          <NoteParamInput
+            key={`param-${index}`}
+            {...commonProps}
+            selectedKeys={value?.value?.tag ? [value.value.tag] : ["C"]}
+            variants={
+              param.value?.variants?.map((v: any) => v.tag || v) || [
+                "C",
+                "CSharp",
+                "D",
+                "DSharp",
+                "E",
+                "F",
+                "FSharp",
+                "G",
+                "GSharp",
+                "A",
+                "ASharp",
+                "B",
+              ]
+            }
+            onSelectionChange={(keys) => {
+              const selectedValue = Array.from(keys)[0];
+
+              if (selectedValue) {
+                handleParamChange(index, {
+                  tag: "Note",
                   value: { tag: selectedValue },
                 });
               }
