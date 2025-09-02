@@ -158,7 +158,7 @@ pub async fn run(
 
     let prob_glob = app.make_global(0);
     let length_glob = app.make_global(15_u16);
-    let att_glob = app.make_global(4095);
+
     let register_glob = app.make_global(0);
     let recall_flag = app.make_global(false);
     let midi_note = app.make_global(0);
@@ -177,7 +177,7 @@ pub async fn run(
 
     let (att, length, mut register) =
         storage.query(|s| (s.att_saved, s.length_saved, s.register_saved));
-    att_glob.set(att as u32);
+
     length_glob.set(length);
     register_glob.set(register);
 
@@ -202,7 +202,8 @@ pub async fn run(
                 //leds.set(0, Led::Button, led_color.into(), 100 * rotation.1 as u8);
 
                 let register_scalled = scale_to_12bit(register, length as u8);
-                att_reg = (register_scalled as u32 * att_glob.get() / 4095) as u16;
+                att_reg = (register_scalled as u32 * storage.query(|s| (s.att_saved)) as u32 / 4095)
+                    as u16;
 
                 let out = quantizer.get_quantized_note(att_reg).await;
                 // let out = att_reg;
@@ -252,7 +253,7 @@ pub async fn run(
         loop {
             let chan = fader.wait_for_any_change().await;
             let val = fader.get_all_values();
-            let att = att_glob.get();
+            let att = storage.query(|s| (s.att_saved));
             let prob = prob_glob.get();
 
             if chan == 1 {
@@ -261,7 +262,6 @@ pub async fn run(
                 }
 
                 if latched_glob.get() {
-                    att_glob.set(val[chan] as u32);
                     storage
                         .modify_and_save(|s| s.att_saved = val[chan], None)
                         .await;
@@ -310,7 +310,7 @@ pub async fn run(
                     0,
                     Led::Top,
                     Color::Red,
-                    Brightness::Custom((att_glob.get() / 16) as u8),
+                    Brightness::Custom((storage.query(|s| (s.att_saved)) / 16) as u8),
                 );
             }
             if !buttons.is_shift_pressed() && shift_old {
@@ -351,7 +351,6 @@ pub async fn run(
                     let (att, length, register) =
                         storage.query(|s| (s.att_saved, s.length_saved, s.register_saved));
 
-                    att_glob.set(att as u32);
                     length_glob.set(length);
                     register_glob.set(register);
                     recall_flag.set(true);
