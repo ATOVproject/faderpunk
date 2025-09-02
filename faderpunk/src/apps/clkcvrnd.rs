@@ -13,8 +13,9 @@ use crate::app::{
 
 use libfp::{
     ext::FromValue,
-    utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
-    Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
+    latch::LatchLayer,
+    utils::{attenuate, attenuate_bipolar, split_unsigned_value},
+    Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 pub const CHANNELS: usize = 1;
@@ -72,6 +73,7 @@ pub struct Storage {
     fader_saved: u16,
     mute_save: bool,
     att_saved: u16,
+    slew_saved: u16,
 }
 
 impl Default for Storage {
@@ -80,6 +82,7 @@ impl Default for Storage {
             fader_saved: 3000,
             mute_save: false,
             att_saved: 4096,
+            slew_saved: 0,
         }
     }
 }
@@ -122,17 +125,21 @@ pub async fn run(
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
-    let att_glob = app.make_global(4096);
+    let val_glob = app.make_global(0);
+    let new_color = app.make_global(false);
+
     let latched_glob = app.make_global(false);
+    let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let resolution = [368, 184, 92, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
     let mut clkn = 0;
     let mut val = 2048;
 
-    let (res, mute, att) = storage.query(|s| (s.fader_saved, s.mute_save, s.att_saved));
+    let curve = Curve::Logarithmic;
 
-    att_glob.set(att);
+    let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_save));
+
     glob_muted.set(mute);
     div_glob.set(resolution[res as usize / 345]);
     if mute {
@@ -153,23 +160,11 @@ pub async fn run(
                 }
                 ClockEvent::Tick => {
                     let muted = glob_muted.get();
-                    let att = att_glob.get();
+
                     let div = div_glob.get();
                     if clkn % div == 0 && !muted {
-                        let midival = attenuate(val, att);
-                        let jackval = attenuate_bipolar(val, att);
-                        output.set_value(jackval);
-                        midi.send_cc(cc as u8, midival).await;
-                        let ledj = split_unsigned_value(jackval);
-                        let r = (rnd.roll() / 16) as u8;
-                        let g = (rnd.roll() / 16) as u8;
-                        let b = (rnd.roll() / 16) as u8;
-
-                        let color: Color = Color::Custom(r, g, b);
-                        leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
-                        leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
-                        leds.set(0, Led::Button, color, Brightness::Lower);
-                        val = rnd.roll();
+                        val_glob.set(rnd.roll());
+                        new_color.set(true);
                     }
                     clkn += 1;
                 }
@@ -181,51 +176,63 @@ pub async fn run(
     let fut2 = async {
         loop {
             buttons.wait_for_any_down().await;
-            let muted = glob_muted.toggle();
+            if buttons.is_shift_pressed() {
+                let muted = glob_muted.toggle();
 
-            storage
-                .modify_and_save(
-                    |s| {
-                        s.mute_save = muted;
-                        s.mute_save
-                    },
-                    None,
-                )
-                .await;
+                storage
+                    .modify_and_save(
+                        |s| {
+                            s.mute_save = muted;
+                            s.mute_save
+                        },
+                        None,
+                    )
+                    .await;
 
-            if muted {
-                output.set_value(2047);
-                midi.send_cc(cc as u8, 0).await;
-                leds.unset_all();
-            } else {
-                leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
+                if muted {
+                    output.set_value(2047);
+                    midi.send_cc(cc as u8, 0).await;
+                    leds.unset_all();
+                } else {
+                    leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
+                }
             }
         }
     };
 
     let fut3 = async {
+        let mut latch = app.make_latch(fader.get_value());
         loop {
             fader.wait_for_change_at(0).await;
-            storage.load(None).await;
-            let fad = fader.get_value();
 
-            if !buttons.is_shift_pressed() {
-                let fad_saved = storage.query(|s| s.fader_saved);
-                if is_close(fad, fad_saved) {
-                    latched_glob.set(true);
-                }
-                if latched_glob.get() {
-                    div_glob.set(resolution[fad as usize / 345]);
-                    storage.modify_and_save(|s| s.fader_saved = fad, None).await;
-                }
-            } else {
-                let att = att_glob.get();
-                if is_close(fad, att) {
-                    latched_glob.set(true);
-                }
-                if latched_glob.get() {
-                    att_glob.set(fad);
-                    storage.modify_and_save(|s| s.att_saved = fad, None).await;
+            let latch_layer = glob_latch_layer.get();
+
+            let target_value = match latch_layer {
+                LatchLayer::Main => storage.query(|s| s.fader_saved),
+                LatchLayer::Alt => storage.query(|s| s.att_saved),
+                LatchLayer::Third => storage.query(|s| s.slew_saved),
+                _ => unreachable!(),
+            };
+
+            if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
+                match latch_layer {
+                    LatchLayer::Main => {
+                        div_glob.set(resolution[new_value as usize / 345]);
+                        storage
+                            .modify_and_save(|s| s.fader_saved = new_value, None)
+                            .await;
+                    }
+                    LatchLayer::Alt => {
+                        storage
+                            .modify_and_save(|s| s.att_saved = new_value, None)
+                            .await;
+                    }
+                    LatchLayer::Third => {
+                        storage
+                            .modify_and_save(|s| s.slew_saved = new_value, None)
+                            .await
+                    }
+                    _ => unreachable!(),
                 }
             }
         }
@@ -239,7 +246,6 @@ pub async fn run(
                     let (res, mute, att) =
                         storage.query(|s| (s.fader_saved, s.mute_save, s.att_saved));
 
-                    att_glob.set(att);
                     glob_muted.set(mute);
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
@@ -259,23 +265,71 @@ pub async fn run(
         }
     };
 
-    let mut shift_old = false;
-
     let shift = async {
+        let mut out = 0.;
+        let mut r = (rnd.roll() / 16) as u8;
+        let mut g = (rnd.roll() / 16) as u8;
+        let mut b = (rnd.roll() / 16) as u8;
         loop {
-            // latching on pressing and depressing shift
-
             app.delay_millis(1).await;
-            if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set(false);
-                shift_old = true;
+            let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
+            {
+                LatchLayer::Alt
+            } else if !buttons.is_shift_pressed() && buttons.is_button_pressed(0) {
+                LatchLayer::Third
+            } else {
+                LatchLayer::Main
+            };
+            glob_latch_layer.set(latch_active_layer);
+
+            let att = storage.query(|s| (s.att_saved));
+
+            let midival = attenuate(val_glob.get(), att);
+            let jackval = attenuate_bipolar(val_glob.get(), att);
+
+            midi.send_cc(cc as u8, midival).await;
+
+            out = slew_2(out, jackval, curve.at(storage.query(|s| s.slew_saved)));
+            // out = slew_2(out, jackval, 4095);
+            output.set_value(out as u16);
+            if new_color.get() {
+                new_color.set(false);
+                r = (rnd.roll() / 16) as u8;
+                g = (rnd.roll() / 16) as u8;
+                b = (rnd.roll() / 16) as u8;
             }
-            if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set(false);
-                shift_old = false;
+
+            if latch_active_layer == LatchLayer::Main {
+                let ledj = split_unsigned_value(out as u16);
+                let color = Color::Custom(r, g, b);
+                leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
+                leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
+                leds.set(0, Led::Button, color, Brightness::Lower);
+            }
+            if latch_active_layer == LatchLayer::Alt {
+                leds.set(
+                    0,
+                    Led::Top,
+                    Color::Red,
+                    Brightness::Custom((att / 16) as u8),
+                );
+                leds.set(0, Led::Button, Color::Red, Brightness::Low);
+            }
+            if latch_active_layer == LatchLayer::Third {
+                leds.set(
+                    0,
+                    Led::Top,
+                    Color::Green,
+                    Brightness::Custom((storage.query(|s| s.slew_saved) / 16) as u8),
+                );
+                leds.set(0, Led::Button, Color::Green, Brightness::Low);
             }
         }
     };
 
     join5(fut1, fut2, fut3, scene_handler, shift).await;
+}
+
+fn slew_2(prev: f32, input: u16, slew: u16) -> f32 {
+    (prev * slew as f32 + input as f32) / (slew + 1) as f32
 }
