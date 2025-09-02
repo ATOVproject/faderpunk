@@ -175,6 +175,7 @@ pub async fn run(
                     );
                     leds.unset(0, Led::Bottom);
                 }
+                _ => unreachable!(),
             }
 
             glob_lfo_pos.set(next_pos);
@@ -192,6 +193,7 @@ pub async fn run(
             let target_value = match latch_layer {
                 LatchLayer::Main => storage.query(|s| s.layer_speed),
                 LatchLayer::Alt => storage.query(|s| s.layer_attenuation),
+                _ => unreachable!(),
             };
 
             if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
@@ -208,6 +210,7 @@ pub async fn run(
                             .modify_and_save(|s| s.layer_attenuation = new_value, None)
                             .await;
                     }
+                    _ => unreachable!(),
                 }
             }
         }

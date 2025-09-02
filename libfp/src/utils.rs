@@ -1,4 +1,3 @@
-use defmt::info;
 use embassy_time::Duration;
 use libm::roundf;
 use midly::num::u7;

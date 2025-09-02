@@ -185,6 +185,7 @@ pub async fn run(
             let latch_target_value = match latch_active_layer {
                 LatchLayer::Main => main_layer_value,
                 LatchLayer::Alt => att_layer_value,
+                _ => unreachable!(),
             };
 
             if let Some(new_value) =
@@ -198,6 +199,7 @@ pub async fn run(
                         // Update storage but don't save yet
                         storage.modify(|s| s.att_saved = new_value);
                     }
+                    _ => unreachable!(),
                 }
             }
 
@@ -265,6 +267,7 @@ pub async fn run(
                         leds.unset(0, Led::Bottom);
                     }
                 }
+                _ => unreachable!(),
             }
         }
     };
@@ -307,6 +310,7 @@ pub async fn run(
                     // Now we commit to storage
                     storage.save(None).await;
                 }
+                _ => unreachable!(),
             }
         }
     };
