@@ -3,7 +3,24 @@ import { ComponentProps } from "react";
 
 interface ColorParamInputProps
   extends Omit<ComponentProps<typeof Select>, "children"> {
-  variants: readonly ("White" | "Red" | "Blue" | "Yellow" | "Purple")[];
+  variants: readonly (
+    | "White"
+    | "Red"
+    | "Lime"
+    | "RoyalBlue"
+    | "Magenta"
+    | "Cyan"
+    | "Orange"
+    | "Green"
+    | "Violet"
+    | "Pink"
+    | "SpringGreen"
+    | "Crimson"
+    | "Yellow"
+    | "Purple"
+    | "Teal"
+    | "Gold"
+  )[];
 }
 
 export function ColorParamInput({ variants, ...props }: ColorParamInputProps) {
