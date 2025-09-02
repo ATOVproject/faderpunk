@@ -1,11 +1,13 @@
 use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_time::Timer;
-use libfp::colors::{GREEN, RED, TEAL, YELLOW};
-use libfp::types::{RegressionValuesInput, RegressionValuesOutput};
 use linreg::linear_regression;
 use max11300::config::{ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use portable_atomic::{AtomicUsize, Ordering};
-use smart_leds::RGB8;
+
+use libfp::{
+    types::{RegressionValuesInput, RegressionValuesOutput},
+    Brightness, Color,
+};
 
 use crate::app::Led;
 use crate::events::{InputEvent, EVENT_PUBSUB};
@@ -28,15 +30,19 @@ const VALUES_NEG5_5V: [u16; 3] = [410, 2048, 3686];
 const VOLTAGES_NEG5_5V: [f32; 3] = [-4.0, 0.0, 4.0];
 const LED_POS: [Led; 3] = [Led::Button, Led::Bottom, Led::Top];
 
-fn set_led_color(ch: usize, pos: Led, color: RGB8) {
-    set_led_mode(ch, pos, LedMsg::Set(LedMode::Static(color)));
+fn set_led_color(ch: usize, pos: Led, color: Color) {
+    set_led_mode(
+        ch,
+        pos,
+        LedMsg::Set(LedMode::Static(color, Brightness::Low)),
+    );
 }
 
 fn reset_led(ch: usize, pos: Led) {
     set_led_mode(ch, pos, LedMsg::Reset);
 }
 
-fn flash_led(ch: usize, pos: Led, color: RGB8, times: Option<usize>) {
+fn flash_led(ch: usize, pos: Led, color: Color, times: Option<usize>) {
     set_led_mode(ch, pos, LedMsg::Set(LedMode::Flash(color, times)));
 }
 
@@ -72,7 +78,7 @@ async fn run_input_calibration() -> RegressionValuesInput {
     let adc_ranges = [ADCRANGE::Rg0_10v, ADCRANGE::RgNeg5_5v];
     let voltages_arrays = [VOLTAGES_0_10V, VOLTAGES_NEG5_5V];
     let values_arrays = [VALUES_0_10V, VALUES_NEG5_5V];
-    set_led_color(0, Led::Button, TEAL);
+    set_led_color(0, Led::Button, Color::Cyan);
     defmt::info!("Plug a good voltage source into channel 0, then press button");
     wait_for_button_press(0).await;
     for (i, &range) in adc_ranges.iter().enumerate() {
@@ -88,11 +94,11 @@ async fn run_input_calibration() -> RegressionValuesInput {
             )
             .await;
             let pos = LED_POS[j];
-            flash_led(0, pos, TEAL, None);
+            flash_led(0, pos, Color::Cyan, None);
             defmt::info!("Set voltage source to {}V, then press button", voltage);
             wait_for_button_press(0).await;
             let value = MAX_VALUES_ADC[0].load(Ordering::Relaxed);
-            set_led_color(0, pos, TEAL);
+            set_led_color(0, pos, Color::Cyan);
             let error = target_value as i16 - value as i16;
             errors[j] = error;
             defmt::info!("Target value: {}", target_value);
@@ -113,7 +119,7 @@ async fn run_input_calibration() -> RegressionValuesInput {
             input_results[i] = results;
         } else {
             // Blink LED red if calibration didn't succeeed
-            flash_led(0, Led::Button, RED, None);
+            flash_led(0, Led::Button, Color::Red, None);
             loop {
                 Timer::after_secs(10).await;
             }
@@ -127,10 +133,10 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
     let mut output_results = RegressionValuesOutput::default();
 
     for i in 0..CHANNELS {
-        set_led_color(i, Led::Button, RED);
+        set_led_color(i, Led::Button, Color::Red);
     }
 
-    set_led_color(0, Led::Button, GREEN);
+    set_led_color(0, Led::Button, Color::Green);
     reset_led(0, Led::Bottom);
     reset_led(0, Led::Top);
 
@@ -172,7 +178,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                 .enumerate()
             {
                 let pos = LED_POS[j];
-                flash_led(ui_no, pos, GREEN, None);
+                flash_led(ui_no, pos, Color::Green, None);
                 defmt::info!(
                     "Move fader {} until you read the closest value to {}V, then press button",
                     ui_no,
@@ -216,7 +222,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                                     // Reset LEDs for the channel we are leaving
                                     reset_led(ui_no, Led::Top);
                                     reset_led(ui_no, Led::Bottom);
-                                    set_led_color(ui_no, Led::Button, RED);
+                                    set_led_color(ui_no, Led::Button, Color::Red);
                                     continue 'channel_loop;
                                 } else {
                                     // Prev without shift, so ignore and re-wait.
@@ -227,7 +233,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                     }
                 }
 
-                set_led_color(ui_no, pos, GREEN);
+                set_led_color(ui_no, pos, Color::Green);
                 let error = target_value as i16 - value as i16;
                 errors[j] = error;
                 defmt::info!("Target value: {}", target_value);
@@ -253,7 +259,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                 );
             } else {
                 // Blink LED red if calibration didn't succeeed
-                flash_led(ui_no, Led::Button, RED, None);
+                flash_led(ui_no, Led::Button, Color::Red, None);
                 loop {
                     Timer::after_secs(10).await;
                 }
@@ -266,8 +272,8 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                     set_led_mode(chan, position, LedMsg::Reset);
                 }
             }
-            set_led_color(1, Led::Button, RED);
-            set_led_color(2, Led::Button, RED);
+            set_led_color(1, Led::Button, Color::Red);
+            set_led_color(2, Led::Button, Color::Red);
         }
 
         i += 1;
@@ -280,7 +286,7 @@ async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) -> Regr
     CALIBRATION_PORT.store(usize::MAX, Ordering::Relaxed);
 
     for i in 0..CHANNELS {
-        set_led_color(i, Led::Button, RED);
+        set_led_color(i, Led::Button, Color::Red);
     }
 
     reset_led(0, Led::Button);
@@ -297,16 +303,16 @@ async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) -> Regr
                     (ui_no + CHANNELS - 1) % CHANNELS
                 };
                 for led_no in 0..=prev_ui_no {
-                    set_led_color(led_no, Led::Button, GREEN);
+                    set_led_color(led_no, Led::Button, Color::Green);
                 }
-                flash_led(ui_no, Led::Button, YELLOW, None);
+                flash_led(ui_no, Led::Button, Color::Yellow, None);
                 defmt::info!(
                     "Plug multimeter into jack {} now, then press button {}",
                     chan,
                     ui_no,
                 );
                 wait_for_button_press(ui_no).await;
-                flash_led(ui_no, Led::Button, GREEN, None);
+                flash_led(ui_no, Led::Button, Color::Green, None);
                 CALIBRATION_PORT.store(chan, Ordering::Relaxed);
             }
             I2cMessage::CalibSetRegressionValues(output_values) => {
@@ -320,7 +326,7 @@ async fn run_automatic_output_calibration(receiver: &mut I2cMsgReceiver) -> Regr
 pub async fn run_calibration(mut msg_receiver: I2cMsgReceiver) {
     CALIBRATING.store(true, Ordering::Relaxed);
 
-    set_led_color(0, Led::Button, YELLOW);
+    set_led_color(0, Led::Button, Color::Yellow);
 
     defmt::info!("Press button or send i2c signal to start calibration");
 
@@ -352,7 +358,7 @@ pub async fn run_calibration(mut msg_receiver: I2cMsgReceiver) {
 
     for chan in 0..16 {
         for &p in LED_POS.iter() {
-            flash_led(chan, p, GREEN, Some(5));
+            flash_led(chan, p, Color::Green, Some(5));
         }
     }
 

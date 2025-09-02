@@ -5,7 +5,6 @@ use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
-    colors::RED,
     ext::FromValue,
     utils::{attenuate, attenuate_bipolar, clickless, split_unsigned_value},
     Brightness, Color, APP_MAX_PARAMS,
@@ -40,8 +39,8 @@ pub static CONFIG: Config<PARAMS> = Config::new("Automator", "Fader movement rec
         name: "Color",
         variants: &[
             Color::Yellow,
-            Color::Purple,
-            Color::Teal,
+            Color::Pink,
+            Color::Cyan,
             Color::Red,
             Color::White,
         ],
@@ -136,15 +135,13 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: ManagedStorage<Storage>,
 ) {
-    let (curve, midi_chan, midi_cc, bipolar, color) =
+    let (curve, midi_chan, midi_cc, bipolar, led_color) =
         params.query(|p| (p.curve, p.midi_channel, p.midi_cc, p.bipolar, p.color));
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
     let midi = app.use_midi_output(midi_chan as u8 - 1);
-
-    let led_color: RGB8 = color.into();
 
     let mut clock = app.use_clock();
 
@@ -189,7 +186,11 @@ pub async fn run(
             let buffer = buffer_glob.get();
             let mut offset = offset_glob.get();
             let att = att_glob.get();
-            let color = if recording_glob.get() { RED } else { led_color };
+            let color = if recording_glob.get() {
+                Color::Red
+            } else {
+                led_color
+            };
 
             if latched.get() {
                 offset = fader.get_value();
@@ -205,7 +206,12 @@ pub async fn run(
                 if !buttons.is_shift_pressed() {
                     leds.set(0, Led::Top, color, Brightness::Custom((out / 16) as u8));
                 } else {
-                    leds.set(0, Led::Top, RED, Brightness::Custom((att / 16) as u8));
+                    leds.set(
+                        0,
+                        Led::Top,
+                        Color::Red,
+                        Brightness::Custom((att / 16) as u8),
+                    );
                 }
             } else {
                 let out = curve.at(attenuate_bipolar(outval, att));
@@ -216,8 +222,8 @@ pub async fn run(
                     leds.set(0, Led::Bottom, color, Brightness::Custom(ledint[1]));
                 } else {
                     let ledint = split_unsigned_value(att);
-                    leds.set(0, Led::Top, RED, Brightness::Custom(ledint[0]));
-                    leds.set(0, Led::Bottom, RED, Brightness::Custom(ledint[1]));
+                    leds.set(0, Led::Top, Color::Red, Brightness::Custom(ledint[0]));
+                    leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(ledint[1]));
                 }
             }
             if last_midi / 16 != (val) / 16 {
@@ -285,7 +291,7 @@ pub async fn run(
                     if recording {
                         let val = fader.get_value();
                         buffer[index] = val;
-                        leds.set(0, Led::Button, RED, Brightness::Lower);
+                        leds.set(0, Led::Button, Color::Red, Brightness::Lower);
                     } else {
                         leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
                     }
@@ -333,7 +339,12 @@ pub async fn run(
                 if latched.get() {
                     att_glob.set(val);
 
-                    leds.set(0, Led::Top, RED, Brightness::Custom((val / 16) as u8));
+                    leds.set(
+                        0,
+                        Led::Top,
+                        Color::Red,
+                        Brightness::Custom((val / 16) as u8),
+                    );
 
                     storage
                         .modify_and_save(

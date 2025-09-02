@@ -2,7 +2,7 @@ use defmt::info;
 use embassy_futures::select::select;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 
-use libfp::{Brightness, Config, Curve, Param};
+use libfp::{Brightness, Color, Config, Curve, Param};
 
 use crate::app::{App, Led, RGB8};
 
@@ -37,11 +37,7 @@ pub async fn run(app: &App<CHANNELS>) {
         let chan = fader.wait_for_any_change().await;
         let val = fader.get_all_values();
         color[chan] = (val[chan] / 16) as u8;
-        let rgb: smart_leds::RGB<u8> = RGB8 {
-            r: color[0],
-            g: color[1],
-            b: color[2],
-        };
+        let rgb = Color::Custom(color[0], color[1], color[2]);
 
         for (i, &intensity) in intensities.iter().enumerate() {
             leds.set(i, Led::Top, rgb, intensity);

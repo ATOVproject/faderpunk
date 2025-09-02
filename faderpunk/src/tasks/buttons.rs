@@ -8,8 +8,8 @@ use embassy_rp::peripherals::{
 };
 use embassy_rp::Peri;
 use embassy_time::Timer;
+use libfp::Color;
 use portable_atomic::{AtomicBool, Ordering};
-use smart_leds::colors::{GREEN, RED};
 
 use crate::app::Led;
 use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
@@ -89,14 +89,15 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
             {
                 Either::First(_) => {
                     // Short press - Load scene
-                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(GREEN, Some(2))).await;
+                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(Color::Green, Some(2)))
+                        .await;
                     event_publisher
                         .publish(InputEvent::LoadScene(i as u8))
                         .await;
                 }
                 Either::Second(_) => {
                     // Long press - Save scene
-                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(RED, Some(3))).await;
+                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(Color::Red, Some(3))).await;
                     event_publisher
                         .publish(InputEvent::SaveScene(i as u8))
                         .await;

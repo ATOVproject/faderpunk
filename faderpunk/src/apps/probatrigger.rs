@@ -4,8 +4,7 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    colors::RED, ext::FromValue, utils::is_close, Brightness, Color, Config, Curve, Param, Value,
-    APP_MAX_PARAMS,
+    ext::FromValue, utils::is_close, Brightness, Color, Config, Curve, Param, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -42,8 +41,8 @@ pub static CONFIG: Config<PARAMS> =
             name: "Color",
             variants: &[
                 Color::Yellow,
-                Color::Purple,
-                Color::Teal,
+                Color::Pink,
+                Color::Cyan,
                 Color::Red,
                 Color::White,
             ],
@@ -201,7 +200,7 @@ pub async fn run(
                         }
 
                         if buttons.is_shift_pressed() {
-                            leds.set(0, Led::Bottom, RED, LED_BRIGHTNESS);
+                            leds.set(0, Led::Bottom, Color::Red, LED_BRIGHTNESS);
                         }
                         rndval = die.roll();
                     }

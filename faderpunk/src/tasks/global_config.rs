@@ -151,19 +151,19 @@ async fn global_config_change() {
             let mut quantizer = QUANTIZER.get().lock().await;
             quantizer.set_scale(config.quantizer_key, config.quantizer_tonic);
             if config.quantizer_key != old.quantizer_key {
-                let color: RGB8 = Color::from(config.quantizer_key as usize).into();
+                let color = Color::from(config.quantizer_key as usize);
                 set_led_overlay_mode(
                     QUANTIZER_KEY_FADER,
                     Led::Button,
-                    LedMode::StaticFade(color.scale(Brightness::Lower.into()), 2000),
+                    LedMode::StaticFade(color, 2000),
                 )
                 .await;
             } else {
-                let color: RGB8 = Color::from(config.quantizer_key as usize).into();
+                let color = Color::from(config.quantizer_tonic as usize);
                 set_led_overlay_mode(
                     QUANTIZER_TONIC_FADER,
                     Led::Button,
-                    LedMode::StaticFade(color.scale(Brightness::Lower.into()), 2000),
+                    LedMode::StaticFade(color, 2000),
                 )
                 .await;
             }

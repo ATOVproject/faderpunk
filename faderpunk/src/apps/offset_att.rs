@@ -20,8 +20,8 @@ pub static CONFIG: Config<PARAMS> = Config::new("Offset+Attenuator", "").add_par
     name: "Color",
     variants: &[
         Color::Yellow,
-        Color::Purple,
-        Color::Teal,
+        Color::Pink,
+        Color::Cyan,
         Color::Red,
         Color::White,
     ],

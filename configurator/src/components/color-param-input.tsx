@@ -5,21 +5,21 @@ interface ColorParamInputProps
   extends Omit<ComponentProps<typeof Select>, "children"> {
   variants: readonly (
     | "White"
+    | "Yellow"
+    | "Orange"
     | "Red"
     | "Lime"
-    | "RoyalBlue"
-    | "Magenta"
-    | "Cyan"
-    | "Orange"
     | "Green"
+    | "Cyan"
+    | "SkyBlue"
+    | "Blue"
     | "Violet"
     | "Pink"
-    | "SpringGreen"
-    | "Crimson"
-    | "Yellow"
-    | "Purple"
-    | "Teal"
-    | "Gold"
+    | "PaleGreen"
+    | "Sand"
+    | "Rose"
+    | "Salmon"
+    | "LightBlue"
   )[];
 }
 
@@ -32,3 +32,4 @@ export function ColorParamInput({ variants, ...props }: ColorParamInputProps) {
     </Select>
   );
 }
+

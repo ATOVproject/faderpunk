@@ -7,7 +7,6 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    colors::RED,
     ext::FromValue,
     utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
     Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
@@ -18,19 +17,19 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 1;
 
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
+
 pub static CONFIG: Config<PARAMS> = Config::new("Envelope Follower", "Audio amplitude to CV")
     .add_param(Param::Color {
         name: "Color",
         variants: &[
             Color::Yellow,
-            Color::Purple,
-            Color::Teal,
+            Color::Pink,
+            Color::Cyan,
             Color::Red,
             Color::White,
         ],
     });
-
-const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
 pub struct Params {
     color: Color,
@@ -180,11 +179,11 @@ pub async fn run(
                 );
             } else {
                 let off_led = split_signed_value(offset);
-                leds.set(0, Led::Top, RED, Brightness::Custom(off_led[0]));
-                leds.set(0, Led::Bottom, RED, Brightness::Custom(off_led[1]));
+                leds.set(0, Led::Top, Color::Red, Brightness::Custom(off_led[0]));
+                leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(off_led[1]));
                 let att_led = split_unsigned_value(att);
-                leds.set(1, Led::Top, RED, Brightness::Custom(att_led[0]));
-                leds.set(1, Led::Bottom, RED, Brightness::Custom(att_led[1]));
+                leds.set(1, Led::Top, Color::Red, Brightness::Custom(att_led[0]));
+                leds.set(1, Led::Bottom, Color::Red, Brightness::Custom(att_led[1]));
             }
 
             if !shift_old && buttons.is_shift_pressed() {

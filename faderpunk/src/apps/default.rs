@@ -2,7 +2,6 @@ use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
-    colors::RED,
     ext::FromValue,
     latch::LatchLayer,
     utils::{attenuate_bipolar, clickless, split_unsigned_value},
@@ -40,8 +39,8 @@ pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute 
         name: "Color",
         variants: &[
             Color::Yellow,
-            Color::Purple,
-            Color::Teal,
+            Color::Pink,
+            Color::Cyan,
             Color::Red,
             Color::White,
         ],
@@ -248,20 +247,20 @@ pub async fn run(
                         leds.set(
                             0,
                             Led::Top,
-                            RED,
+                            Color::Red,
                             Brightness::Custom((att_layer_value / 16) as u8),
                         );
                         leds.set(
                             0,
                             Led::Bottom,
-                            RED,
+                            Color::Red,
                             Brightness::Custom((att_layer_value / 16) as u8),
                         );
                     } else {
                         leds.set(
                             0,
                             Led::Top,
-                            RED,
+                            Color::Red,
                             Brightness::Custom((att_layer_value / 16) as u8),
                         );
                         leds.unset(0, Led::Bottom);
