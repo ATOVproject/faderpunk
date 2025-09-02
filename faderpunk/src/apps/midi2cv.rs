@@ -1,4 +1,3 @@
-use defmt::info;
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -21,10 +20,9 @@ pub const PARAMS: usize = 6;
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
 pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI to CV")
-    .add_param(Param::i32 {
-        name: "Mode, 0=cc, 1=pitch, 2=gate, 3=vel, 4 =AT, 5=Bend",
-        min: 0,
-        max: 5,
+    .add_param(Param::Enum {
+        name: "Mode",
+        variants: &["CC", "Pitch", "Gate", "Velocity", "AT", "Bend"],
     })
     .add_param(Param::Curve {
         name: "Curve",
@@ -58,7 +56,7 @@ pub static CONFIG: Config<PARAMS> = Config::new("MIDI2CV", "Multifunctional MIDI
     });
 
 pub struct Params {
-    mode: i32,
+    mode: usize,
     curve: Curve,
     midi_channel: i32,
     midi_cc: i32,
@@ -85,7 +83,7 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            mode: i32::from_value(values[0]),
+            mode: usize::from_value(values[0]),
             curve: Curve::from_value(values[1]),
             midi_channel: i32::from_value(values[2]),
             midi_cc: i32::from_value(values[3]),
@@ -453,7 +451,6 @@ pub async fn run(
                 }
                 MidiMessage::ChannelAftertouch { vel } => {
                     if mode == 4 {
-                        // info!("ch aftertouch");
                         let val = scale_bits_7_12(vel);
                         offset_glob.set(val);
                     }

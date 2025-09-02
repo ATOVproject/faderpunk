@@ -24,11 +24,9 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing",
     "Classic turing machine, synched to internal clock",
 )
-.add_param(Param::i32 {
-    //I want to be able to choose between none, CC and note
-    name: "MIDI 0=off, 1=Note, 2=CC",
-    min: 0,
-    max: 2,
+.add_param(Param::Enum {
+    name: "MIDI",
+    variants: &["Off", "Note", "CC"],
 })
 .add_param(Param::i32 {
     //is it possible to have this apear only if CC or note are selected
@@ -60,7 +58,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 // });
 
 pub struct Params {
-    midi_mode: i32,
+    midi_mode: usize,
     midi_channel: i32,
     midi_cc: i32,
     color: Color,
@@ -83,7 +81,7 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_mode: i32::from_value(values[0]),
+            midi_mode: usize::from_value(values[0]),
             midi_channel: i32::from_value(values[1]),
             midi_cc: i32::from_value(values[2]),
             color: Color::from_value(values[3]),
