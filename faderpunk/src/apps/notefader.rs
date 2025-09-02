@@ -178,20 +178,20 @@ pub async fn run(
         leds.unset(0, Led::Top);
         leds.unset(0, Led::Bottom);
     } else {
-        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+        leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
     }
 
     let trigger_note = async |_| {
         let fadval = (storage.query(|s| (s.note_saved)) as i32 * (span + 3) / 120) as u16;
 
-        leds.set(0, Led::Top, led_color.into(), LED_BRIGHTNESS);
+        leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
 
         let out = quantizer.get_quantized_note(fadval).await;
 
         jack.set_value(out.as_counts(range));
         let note = out.as_midi() as i32 + base_note;
         midi.send_note_on(note as u8, 4095).await;
-        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+        leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
         note as u16
     };
 
@@ -226,11 +226,11 @@ pub async fn run(
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note as u8).await;
-                            leds.set(0, Led::Top, led_color.into(), Brightness::Custom(0));
+                            leds.set(0, Led::Top, led_color, Brightness::Custom(0));
                             note_on = false;
                         }
 
-                        leds.set(0, Led::Bottom, led_color.into(), Brightness::Custom(0));
+                        leds.set(0, Led::Bottom, led_color, Brightness::Custom(0));
                     }
                     clkn += 1;
                 }
@@ -261,7 +261,7 @@ pub async fn run(
                             if muted {
                                 leds.unset_all();
                             } else {
-                                leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+                                leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
                             }
                         } else {
                             note = trigger_note(note).await;
@@ -274,8 +274,8 @@ pub async fn run(
                 Either::Second(_) => {
                     if !storage.query(|s| (s.clocked)) && !buttons.is_shift_pressed() {
                         midi.send_note_off(note as u8).await;
-                        leds.set(0, Led::Top, led_color.into(), Brightness::Custom(0));
-                        leds.set(0, Led::Button, led_color.into(), Brightness::Lowest);
+                        leds.set(0, Led::Top, led_color, Brightness::Custom(0));
+                        leds.set(0, Led::Button, led_color, Brightness::Lowest);
                     }
                 }
             }
@@ -325,12 +325,12 @@ pub async fn run(
 
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
-                        leds.set(0, Led::Button, led_color.into(), Brightness::Lowest);
+                        leds.set(0, Led::Button, led_color, Brightness::Lowest);
 
                         leds.unset(0, Led::Top);
                         leds.unset(0, Led::Bottom);
                     } else {
-                        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+                        leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
                     }
                 }
 

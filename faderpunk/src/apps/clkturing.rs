@@ -166,8 +166,10 @@ pub async fn run(
 
     let quantizer = app.use_quantizer(range);
 
-    leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
-    leds.set(1, Led::Button, led_color.into(), Brightness::Lower);
+    // let latched_glob = app.make_global(true);
+
+    leds.set(0, Led::Button, led_color, Brightness::Lower);
+    leds.set(1, Led::Button, led_color, Brightness::Lower);
 
     let input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
@@ -213,13 +215,13 @@ pub async fn run(
                 leds.set(
                     0,
                     Led::Top,
-                    led_color.into(),
+                    led_color,
                     Brightness::Custom((register_scalled / 16) as u8),
                 );
                 leds.set(
                     1,
                     Led::Top,
-                    led_color.into(),
+                    led_color,
                     Brightness::Custom((att_reg / 16) as u8),
                 );
                 // info!("{}", register_scalled);
@@ -333,12 +335,10 @@ pub async fn run(
         loop {
             app.delay_millis(1).await;
 
-            if buttons.is_shift_pressed() {
-                if !shift_old {
-                    shift_old = true;
-                    rec_flag.set(true);
-                    length_rec.set(0);
-                }
+            if buttons.is_shift_pressed() && !shift_old {
+                shift_old = true;
+                rec_flag.set(true);
+                length_rec.set(0);
             }
             if !buttons.is_shift_pressed() && shift_old {
                 shift_old = false;

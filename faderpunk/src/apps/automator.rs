@@ -293,7 +293,7 @@ pub async fn run(
                         buffer[index] = val;
                         leds.set(0, Led::Button, Color::Red, Brightness::Lower);
                     } else {
-                        leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
+                        leds.set(0, Led::Button, led_color, Brightness::Lower);
                     }
 
                     if recording && !buttons.is_button_pressed(0) && index % 96 == 0 && index != 0 {

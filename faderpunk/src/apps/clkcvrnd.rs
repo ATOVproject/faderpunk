@@ -8,7 +8,7 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent, RGB8,
+    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
 };
 
 use libfp::{

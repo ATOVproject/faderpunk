@@ -119,8 +119,8 @@ pub async fn run(
     let mut oldval = 0.;
     let mut shift_old = false;
 
-    leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-    leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
+    leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
+    leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
 
     let fut1 = async {
         loop {
@@ -158,34 +158,14 @@ pub async fn run(
 
             if latch_active_layer == LatchLayer::Main {
                 let slew_led = split_unsigned_value(oldval as u16);
-                leds.set(
-                    0,
-                    Led::Top,
-                    led_color.into(),
-                    Brightness::Custom(slew_led[0]),
-                );
-                leds.set(
-                    0,
-                    Led::Bottom,
-                    led_color.into(),
-                    Brightness::Custom(slew_led[1]),
-                );
+                leds.set(0, Led::Top, led_color, Brightness::Custom(slew_led[0]));
+                leds.set(0, Led::Bottom, led_color, Brightness::Custom(slew_led[1]));
 
                 let out_led = split_unsigned_value(outval);
-                leds.set(
-                    1,
-                    Led::Top,
-                    led_color.into(),
-                    Brightness::Custom(out_led[0]),
-                );
-                leds.set(
-                    1,
-                    Led::Bottom,
-                    led_color.into(),
-                    Brightness::Custom(out_led[1]),
-                );
-                leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-                leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
+                leds.set(1, Led::Top, led_color, Brightness::Custom(out_led[0]));
+                leds.set(1, Led::Bottom, led_color, Brightness::Custom(out_led[1]));
+                leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
+                leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
             }
             if latch_active_layer == LatchLayer::Alt {
                 let off_led = split_signed_value(offset);
@@ -214,20 +194,10 @@ pub async fn run(
                 );
 
                 let out_led = split_unsigned_value(outval);
-                leds.set(
-                    1,
-                    Led::Top,
-                    led_color.into(),
-                    Brightness::Custom(out_led[0]),
-                );
-                leds.set(
-                    1,
-                    Led::Bottom,
-                    led_color.into(),
-                    Brightness::Custom(out_led[1]),
-                );
-                leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-                leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
+                leds.set(1, Led::Top, led_color, Brightness::Custom(out_led[0]));
+                leds.set(1, Led::Bottom, led_color, Brightness::Custom(out_led[1]));
+                leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
+                leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
             }
         }
     };
