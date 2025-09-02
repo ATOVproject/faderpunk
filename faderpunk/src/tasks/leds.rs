@@ -258,22 +258,13 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
 
     startup_animation(&mut leds).await;
 
-    // TODO: find a better way to initialize these
     leds.base_layer[16] = LedEffect::Static {
-        color: RGB8 {
-            r: 75,
-            g: 75,
-            b: 75,
-        },
-        brightness: 255,
+        color: Color::Pink.into(),
+        brightness: Brightness::Lower.into(),
     };
     leds.base_layer[17] = LedEffect::Static {
-        color: RGB8 {
-            r: 75,
-            g: 75,
-            b: 75,
-        },
-        brightness: 255,
+        color: Color::Yellow.into(),
+        brightness: Brightness::Lower.into(),
     };
 
     loop {
