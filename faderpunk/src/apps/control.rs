@@ -145,7 +145,7 @@ pub async fn run(
             p.midi_cc,
             p.on_release,
             p.bipolar,
-            p.color.into(),
+            p.color,
         )
     });
 
@@ -211,16 +211,12 @@ pub async fn run(
                 } else {
                     0
                 }
+            } else if !bipolar {
+                curve.at(main_layer_value)
+            } else if main_layer_value > 2047 {
+                curve.at((main_layer_value - 2047) * 2) / 2 + 2047
             } else {
-                if !bipolar {
-                    curve.at(main_layer_value)
-                } else {
-                    if main_layer_value > 2047 {
-                        curve.at(((main_layer_value - 2047) * 2).into()) / 2 + 2047
-                    } else {
-                        2047 - curve.at(((2047 - main_layer_value) * 2).into()) / 2
-                    }
-                }
+                2047 - curve.at((2047 - main_layer_value) * 2) / 2
             };
 
             let out = output_glob.modify(|o| clickless(*o, val));
