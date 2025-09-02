@@ -186,6 +186,15 @@ impl From<u8> for Note {
     }
 }
 
+impl FromValue for Note {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::Note(n) => n,
+            _ => Self::default(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
 #[repr(u8)]
 pub enum Key {
@@ -349,7 +358,7 @@ impl FromValue for Waveform {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum Color {
     #[default]
     White,
@@ -485,6 +494,10 @@ pub enum Param {
         name: &'static str,
         variants: &'static [Range],
     },
+    Note {
+        name: &'static str,
+        variants: &'static [Note],
+    },
 }
 
 #[allow(non_camel_case_types)]
@@ -498,6 +511,7 @@ pub enum Value {
     Waveform(Waveform),
     Color(Color),
     Range(Range),
+    Note(Note),
 }
 
 impl From<Curve> for Value {
@@ -521,6 +535,12 @@ impl From<Color> for Value {
 impl From<Range> for Value {
     fn from(value: Range) -> Self {
         Value::Range(value)
+    }
+}
+
+impl From<Note> for Value {
+    fn from(value: Note) -> Self {
+        Value::Note(value)
     }
 }
 
