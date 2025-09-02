@@ -1,3 +1,4 @@
+use defmt::info;
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -5,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue,
+    latch::LatchLayer,
     utils::{attenuverter, clickless, is_close, split_unsigned_value},
     Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
 };
@@ -59,7 +61,7 @@ impl AppParams for Params {
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     att_saved: u16,
-    offset_saved: i32,
+    offset_saved: u16,
 }
 
 impl Default for Storage {
@@ -109,16 +111,6 @@ pub async fn run(
     let input = app.make_in_jack(0, Range::_Neg5_5V).await;
     let output = app.make_out_jack(1, Range::_Neg5_5V).await;
 
-    let att_glob = app.make_global(4095);
-    let latched_glob = app.make_global([false; 2]);
-    let offset_glob = app.make_global(0);
-
-    let offset = storage.query(|s| s.offset_saved);
-    let att = storage.query(|s| s.att_saved);
-
-    offset_glob.set(offset);
-    att_glob.set(att);
-
     leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
     leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
 
@@ -131,13 +123,13 @@ pub async fn run(
             app.delay_millis(1).await;
             let inval = input.get_value();
 
-            att = clickless(att, att_glob.get());
-            offset = clickless(offset, (offset_glob.get() + 2047) as u16);
+            let att = storage.query(|s| (s.att_saved));
+            let offset = storage.query(|s| (s.offset_saved)) as i32 - 2047;
 
-            let outval = ((attenuverter(inval as u16, att as u16) as i32 + (offset - 2047) as i32)
+            let outval = ((attenuverter(inval as u16, att as u16) as i32 + (offset) as i32)
                 .clamp(0, 4095) as u16)
                 .clamp(0, 4095);
-            // info!("{}", attack_glob.get().await);
+            // info!("att: {}, offset: {},outval :{}", att, offset, outval);
 
             output.set_value(outval as u16);
 
@@ -168,40 +160,28 @@ pub async fn run(
                 led_color.into(),
                 Brightness::Custom(out_led[1]),
             );
-
-            for n in 0..2 {
-                if !old_button[n] && buttons.is_button_pressed(n) {
-                    latched_glob.set([false; 2]);
-                    old_button[n] = true;
-                }
-                if old_button[n] && !buttons.is_button_pressed(n) {
-                    latched_glob.set([false; 2]);
-                    old_button[n] = false;
-                }
-            }
         }
     };
 
     let fut2 = async {
+        let mut latch = [
+            app.make_latch(faders.get_value_at(0)),
+            app.make_latch(faders.get_value_at(1)),
+        ];
         loop {
             let chan = faders.wait_for_any_change().await;
             let vals = faders.get_all_values();
-            let mut latched = latched_glob.get();
 
             if chan == 0 {
-                let offset = offset_glob.get();
-                if is_close((offset + 2047) as u16, vals[chan]) {
-                    latched[chan] = true;
-                    latched_glob.set(latched);
-                }
-
-                if latched[chan] {
-                    offset_glob.set(vals[chan] as i32 - 2047);
+                if let Some(new_value) = latch[chan].update(
+                    faders.get_value_at(chan),
+                    LatchLayer::Main,
+                    storage.query(|s| (s.offset_saved)),
+                ) {
                     storage
                         .modify_and_save(
                             |s| {
-                                s.offset_saved = offset;
-                                s.offset_saved
+                                s.offset_saved = new_value;
                             },
                             None,
                         )
@@ -210,19 +190,15 @@ pub async fn run(
             }
 
             if chan == 1 {
-                let att = att_glob.get();
-                if is_close(att, vals[chan]) {
-                    latched[chan] = true;
-                    latched_glob.set(latched);
-                }
-                if latched[chan] {
-                    att_glob.set(vals[chan]);
+                let target_value = storage.query(|s| s.att_saved);
 
+                if let Some(new_value) =
+                    latch[chan].update(faders.get_value_at(chan), LatchLayer::Main, target_value)
+                {
                     storage
                         .modify_and_save(
-                            |s: &mut Storage| {
-                                s.att_saved = vals[chan];
-                                s.att_saved
+                            |s| {
+                                s.att_saved = new_value;
                             },
                             None,
                         )
@@ -238,11 +214,10 @@ pub async fn run(
             if is_shift_pressed {
             } else {
                 if chan == 0 {
-                    offset_glob.set(0);
                     storage
                         .modify_and_save(
                             |s| {
-                                s.offset_saved = 0;
+                                s.offset_saved = 2047;
                                 s.offset_saved
                             },
                             None,
@@ -250,7 +225,6 @@ pub async fn run(
                         .await;
                 }
                 if chan == 1 {
-                    att_glob.set(4095);
                     storage
                         .modify_and_save(
                             |s| {
@@ -270,12 +244,6 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-
-                    let offset = storage.query(|s| s.offset_saved);
-                    let att = storage.query(|s| s.att_saved);
-
-                    offset_glob.set(offset);
-                    att_glob.set(att);
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }
