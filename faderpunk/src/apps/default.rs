@@ -16,7 +16,7 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 6;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Default", "16n vibes plus mute buttons")
+pub static CONFIG: Config<PARAMS> = Config::new("Control", "Simple MIDI/CV controller")
     .add_param(Param::Curve {
         name: "Curve",
         variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
@@ -212,7 +212,15 @@ pub async fn run(
                     0
                 }
             } else {
-                curve.at(main_layer_value)
+                if !bipolar {
+                    curve.at(main_layer_value)
+                } else {
+                    if main_layer_value > 2047 {
+                        curve.at(((main_layer_value - 2047) * 2).into()) / 2 + 2047
+                    } else {
+                        2047 - curve.at(((2047 - main_layer_value) * 2).into()) / 2
+                    }
+                }
             };
 
             let out = output_glob.modify(|o| clickless(*o, val));
