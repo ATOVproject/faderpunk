@@ -358,11 +358,9 @@ pub async fn run(
                     match latch_layer {
                         LatchLayer::Main => {
                             num_beat_glob.set((new_value as u32 * 15 / 4095) as u8 + 1);
-                            num_step_glob.set(
-                                (storage.query(|s| {
-                                    s.fader_saved[1] as u32 * num_beat_glob.get() as u32 / 4095
-                                }) as u8),
-                            );
+                            num_step_glob.set(storage.query(|s| {
+                                s.fader_saved[1] as u32 * num_beat_glob.get() as u32 / 4095
+                            }) as u8);
                             let shift_stored_faders = storage.query(|s| s.shift_fader_saved);
 
                             rotation_glob.set(

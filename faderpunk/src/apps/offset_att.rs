@@ -123,47 +123,27 @@ pub async fn run(
             let offset = offset_fad as i32 - 2047;
 
             let mut outval =
-                (attenuverter(inval as u16, att as u16) as i32 + offset).clamp(0, 4095) as u16;
+                (attenuverter(inval as u16, att) as i32 + offset).clamp(0, 4095) as u16;
             outval = ((outval as i32 - 2047) * 2 + 2047).clamp(0, 4094) as u16;
 
             output.set_value(outval as u16);
 
             let slew_led = split_unsigned_value(inval as u16);
-            leds.set(
-                0,
-                Led::Top,
-                led_color.into(),
-                Brightness::Custom(slew_led[0]),
-            );
-            leds.set(
-                0,
-                Led::Bottom,
-                led_color.into(),
-                Brightness::Custom(slew_led[1]),
-            );
+            leds.set(0, Led::Top, led_color, Brightness::Custom(slew_led[0]));
+            leds.set(0, Led::Bottom, led_color, Brightness::Custom(slew_led[1]));
 
             let out_led = split_unsigned_value(outval);
-            leds.set(
-                1,
-                Led::Top,
-                led_color.into(),
-                Brightness::Custom(out_led[0]),
-            );
-            leds.set(
-                1,
-                Led::Bottom,
-                led_color.into(),
-                Brightness::Custom(out_led[1]),
-            );
+            leds.set(1, Led::Top, led_color, Brightness::Custom(out_led[0]));
+            leds.set(1, Led::Bottom, led_color, Brightness::Custom(out_led[1]));
             if storage.query(|s| (s.offset_saved)) != 2047 {
-                leds.set(0, Led::Button, led_color.into(), Brightness::Low);
+                leds.set(0, Led::Button, led_color, Brightness::Low);
             } else {
-                leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
+                leds.set(0, Led::Button, led_color, Brightness::Lower);
             }
             if storage.query(|s| (s.att_saved)) != 3071 {
-                leds.set(1, Led::Button, led_color.into(), Brightness::Low);
+                leds.set(1, Led::Button, led_color, Brightness::Low);
             } else {
-                leds.set(1, Led::Button, led_color.into(), Brightness::Lower);
+                leds.set(1, Led::Button, led_color, Brightness::Lower);
             }
         }
     };

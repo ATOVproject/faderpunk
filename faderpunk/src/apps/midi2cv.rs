@@ -150,7 +150,7 @@ pub async fn run(
 ) {
     let range = Range::_0_10V;
 
-    let (midi_chan, midi_cc, curve, bend_range, color, mode) = params.query(|p| {
+    let (midi_chan, midi_cc, curve, bend_range, led_color, mode) = params.query(|p| {
         (
             p.midi_channel,
             p.midi_cc,
@@ -172,10 +172,8 @@ pub async fn run(
 
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
-    let (muted) = storage.query(|s| (s.muted));
+    let muted = storage.query(|s| (s.muted));
     muted_glob.set(muted);
-
-    let led_color = color.into();
 
     if muted {
         leds.unset(0, Led::Button);
@@ -228,7 +226,7 @@ pub async fn run(
                 if muted {
                     val = 0;
                 } else {
-                    val = curve.at((fadval + offset).into());
+                    val = curve.at(fadval + offset);
                 }
 
                 outval = clickless(outval, val);
@@ -256,11 +254,11 @@ pub async fn run(
                 if !muted_glob.get() {
                     let offset = offset_glob.get();
                     outval = clickless(outval, offset);
-                    jack.set_value(outval as u16);
+                    jack.set_value(outval);
                 } else {
                     let offset = 2048;
                     outval = clickless(outval, offset);
-                    jack.set_value(outval as u16);
+                    jack.set_value(outval);
                 }
             }
             if mode == 1 {

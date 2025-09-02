@@ -220,7 +220,7 @@ pub async fn run(
             if gatein <= 406 && old_gatein > 406 {
                 // catching falling edge
                 if note_on {
-                    midi.send_note_off(midi_out as u8).await;
+                    midi.send_note_off(midi_out).await;
                     note_on = false;
 
                     if muted_glob.get() {

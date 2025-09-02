@@ -7,7 +7,7 @@ use libfp::{
 
 use libfp::{Config, Range};
 
-use crate::app::{App, Led, RGB8};
+use crate::app::{App, Led};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 0;

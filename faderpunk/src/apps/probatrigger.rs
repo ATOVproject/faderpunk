@@ -154,8 +154,6 @@ pub async fn run(
 
     let mut clkn = 0;
 
-    // const led_color.into(): RGB<u8> = ATOV_YELLOW;
-
     let mut rndval = die.roll();
 
     let (res, mute, att) = storage.query(|s| (s.fader_saved, s.mute_saved, s.prob_saved));
@@ -167,7 +165,7 @@ pub async fn run(
         leds.unset(0, Led::Top);
         leds.unset(0, Led::Bottom);
     } else {
-        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+        leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
     }
 
     let fut1 = async {
@@ -189,7 +187,7 @@ pub async fn run(
                     if clkn % div == 0 {
                         if curve.at(val) >= rndval && !muted {
                             jack.set_high().await;
-                            leds.set(0, Led::Top, led_color.into(), LED_BRIGHTNESS);
+                            leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
                             midi.send_note_on(note as u8 - 1, 4095).await;
                             note_on = true;
                         }
@@ -205,14 +203,14 @@ pub async fn run(
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note as u8 - 1).await;
-                            leds.set(0, Led::Top, led_color.into(), Brightness::Custom(0));
+                            leds.set(0, Led::Top, led_color, Brightness::Custom(0));
                             // leds.unset(0, Led::Top);
                             note_on = false;
                             jack.set_low().await;
                         }
 
                         // leds.unset(0, Led::Bottom);
-                        leds.set(0, Led::Bottom, led_color.into(), Brightness::Custom(0));
+                        leds.set(0, Led::Bottom, led_color, Brightness::Custom(0));
                     }
                     clkn += 1;
                 }
@@ -240,7 +238,7 @@ pub async fn run(
                 jack.set_low().await;
                 leds.unset_all();
             } else {
-                leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+                leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
             }
         }
     };
@@ -316,7 +314,7 @@ pub async fn run(
                         leds.unset(0, Led::Top);
                         leds.unset(0, Led::Bottom);
                     } else {
-                        leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+                        leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
                     }
                 }
 
