@@ -16,6 +16,7 @@ import {
   CurveParamInput,
   WaveformParamInput,
   ColorParamInput,
+  RangeParamInput,
 } from "@/components/param-inputs";
 import { getAppParams, setAppParams } from "@/utils/config";
 
@@ -251,6 +252,33 @@ export function AppConfigDrawer({
               if (selectedValue) {
                 handleParamChange(index, {
                   tag: "Color",
+                  value: { tag: selectedValue },
+                });
+              }
+            }}
+          />
+        );
+      case "Range":
+        return (
+          <RangeParamInput
+            key={`param-${index}`}
+            {...commonProps}
+            selectedKeys={
+              value?.value?.tag ? [value.value.tag] : ["_0_10V"]
+            }
+            variants={
+              param.value?.variants?.map((v: any) => v.tag || v) || [
+                "_0_10V",
+                "_0_5V",
+                "_Neg5_5V",
+              ]
+            }
+            onSelectionChange={(keys) => {
+              const selectedValue = Array.from(keys)[0];
+
+              if (selectedValue) {
+                handleParamChange(index, {
+                  tag: "Range",
                   value: { tag: selectedValue },
                 });
               }

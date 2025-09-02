@@ -26,6 +26,7 @@ fn main() {
             libfp::Layout,
             libfp::Note,
             libfp::Param,
+            libfp::Range,
             libfp::Value,
             libfp::Waveform
         ),
