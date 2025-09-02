@@ -1,5 +1,5 @@
 register_apps!(
-    1 => default,
+    1 => control,
     2 => lfo,
     3 => ad,
     4 => seq8,
