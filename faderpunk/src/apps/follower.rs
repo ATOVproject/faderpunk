@@ -1,13 +1,12 @@
-// todo
-// find what to do with the buttons
-
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
+    colors::RED,
     ext::FromValue,
+    latch::LatchLayer,
     utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
     Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
@@ -64,7 +63,7 @@ impl AppParams for Params {
 pub struct Storage {
     fader_saved: [u16; 2],
     att_saved: u16,
-    offset_saved: i32,
+    offset_saved: u16,
 }
 
 impl Default for Storage {
@@ -113,22 +112,10 @@ pub async fn run(
     let input = app.make_in_jack(0, Range::_Neg5_5V).await;
     let output = app.make_out_jack(1, Range::_Neg5_5V).await;
 
-    let attack_glob = app.make_global(1);
-    let decay_glob = app.make_global(1);
-    let att_glob = app.make_global(4095);
-    let latched_glob = app.make_global([false; 2]);
-    let offset_glob = app.make_global(0);
+    let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let mut oldval = 0.;
     let mut shift_old = false;
-
-    let (stored_faders, offset, att) =
-        storage.query(|s| (s.fader_saved, s.offset_saved, s.att_saved));
-
-    offset_glob.set(offset);
-    att_glob.set(att);
-    attack_glob.set(curve.at(stored_faders[0]));
-    decay_glob.set(curve.at(stored_faders[1]));
 
     leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
     leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
@@ -136,20 +123,28 @@ pub async fn run(
     let fut1 = async {
         loop {
             app.delay_millis(1).await;
+            let latch_active_layer =
+                glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
+
             let mut inval = input.get_value();
             inval = rectify(inval);
 
-            oldval =
-                slew_limiter(oldval, inval, attack_glob.get(), decay_glob.get()).clamp(0., 4095.);
+            oldval = slew_limiter(
+                oldval,
+                inval,
+                storage.query(|s| (s.fader_saved[0])),
+                storage.query(|s| (s.fader_saved[1])),
+            )
+            .clamp(0., 4095.);
 
-            let att = att_glob.get();
-            let offset = offset_glob.get();
+            let att = storage.query(|s| (s.att_saved));
+            let offset = storage.query(|s| (s.offset_saved)) as i32 - 2047;
 
             let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
 
             output.set_value(outval);
 
-            if !buttons.is_shift_pressed() {
+            if latch_active_layer == LatchLayer::Main {
                 let slew_led = split_unsigned_value(oldval as u16);
                 leds.set(
                     0,
@@ -177,6 +172,8 @@ pub async fn run(
                     led_color.into(),
                     Brightness::Custom(out_led[1]),
                 );
+                leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
+                leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
             } else {
                 let off_led = split_signed_value(offset);
                 leds.set(0, Led::Top, Color::Red, Brightness::Custom(off_led[0]));
@@ -184,97 +181,93 @@ pub async fn run(
                 let att_led = split_unsigned_value(att);
                 leds.set(1, Led::Top, Color::Red, Brightness::Custom(att_led[0]));
                 leds.set(1, Led::Bottom, Color::Red, Brightness::Custom(att_led[1]));
-            }
-
-            if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set([false; 2]);
-                shift_old = true;
-                leds.unset(0, Led::Button);
-                leds.unset(1, Led::Button);
-            }
-            if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set([false; 2]);
-                shift_old = false;
-
-                leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-                leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
+                if storage.query(|s| (s.offset_saved)) == 2047 {
+                    leds.unset(0, Led::Button);
+                } else {
+                    leds.set(0, Led::Button, Color::Red, BUTTON_BRIGHTNESS);
+                }
+                if storage.query(|s| (s.att_saved)) == 4095 {
+                    leds.unset(1, Led::Button);
+                } else {
+                    leds.set(1, Led::Button, Color::Red, BUTTON_BRIGHTNESS);
+                }
             }
         }
     };
 
     let fut2 = async {
+        let mut latch = [
+            app.make_latch(faders.get_value_at(0)),
+            app.make_latch(faders.get_value_at(1)),
+        ];
+
         loop {
             let chan = faders.wait_for_any_change().await;
-            let vals = faders.get_all_values();
-            let mut latched = latched_glob.get();
-
-            if !buttons.is_shift_pressed() {
-                let mut stored_faders = storage.query(|s| s.fader_saved);
-                if is_close(stored_faders[chan], vals[chan]) {
-                    latched[chan] = true;
-                    latched_glob.set(latched);
-                }
-                if latched[chan] {
-                    if chan == 0 {
-                        attack_glob.set(curve.at(vals[chan]));
-                        stored_faders[chan] = vals[chan];
+            let latch_layer = glob_latch_layer.get();
+            if chan == 0 {
+                let target_value = match latch_layer {
+                    LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                    LatchLayer::Alt => storage.query(|s| s.offset_saved),
+                    _ => unreachable!(),
+                };
+                if let Some(new_value) =
+                    latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                {
+                    match latch_layer {
+                        LatchLayer::Main => {
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.fader_saved[chan] = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
+                        LatchLayer::Alt => {
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.offset_saved = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
+                        _ => unreachable!(),
                     }
-
-                    if chan == 1 {
-                        decay_glob.set(curve.at(vals[chan]));
-                        stored_faders[chan] = vals[chan];
-                    }
-
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.fader_saved = stored_faders;
-                                s.fader_saved
-                            },
-                            None,
-                        )
-                        .await;
                 }
             } else {
-                if chan == 0 {
-                    let offset = offset_glob.get();
-                    if is_close((offset + 2047) as u16, vals[chan]) {
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-
-                    if latched[chan] {
-                        offset_glob.set(vals[chan] as i32 - 2047);
-                        storage
-                            .modify_and_save(
-                                |s| {
-                                    s.offset_saved = offset;
-                                    s.offset_saved
-                                },
-                                None,
-                            )
-                            .await;
-                    }
-                }
-
-                if chan == 1 {
-                    let att = att_glob.get();
-                    if is_close(att, vals[chan]) {
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-                    if latched[chan] {
-                        att_glob.set(vals[chan]);
-
-                        storage
-                            .modify_and_save(
-                                |s: &mut Storage| {
-                                    s.att_saved = vals[chan];
-                                    s.att_saved
-                                },
-                                None,
-                            )
-                            .await;
+                let target_value = match latch_layer {
+                    LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                    LatchLayer::Alt => storage.query(|s| s.att_saved),
+                    _ => unreachable!(),
+                };
+                if let Some(new_value) =
+                    latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                {
+                    match latch_layer {
+                        LatchLayer::Main => {
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.fader_saved[chan] = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
+                        LatchLayer::Alt => {
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.att_saved = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
+                        _ => unreachable!(),
                     }
                 }
             }
@@ -285,39 +278,12 @@ pub async fn run(
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             if !is_shift_pressed {
-                // if chan == 0 {
-                //     leds.reset(0, Led::Button);
-                //     attack_glob.set(0);
-                //     storage
-                //         .modify_and_save(
-                //             |s| {
-                //                 s.fader_saved[chan] = 0;
-                //                 s.fader_saved
-                //             },
-                //             None,
-                //         )
-                //         .await;
-                // }
-                // if chan == 1 {
-                //     leds.reset(1, Led::Button);
-                //     decay_glob.set(0);
-                //     storage
-                //         .modify_and_save(
-                //             |s| {
-                //                 s.fader_saved[chan] = 0;
-                //                 s.fader_saved
-                //             },
-                //             None,
-                //         )
-                //         .await;
-                // }
             } else {
                 if chan == 0 {
-                    offset_glob.set(0);
                     storage
                         .modify_and_save(
                             |s| {
-                                s.offset_saved = 0;
+                                s.offset_saved = 2047;
                                 s.offset_saved
                             },
                             None,
@@ -325,7 +291,6 @@ pub async fn run(
                         .await;
                 }
                 if chan == 1 {
-                    att_glob.set(4095);
                     storage
                         .modify_and_save(
                             |s| {
@@ -345,14 +310,6 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-
-                    let (stored_faders, offset, att) =
-                        storage.query(|s| (s.fader_saved, s.offset_saved, s.att_saved));
-
-                    offset_glob.set(offset);
-                    att_glob.set(att);
-                    attack_glob.set(curve.at(stored_faders[0]));
-                    decay_glob.set(curve.at(stored_faders[1]));
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }

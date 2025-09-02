@@ -1,8 +1,3 @@
-// TODO :
-// fix when timer is over timer th
-// add trigger on midi
-// Fix the saving
-
 use defmt::info;
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
