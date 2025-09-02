@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue,
+    latch::LatchLayer,
     utils::{bits_7_16, clickless, is_close, scale_bits_7_12},
     Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
@@ -162,21 +163,19 @@ pub async fn run(
 
     let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
     let muted_glob = app.make_global(false);
-    let att_glob = app.make_global(4095);
-    let latched_glob = app.make_global(false);
+
     let offset_glob = app.make_global(0);
     let pitch_glob = app.make_global(0);
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
 
-    let (muted, att) = storage.query(|s| (s.muted, s.att_saved));
+    let glob_latch_layer = app.make_global(LatchLayer::Main);
+
+    let (muted) = storage.query(|s| (s.muted));
     muted_glob.set(muted);
-    att_glob.set(att);
 
     let led_color = color.into();
-
-    let quantizer = app.use_quantizer(range);
 
     if muted {
         leds.unset(0, Led::Button);
@@ -185,10 +184,10 @@ pub async fn run(
     }
 
     let jack = if mode != 5 {
-        info!("range 0-10V");
+        // info!("range 0-10V");
         app.make_out_jack(0, Range::_0_10V).await
     } else {
-        info!("range +/-5V");
+        // info!("range +/-5V");
         app.make_out_jack(0, Range::_Neg5_5V).await
     };
 
@@ -212,12 +211,16 @@ pub async fn run(
 
         loop {
             app.delay_millis(1).await;
+            let latch_active_layer =
+                glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
+
             if mode == 0 || mode == 4 {
                 let muted = muted_glob.get();
                 if !buttons.is_shift_pressed() {
                     fadval = fader.get_value();
                 }
-                let att = att_glob.get();
+                let att = storage.query(|s| (s.att_saved));
+                // info!("{}", att);
                 let offset = offset_glob.get();
 
                 // if buttons.is_shift_pressed() {
@@ -227,30 +230,26 @@ pub async fn run(
                 } else {
                     val = curve.at((fadval + offset).into());
                 }
-                if buttons.is_shift_pressed() {
-                    leds.set(0, Led::Top, Color::Red, Brightness::Custom((att / 16) as u8));
+
+                outval = clickless(outval, val);
+                attval = ((outval as u32 * att as u32) / 4095) as u16;
+
+                jack.set_value(attval);
+                if latch_active_layer == LatchLayer::Alt {
+                    leds.set(
+                        0,
+                        Led::Top,
+                        Color::Red,
+                        Brightness::Custom((att / 16) as u8),
+                    );
                     leds.unset(0, Led::Bottom);
                 } else {
                     leds.set(
                         0,
                         Led::Top,
                         led_color,
-                        Brightness::Custom((outval as f32 / 16.0) as u8),
+                        Brightness::Custom((attval as f32 / 16.0) as u8),
                     );
-                }
-                outval = clickless(outval, val);
-                attval = ((outval as u32 * att as u32) / 4095) as u16;
-
-                jack.set_value(attval);
-
-                if !shift_old && buttons.is_shift_pressed() {
-                    latched_glob.set(false);
-                    shift_old = true;
-                }
-                if shift_old && !buttons.is_shift_pressed() {
-                    latched_glob.set(false);
-
-                    shift_old = false;
                 }
             }
             if mode == 5 {
@@ -276,12 +275,21 @@ pub async fn run(
                 let out = (pitch as i32 + outval as i32 - 2047).clamp(0, 4095) as u16;
                 // //info!("outval ={}, pitch = {} out = {}", outval, pitch, out);
                 jack.set_value(out);
-            } else {
-                // if buttons.is_shift_pressed() {
-                //     leds.set(0, Led::Top, ATOV_RED, (att / 16) as u8);
-                //     leds.set(0, Led::Bottom, ATOV_RED, 0);
-                // }
             }
+
+            // match latch_active_layer {
+            //     LatchLayer::Main => {}
+            //     LatchLayer::Alt => {
+            //         leds.set(
+            //             0,
+            //             Led::Top,
+            //             Color::Red,
+            //             Brightness::Custom((att / 16) as u8),
+            //         );
+            //         leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(0));
+            //     }
+            //     _ => unreachable!(),
+            // }
         }
     };
 
@@ -311,25 +319,45 @@ pub async fn run(
         }
     };
     let fut3 = async {
+        let mut latch = app.make_latch(fader.get_value());
         loop {
             fader.wait_for_change().await;
-            let fader_val = fader.get_value();
 
-            if !latched_glob.get() && is_close(fader_val, att_glob.get()) {
-                latched_glob.set(true);
+            let latch_layer = glob_latch_layer.get();
+
+            let target_value = match latch_layer {
+                LatchLayer::Alt => storage.query(|s| s.att_saved),
+                LatchLayer::Main => 0,
+
+                _ => unreachable!(),
+            };
+
+            if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
+                match latch_layer {
+                    LatchLayer::Main => {}
+                    LatchLayer::Alt => {
+                        storage
+                            .modify_and_save(|s| s.att_saved = new_value, None)
+                            .await;
+                    }
+                    _ => unreachable!(),
+                }
             }
-            if buttons.is_shift_pressed() && latched_glob.get() {
-                att_glob.set(fader_val);
-                storage
-                    .modify_and_save(
-                        |s| {
-                            s.att_saved = fader_val;
-                            s.att_saved
-                        },
-                        None,
-                    )
-                    .await;
-            }
+
+            // let fader_val = fader.get_value();
+
+            // if buttons.is_shift_pressed() && latched_glob.get() {
+            //     att_glob.set(fader_val);
+            //     storage
+            //         .modify_and_save(
+            //             |s| {
+            //                 s.att_saved = fader_val;
+            //                 s.att_saved
+            //             },
+            //             None,
+            //         )
+            //         .await;
+            // }
         }
     };
 
@@ -427,7 +455,7 @@ pub async fn run(
                 }
                 MidiMessage::ChannelAftertouch { vel } => {
                     if mode == 4 {
-                        info!("ch aftertouch");
+                        // info!("ch aftertouch");
                         let val = scale_bits_7_12(vel);
                         offset_glob.set(val);
                     }
