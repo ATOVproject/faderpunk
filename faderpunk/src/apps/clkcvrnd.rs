@@ -2,6 +2,7 @@
 // Save div, mute, attenuation - Added the saving slots, need to add write/read in the app.
 // Add attenuator (shift + fader)
 
+use defmt::info;
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use serde::{Deserialize, Serialize};
@@ -12,8 +13,8 @@ use crate::app::{
 
 use libfp::{
     constants::{ATOV_PURPLE, LED_MID},
-    utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
-    Config, Param, Range, Value,
+    utils::{attenuate, attenuate_bipolar, is_close, slew_limiter, split_unsigned_value},
+    Config, Curve, Param, Range, Value,
 };
 
 pub const CHANNELS: usize = 1;
@@ -41,6 +42,7 @@ pub struct Storage {
     fader_saved: u16,
     mute_save: bool,
     att_saved: u16,
+    slew_saved: u16,
 }
 
 impl Default for Storage {
@@ -49,6 +51,7 @@ impl Default for Storage {
             fader_saved: 3000,
             mute_save: false,
             att_saved: 4096,
+            slew_saved: 0,
         }
     }
 }
@@ -94,6 +97,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let div_glob = app.make_global(6);
     let att_glob = app.make_global(4096);
     let latched_glob = app.make_global(false);
+    let val_glob = app.make_global(2047);
 
     let output = app.make_out_jack(0, Range::_Neg5_5V).await;
 
@@ -101,6 +105,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
 
     let mut clkn = 0;
     let mut val = 2048;
+
+    let curve = Curve::Logarithmic;
 
     const LED_COLOR: RGB8 = ATOV_PURPLE;
 
@@ -129,14 +135,11 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 }
                 ClockEvent::Tick => {
                     let muted = glob_muted.get().await;
-                    let att = att_glob.get().await;
+
                     let div = div_glob.get().await;
                     if clkn % div == 0 && !muted {
-                        let midival = attenuate(val, att);
-                        let jackval = attenuate_bipolar(val, att);
-                        output.set_value(jackval);
-                        midi.send_cc(cc as u8, midival).await;
-                        let ledj = split_unsigned_value(jackval);
+                        val_glob.set(rnd.roll()).await;
+                        let ledj = split_unsigned_value(val_glob.get().await);
                         let r = (rnd.roll() / 16) as u8;
                         let g = (rnd.roll() / 16) as u8;
                         let b = (rnd.roll() / 16) as u8;
@@ -145,7 +148,6 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                         leds.set(0, Led::Top, color, ledj[0]);
                         leds.set(0, Led::Bottom, color, ledj[1]);
                         leds.set(0, Led::Button, color, 125);
-                        val = rnd.roll();
                     }
                     clkn += 1;
                 }
@@ -157,24 +159,26 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
     let fut2 = async {
         loop {
             buttons.wait_for_any_down().await;
-            let muted = glob_muted.toggle().await;
+            if buttons.is_shift_pressed() {
+                let muted = glob_muted.toggle().await;
 
-            storage
-                .modify_and_save(
-                    |s| {
-                        s.mute_save = muted;
-                        s.mute_save
-                    },
-                    None,
-                )
-                .await;
+                storage
+                    .modify_and_save(
+                        |s| {
+                            s.mute_save = muted;
+                            s.mute_save
+                        },
+                        None,
+                    )
+                    .await;
 
-            if muted {
-                output.set_value(2047);
-                midi.send_cc(cc as u8, 0).await;
-                leds.reset_all();
-            } else {
-                leds.set(0, Led::Button, LED_COLOR, LED_MID);
+                if muted {
+                    output.set_value(2047);
+                    midi.send_cc(cc as u8, 0).await;
+                    leds.reset_all();
+                } else {
+                    leds.set(0, Led::Button, LED_COLOR, LED_MID);
+                }
             }
         }
     };
@@ -185,7 +189,7 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
             storage.load(None).await;
             let fad = fader.get_value();
 
-            if !buttons.is_shift_pressed() {
+            if !buttons.is_shift_pressed() && !buttons.is_button_pressed(0) {
                 let fad_saved = storage.query(|s| s.fader_saved).await;
                 if is_close(fad, fad_saved) {
                     latched_glob.set(true).await;
@@ -194,7 +198,8 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                     div_glob.set(resolution[fad as usize / 345]).await;
                     storage.modify_and_save(|s| s.fader_saved = fad, None).await;
                 }
-            } else {
+            }
+            if buttons.is_shift_pressed() && !buttons.is_button_pressed(0) {
                 let att = att_glob.get().await;
                 if is_close(fad, att) {
                     latched_glob.set(true).await;
@@ -202,6 +207,14 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 if latched_glob.get().await {
                     att_glob.set(fad).await;
                     storage.modify_and_save(|s| s.att_saved = fad, None).await;
+                }
+            }
+            if !buttons.is_shift_pressed() && buttons.is_button_pressed(0) {
+                if is_close(fad, storage.query(|s| s.slew_saved).await) {
+                    latched_glob.set(true).await;
+                }
+                if latched_glob.get().await {
+                    storage.modify_and_save(|s| s.slew_saved = fad, None).await;
                 }
             }
         }
@@ -236,9 +249,9 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
         }
     };
 
-    let mut shift_old = false;
-
-    let shift = async {
+    let timed_loop = async {
+        let mut shift_old = false;
+        let mut out = 0.;
         loop {
             // latching on pressing and depressing shift
 
@@ -251,8 +264,28 @@ pub async fn run(app: &App<CHANNELS>, params: &Params<'_>, storage: ManagedStora
                 latched_glob.set(false).await;
                 shift_old = false;
             }
+            let att = att_glob.get().await;
+
+            let midival = attenuate(val_glob.get().await, att);
+            let jackval = attenuate_bipolar(val_glob.get().await, att);
+
+            midi.send_cc(cc as u8, midival).await;
+            let ledj = split_unsigned_value(jackval);
+
+            out = slew_2(
+                out,
+                jackval,
+                curve.at(storage.query(|s| s.slew_saved).await as usize),
+            );
+            // out = slew_2(out, jackval, 4095);
+            output.set_value(out as u16);
         }
     };
 
-    join5(fut1, fut2, fut3, scene_handler, shift).await;
+    join5(fut1, fut2, fut3, scene_handler, timed_loop).await;
+}
+
+fn slew_2(prev: f32, input: u16, slew: u16) -> f32 {
+    let output = (prev * slew as f32 + input as f32) / (slew + 1) as f32;
+    output
 }
