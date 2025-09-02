@@ -10,7 +10,7 @@ use heapless::Vec;
 use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
-use libfp::{Brightness, Color, Config, Curve, Range, Value, APP_MAX_PARAMS};
+use libfp::{latch::LatchLayer, Brightness, Color, Config, Curve, Range, Value, APP_MAX_PARAMS};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
@@ -96,7 +96,7 @@ pub async fn run(
     let mut midi_in = app.use_midi_input(2);
 
     let times_glob = app.make_global([0.0682, 0.0682]);
-    let latched_glob = app.make_global([false; 2]);
+    let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let gate_on_glob = app.make_global(0);
 
@@ -144,6 +144,9 @@ pub async fn run(
         loop {
             app.delay_millis(1).await;
             timer += 1;
+            let latch_active_layer =
+                glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
+
             let mode = storage.query(|s| s.mode_saved);
             let times = times_glob.get();
             let curve_setting = storage.query(|s| s.curve_saved);
@@ -181,26 +184,14 @@ pub async fn run(
                 }
                 old_gate = false;
             }
-            if timer - start_time > storage.query(|s: &Storage| s.min_gate_saved) as u32
+            if timer - start_time > storage.query(|s: &Storage| s.min_gate_saved) as u32 + 10
                 && t2g
                 && storage.query(|s: &Storage| s.min_gate_saved) != 4095
             {
                 gate_on_glob.modify(|g| (*g - 1).max(0));
 
                 t2g = false;
-                info!(
-                    "gate off, gate count = {}, t2g = {}",
-                    gate_on_glob.get(),
-                    t2g
-                );
             }
-
-            // info!(
-            //     "gate on = {}, old gate = {}, env state = {}",
-            //     gate_on_glob.get().await,
-            //     old_gate,
-            //     env_state
-            // );
 
             if env_state == 1 {
                 if times[0] == minispeed {
@@ -247,7 +238,7 @@ pub async fn run(
             }
             outval = attenuate(outval, storage.query(|s| s.att_saved));
             output.set_value(outval);
-            if shift_old {
+            if latch_active_layer == LatchLayer::Main {
                 leds.set(1, Led::Button, color[mode as usize], Brightness::Lower);
                 if gate_on_glob.get() > 0 {
                     leds.set(0, Led::Button, Color::Red, Brightness::Low);
@@ -262,8 +253,8 @@ pub async fn run(
                     Color::Red,
                     Brightness::Custom((att / 16) as u8),
                 );
-                if timer % storage.query(|s: &Storage| s.min_gate_saved) as u32 + 200
-                    < storage.query(|s: &Storage| s.min_gate_saved) as u32
+                if timer % (storage.query(|s: &Storage| s.min_gate_saved) as u32 + 10) + 200
+                    < (storage.query(|s: &Storage| s.min_gate_saved) as u32 + 10)
                 {
                     leds.set(0, Led::Top, Color::Red, Brightness::Low);
                 } else {
@@ -283,16 +274,6 @@ pub async fn run(
                 }
             }
 
-            if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set([false; 2]);
-                shift_old = true;
-            }
-            if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set([false; 2]);
-
-                shift_old = false;
-            }
-
             if button_old && !buttons.is_button_pressed(0) && buttons.is_shift_pressed() {
                 gate_on_glob.modify(|g| (*g - 1).max(0));
             }
@@ -303,73 +284,87 @@ pub async fn run(
     };
 
     let fut2 = async {
+        let mut latch = [
+            app.make_latch(faders.get_value_at(0)),
+            app.make_latch(faders.get_value_at(1)),
+        ];
+
         loop {
-            let chan: usize = faders.wait_for_any_change().await;
-            let mut latched = latched_glob.get();
-            let vals = faders.get_all_values();
+            let chan = faders.wait_for_any_change().await;
+            let latch_layer = glob_latch_layer.get();
+            if chan == 0 {
+                let target_value = match latch_layer {
+                    LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                    LatchLayer::Alt => storage.query(|s| s.min_gate_saved),
+                    _ => unreachable!(),
+                };
+                if let Some(new_value) =
+                    latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                {
+                    match latch_layer {
+                        LatchLayer::Main => {
+                            times[chan] =
+                                Curve::Logarithmic.at(faders.get_value_at(chan)) as f32 + minispeed;
+                            times_glob.set(times);
 
-            if !buttons.is_shift_pressed() {
-                let mut times = times_glob.get();
-                let mut stored_faders = storage.query(|s| s.fader_saved);
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.fader_saved[chan] = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
+                        LatchLayer::Alt => {
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.min_gate_saved = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            } else {
+                let target_value = match latch_layer {
+                    LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                    LatchLayer::Alt => storage.query(|s| s.att_saved),
+                    _ => unreachable!(),
+                };
+                if let Some(new_value) =
+                    latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                {
+                    match latch_layer {
+                        LatchLayer::Main => {
+                            times[chan] =
+                                Curve::Logarithmic.at(faders.get_value_at(chan)) as f32 + minispeed;
+                            times_glob.set(times);
 
-                if is_close(vals[chan], stored_faders[chan]) {
-                    latched[chan] = true;
-                    latched_glob.set(latched);
-                }
-
-                if latched[chan] {
-                    stored_faders[chan] = vals[chan];
-                    // stor.fader_saved = stored_faders;
-                    // app.save(&*stor, None).await;
-
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.fader_saved = stored_faders;
-                                s.fader_saved
-                            },
-                            None,
-                        )
-                        .await;
-
-                    times[chan] = Curve::Logarithmic.at(vals[chan]) as f32 + minispeed;
-                    // (4096.0 - CURVE_EXP[vals[chan] as usize] as f32) * fadstep + minispeed;
-                    times_glob.set(times);
-                }
-            } else if chan == 1 {
-                if is_close(vals[chan], storage.query(|s| s.att_saved)) {
-                    latched[chan] = true;
-                    latched_glob.set(latched);
-                }
-                if latched[chan] {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.att_saved = vals[chan];
-                                s.att_saved
-                            },
-                            None,
-                        )
-                        .await;
-                }
-            } else if chan == 0 {
-                if is_close(
-                    vals[chan] + 10,
-                    storage.query(|s: &Storage| s.min_gate_saved),
-                ) {
-                    latched[chan] = true;
-                    latched_glob.set(latched);
-                }
-                if latched[chan] {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.min_gate_saved = vals[chan] + 10;
-                                s.min_gate_saved
-                            },
-                            None,
-                        )
-                        .await;
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.fader_saved[chan] = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
+                        LatchLayer::Alt => {
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.att_saved = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
+                        _ => unreachable!(),
+                    }
                 }
             }
         }
@@ -455,7 +450,6 @@ pub async fn run(
                         times[n] = Curve::Logarithmic.at(stored_faders[n]) as f32 + minispeed;
                     }
                     times_glob.set(times);
-                    latched_glob.set([false; 2]);
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }
