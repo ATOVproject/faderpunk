@@ -229,9 +229,20 @@ export function AppConfigDrawer({
               param.value?.variants?.map((v: any) => v.tag || v) || [
                 "White",
                 "Red",
-                "Blue",
+                "Lime",
+                "RoyalBlue",
+                "Magenta",
+                "Cyan",
+                "Orange",
+                "Green",
+                "Violet",
+                "Pink",
+                "SpringGreen",
+                "Crimson",
                 "Yellow",
                 "Purple",
+                "Teal",
+                "Gold",
               ]
             }
             onSelectionChange={(keys) => {
