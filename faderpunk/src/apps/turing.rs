@@ -8,7 +8,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, utils::is_close, Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, utils::is_close, Brightness, Color, Config, Param, Range,
+    Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -162,12 +163,11 @@ pub async fn run(
     // let mut att_glob = app.make_global_with_store(4095, StorageSlot::C);
 
     let prob_glob = app.make_global(0);
-    let length_glob = app.make_global(15_u16);
-    let att_glob = app.make_global(4095);
-    let register_glob = app.make_global(0);
+
     let recall_flag = app.make_global(false);
     let div_glob = app.make_global(4);
     let midi_note = app.make_global(0);
+    let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let latched_glob = app.make_global(true);
 
@@ -179,18 +179,16 @@ pub async fn run(
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
-    let (att, length, mut register, res) =
-        storage.query(|s| (s.att_saved, s.length_saved, s.register_saved, s.res_saved));
-    att_glob.set(att as u32);
-    length_glob.set(length);
-    register_glob.set(register);
+    let (length, mut register, res) =
+        storage.query(|s| (s.length_saved, s.register_saved, s.res_saved));
+
     div_glob.set(resolution[res as usize / 512]);
 
     let fut1 = async {
         let mut clkn = 0;
         let mut att_reg = 0;
         loop {
-            let length = length_glob.get();
+            let length = storage.query(|s| (s.length_saved));
             let div = div_glob.get();
             let mut note = 0;
 
@@ -198,7 +196,7 @@ pub async fn run(
                 ClockEvent::Reset => {
                     clkn = 0;
                     midi.send_note_off((att_reg / 32) as u8).await;
-                    register = register_glob.get();
+                    register = storage.query(|s| (s.register_saved));
 
                     // midi.send_note_off(note as u8 - 1).await;
                     // note_on = false;
@@ -213,17 +211,11 @@ pub async fn run(
                         register = rotation.0;
 
                         let register_scalled = scale_to_12bit(register, length as u8);
-                        att_reg = (register_scalled as u32 * att_glob.get() / 4095) as u16;
+                        att_reg = ((register_scalled as u32
+                            * storage.query(|s| (s.att_saved)) as u32)
+                            / 4095) as u16;
 
                         let out = quantizer.get_quantized_note(att_reg).await;
-                        // let out = att_reg;
-
-                        // info!(
-                        //     "bit : {}, voltage: {}, corrected out: {}",
-                        //     att_reg,
-                        //     quantizer.get_quantized_voltage(att_reg),
-                        //     out
-                        // );
 
                         jack.set_value(out.as_counts(Range::_0_10V));
                         leds.set(
@@ -256,7 +248,7 @@ pub async fn run(
                         }
                     }
                     if (clkn / div) % length == 0 {
-                        let reg_old = register_glob.get();
+                        let reg_old = storage.query(|s| (s.register_saved));
                         if recall_flag.get() {
                             register = reg_old;
                             recall_flag.set(false);
@@ -267,19 +259,10 @@ pub async fn run(
                             storage
                                 .modify_and_save(|s| s.register_saved = register, None)
                                 .await;
-                            register_glob.set(register);
                         }
                     }
 
                     clkn += 1;
-
-                    // if buttons.is_button_pressed(0) {
-                    //     if clkn % 4 == 0 && clkn / 4 % (length + 1) != 0 {
-                    //         leds.set(0, Led::Bottom, ATOV_RED, 255);
-                    //     } else {
-                    //         leds.set(0, Led::Bottom, ATOV_RED, 0);
-                    //     }
-                    // }
                 }
                 _ => {}
             }
@@ -287,40 +270,38 @@ pub async fn run(
     };
 
     let fut2 = async {
+        let mut latch = app.make_latch(fader.get_value());
         loop {
             fader.wait_for_change().await;
-            let val = fader.get_value();
-            let att = att_glob.get();
-            let prob = prob_glob.get();
 
-            if buttons.is_button_pressed(0) {
-                let res = storage.query(|s| s.res_saved);
-                if res == val / 512 {
-                    latched_glob.set(true);
-                }
-                if latched_glob.get() {
-                    div_glob.set(resolution[val as usize / 512]);
-                    let note = midi_note.get();
-                    midi.send_note_off(note).await;
-                    storage.modify_and_save(|s| s.res_saved = val, None).await;
-                }
-            }
-            if buttons.is_shift_pressed() {
-                if is_close(att as u16, val) {
-                    latched_glob.set(true);
-                }
+            let latch_layer = glob_latch_layer.get();
 
-                if latched_glob.get() {
-                    att_glob.set(val as u32);
-                    storage.modify_and_save(|s| s.att_saved = val, None).await;
-                }
-            } else {
-                if is_close(prob, val) {
-                    latched_glob.set(true);
-                }
+            let target_value = match latch_layer {
+                LatchLayer::Main => prob_glob.get(),
+                LatchLayer::Alt => storage.query(|s| s.att_saved),
+                LatchLayer::Third => storage.query(|s| s.res_saved),
+                _ => unreachable!(),
+            };
 
-                if latched_glob.get() {
-                    prob_glob.set(val);
+            if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
+                match latch_layer {
+                    LatchLayer::Main => {
+                        prob_glob.set(new_value);
+                    }
+                    LatchLayer::Alt => {
+                        storage
+                            .modify_and_save(|s| s.att_saved = new_value, None)
+                            .await;
+                    }
+                    LatchLayer::Third => {
+                        div_glob.set(resolution[new_value as usize / 512]);
+                        let note = midi_note.get();
+                        midi.send_note_off(note).await;
+                        storage
+                            .modify_and_save(|s| s.res_saved = new_value, None)
+                            .await;
+                    }
+                    _ => unreachable!(),
                 }
             }
         }
@@ -346,6 +327,17 @@ pub async fn run(
         let mut button_old = false;
         loop {
             app.delay_millis(1).await;
+
+            let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
+            {
+                LatchLayer::Alt
+            } else if !buttons.is_shift_pressed() && buttons.is_button_pressed(0) {
+                LatchLayer::Third
+            } else {
+                LatchLayer::Main
+            };
+            glob_latch_layer.set(latch_active_layer);
+
             if buttons.is_shift_pressed() {
                 if !shift_old {
                     latched_glob.set(false);
@@ -357,7 +349,7 @@ pub async fn run(
                     0,
                     Led::Top,
                     Color::Red,
-                    Brightness::Custom((att_glob.get() / 16) as u8),
+                    Brightness::Custom((storage.query(|s| (s.att_saved)) / 16) as u8),
                 );
             }
             if !buttons.is_shift_pressed() && shift_old {
@@ -366,7 +358,6 @@ pub async fn run(
                 rec_flag.set(false);
                 let length = length_rec.get();
                 if length > 1 {
-                    length_glob.set(length - 1);
                     // let note = midi_note.get();
                     // midi.send_note_off(note).await;
                     storage
@@ -395,12 +386,8 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let (att, length, register, res) = storage
-                        .query(|s| (s.att_saved, s.length_saved, s.register_saved, s.res_saved));
+                    let res = storage.query(|s| (s.res_saved));
 
-                    att_glob.set(att as u32);
-                    length_glob.set(length);
-                    register_glob.set(register);
                     recall_flag.set(true);
                     prob_glob.set(0);
                     div_glob.set(resolution[res as usize / 512]);
