@@ -2,6 +2,7 @@ use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
+    latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, is_close, split_unsigned_value},
     Brightness, Color, APP_MAX_PARAMS,
 };
@@ -135,13 +136,10 @@ pub async fn run(
     let midi = app.use_midi_output(midi_channel as u8 - 1);
 
     let muted_glob = app.make_global(false);
-    let att_glob = app.make_global(4095);
-    let latched_glob = app.make_global(false);
-    let offset_glob = app.make_global(0);
+
+    let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     muted_glob.set(storage.query(|s| s.muted));
-    att_glob.set(storage.query(|s| s.att_saved));
-    offset_glob.set(storage.query(|s| s.offset_saved));
 
     if storage.query(|s| s.muted) {
         leds.unset(0, Led::Button);
@@ -161,14 +159,17 @@ pub async fn run(
 
         loop {
             app.delay_millis(1).await;
+            let latch_active_layer =
+                glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
 
             let input_val = if !muted_glob.get() {
                 if !bipolar {
-                    (attenuate(input.get_value(), att_glob.get()) + offset_glob.get())
-                        .clamp(0, 4095)
+                    (attenuate(input.get_value(), storage.query(|s| s.att_saved))
+                        + storage.query(|s| s.offset_saved))
+                    .clamp(0, 4095)
                 } else {
-                    (attenuate_bipolar(input.get_value(), att_glob.get()) as i16
-                        + (offset_glob.get() as i16 - 2047))
+                    (attenuate_bipolar(input.get_value(), storage.query(|s| s.att_saved)) as i16
+                        + (storage.query(|s| s.offset_saved) as i16 - 2047))
                         .clamp(0, 4095) as u16
                 }
             } else if bipolar {
@@ -176,7 +177,7 @@ pub async fn run(
             } else {
                 0
             };
-            if !buttons.is_shift_pressed() {
+            if latch_active_layer == LatchLayer::Main {
                 if bipolar {
                     let led1 = split_unsigned_value(input_val as u16);
                     leds.set(0, Led::Top, led_color, Brightness::Custom(led1[0]));
@@ -194,23 +195,13 @@ pub async fn run(
                     0,
                     Led::Top,
                     Color::Red,
-                    Brightness::Custom((att_glob.get() / 16) as u8),
+                    Brightness::Custom((storage.query(|s| s.att_saved) / 16) as u8),
                 );
             }
 
             if old_midi != input_val as u16 / 32 {
                 midi.send_cc(midi_cc as u8, input_val as u16).await;
                 old_midi = input_val as u16 / 32;
-            }
-
-            if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set(false);
-                shift_old = true;
-            }
-            if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set(false);
-
-                shift_old = false;
             }
         }
     };
@@ -237,40 +228,31 @@ pub async fn run(
         }
     };
     let fut3 = async {
+        let mut latch = app.make_latch(fader.get_value());
         loop {
             fader.wait_for_change().await;
-            let fader_val = fader.get_value();
-            if buttons.is_shift_pressed() {
-                if !latched_glob.get() && is_close(fader_val, att_glob.get()) {
-                    latched_glob.set(true);
-                }
-                if latched_glob.get() {
-                    att_glob.set(fader_val);
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.att_saved = fader_val;
-                                s.att_saved
-                            },
-                            None,
-                        )
-                        .await;
-                }
-            } else {
-                if !latched_glob.get() && is_close(fader_val, offset_glob.get()) {
-                    latched_glob.set(true);
-                }
-                if latched_glob.get() {
-                    offset_glob.set(fader_val);
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.offset_saved = fader_val;
-                                s.offset_saved
-                            },
-                            None,
-                        )
-                        .await;
+
+            let latch_layer = glob_latch_layer.get();
+
+            let target_value = match latch_layer {
+                LatchLayer::Main => storage.query(|s| s.offset_saved),
+                LatchLayer::Alt => storage.query(|s| s.att_saved),
+                _ => unreachable!(),
+            };
+
+            if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
+                match latch_layer {
+                    LatchLayer::Main => {
+                        storage
+                            .modify_and_save(|s| s.offset_saved = new_value, None)
+                            .await;
+                    }
+                    LatchLayer::Alt => {
+                        storage
+                            .modify_and_save(|s| s.att_saved = new_value, None)
+                            .await;
+                    }
+                    _ => unreachable!(),
                 }
             }
         }
@@ -289,8 +271,6 @@ pub async fn run(
                     }
 
                     muted_glob.set(storage.query(|s| s.muted));
-                    att_glob.set(storage.query(|s| s.att_saved));
-                    offset_glob.set(storage.query(|s| s.offset_saved));
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }
