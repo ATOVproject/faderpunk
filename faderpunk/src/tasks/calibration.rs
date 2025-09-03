@@ -81,16 +81,20 @@ async fn run_input_calibration() -> RegressionValuesInput {
     set_led_color(0, Led::Button, Color::Cyan);
     defmt::info!("Plug a good voltage source into channel 0, then press button");
     wait_for_button_press(0).await;
-    for (i, &range) in adc_ranges.iter().enumerate() {
-        for (j, (&voltage, &target_value)) in voltages_arrays[i]
+    for (range_index, &adc_range) in adc_ranges.iter().enumerate() {
+        for (j, (&voltage, &target_value)) in voltages_arrays[range_index]
             .iter()
-            .zip(values_arrays[i].iter())
+            .zip(values_arrays[range_index].iter())
             .enumerate()
         {
             // Configure first channel to be input
             configure_jack(
                 0,
-                Mode::Mode7(ConfigMode7(AVR::InternalRef, range, NSAMPLES::Samples16)),
+                Mode::Mode7(ConfigMode7(
+                    AVR::InternalRef,
+                    adc_range,
+                    NSAMPLES::Samples16,
+                )),
             )
             .await;
             let pos = LED_POS[j];
@@ -109,14 +113,18 @@ async fn run_input_calibration() -> RegressionValuesInput {
 
         if let Ok(results) = linear_regression::<f32, f32, f32>(
             &[
-                (VALUES_0_10V[0] as i16 - errors[0]) as f32,
-                (VALUES_0_10V[1] as i16 - errors[1]) as f32,
-                (VALUES_0_10V[2] as i16 - errors[2]) as f32,
+                (values_arrays[range_index][0] as i16 - errors[0]) as f32,
+                (values_arrays[range_index][1] as i16 - errors[1]) as f32,
+                (values_arrays[range_index][2] as i16 - errors[2]) as f32,
             ],
             &errors.map(|e| e as f32),
         ) {
-            defmt::info!("Linear regression results for range {}: {}", i, results);
-            input_results[i] = results;
+            defmt::info!(
+                "Linear regression results for range {}: {}",
+                range_index,
+                results
+            );
+            input_results[range_index] = results;
         } else {
             // Blink LED red if calibration didn't succeeed
             flash_led(0, Led::Button, Color::Red, None);
