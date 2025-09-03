@@ -6,8 +6,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    colors::RED, ext::FromValue, utils::is_close, Brightness, Color, Config, Param, Range, Value,
-    APP_MAX_PARAMS,
+    colors::RED, ext::FromValue, latch::LatchLayer, utils::is_close, Brightness, Color, Config,
+    Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -98,6 +98,7 @@ impl AppParams for Params {
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
+    note_saved: u16,
     fader_saved: u16,
     mute_saved: bool,
     clocked: bool,
@@ -106,6 +107,7 @@ pub struct Storage {
 impl Default for Storage {
     fn default() -> Self {
         Self {
+            note_saved: 0,
             fader_saved: 3000,
             mute_saved: false,
             clocked: false,
@@ -156,6 +158,7 @@ pub async fn run(
     let div_glob = app.make_global(6);
     let latched_glob = app.make_global(false);
     let clocked_glob = app.make_global(false);
+    let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
@@ -177,7 +180,7 @@ pub async fn run(
     }
 
     let trigger_note = async |_| {
-        let fadval = (fader.get_value() as i32 * (span + 3) / 120) as u16;
+        let fadval = (storage.query(|s| (s.note_saved)) as i32 * (span + 3) / 120) as u16;
 
         leds.set(0, Led::Top, led_color.into(), LED_BRIGHTNESS);
 
@@ -230,11 +233,11 @@ pub async fn run(
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note as u8).await;
-                            leds.unset(0, Led::Top);
+                            leds.set(0, Led::Top, led_color.into(), Brightness::Custom(0));
                             note_on = false;
                         }
 
-                        leds.unset(0, Led::Bottom);
+                        leds.set(0, Led::Bottom, led_color.into(), Brightness::Custom(0));
                     }
                     clkn += 1;
                 }
@@ -280,19 +283,33 @@ pub async fn run(
     };
 
     let fut3 = async {
-        loop {
-            fader.wait_for_change_at(0).await;
-            storage.load(None).await;
-            let fad = fader.get_value();
+        let mut latch = app.make_latch(fader.get_value());
 
-            if buttons.is_shift_pressed() {
-                let fad_saved = storage.query(|s| s.fader_saved);
-                if is_close(fad, fad_saved) {
-                    latched_glob.set(true);
-                }
-                if latched_glob.get() {
-                    div_glob.set(resolution[fad as usize / 345]);
-                    storage.modify_and_save(|s| s.fader_saved = fad, None).await;
+        loop {
+            fader.wait_for_change().await;
+
+            let latch_layer = glob_latch_layer.get();
+
+            let target_value = match latch_layer {
+                LatchLayer::Main => storage.query(|s| s.note_saved),
+                LatchLayer::Alt => storage.query(|s| s.fader_saved),
+                _ => unreachable!(),
+            };
+
+            if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
+                match latch_layer {
+                    LatchLayer::Main => {
+                        storage
+                            .modify_and_save(|s| s.note_saved = new_value, None)
+                            .await;
+                    }
+                    LatchLayer::Alt => {
+                        div_glob.set(resolution[new_value as usize / 345]);
+                        storage
+                            .modify_and_save(|s| s.fader_saved = new_value, None)
+                            .await;
+                    }
+                    _ => unreachable!(),
                 }
             }
         }
@@ -335,6 +352,10 @@ pub async fn run(
         loop {
             // latching on pressing and depressing shift
             app.delay_millis(1).await;
+
+            let latch_active_layer =
+                glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
+
             if !shift_old && buttons.is_shift_pressed() {
                 latched_glob.set(false);
                 let base: u8 = LED_BRIGHTNESS.into();
@@ -360,7 +381,7 @@ pub async fn run(
                 if button_old && !buttons.is_button_pressed(0) {
                     button_old = false;
                     midi.send_note_off(note as u8).await;
-                    leds.unset(0, Led::Top);
+                    leds.set(0, Led::Top, led_color.into(), Brightness::Custom(0));
                     leds.set(0, Led::Button, led_color.into(), Brightness::Lowest);
                 }
             }
