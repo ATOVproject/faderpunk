@@ -7,7 +7,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, utils::is_close, Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, Brightness, Color, Config, Param, Range, Value,
+    APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -147,7 +148,7 @@ pub async fn run(
         params.query(|p| (p.midi_mode, p.midi_cc, p.color, p.midi_channel));
 
     let buttons = app.use_buttons();
-    let fader = app.use_faders();
+    let faders = app.use_faders();
     let leds = app.use_leds();
     let die = app.use_die();
     let midi = app.use_midi_output(midi_chan as u8 - 1);
@@ -164,8 +165,6 @@ pub async fn run(
     let midi_note = app.make_global(0);
 
     let quantizer = app.use_quantizer(range);
-
-    let latched_glob = app.make_global(true);
 
     leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
     leds.set(1, Led::Button, led_color.into(), Brightness::Lower);
@@ -236,7 +235,7 @@ pub async fn run(
             }
 
             if inputval <= 406 && oldinputval > 406 {
-                leds.unset(0, Led::Bottom);
+                leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(0));
 
                 if midi_mode == 1 {
                     let note = midi_note.get();
@@ -249,33 +248,65 @@ pub async fn run(
     };
 
     let fut2 = async {
-        // fader handling
+        let mut latch = [
+            app.make_latch(faders.get_value_at(0)),
+            app.make_latch(faders.get_value_at(1)),
+        ];
+        // faders handling
         loop {
-            let chan = fader.wait_for_any_change().await;
-            let val = fader.get_all_values();
-            let att = storage.query(|s| (s.att_saved));
-            let prob = prob_glob.get();
+            let chan = faders.wait_for_any_change().await;
+
+            let chan = faders.wait_for_any_change().await;
+            let vals = faders.get_all_values();
+
+            if chan == 0 {
+                if let Some(new_value) =
+                    latch[chan].update(faders.get_value_at(chan), LatchLayer::Main, prob_glob.get())
+                {
+                    prob_glob.set(new_value);
+                }
+            }
 
             if chan == 1 {
-                if is_close(att as u16, val[chan]) {
-                    latched_glob.set(true);
-                }
+                let target_value = storage.query(|s| s.att_saved);
 
-                if latched_glob.get() {
+                if let Some(new_value) =
+                    latch[chan].update(faders.get_value_at(chan), LatchLayer::Main, target_value)
+                {
                     storage
-                        .modify_and_save(|s| s.att_saved = val[chan], None)
+                        .modify_and_save(
+                            |s| {
+                                s.att_saved = new_value;
+                            },
+                            None,
+                        )
                         .await;
                 }
             }
-            if chan == 0 {
-                if is_close(prob, val[chan]) {
-                    latched_glob.set(true);
-                }
+            // let val = faders.get_all_values();
+            // let att = storage.query(|s| (s.att_saved));
+            // let prob = prob_glob.get();
 
-                if latched_glob.get() {
-                    prob_glob.set(val[chan]);
-                }
-            }
+            // let target_value = match latch_layer {
+            //     LatchLayer::Main => storage.query(|s| s.att_saved[chan]),
+            //     LatchLayer::Alt => storage.query(|s| s.att_saved),
+            //     _ => unreachable!(),
+            // };
+
+            // if chan == 1 {
+            //     if is_close(att as u16, val[chan]) {
+            //         latched_glob.set(true);
+            //     }
+
+            //     if latched_glob.get() {
+            //         storage
+            //             .modify_and_save(|s| s.att_saved = val[chan], None)
+            //             .await;
+            //     }
+            // }
+            // if chan == 0 {
+            //     prob_glob.set(val[chan]);
+            // }
         }
     };
 
@@ -296,49 +327,28 @@ pub async fn run(
 
     let fut4 = async {
         let mut shift_old = false;
-        let mut button_old = false;
+
         loop {
             app.delay_millis(1).await;
+
             if buttons.is_shift_pressed() {
                 if !shift_old {
-                    latched_glob.set(false);
                     shift_old = true;
                     rec_flag.set(true);
                     length_rec.set(0);
                 }
-                leds.set(
-                    0,
-                    Led::Top,
-                    Color::Red,
-                    Brightness::Custom((storage.query(|s| (s.att_saved)) / 16) as u8),
-                );
             }
             if !buttons.is_shift_pressed() && shift_old {
-                latched_glob.set(false);
                 shift_old = false;
                 rec_flag.set(false);
                 let length = length_rec.get();
                 if length > 1 {
                     length_glob.set(length - 1);
-                    // let note = midi_note.get();
-                    // midi.send_note_off(note).await;
+
                     storage
                         .modify_and_save(|s| s.length_saved = length, None)
                         .await;
                 }
-            }
-
-            if buttons.is_button_pressed(0) {
-                //button going down
-                if !button_old {
-                    latched_glob.set(false);
-                    button_old = true;
-                }
-            }
-            if !buttons.is_button_pressed(0) && button_old {
-                latched_glob.set(false);
-                button_old = false;
-                leds.unset(0, Led::Bottom);
             }
         }
     };
@@ -348,16 +358,12 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let (att, length, register) =
-                        storage.query(|s| (s.att_saved, s.length_saved, s.register_saved));
+                    let (length, register) = storage.query(|s| (s.length_saved, s.register_saved));
 
                     length_glob.set(length);
                     register_glob.set(register);
                     recall_flag.set(true);
                     prob_glob.set(0);
-
-                    //Add recall routine
-                    latched_glob.set(false);
                 }
 
                 SceneEvent::SaveScene(scene) => {

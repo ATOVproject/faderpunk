@@ -170,7 +170,6 @@ pub async fn run(
         ];
         loop {
             let chan = faders.wait_for_any_change().await;
-            let vals = faders.get_all_values();
 
             if chan == 0 {
                 if let Some(new_value) = latch[chan].update(
