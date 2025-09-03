@@ -53,8 +53,8 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
 
     loop {
-        let should_be_active =
-            current_config.clock_src == clock_src || current_config.reset_src == clock_src;
+        let should_be_active = current_config.clock.clock_src == clock_src
+            || current_config.clock.reset_src == clock_src;
 
         if !should_be_active {
             current_config = config_receiver.changed().await;
@@ -67,7 +67,7 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
                 // Pin event happened.
                 pin.wait_for_low().await;
 
-                let clock_event = if current_config.reset_src == clock_src {
+                let clock_event = if current_config.clock.reset_src == clock_src {
                     ClockEvent::Reset
                 } else {
                     ClockEvent::Tick
@@ -97,11 +97,11 @@ async fn run_clock(aux_inputs: AuxInputs) {
         let mut config = get_global_config();
         // TODO: Get PPQN from config
         const PPQN: u8 = 24;
-        let mut ticker = Ticker::every(bpm_to_clock_duration(config.internal_bpm, PPQN));
+        let mut ticker = Ticker::every(bpm_to_clock_duration(config.clock.internal_bpm, PPQN));
 
         loop {
             // TODO: How to handle internal reset?
-            let should_be_active = config.clock_src == ClockSrc::Internal;
+            let should_be_active = config.clock.clock_src == ClockSrc::Internal;
 
             // This future only resolves on a tick when the internal clock is active.
             // Otherwise, it pends forever, preventing ticks from being generated.
@@ -118,10 +118,17 @@ async fn run_clock(aux_inputs: AuxInputs) {
                     clock_publisher.publish(ClockEvent::Tick).await;
                 }
                 Either::Second(new_config) => {
-                    config = new_config;
-                    // Adjust ticker if oly the bpm changed
-                    if let ClockSrc::Internal = config.clock_src {
-                        ticker = Ticker::every(bpm_to_clock_duration(config.internal_bpm, PPQN));
+                    if new_config.clock != config.clock {
+                        if new_config.clock.internal_bpm != config.clock.internal_bpm {
+                            // Adjust ticker if oly the bpm changed
+                            if let ClockSrc::Internal = config.clock.clock_src {
+                                ticker = Ticker::every(bpm_to_clock_duration(
+                                    config.clock.internal_bpm,
+                                    PPQN,
+                                ));
+                            }
+                        }
+                        config = new_config;
                     }
                 }
             }

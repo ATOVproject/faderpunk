@@ -231,12 +231,28 @@ impl Key {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
-pub struct GlobalConfig {
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq)]
+pub struct ClockConfig {
     pub clock_src: ClockSrc,
     pub reset_src: ClockSrc,
-    pub i2c_mode: I2cMode,
     pub internal_bpm: f32,
+}
+
+#[allow(clippy::new_without_default)]
+impl ClockConfig {
+    pub const fn new() -> Self {
+        Self {
+            clock_src: ClockSrc::Internal,
+            reset_src: ClockSrc::None,
+            internal_bpm: 120.0,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
+pub struct GlobalConfig {
+    pub clock: ClockConfig,
+    pub i2c_mode: I2cMode,
     pub led_brightness: u8,
     pub quantizer_key: Key,
     pub quantizer_tonic: Note,
@@ -246,10 +262,8 @@ pub struct GlobalConfig {
 impl GlobalConfig {
     pub const fn new() -> Self {
         Self {
-            clock_src: ClockSrc::Internal,
-            reset_src: ClockSrc::None,
+            clock: ClockConfig::new(),
             i2c_mode: I2cMode::Follower,
-            internal_bpm: 120.0,
             led_brightness: 150,
             quantizer_key: Key::PentatonicMajor,
             quantizer_tonic: Note::C,

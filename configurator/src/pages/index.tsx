@@ -87,8 +87,8 @@ export default function IndexPage() {
       }
 
       if (globalConfig && globalConfig.tag === "GlobalConfig") {
-        setClockSrc(globalConfig.value.clock_src);
-        setResetSrc(globalConfig.value.reset_src);
+        setClockSrc(globalConfig.value.clock.clock_src);
+        setResetSrc(globalConfig.value.clock.reset_src);
       }
 
       if (layout && layout.tag == "Layout") {
