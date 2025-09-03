@@ -160,6 +160,9 @@ async fn main(spawner: Spawner) {
     // Initialize fram first, otherwise we can't load any config
     tasks::fram::start_fram(&spawner, fram).await;
 
+    // Initialize the buttons, otherwise we can't detect a press during startup
+    tasks::buttons::start_buttons(&spawner, buttons).await;
+
     let calibration_data = load_calibration_data().await;
     let mut global_config = load_global_config().await;
 
@@ -167,6 +170,8 @@ async fn main(spawner: Spawner) {
     // when scene is pressed during startup
     if calibration_data.is_none() || BUTTON_PRESSED[16].load(Ordering::Relaxed) {
         global_config.i2c_mode = I2cMode::Calibration;
+    } else {
+        global_config.i2c_mode = I2cMode::Follower;
     }
 
     // Send off global config to all tasks that need it
@@ -174,8 +179,6 @@ async fn main(spawner: Spawner) {
     config_sender.send(global_config);
 
     tasks::leds::start_leds(&spawner, spi1).await;
-
-    tasks::buttons::start_buttons(&spawner, buttons).await;
 
     tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
 
