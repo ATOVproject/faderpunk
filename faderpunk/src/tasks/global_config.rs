@@ -34,7 +34,7 @@ pub fn get_global_config() -> GlobalConfig {
 
 pub fn get_fader_value_from_config(chan: usize, config: &GlobalConfig) -> u16 {
     match chan {
-        INTERNAL_BPM_FADER => (((config.internal_bpm - 45.0) * 16.0) as u16).clamp(0, 4095),
+        INTERNAL_BPM_FADER => (((config.clock.internal_bpm - 45.0) * 16.0) as u16).clamp(0, 4095),
         QUANTIZER_KEY_FADER => (config.quantizer_key as u16 * 256).clamp(0, 4095),
         QUANTIZER_TONIC_FADER => (config.quantizer_tonic as u16 * 342).clamp(0, 4095),
         LED_BRIGHTNESS_FADER => ((config.led_brightness as u16 - 55) * 20).clamp(0, 4095),
@@ -49,8 +49,8 @@ pub fn set_global_config_via_chan(chan: usize, val: u16) {
             global_config_sender.send_if_modified(|c| {
                 if let Some(config) = c {
                     let new_bpm = (45.0 + val as f32 / 16.0).clamp(0.0, 300.0);
-                    if config.internal_bpm != new_bpm {
-                        config.internal_bpm = new_bpm;
+                    if config.clock.internal_bpm != new_bpm {
+                        config.clock.internal_bpm = new_bpm;
                         return true;
                     }
                 }
