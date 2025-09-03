@@ -160,17 +160,17 @@ pub async fn start_midi_loops<'a>(
                             match event {
                                 LiveEvent::Realtime(msg) => match msg {
                                     SystemRealtime::TimingClock => {
-                                        if let ClockSrc::MidiUsb = config.clock_src {
+                                        if let ClockSrc::MidiUsb = config.clock.clock_src {
                                             clock_publisher.publish(ClockEvent::Tick).await;
                                         }
                                     }
                                     SystemRealtime::Start => {
-                                        if let ClockSrc::MidiUsb = config.reset_src {
+                                        if let ClockSrc::MidiUsb = config.clock.reset_src {
                                             clock_publisher.publish(ClockEvent::Start).await;
                                         }
                                     }
                                     SystemRealtime::Stop => {
-                                        if let ClockSrc::MidiUsb = config.reset_src {
+                                        if let ClockSrc::MidiUsb = config.clock.reset_src {
                                             clock_publisher.publish(ClockEvent::Reset).await;
                                         }
                                     }
@@ -208,17 +208,17 @@ pub async fn start_midi_loops<'a>(
                     |event: LiveEvent| match event {
                         LiveEvent::Realtime(msg) => match msg {
                             SystemRealtime::TimingClock => {
-                                if let ClockSrc::MidiIn = config.clock_src {
+                                if let ClockSrc::MidiIn = config.clock.clock_src {
                                     clock_publisher.publish_immediate(ClockEvent::Tick);
                                 }
                             }
                             SystemRealtime::Start => {
-                                if let ClockSrc::MidiIn = config.reset_src {
+                                if let ClockSrc::MidiIn = config.clock.reset_src {
                                     clock_publisher.publish_immediate(ClockEvent::Start);
                                 }
                             }
                             SystemRealtime::Stop => {
-                                if let ClockSrc::MidiIn = config.reset_src {
+                                if let ClockSrc::MidiIn = config.clock.reset_src {
                                     clock_publisher.publish_immediate(ClockEvent::Reset);
                                 }
                             }
