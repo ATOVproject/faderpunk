@@ -233,12 +233,12 @@ pub async fn run(
             }
             outval = attenuate(outval, storage.query(|s| s.att_saved));
             output.set_value(outval);
-            if latch_active_layer == LatchLayer::Main {
+            if latch_active_layer == LatchLayer::Alt {
                 leds.set(1, Led::Button, color[mode as usize], Brightness::Lower);
                 if gate_on_glob.get() > 0 {
-                    leds.set(0, Led::Button, Color::Red, Brightness::Low);
+                    leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
                 } else {
-                    leds.set(0, Led::Button, Color::Red, Brightness::Lower);
+                    leds.set(0, Led::Bottom, Color::Red, Brightness::Lower);
                 }
 
                 let att = storage.query(|s| s.att_saved);
