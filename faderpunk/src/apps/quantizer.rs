@@ -17,16 +17,17 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 1;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Quantizer", "").add_param(Param::Color {
-    name: "Color",
-    variants: &[
-        Color::Yellow,
-        Color::Pink,
-        Color::Cyan,
-        Color::Red,
-        Color::White,
-    ],
-});
+pub static CONFIG: Config<PARAMS> = Config::new("Quantizer", "Quantize CV passing through")
+    .add_param(Param::Color {
+        name: "Color",
+        variants: &[
+            Color::Yellow,
+            Color::Pink,
+            Color::Cyan,
+            Color::Red,
+            Color::White,
+        ],
+    });
 
 pub struct Params {
     color: Color,
