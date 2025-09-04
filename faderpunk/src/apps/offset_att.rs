@@ -18,16 +18,17 @@ pub const PARAMS: usize = 1;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Offset+Attenuator", "").add_param(Param::Color {
-    name: "Color",
-    variants: &[
-        Color::Yellow,
-        Color::Pink,
-        Color::Cyan,
-        Color::Red,
-        Color::White,
-    ],
-});
+pub static CONFIG: Config<PARAMS> = Config::new("Offset+Attenuverter", "Offset and attenuvert CV")
+    .add_param(Param::Color {
+        name: "Color",
+        variants: &[
+            Color::Yellow,
+            Color::Pink,
+            Color::Cyan,
+            Color::Red,
+            Color::White,
+        ],
+    });
 
 pub struct Params {
     color: Color,
