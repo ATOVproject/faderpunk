@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.8.0...faderpunk-v0.8.1) (2025-09-04)
+
+
+### Bug Fixes
+
+* prefixed commit ([3f3c80b](https://github.com/ATOVproject/faderpunk/commit/3f3c80b24aac772bafbd3c62fd520be81c2c3421))
+
 ## [0.8.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.7.0...faderpunk-v0.8.0) (2025-09-04)
 
 
