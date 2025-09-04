@@ -5,34 +5,43 @@ use heapless::Vec;
 use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
-use libfp::{latch::LatchLayer, Brightness, Color, Config, Curve, Range, Value, APP_MAX_PARAMS};
+use libfp::{
+    ext::FromValue, latch::LatchLayer, Brightness, Color, Config, Curve, Param, Range, Value,
+    APP_MAX_PARAMS,
+};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 0;
+pub const PARAMS: usize = 1;
 
 pub static CONFIG: Config<PARAMS> =
-    Config::new("AD Envelope", "variable curve AD, ASR or looping AD");
+    Config::new("AD Envelope", "variable curve AD, ASR or looping AD").add_param(Param::i32 {
+        name: "MIDI Channel",
+        min: 1,
+        max: 16,
+    });
 
-pub struct Params {}
+pub struct Params {
+    midi_channel: i32,
+}
 
 impl Default for Params {
     fn default() -> Self {
-        Self {}
+        Self { midi_channel: 1 }
     }
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        // if values.len() < PARAMS {
-        //     return None;
-        // }
-        Some(Self {})
+        Some(Self {
+            midi_channel: i32::from_value(values[0]),
+        })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
+        vec.push(self.midi_channel.into()).unwrap();
         vec
     }
 }
@@ -85,10 +94,11 @@ pub async fn run(
     _params: &ParamStore<Params>,
     storage: ManagedStorage<Storage>,
 ) {
+    let midi_chan = _params.query(|p| (p.midi_channel));
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let mut midi_in = app.use_midi_input(2);
+    let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
 
     let times_glob = app.make_global([0.0682, 0.0682]);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
@@ -166,11 +176,6 @@ pub async fn run(
                 gate_on_glob.set(gate_on_glob.get() + 1);
 
                 t2g = true;
-                info!(
-                    "gate on, gate count = {}, t2g = {}",
-                    gate_on_glob.get(),
-                    t2g
-                );
             }
 
             if gate_on_glob.get() == 0 && old_gate {
