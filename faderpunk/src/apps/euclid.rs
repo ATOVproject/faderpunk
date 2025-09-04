@@ -20,7 +20,7 @@ pub const PARAMS: usize = 6;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
-pub static CONFIG: Config<PARAMS> = Config::new("Euclid", "")
+pub static CONFIG: Config<PARAMS> = Config::new("Euclid", "Euclidean sequencer")
     .add_param(Param::i32 {
         name: "MIDI Channel",
         min: 1,
