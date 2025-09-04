@@ -13,33 +13,34 @@ pub const PARAMS: usize = 5;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Low;
 
-pub static CONFIG: Config<PARAMS> = Config::new("CV/OCT to MIDI", "")
-    .add_param(Param::Bool { name: "Bipolar" })
-    .add_param(Param::i32 {
-        name: "MIDI Channel",
-        min: 1,
-        max: 16,
-    })
-    .add_param(Param::i32 {
-        name: "MIDI CC",
-        min: 1,
-        max: 128,
-    })
-    .add_param(Param::i32 {
-        name: "Delay (ms)",
-        min: 0,
-        max: 10,
-    })
-    .add_param(Param::Color {
-        name: "Color",
-        variants: &[
-            Color::Yellow,
-            Color::Pink,
-            Color::Blue,
-            Color::Red,
-            Color::White,
-        ],
-    });
+pub static CONFIG: Config<PARAMS> =
+    Config::new("CV/OCT to MIDI", "CV and gate to MIDI note converter")
+        .add_param(Param::Bool { name: "Bipolar" })
+        .add_param(Param::i32 {
+            name: "MIDI Channel",
+            min: 1,
+            max: 16,
+        })
+        .add_param(Param::i32 {
+            name: "MIDI CC",
+            min: 1,
+            max: 128,
+        })
+        .add_param(Param::i32 {
+            name: "Delay (ms)",
+            min: 0,
+            max: 10,
+        })
+        .add_param(Param::Color {
+            name: "Color",
+            variants: &[
+                Color::Yellow,
+                Color::Pink,
+                Color::Blue,
+                Color::Red,
+                Color::White,
+            ],
+        });
 
 pub struct Params {
     bipolar: bool,
