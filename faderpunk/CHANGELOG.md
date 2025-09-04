@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.8.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.7.0...faderpunk-v0.8.0) (2025-09-04)
+
+
+### Features
+
+* **ad:** add trigger on button, add midi trigger, add trigger to gate ([d80449b](https://github.com/ATOVproject/faderpunk/commit/d80449b2fb654aee8c765f31de7d5d799810548b))
+* **api:** add button release API ([2ef8cf7](https://github.com/ATOVproject/faderpunk/commit/2ef8cf7cb90f376b3735c3279796ec101ed5c29a))
+* **api:** complete rework of app parameter implementation ([8a6f44d](https://github.com/ATOVproject/faderpunk/commit/8a6f44dcefe066d20a1db0e81c96a3fa3caa1832))
+* **api:** globals are now sync ([626b25f](https://github.com/ATOVproject/faderpunk/commit/626b25f0472d06ba4b7678620e779a90cb980f35))
+* **api:** new color api and improved color consistency ([056761f](https://github.com/ATOVproject/faderpunk/commit/056761ff42a336f8836da01ec7a58c773b6e5598))
+* **api:** use new latch in default and lfo ([9abe1cd](https://github.com/ATOVproject/faderpunk/commit/9abe1cdf27c78bd8dfc72cb3b2b946b15d2ea95d))
+* **app:** rename default to control ([4aac807](https://github.com/ATOVproject/faderpunk/commit/4aac807921910b1f22b8b758876587ba074c9454))
+* **clkcvrnd:** add slew, refine LEDs ([7c59374](https://github.com/ATOVproject/faderpunk/commit/7c59374402b6d347725d28ad9914e3951b6f6b3a))
+* **config:** add ability to change global config via faders ([9374b77](https://github.com/ATOVproject/faderpunk/commit/9374b779429b8bb6f242dca0ae5078368ad4ecd5))
+* **config:** introduce more global settings, config task loop ([17e48d4](https://github.com/ATOVproject/faderpunk/commit/17e48d4a9f1fcf43130984e9adaa0505c5e2dae6))
+* **cv2midi:** add cv2midi app ([ab4864f](https://github.com/ATOVproject/faderpunk/commit/ab4864f3714c9907dc485aaf77893b2ae5cd3d09))
+* **cv2midinote:** add cv2midinote app ([125c0a7](https://github.com/ATOVproject/faderpunk/commit/125c0a725a3086f80b060b75e973f12b8bac76d6))
+* **cv2midinote:** add octave and semitone shift, add mute, add led feedback ([fc3e7a5](https://github.com/ATOVproject/faderpunk/commit/fc3e7a5e7e86891966f9cb4daeb4739db0671b8e))
+* **default:** renamed to "Control", make curve symmetrical around 0 when bipolar ([67b6d8d](https://github.com/ATOVproject/faderpunk/commit/67b6d8d1e8e796d195eea019dffd07d5a11c7187))
+* **euclid:** add euclid app ([2eaff71](https://github.com/ATOVproject/faderpunk/commit/2eaff715aacbcf0c1e643768ce9a9cf8348f67e4))
+* **latch:** add third latch layer ([c827400](https://github.com/ATOVproject/faderpunk/commit/c82740005ad0829f4fd7eee9ef80a01389dc23cf))
+* **leds:** bring back startup animation ([214de9e](https://github.com/ATOVproject/faderpunk/commit/214de9e6332b027b5ea4ce6ad60c2492fbe2fdab))
+* **leds:** colorize scene and shift button ([d5cdaaf](https://github.com/ATOVproject/faderpunk/commit/d5cdaafe69ede8025fbc32be40899c507db980cd))
+* **leds:** improve led brightness and color apis ([4ff24e2](https://github.com/ATOVproject/faderpunk/commit/4ff24e20b812fcbcaa332297c126f82b072e2848))
+* **offset+attenuator:** add Offset+Attenuator app ([8aa8e1c](https://github.com/ATOVproject/faderpunk/commit/8aa8e1c25f8c2700b42f030568031ff9c2012986))
+* **quantizer:** add quantizer app ([062cfc4](https://github.com/ATOVproject/faderpunk/commit/062cfc460a007c68c5389cd67792ad5f40427626))
+* **quantizer:** rewrite quantizer, make it more predictable ([0c14ef6](https://github.com/ATOVproject/faderpunk/commit/0c14ef6f9d8561f74b9b85f157de4acbeaf19c08))
+
+
+### Bug Fixes
+
+* **ad:** fix led ([4885e91](https://github.com/ATOVproject/faderpunk/commit/4885e918c8fa48dcf6bf359fbf33dde5b4c2c267))
+* **ad:** implement new latching system ([17f66aa](https://github.com/ATOVproject/faderpunk/commit/17f66aaa4b228fbd63ad1302ad11440adf9b8f53))
+* **automator:** remove automator from app list ([54f0289](https://github.com/ATOVproject/faderpunk/commit/54f0289d54458245b3c0cf9c6e1eaae4860c179d))
+* **clock:** adjust clock config only when it was changed ([9d53f36](https://github.com/ATOVproject/faderpunk/commit/9d53f36edf53b4cd33089df2a9dac831d012eab1))
+* **cv2midi:** implement new latching system ([2f6173f](https://github.com/ATOVproject/faderpunk/commit/2f6173f1ea2d24b0ba94d885ed9c4e8b6b2325ef))
+* **cv2midinote:** add description ([9154f73](https://github.com/ATOVproject/faderpunk/commit/9154f73c88e4968c94bd3ece6944fa4635c78d98))
+* do not panic in app macro functions ([2bb337d](https://github.com/ATOVproject/faderpunk/commit/2bb337d75d50e430a3e2befac7eae74377213767))
+* **euclid:** change description ([549611e](https://github.com/ATOVproject/faderpunk/commit/549611e2aa7ba9f721e04164a477ca0f5d0e58fa))
+* **euclid:** fix midi notes ([2fc0102](https://github.com/ATOVproject/faderpunk/commit/2fc0102431213d73e5ee70d9de68a2aceca7521f))
+* **follower, slew:** update to new new latching ([00ac12d](https://github.com/ATOVproject/faderpunk/commit/00ac12dc3f29076fc3fb34d2f1a30fd4b6f89b26))
+* **layout:** allow for holes in layout ([20ff5bc](https://github.com/ATOVproject/faderpunk/commit/20ff5bc92461369f145b13716ba3fe45f93e3e4c))
+* **leds:** adjust minimum led brightness ([34261f7](https://github.com/ATOVproject/faderpunk/commit/34261f7a2d5e887124b945ca245d6d3afae5830d))
+* **max:** scale fader readings across the dead zone ([7279540](https://github.com/ATOVproject/faderpunk/commit/7279540da4624894699c583572a0e4ff7a4bef7b))
+* **midi2cv:** update to new latching system ([38db61c](https://github.com/ATOVproject/faderpunk/commit/38db61c4ed10fe0420764ea8327c59a089280094))
+* **notefader:** implement new latching system ([596ad56](https://github.com/ATOVproject/faderpunk/commit/596ad56c112d276b4b1b94a8a286cc9866083a71))
+* **offset_att:** modify name and description ([892b590](https://github.com/ATOVproject/faderpunk/commit/892b590d8407a4ad1fde721cf87f2c009d2d997f))
+* **offset_att:** update to new latching system ([4fedf99](https://github.com/ATOVproject/faderpunk/commit/4fedf998d6b370872647b2161877a873738ad38d))
+* **probatrigger:** upgrade to new latching system ([fe20724](https://github.com/ATOVproject/faderpunk/commit/fe20724f16d1a7b3afe4a3b44ed60ebb2f17f8a3))
+* **quantizer:** add description ([8738017](https://github.com/ATOVproject/faderpunk/commit/8738017d07b829572a3fea6b9e00e64995e3a1c0))
+* **sequencer:** fix consistency issue between midi output and V/oct ([b18ebd2](https://github.com/ATOVproject/faderpunk/commit/b18ebd2da509a05a423c2aa982e8b428688d015e))
+* **turing+:** implement new latching system, refine code ([e06c559](https://github.com/ATOVproject/faderpunk/commit/e06c5599b68f81a9def2a8d7f85829cafbfe799e))
+* **turing:** implement new latching system ([d706882](https://github.com/ATOVproject/faderpunk/commit/d706882f61344269ad640ec81083cac28ffdedf3))
+* validate layout after loading from fram ([848e2aa](https://github.com/ATOVproject/faderpunk/commit/848e2aa79130d134737f66309c023211e041f861))
+
 ## [0.7.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.6.1...faderpunk-v0.7.0) (2025-08-23)
 
 

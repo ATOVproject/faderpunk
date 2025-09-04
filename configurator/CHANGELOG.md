@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.2.1...configurator-v0.3.0) (2025-09-04)
+
+
+### Features
+
+* **api:** new color api and improved color consistency ([056761f](https://github.com/ATOVproject/faderpunk/commit/056761ff42a336f8836da01ec7a58c773b6e5598))
+* **config:** introduce more global settings, config task loop ([17e48d4](https://github.com/ATOVproject/faderpunk/commit/17e48d4a9f1fcf43130984e9adaa0505c5e2dae6))
+
+
+### Bug Fixes
+
+* **clock:** adjust clock config only when it was changed ([9d53f36](https://github.com/ATOVproject/faderpunk/commit/9d53f36edf53b4cd33089df2a9dac831d012eab1))
+* **configurator:** add all colors to configurator ([2fee27d](https://github.com/ATOVproject/faderpunk/commit/2fee27d80254cb632c97dc5a0c8915218978d4f3))
+* **configurator:** refresh layout after setting it ([8db5827](https://github.com/ATOVproject/faderpunk/commit/8db58270e173ab628aa857634bf7ee6ca686ff22))
+* **configurator:** send correct layout with channel sizes ([c1310c6](https://github.com/ATOVproject/faderpunk/commit/c1310c61547f6457d36bb37b9d847f6e1985b62a))
+
 ## [0.2.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.2.0...configurator-v0.2.1) (2025-08-21)
 
 
