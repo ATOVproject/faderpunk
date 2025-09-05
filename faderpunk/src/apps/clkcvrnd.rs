@@ -131,7 +131,7 @@ pub async fn run(
     let latched_glob = app.make_global(false);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
-    let resolution = [368, 184, 92, 48, 24, 16, 12, 8, 6, 4, 3, 2];
+    let resolution = [384, 184, 92, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
     let mut clkn = 0;
     let mut val = 2048;
