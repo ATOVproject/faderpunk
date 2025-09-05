@@ -16,7 +16,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 5;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
@@ -110,7 +110,7 @@ impl Default for Storage {
     fn default() -> Self {
         Self {
             fader_saved: [2000; 2],
-            shift_fader_saved: [0; 4095],
+            shift_fader_saved: [0, 4095],
             div_saved: 3000,
             mute_saved: false,
             mode: true,
