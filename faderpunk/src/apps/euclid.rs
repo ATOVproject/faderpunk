@@ -393,7 +393,9 @@ pub async fn run(
                         }
                         LatchLayer::Third => {
                             div_glob.set(resolution[new_value as usize / 345]);
-                            storage.modify_and_save(|s| s.div_saved = new_value, None);
+                            storage
+                                .modify_and_save(|s| s.div_saved = new_value, None)
+                                .await;
                         }
                         _ => unreachable!(),
                     }
