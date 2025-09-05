@@ -34,10 +34,6 @@ pub static CONFIG: Config<PARAMS> =
             min: 1,
             max: 100,
         })
-        .add_param(Param::Curve {
-            name: "Fader Curve",
-            variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
-        })
         .add_param(Param::Color {
             name: "Color",
             variants: &[
@@ -53,7 +49,7 @@ pub struct Params {
     midi_channel: i32,
     note: i32,
     gatel: i32,
-    curve: Curve,
+
     color: Color,
 }
 
@@ -63,7 +59,7 @@ impl Default for Params {
             midi_channel: 1,
             note: 32,
             gatel: 50,
-            curve: Curve::Linear,
+
             color: Color::Yellow,
         }
     }
@@ -78,7 +74,7 @@ impl AppParams for Params {
             midi_channel: i32::from_value(values[0]),
             note: i32::from_value(values[1]),
             gatel: i32::from_value(values[2]),
-            curve: Curve::from_value(values[3]),
+
             color: Color::from_value(values[4]),
         })
     }
@@ -88,7 +84,6 @@ impl AppParams for Params {
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.note.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
-        vec.push(self.curve.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec
     }
@@ -137,8 +132,9 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: ManagedStorage<Storage>,
 ) {
-    let (midi_chan, note, gatel, led_color, curve) =
-        params.query(|p| (p.midi_channel, p.note, p.gatel, p.color, p.curve));
+    let (midi_chan, note, gatel, led_color) =
+        params.query(|p| (p.midi_channel, p.note, p.gatel, p.color));
+    let curve = Curve::Logarithmic;
 
     let mut clock = app.use_clock();
     let die = app.use_die();
