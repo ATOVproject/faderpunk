@@ -9,7 +9,7 @@ use libfp::{ext::FromValue, Config, Param, Range, Value};
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 4;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Low;
 
@@ -20,11 +20,6 @@ pub static CONFIG: Config<PARAMS> =
             name: "MIDI Channel",
             min: 1,
             max: 16,
-        })
-        .add_param(Param::i32 {
-            name: "MIDI CC",
-            min: 1,
-            max: 128,
         })
         .add_param(Param::i32 {
             name: "Delay (ms)",
@@ -45,7 +40,7 @@ pub static CONFIG: Config<PARAMS> =
 pub struct Params {
     bipolar: bool,
     midi_channel: i32,
-    midi_cc: i32,
+
     delay: i32,
     color: Color,
 }
@@ -55,7 +50,7 @@ impl Default for Params {
         Self {
             bipolar: false,
             midi_channel: 1,
-            midi_cc: 32,
+
             delay: 0,
             color: Color::Yellow,
         }
@@ -70,7 +65,7 @@ impl AppParams for Params {
         Some(Self {
             bipolar: bool::from_value(values[0]),
             midi_channel: i32::from_value(values[1]),
-            midi_cc: i32::from_value(values[2]),
+
             delay: i32::from_value(values[3]),
             color: Color::from_value(values[4]),
         })
@@ -80,7 +75,7 @@ impl AppParams for Params {
         let mut vec = Vec::new();
         vec.push(self.bipolar.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
-        vec.push(self.midi_cc.into()).unwrap();
+
         vec.push(self.delay.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec
@@ -134,8 +129,8 @@ pub async fn run(
     let faders = app.use_faders();
     let leds = app.use_leds();
 
-    let (bipolar, midi_channel, midi_cc, delay, led_color) =
-        params.query(|p| (p.bipolar, p.midi_channel, p.midi_cc, p.delay, p.color));
+    let (bipolar, midi_channel, delay, led_color) =
+        params.query(|p| (p.bipolar, p.midi_channel, p.delay, p.color));
 
     let midi = app.use_midi_output(midi_channel as u8 - 1);
 
