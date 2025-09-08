@@ -84,6 +84,7 @@ impl AppParams for Params {
 pub struct Storage {
     fader_saved: [u16; 2],
     muted: bool,
+    offset_toggle: bool,
 }
 
 impl Default for Storage {
@@ -91,6 +92,7 @@ impl Default for Storage {
         Self {
             fader_saved: [2047, 0],
             muted: false,
+            offset_toggle: false,
         }
     }
 }
@@ -152,6 +154,12 @@ pub async fn run(
 
     let gate_in = app.make_in_jack(1, Range::_0_10V).await;
 
+    if !storage.query(|s| s.offset_toggle) {
+        leds.set(0, Led::Button, led_color, Brightness::Lower);
+    } else {
+        leds.unset(0, Led::Button);
+    }
+
     let fut1 = async {
         let mut old_gatein = 0;
         let mut note = 0;
@@ -167,10 +175,13 @@ pub async fn run(
                 if !muted_glob.get() {
                     app.delay_millis(delay as u64).await;
                     note = ((input.get_value()).min(4095) as i32 + 5) * 120 / 4095;
-                    note = (note
-                        + (storage.query(|s| s.fader_saved[1]) as i32 * 10 / 4095 - 5) * 12
-                        + (storage.query(|s| s.fader_saved[0]) as i32 * 12 / 4095))
-                        .clamp(0, 120);
+                    let oct = (storage.query(|s| s.fader_saved[1]) as i32 * 10 / 4095 - 5) * 12;
+                    let st = if storage.query(|s| s.offset_toggle) {
+                        storage.query(|s| s.fader_saved[0]) as i32 * 12 / 4095
+                    } else {
+                        0
+                    };
+                    note = (note + oct + st).clamp(0, 120);
                     midi.send_note_on(note as u8, 4095).await;
                     note_on = true;
                     leds.set(1, Led::Button, led_color, Brightness::Low);
@@ -214,7 +225,7 @@ pub async fn run(
                 storage
                     .modify_and_save(
                         |s| {
-                            s.fader_saved[0] = 0;
+                            s.offset_toggle = !s.offset_toggle;
                         },
                         None,
                     )
