@@ -10,6 +10,7 @@ use libfp::{
     utils::{attenuverter, clickless, is_close, split_unsigned_value},
     Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
 };
+use smart_leds::brightness;
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
@@ -107,30 +108,23 @@ pub async fn run(
 
     let led_color = params.query(|p| p.color);
 
-    leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-    leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
     let input = app.make_in_jack(0, Range::_Neg5_5V).await;
     let output = app.make_out_jack(1, Range::_Neg5_5V).await;
 
-    leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-    leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-
     let fut1 = async {
-        let mut old_button = [false; 2];
         let mut att = 0;
-        let mut offset = 0;
-
+        let mut offset_fad = 0;
         loop {
             app.delay_millis(1).await;
             let inval = input.get_value();
 
-            let att = storage.query(|s| (s.att_saved));
-            let offset = storage.query(|s| (s.offset_saved)) as i32 - 2047;
+            att = clickless(att, storage.query(|s| (s.att_saved)));
+            offset_fad = clickless(offset_fad, storage.query(|s| (s.offset_saved)));
+            let offset = offset_fad as i32 - 2047;
 
-            let outval = ((attenuverter(inval as u16, att as u16) as i32 + (offset) as i32)
-                .clamp(0, 4095) as u16)
-                .clamp(0, 4095);
-            // info!("att: {}, offset: {},outval :{}", att, offset, outval);
+            let mut outval =
+                (attenuverter(inval as u16, att as u16) as i32 + offset).clamp(0, 4095) as u16;
+            outval = ((outval as i32 - 2047) * 2 + 2047).clamp(0, 4094) as u16;
 
             output.set_value(outval as u16);
 
@@ -161,6 +155,16 @@ pub async fn run(
                 led_color.into(),
                 Brightness::Custom(out_led[1]),
             );
+            if storage.query(|s| (s.offset_saved)) != 2047 {
+                leds.set(0, Led::Button, led_color.into(), Brightness::Low);
+            } else {
+                leds.set(0, Led::Button, led_color.into(), Brightness::Lower);
+            }
+            if storage.query(|s| (s.att_saved)) != 3071 {
+                leds.set(1, Led::Button, led_color.into(), Brightness::Low);
+            } else {
+                leds.set(1, Led::Button, led_color.into(), Brightness::Lower);
+            }
         }
     };
 
@@ -228,7 +232,7 @@ pub async fn run(
                     storage
                         .modify_and_save(
                             |s| {
-                                s.att_saved = 4095;
+                                s.att_saved = 3071;
                                 s.att_saved
                             },
                             None,
