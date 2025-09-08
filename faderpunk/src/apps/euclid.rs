@@ -461,6 +461,9 @@ pub async fn run(
                             / 4095) as u8,
                     );
                     glob_muted.set(storage.query(|s| s.mute_saved));
+
+                    let division = storage.query(|s| s.div_saved);
+                    div_glob.set(resolution[division as usize / 345]);
                 }
 
                 SceneEvent::SaveScene(scene) => {
