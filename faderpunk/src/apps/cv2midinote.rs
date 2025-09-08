@@ -11,7 +11,7 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 4;
 
-const BUTTON_BRIGHTNESS: Brightness = Brightness::Low;
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
 pub static CONFIG: Config<PARAMS> =
     Config::new("CV/OCT to MIDI", "CV and gate to MIDI note converter")
@@ -40,7 +40,6 @@ pub static CONFIG: Config<PARAMS> =
 pub struct Params {
     bipolar: bool,
     midi_channel: i32,
-
     delay: i32,
     color: Color,
 }
@@ -50,7 +49,6 @@ impl Default for Params {
         Self {
             bipolar: false,
             midi_channel: 1,
-
             delay: 0,
             color: Color::Yellow,
         }
@@ -65,9 +63,8 @@ impl AppParams for Params {
         Some(Self {
             bipolar: bool::from_value(values[0]),
             midi_channel: i32::from_value(values[1]),
-
-            delay: i32::from_value(values[3]),
-            color: Color::from_value(values[4]),
+            delay: i32::from_value(values[2]),
+            color: Color::from_value(values[3]),
         })
     }
 
