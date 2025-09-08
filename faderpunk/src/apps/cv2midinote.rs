@@ -1,7 +1,10 @@
+use defmt::info;
 use embassy_futures::{join::join4, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
-use libfp::{latch::LatchLayer, utils::split_unsigned_value, Brightness, Color, APP_MAX_PARAMS};
+use libfp::{
+    latch::LatchLayer, quantizer, utils::split_unsigned_value, Brightness, Color, APP_MAX_PARAMS,
+};
 use serde::{Deserialize, Serialize};
 
 use libfp::{ext::FromValue, Config, Param, Range, Value};
@@ -145,12 +148,14 @@ pub async fn run(
         leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
         leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
     }
-
-    let input = if bipolar {
-        app.make_in_jack(0, Range::_Neg5_5V).await
+    let range = if bipolar {
+        Range::_Neg5_5V
     } else {
-        app.make_in_jack(0, Range::_0_10V).await
+        Range::_0_10V
     };
+
+    let input = app.make_in_jack(0, range).await;
+    let quantizer = app.use_quantizer(range);
 
     let gate_in = app.make_in_jack(1, Range::_0_10V).await;
 
@@ -162,8 +167,9 @@ pub async fn run(
 
     let fut1 = async {
         let mut old_gatein = 0;
-        let mut note = 0;
+        let mut midi_out = 0;
         let mut note_on = false;
+        let mut note = 0;
 
         loop {
             app.delay_millis(1).await;
@@ -174,15 +180,27 @@ pub async fn run(
                 // catching rising edge
                 if !muted_glob.get() {
                     app.delay_millis(delay as u64).await;
-                    note = ((input.get_value()).min(4095) as i32 + 5) * 120 / 4095;
-                    let oct = (storage.query(|s| s.fader_saved[1]) as i32 * 10 / 4095 - 5) * 12;
-                    let st = if storage.query(|s| s.offset_toggle) {
-                        storage.query(|s| s.fader_saved[0]) as i32 * 12 / 4095
+                    note = input.get_value() as i32;
+                    let oct = (storage.query(|s| s.fader_saved[1]) as i32 * 10 / 4095 - 5) * 410;
+                    let st = if !storage.query(|s| s.offset_toggle) {
+                        (storage.query(|s| s.fader_saved[0]) as i32 * 12 / 4095) * 410 / 12
                     } else {
                         0
                     };
-                    note = (note + oct + st).clamp(0, 120);
-                    midi.send_note_on(note as u8, 4095).await;
+                    note = (note + oct + st).clamp(0, 4095);
+
+                    midi_out = (quantizer
+                        .get_quantized_note(note as u16)
+                        .await
+                        .as_counts(range) as u32
+                        * 120
+                        / 4095) as u8;
+                    info!(
+                        "note = {}, oct = {}, st = {}, midi out = {}",
+                        note, oct, st, midi_out
+                    );
+
+                    midi.send_note_on(midi_out, 4095).await;
                     note_on = true;
                     leds.set(1, Led::Button, led_color, Brightness::Low);
                 }
@@ -202,7 +220,7 @@ pub async fn run(
             if gatein <= 406 && old_gatein > 406 {
                 // catching falling edge
                 if note_on {
-                    midi.send_note_off(note as u8).await;
+                    midi.send_note_off(midi_out as u8).await;
                     note_on = false;
 
                     if muted_glob.get() {
@@ -230,6 +248,11 @@ pub async fn run(
                         None,
                     )
                     .await;
+                if !storage.query(|s| s.offset_toggle) {
+                    leds.set(0, Led::Button, led_color, Brightness::Lower);
+                } else {
+                    leds.unset(0, Led::Button);
+                }
             }
             if chan.0 == 1 {
                 let muted = storage
@@ -316,6 +339,11 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
+                    if !storage.query(|s| s.offset_toggle) {
+                        leds.set(0, Led::Button, led_color, Brightness::Lower);
+                    } else {
+                        leds.unset(0, Led::Button);
+                    }
 
                     if storage.query(|s| s.muted) {
                         leds.unset(1, Led::Button);
