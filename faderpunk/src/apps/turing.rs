@@ -8,8 +8,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, utils::is_close, Brightness, Color, Config, Param, Range,
-    Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, utils::is_close, Brightness, Color, Config, Curve, Param,
+    Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -179,6 +179,8 @@ pub async fn run(
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
+    let curve = Curve::Logarithmic;
+
     let (length, mut register, res) =
         storage.query(|s| (s.length_saved, s.register_saved, s.res_saved));
 
@@ -197,10 +199,6 @@ pub async fn run(
                     clkn = 0;
                     midi.send_note_off((att_reg / 32) as u8).await;
                     register = storage.query(|s| (s.register_saved));
-
-                    // midi.send_note_off(note as u8 - 1).await;
-                    // note_on = false;
-                    // jack.set_low().await;
                 }
                 ClockEvent::Tick => {
                     if clkn % div == 0 {
@@ -212,7 +210,7 @@ pub async fn run(
 
                         let register_scalled = scale_to_12bit(register, length as u8);
                         att_reg = ((register_scalled as u32
-                            * storage.query(|s| (s.att_saved)) as u32)
+                            * curve.at(storage.query(|s| (s.att_saved))) as u32)
                             / 4095) as u16;
 
                         let out = quantizer.get_quantized_note(att_reg).await;

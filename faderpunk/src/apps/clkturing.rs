@@ -7,7 +7,7 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, Brightness, Color, Config, Param, Range, Value,
+    ext::FromValue, latch::LatchLayer, Brightness, Color, Config, Curve, Param, Range, Value,
     APP_MAX_PARAMS,
 };
 
@@ -179,6 +179,7 @@ pub async fn run(
 
     length_glob.set(length);
     register_glob.set(register);
+    let curve = Curve::Logarithmic;
 
     let fut1 = async {
         let mut att_reg = 0;
@@ -201,8 +202,9 @@ pub async fn run(
                 //leds.set(0, Led::Button, led_color.into(), 100 * rotation.1 as u8);
 
                 let register_scalled = scale_to_12bit(register, length as u8);
-                att_reg = (register_scalled as u32 * storage.query(|s| (s.att_saved)) as u32 / 4095)
-                    as u16;
+                att_reg = (register_scalled as u32
+                    * curve.at(storage.query(|s| (s.att_saved))) as u32
+                    / 4095) as u16;
 
                 let out = quantizer.get_quantized_note(att_reg).await;
                 // let out = att_reg;
