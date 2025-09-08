@@ -15,7 +15,7 @@ use crate::app::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 5;
 
-const LED_BRIGHTNESS: Brightness = Brightness::Lower;
+const LED_BRIGHTNESS: Brightness = Brightness::Low;
 
 pub static CONFIG: Config<PARAMS> =
     Config::new("Random Triggers", "Generate random triggers on clock")

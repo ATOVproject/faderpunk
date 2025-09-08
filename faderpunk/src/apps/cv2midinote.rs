@@ -186,7 +186,7 @@ pub async fn run(
                     led_color,
                     Brightness::Custom(note_led[1] * 2),
                 );
-                leds.set(1, Led::Top, led_color, Brightness::Default);
+                leds.set(1, Led::Top, led_color, Brightness::Lower);
 
                 // info!("note on")
             }
@@ -237,7 +237,7 @@ pub async fn run(
                 if muted {
                     leds.unset(1, Led::Button);
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Lower);
+                    leds.set(1, Led::Button, led_color, Brightness::Low);
                 }
             }
         }
@@ -312,7 +312,7 @@ pub async fn run(
                     if storage.query(|s| s.muted) {
                         leds.unset(1, Led::Button);
                     } else {
-                        leds.set(1, Led::Button, led_color, Brightness::Lower);
+                        leds.set(1, Led::Button, led_color, Brightness::Low);
                     }
 
                     muted_glob.set(storage.query(|s| s.muted));
