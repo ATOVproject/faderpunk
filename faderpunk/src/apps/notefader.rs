@@ -1,5 +1,8 @@
 use defmt::info;
-use embassy_futures::{join::join5, select::select};
+use embassy_futures::{
+    join::join5,
+    select::{select, Either},
+};
 
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -10,8 +13,9 @@ use libfp::{
     Param, Range, Value, APP_MAX_PARAMS,
 };
 
-use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
+use crate::{
+    app::{App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent},
+    tasks::clock,
 };
 
 pub const CHANNELS: usize = 1;
@@ -156,8 +160,7 @@ pub async fn run(
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
-    let latched_glob = app.make_global(false);
-    let clocked_glob = app.make_global(false);
+
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
@@ -166,9 +169,8 @@ pub async fn run(
 
     let mut clkn = 0;
 
-    let (res, mute, att) = storage.query(|s| (s.fader_saved, s.mute_saved, s.clocked));
+    let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_saved));
 
-    clocked_glob.set(att);
     glob_muted.set(mute);
     div_glob.set(resolution[res as usize / 345]);
     if mute {
@@ -186,13 +188,6 @@ pub async fn run(
 
         let out = quantizer.get_quantized_note(fadval).await;
 
-        info!(
-            "bit : {}, voltage: {}, corrected out: {}",
-            fadval,
-            out.as_v_oct(),
-            out.as_counts(range)
-        );
-
         jack.set_value(out.as_counts(range));
         let note = out.as_midi() as i32 + base_note;
         midi.send_note_on(note as u8, 4095).await;
@@ -207,7 +202,7 @@ pub async fn run(
         loop {
             match clock.wait_for_event(1).await {
                 ClockEvent::Reset => {
-                    clkn = 0;
+                    clkn = 62;
                     midi.send_note_off(note as u8).await;
                     note_on = false;
                 }
@@ -216,7 +211,7 @@ pub async fn run(
 
                     let div = div_glob.get();
 
-                    if clkn % div == 0 && clocked_glob.get() {
+                    if clkn % div == 0 && storage.query(|s| (s.clocked)) {
                         if !muted {
                             if note_on {
                                 midi.send_note_off(note as u8).await;
@@ -225,9 +220,7 @@ pub async fn run(
                             note_on = true;
                         }
 
-                        if buttons.is_shift_pressed() {
-                            leds.set(0, Led::Bottom, Color::Red, LED_BRIGHTNESS);
-                        }
+                        leds.set(0, Led::Bottom, Color::Red, LED_BRIGHTNESS);
                     }
 
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
@@ -247,37 +240,44 @@ pub async fn run(
     };
 
     let fut2 = async {
+        let mut note = 62;
         loop {
-            buttons.wait_for_down(0).await;
-            if !buttons.is_shift_pressed() {
-                let muted = glob_muted.toggle();
+            match select(buttons.wait_for_down(0), buttons.wait_for_up(0)).await {
+                Either::First(_) => {
+                    if !buttons.is_shift_pressed() {
+                        if storage.query(|s| (s.clocked)) {
+                            let muted = glob_muted.toggle();
 
-                storage
-                    .modify_and_save(
-                        |s| {
-                            s.mute_saved = muted;
-                            s.mute_saved
-                        },
-                        None,
-                    )
-                    .await;
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.mute_saved = muted;
+                                        s.mute_saved
+                                    },
+                                    None,
+                                )
+                                .await;
 
-                if muted {
-                    leds.unset_all();
-                } else {
-                    leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+                            if muted {
+                                leds.unset_all();
+                            } else {
+                                leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
+                            }
+                        } else {
+                            note = trigger_note(note).await;
+                        }
+                    } else {
+                        let clocked = !storage.query(|s| (s.clocked));
+                        storage.modify_and_save(|s| s.clocked = clocked, None).await;
+                    }
                 }
-            } else {
-                let mode = clocked_glob.toggle();
-                storage
-                    .modify_and_save(
-                        |s| {
-                            s.clocked = mode;
-                            s.clocked
-                        },
-                        None,
-                    )
-                    .await;
+                Either::Second(_) => {
+                    if !storage.query(|s| (s.clocked)) && !buttons.is_shift_pressed() {
+                        midi.send_note_off(note as u8).await;
+                        leds.set(0, Led::Top, led_color.into(), Brightness::Custom(0));
+                        leds.set(0, Led::Button, led_color.into(), Brightness::Lowest);
+                    }
+                }
             }
         }
     };
@@ -316,15 +316,13 @@ pub async fn run(
     };
 
     let scene_handler = async {
+        let mut note: i32 = 62;
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let (res, mute, clk) =
-                        storage.query(|s| (s.fader_saved, s.mute_saved, s.clocked));
+                    let res = storage.query(|s| (s.fader_saved));
 
-                    clocked_glob.set(clk);
-                    glob_muted.set(mute);
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
                         leds.set(0, Led::Button, led_color.into(), Brightness::Lowest);
@@ -334,7 +332,6 @@ pub async fn run(
                     } else {
                         leds.set(0, Led::Button, led_color.into(), LED_BRIGHTNESS);
                     }
-                    latched_glob.set(false);
                 }
 
                 SceneEvent::SaveScene(scene) => {
@@ -343,9 +340,6 @@ pub async fn run(
             }
         }
     };
-
-    let mut shift_old = false;
-    let mut button_old = false;
 
     let shift = async {
         let mut note = 62;
@@ -356,35 +350,15 @@ pub async fn run(
             let latch_active_layer =
                 glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
 
-            if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set(false);
-                let base: u8 = LED_BRIGHTNESS.into();
-                leds.set(
-                    0,
-                    Led::Bottom,
-                    Color::Red,
-                    Brightness::Custom(base * clocked_glob.get() as u8),
-                );
-                shift_old = true;
-            }
-            if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set(false);
-                shift_old = false;
-            }
-
-            // use this to trigger notes
-            if !clocked_glob.get() && !buttons.is_shift_pressed() {
-                if !button_old && buttons.is_button_pressed(0) {
-                    button_old = true;
-                    note = trigger_note(note).await;
-                }
-                if button_old && !buttons.is_button_pressed(0) {
-                    button_old = false;
-                    midi.send_note_off(note as u8).await;
-                    leds.set(0, Led::Top, led_color.into(), Brightness::Custom(0));
-                    leds.set(0, Led::Button, led_color.into(), Brightness::Lowest);
-                }
-            }
+            // if latch_active_layer == LatchLayer::Alt {
+            //     let base: u8 = LED_BRIGHTNESS.into();
+            //     leds.set(
+            //         0,
+            //         Led::Bottom,
+            //         Color::Red,
+            //         Brightness::Custom(base * storage.query(|s| (s.clocked)) as u8),
+            //     );
+            // };
         }
     };
 
