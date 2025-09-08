@@ -7,6 +7,7 @@ use libfp::{
     utils::{attenuate_bipolar, clickless, split_unsigned_value},
     Brightness, Color, APP_MAX_PARAMS,
 };
+use libm::roundf;
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Range, Value};
@@ -173,6 +174,8 @@ pub async fn run(
     let main_loop = async {
         let mut latch = app.make_latch(fader.get_value());
         let mut main_layer_value = fader.get_value();
+        let mut fad_val = 0;
+        let mut out = 0;
 
         loop {
             app.delay_millis(1).await;
@@ -212,22 +215,24 @@ pub async fn run(
                     0
                 }
             } else if !bipolar {
-                curve.at(main_layer_value)
+                fad_val = clickless(fad_val, curve.at(main_layer_value));
+                fad_val
             } else if main_layer_value > 2047 {
-                curve.at((main_layer_value - 2047) * 2) / 2 + 2047
+                fad_val = clickless(fad_val, curve.at((main_layer_value - 2047) * 2) / 2 + 2047);
+                fad_val
             } else {
-                2047 - curve.at((2047 - main_layer_value) * 2) / 2
+                fad_val = clickless(fad_val, 2047 - curve.at((2047 - main_layer_value) * 2) / 2);
+                fad_val
             };
 
-            let out = output_glob.modify(|o| clickless(*o, val));
             let att_layer_value = storage.query(|s| s.att_saved);
             let attenuated = if bipolar {
-                attenuate_bipolar(out, att_layer_value)
+                attenuate_bipolar(val, att_layer_value)
             } else {
-                ((out as u32 * att_layer_value as u32) / 4095) as u16
+                ((val as u32 * att_layer_value as u32) / 4095) as u16
             };
-
-            jack.set_value(attenuated);
+            out = slew_2(out, attenuated, 3);
+            jack.set_value(out);
 
             // Update LEDs
             match latch_active_layer {
@@ -343,4 +348,8 @@ pub async fn run(
         scene_handler,
     )
     .await;
+}
+
+pub fn slew_2(prev: u16, input: u16, slew: u16) -> u16 {
+    roundf((prev as f32 * slew as f32 + input as f32) / (slew + 1) as f32) as u16
 }
