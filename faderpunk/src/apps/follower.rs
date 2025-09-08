@@ -4,10 +4,9 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    colors::RED,
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuverter, is_close, slew_limiter, split_signed_value, split_unsigned_value},
+    utils::{attenuverter, slew_limiter, split_signed_value, split_unsigned_value},
     Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
@@ -64,6 +63,7 @@ pub struct Storage {
     fader_saved: [u16; 2],
     att_saved: u16,
     offset_saved: u16,
+    gain_saved: u16,
 }
 
 impl Default for Storage {
@@ -72,6 +72,7 @@ impl Default for Storage {
             fader_saved: [2000; 2],
             att_saved: 4095,
             offset_saved: 0,
+            gain_saved: 0,
         }
     }
 }
@@ -103,7 +104,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: ManagedStorage<Storage>,
 ) {
-    let curve = Curve::Exponential;
+    let curve_gain = Curve::Logarithmic;
     let led_color = params.query(|p| p.color);
 
     let buttons = app.use_buttons();
@@ -111,6 +112,7 @@ pub async fn run(
     let leds = app.use_leds();
     let input = app.make_in_jack(0, Range::_Neg5_5V).await;
     let output = app.make_out_jack(1, Range::_Neg5_5V).await;
+    let curve = Curve::Exponential;
 
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
@@ -123,11 +125,21 @@ pub async fn run(
     let fut1 = async {
         loop {
             app.delay_millis(1).await;
-            let latch_active_layer =
-                glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
+            let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
+            {
+                LatchLayer::Alt
+            } else if !buttons.is_shift_pressed() && buttons.is_button_pressed(0) {
+                LatchLayer::Third
+            } else {
+                LatchLayer::Main
+            };
+            glob_latch_layer.set(latch_active_layer);
 
             let mut inval = input.get_value();
             inval = rectify(inval);
+            inval = (inval as f32
+                * (curve_gain.at(storage.query(|s| s.gain_saved)) as f32 * 2. / 4095. + 1.))
+                .clamp(0., 4095.) as u16;
 
             oldval = slew_limiter(
                 oldval,
@@ -174,7 +186,8 @@ pub async fn run(
                 );
                 leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
                 leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
-            } else {
+            }
+            if latch_active_layer == LatchLayer::Alt {
                 let off_led = split_signed_value(offset);
                 leds.set(0, Led::Top, Color::Red, Brightness::Custom(off_led[0]));
                 leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(off_led[1]));
@@ -192,6 +205,30 @@ pub async fn run(
                     leds.set(1, Led::Button, Color::Red, BUTTON_BRIGHTNESS);
                 }
             }
+            if latch_active_layer == LatchLayer::Third {
+                leds.set(
+                    0,
+                    Led::Top,
+                    Color::Red,
+                    Brightness::Custom((storage.query(|s| s.gain_saved) / 16) as u8),
+                );
+
+                let out_led = split_unsigned_value(outval);
+                leds.set(
+                    1,
+                    Led::Top,
+                    led_color.into(),
+                    Brightness::Custom(out_led[0]),
+                );
+                leds.set(
+                    1,
+                    Led::Bottom,
+                    led_color.into(),
+                    Brightness::Custom(out_led[1]),
+                );
+                leds.set(0, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
+                leds.set(1, Led::Button, led_color.into(), BUTTON_BRIGHTNESS);
+            }
         }
     };
 
@@ -208,6 +245,7 @@ pub async fn run(
                 let target_value = match latch_layer {
                     LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
                     LatchLayer::Alt => storage.query(|s| s.offset_saved),
+                    LatchLayer::Third => storage.query(|s| s.gain_saved),
                     _ => unreachable!(),
                 };
                 if let Some(new_value) =
@@ -234,6 +272,16 @@ pub async fn run(
                                 )
                                 .await;
                         }
+                        LatchLayer::Third => {
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.gain_saved = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
                         _ => unreachable!(),
                     }
                 }
@@ -241,6 +289,7 @@ pub async fn run(
                 let target_value = match latch_layer {
                     LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
                     LatchLayer::Alt => storage.query(|s| s.att_saved),
+                    LatchLayer::Third => 0,
                     _ => unreachable!(),
                 };
                 if let Some(new_value) =
@@ -267,6 +316,7 @@ pub async fn run(
                                 )
                                 .await;
                         }
+                        LatchLayer::Third => {}
                         _ => unreachable!(),
                     }
                 }
@@ -320,5 +370,6 @@ pub async fn run(
 }
 
 fn rectify(value: u16) -> u16 {
-    value.abs_diff(2047) + 2047
+    let val = value.abs_diff(2047) + 2047;
+    val
 }
