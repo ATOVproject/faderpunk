@@ -63,11 +63,16 @@ impl AppParams for Params {
 pub struct Storage {
     oct: u16,
     st: u16,
+    offset_toggles: [bool; 2],
 }
 
 impl Default for Storage {
     fn default() -> Self {
-        Self { oct: 2047, st: 0 }
+        Self {
+            oct: 2047,
+            st: 0,
+            offset_toggles: [false; 2],
+        }
     }
 }
 
@@ -105,21 +110,19 @@ pub async fn run(
     leds.set(0, Led::Button, led_color, Brightness::Lower);
     leds.set(1, Led::Button, led_color, Brightness::Lower);
 
-    let oct_glob = app.make_global(4095);
-    let latched_glob = app.make_global([false; 2]);
-    let st_glob = app.make_global(0);
     let latch_layer_glob = app.make_global(LatchLayer::Main);
-
-    let offset = storage.query(|s| s.oct);
-    let att = storage.query(|s| s.st);
-
-    st_glob.set(offset);
-    oct_glob.set(att);
 
     let range = Range::_Neg5_5V;
     let quantizer = app.use_quantizer(range);
     let _input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
+    for chan in 0..2 {
+        if !storage.query(|s| s.offset_toggles[chan]) {
+            leds.set(chan, Led::Button, led_color, Brightness::Lower);
+        } else {
+            leds.unset(chan, Led::Button);
+        }
+    }
 
     let main_loop = async {
         let mut oct = 0;
@@ -130,21 +133,22 @@ pub async fn run(
 
             let inval = _input.get_value() as i16;
 
-            oct = (((storage.query(|s| s.oct) * 10 / 4095) as f32 - 5.) * 410.) as i16;
+            oct = if storage.query(|s| s.offset_toggles[1]) {
+                0
+            } else {
+                (((storage.query(|s| s.oct) * 10 / 4095) as f32 - 5.) * 410.) as i16
+            };
 
-            st = ((storage.query(|s| s.st) * 12 / 4095) as f32 * 410. / 12.) as i16;
+            st = if storage.query(|s| s.offset_toggles[0]) {
+                0
+            } else {
+                ((storage.query(|s| s.st) * 12 / 4095) as f32 * 410. / 12.) as i16
+            };
 
             let outval = quantizer
                 .get_quantized_note((inval + oct + st).clamp(0, 4095) as u16)
                 .await;
 
-            // info!(
-            //     "inval = {}, oct = {}, st = {}, outval = {}",
-            //     inval,
-            //     oct,
-            //     st,
-            //     outval.as_counts(range)
-            // );
             output.set_value(outval.as_counts(range));
             let oct_led = split_unsigned_value(outval.as_counts(range));
             leds.set(0, Led::Top, led_color, Brightness::Custom(oct_led[0]));
@@ -163,27 +167,18 @@ pub async fn run(
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             if is_shift_pressed {
             } else {
-                if chan == 0 {
-                    st_glob.set(0);
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.st = 0;
-                            },
-                            None,
-                        )
-                        .await;
-                }
-                if chan == 1 {
-                    oct_glob.set(0);
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.oct = 0;
-                            },
-                            None,
-                        )
-                        .await;
+                storage
+                    .modify_and_save(
+                        |s| {
+                            s.offset_toggles[chan] = !s.offset_toggles[chan];
+                        },
+                        None,
+                    )
+                    .await;
+                if !storage.query(|s| s.offset_toggles[chan]) {
+                    leds.set(chan, Led::Button, led_color, Brightness::Lower);
+                } else {
+                    leds.unset(chan, Led::Button);
                 }
             }
         }
@@ -200,6 +195,30 @@ pub async fn run(
             let latch_layer = LatchLayer::Main;
 
             if chan == 0 {
+                let target_value = match latch_layer {
+                    LatchLayer::Main => storage.query(|s| s.st),
+                    LatchLayer::Alt => 0,
+                    _ => unreachable!(),
+                };
+                if let Some(new_value) =
+                    latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                {
+                    match latch_layer {
+                        LatchLayer::Main => {
+                            storage
+                                .modify_and_save(
+                                    |s| {
+                                        s.st = new_value;
+                                    },
+                                    None,
+                                )
+                                .await;
+                        }
+                        LatchLayer::Alt => {}
+                        _ => unreachable!(),
+                    }
+                }
+            } else {
                 let target_value = match latch_layer {
                     LatchLayer::Main => storage.query(|s| s.oct),
                     LatchLayer::Alt => 0,
@@ -223,30 +242,6 @@ pub async fn run(
                         _ => unreachable!(),
                     }
                 }
-            } else {
-                let target_value = match latch_layer {
-                    LatchLayer::Main => storage.query(|s| s.oct),
-                    LatchLayer::Alt => 0,
-                    _ => unreachable!(),
-                };
-                if let Some(new_value) =
-                    latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
-                {
-                    match latch_layer {
-                        LatchLayer::Main => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.st = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
-                        }
-                        LatchLayer::Alt => {}
-                        _ => unreachable!(),
-                    }
-                }
             }
         }
     };
@@ -256,6 +251,13 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
+                    for chan in 0..2 {
+                        if !storage.query(|s| s.offset_toggles[chan]) {
+                            leds.set(chan, Led::Button, led_color, Brightness::Lower);
+                        } else {
+                            leds.unset(chan, Led::Button);
+                        }
+                    }
                 }
                 SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
             }
