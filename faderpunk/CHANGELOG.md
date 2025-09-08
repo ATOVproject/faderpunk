@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.9.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.8.1...faderpunk-v0.9.0) (2025-09-08)
+
+
+### Features
+
+* **cv2midinote:** add quantizer on input ([36be3fe](https://github.com/ATOVproject/faderpunk/commit/36be3fe256a0131070be6d91d71dc06ce54e2e19))
+* **cv2midinote:** add semitone offset toggle ([aca8f02](https://github.com/ATOVproject/faderpunk/commit/aca8f0281fd38adbb758796ae1b89bb7bdfcc205))
+* **follower:** add input gain control ([ee3e1b9](https://github.com/ATOVproject/faderpunk/commit/ee3e1b920473321c83bb377b273b666c92c2c530))
+* **offset_att:** increase max gain to 2x ([6bde1c8](https://github.com/ATOVproject/faderpunk/commit/6bde1c87ea5c23a4f9bdc99033a05c38ec4e4c33))
+* **quantizer:** add offset toggles ([ef7676b](https://github.com/ATOVproject/faderpunk/commit/ef7676b8dae87c0278a4afd30074c8b7ce9d1dcd))
+
+
+### Bug Fixes
+
+* 1 bar division  was wrong ([359b549](https://github.com/ATOVproject/faderpunk/commit/359b549108899ca460678b80b68b854d823c624e))
+* **control:** reduce slew on mute ([041a460](https://github.com/ATOVproject/faderpunk/commit/041a46055c45a6c08dfc6a9d849a943ab071f55a))
+* **cv2midinote & probatrigger:** fix led brightness inconsistency ([330b595](https://github.com/ATOVproject/faderpunk/commit/330b59572a11b42e92d35b8fd062596bae26ef64))
+* **cv2midinote:** fix issue crash when changing to certain params ([392f2d4](https://github.com/ATOVproject/faderpunk/commit/392f2d4262da3decc1634063583065ac33789da6))
+* **cv2midinote:** remove CC param ([be640a5](https://github.com/ATOVproject/faderpunk/commit/be640a5400a034a5f5d1e76ef99407e97ca32b00))
+* **euclid:** bug upon changing the resolution ([f1c73ae](https://github.com/ATOVproject/faderpunk/commit/f1c73ae41be289d8f6d103da6dd7712dcb84890c))
+* **euclid:** Fix default values on rotation and randomization ([94cf7cc](https://github.com/ATOVproject/faderpunk/commit/94cf7cceca81fed110ad889130ba8d6093278112))
+* **euclid:** fix division setting not being recalled ([baebf9d](https://github.com/ATOVproject/faderpunk/commit/baebf9de0e89004d00f27217087c01f9f22b23a2))
+* **euclid:** fix params not being applied ([9300a87](https://github.com/ATOVproject/faderpunk/commit/9300a8727414aa9ff9b857755c05868b6a989d72))
+* **follower & slew:** set offset to correct default value ([894e979](https://github.com/ATOVproject/faderpunk/commit/894e9791e68be22b53aa16957384cc0ceb007ed0))
+* **notefader:** rework to implement new button API ([f67dbf4](https://github.com/ATOVproject/faderpunk/commit/f67dbf49fcd1098069973f9174c9f979259299eb))
+* **probatrigger:** remove fader curve param ([ca57153](https://github.com/ATOVproject/faderpunk/commit/ca5715384b64077f324cda314b6e23a625d39751))
+* **turing &  turing+:** fix attenuation curve ([bf5fc19](https://github.com/ATOVproject/faderpunk/commit/bf5fc1951ed0ccc09889a844c806e0d723b078ac))
+
 ## [0.8.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.8.0...faderpunk-v0.8.1) (2025-09-04)
 
 
