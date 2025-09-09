@@ -1,4 +1,3 @@
-use defmt::info;
 use embassy_futures::{
     join::join4,
     select::{select, select3, Either, Either3},
@@ -16,26 +15,39 @@ use embassy_sync::{
 use embassy_time::Ticker;
 
 use libfp::{utils::bpm_to_clock_duration, ClockSrc};
+use midly::live::{LiveEvent, SystemRealtime};
 
-use crate::{tasks::global_config::get_global_config, Spawner, GLOBAL_CONFIG_WATCH};
+use crate::{
+    tasks::{global_config::get_global_config, midi::MIDI_CHANNEL},
+    Spawner, GLOBAL_CONFIG_WATCH,
+};
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
+// 16 apps
+const CLOCK_PUBSUB_SUBSCRIBERS: usize = 16;
+// 3 Ext clocks, internal clock, midi
+const CLOCK_PUBSUB_PUBLISHERS: usize = 5;
 
 type AuxInputs = (
     Peri<'static, PIN_1>,
     Peri<'static, PIN_2>,
     Peri<'static, PIN_3>,
 );
-// 5 Publishers: 3 Ext clocks, internal clock, midi
-pub type ClockSubscriber =
-    Subscriber<'static, CriticalSectionRawMutex, ClockEvent, CLOCK_PUBSUB_SIZE, 16, 5>;
+pub type ClockSubscriber = Subscriber<
+    'static,
+    CriticalSectionRawMutex,
+    ClockEvent,
+    CLOCK_PUBSUB_SIZE,
+    CLOCK_PUBSUB_SUBSCRIBERS,
+    CLOCK_PUBSUB_PUBLISHERS,
+>;
 
 pub static CLOCK_PUBSUB: PubSubChannel<
     CriticalSectionRawMutex,
     ClockEvent,
     CLOCK_PUBSUB_SIZE,
-    16,
-    5,
+    CLOCK_PUBSUB_SUBSCRIBERS,
+    CLOCK_PUBSUB_PUBLISHERS,
 > = PubSubChannel::new();
 
 pub static CLOCK_CMD_CHANNEL: Channel<ThreadModeRawMutex, ClockCmd, 8> = Channel::new();
@@ -51,6 +63,7 @@ pub enum ClockCmd {
 pub enum ClockEvent {
     Tick,
     Start,
+    Stop,
     Reset,
 }
 
@@ -135,6 +148,9 @@ async fn run_clock(aux_inputs: AuxInputs) {
             {
                 Either3::First(_) => {
                     clock_publisher.publish(ClockEvent::Tick).await;
+                    MIDI_CHANNEL
+                        .send(LiveEvent::Realtime(SystemRealtime::TimingClock))
+                        .await;
                 }
                 Either3::Second(new_config) => {
                     if new_config.clock != config.clock {
@@ -161,6 +177,17 @@ async fn run_clock(aux_inputs: AuxInputs) {
                         clock_publisher.publish(ClockEvent::Start).await;
                         clock_publisher.publish(ClockEvent::Tick).await;
                         ticker.reset();
+                        MIDI_CHANNEL
+                            .send(LiveEvent::Realtime(SystemRealtime::Start))
+                            .await;
+                        MIDI_CHANNEL
+                            .send(LiveEvent::Realtime(SystemRealtime::TimingClock))
+                            .await;
+                    } else if is_running && !next_is_running {
+                        clock_publisher.publish(ClockEvent::Stop).await;
+                        MIDI_CHANNEL
+                            .send(LiveEvent::Realtime(SystemRealtime::Stop))
+                            .await;
                     }
                     is_running = next_is_running;
                 }
