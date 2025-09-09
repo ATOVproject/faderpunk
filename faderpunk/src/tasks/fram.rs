@@ -1,4 +1,4 @@
-use core::{mem::MaybeUninit, slice::from_raw_parts};
+use core::{future::pending, mem::MaybeUninit, slice::from_raw_parts};
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_rp::{
@@ -11,6 +11,12 @@ use embassy_sync::{
 use embassy_time::{with_timeout, Duration};
 use fm24v10::Fm24v10;
 use heapless::Vec;
+use libfp::Color;
+
+use crate::{
+    app::Led,
+    tasks::leds::{set_led_overlay_mode, LedMode},
+};
 
 // Address is technically a u17
 type Address = u32;
@@ -286,7 +292,14 @@ impl Storage {
     }
 }
 
-pub async fn start_fram(spawner: &Spawner, fram: Fram) {
+pub async fn start_fram(spawner: &Spawner, mut fram: Fram) {
+    // Initialization check. If fram can't be read from, stall and flash LED
+    let mut len_bytes: [u8; 2] = [0; 2];
+    if fram.read(0, &mut len_bytes).await.is_err() {
+        set_led_overlay_mode(0, Led::Button, LedMode::Flash(Color::Red, None)).await;
+        pending::<()>().await;
+    }
+
     spawner.spawn(run_fram(fram)).unwrap();
 }
 
