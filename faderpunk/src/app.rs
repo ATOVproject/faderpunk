@@ -6,7 +6,11 @@ use embassy_time::Timer;
 use max11300::config::{
     ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES,
 };
-use midly::{live::LiveEvent, num::u4, MidiMessage};
+use midly::{
+    live::LiveEvent,
+    num::{u14, u4},
+    MidiMessage, PitchBend,
+};
 use portable_atomic::Ordering;
 
 use libfp::{
@@ -374,17 +378,21 @@ impl MidiOutput {
         }
     }
 
-    pub async fn send_cc(&self, cc: u8, val: u16) {
+    /// Sends a MIDI CC message.
+    /// value is normalized to a range of 0-4095
+    pub async fn send_cc(&self, cc: u8, value: u16) {
         let msg = LiveEvent::Midi {
             channel: self.midi_channel,
             message: MidiMessage::Controller {
                 controller: cc.into(),
-                value: scale_bits_12_7(val),
+                value: scale_bits_12_7(value),
             },
         };
         self.midi_sender.send(msg).await;
     }
 
+    /// Sends a MIDI NoteOn message.
+    /// velocity is normalized to a range of 0-4095
     pub async fn send_note_on(&self, note_number: u8, velocity: u16) {
         let msg = LiveEvent::Midi {
             channel: self.midi_channel,
@@ -397,12 +405,38 @@ impl MidiOutput {
         self.midi_sender.send(msg).await;
     }
 
+    /// Sends a MIDI NoteOff message.
     pub async fn send_note_off(&self, note_number: u8) {
         let msg = LiveEvent::Midi {
             channel: self.midi_channel,
             message: MidiMessage::NoteOff {
                 key: note_number.into(),
                 vel: 0.into(),
+            },
+        };
+        self.midi_sender.send(msg).await;
+    }
+
+    /// Sends a MIDI Aftertouch message.
+    /// velocity is normalized to a range of 0-4095
+    pub async fn send_aftertouch(&self, note_number: u8, velocity: u16) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::Aftertouch {
+                key: note_number.into(),
+                vel: scale_bits_12_7(velocity),
+            },
+        };
+        self.midi_sender.send(msg).await;
+    }
+
+    /// Sends a MIDI PitchBend message.
+    /// bend is a value between 0 and 16,383
+    pub async fn send_pitch_bend(&self, bend: u16) {
+        let msg = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::PitchBend {
+                bend: PitchBend(bend.into()),
             },
         };
         self.midi_sender.send(msg).await;
