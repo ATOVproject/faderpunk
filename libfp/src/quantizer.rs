@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn test_quantize_c_major_unipolar() {
         let mut q = Quantizer::default();
-        q.set_scale(Key::Major, Note::C);
+        q.set_scale(Key::Ionian, Note::C);
         let mut state = QuantizerState::default();
 
         // 0V -> should be C0
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn test_quantize_a_minor_bipolar() {
         let mut q = Quantizer::default();
-        q.set_scale(Key::Minor, Note::A);
+        q.set_scale(Key::Aeolian, Note::A);
         let mut state = QuantizerState::default();
 
         // ADC midpoint 2048 should map to 0V. Closest note in A minor is C0
@@ -297,7 +297,7 @@ mod tests {
     fn test_hysteresis() {
         let mut q = Quantizer::default();
         // C, D, E, F, G, A, B
-        q.set_scale(Key::Major, Note::C);
+        q.set_scale(Key::Ionian, Note::C);
         let mut state = QuantizerState::default();
 
         // The midpoint between C0 (0V) and D0 (~0.167V) is ~0.083V or 34 counts
