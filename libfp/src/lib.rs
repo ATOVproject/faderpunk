@@ -42,6 +42,10 @@ pub const STARTUP_ANIMATION_DURATION: Duration = Duration::from_secs(2);
 /// Rang in which the LED brightness is scaled
 pub const LED_BRIGHTNESS_RANGE: core::ops::Range<u8> = 185..255;
 
+pub const CALIBRATION_SCALE_FACTOR: i64 = 1 << 16;
+pub const CALIBRATION_VERSION_LATEST: u8 = 2;
+pub const CALIB_FILE_MAGIC: [u8; 4] = *b"FPBC";
+
 pub type ConfigMeta<'a> = (usize, &'a str, &'a str, &'a [Param]);
 
 /// The config layout is a layout with all the apps in the appropriate spots

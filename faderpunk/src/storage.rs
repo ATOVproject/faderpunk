@@ -4,14 +4,16 @@ use heapless::Vec;
 use postcard::{from_bytes, to_slice};
 use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use libfp::{GlobalConfig, Layout, Value, APP_MAX_PARAMS};
+use libfp::{
+    types::{CalibFile, MaxCalibration, MaxCalibrationV1},
+    GlobalConfig, Layout, Value, APP_MAX_PARAMS, CALIB_FILE_MAGIC,
+};
 
 use crate::{
     apps::get_channels,
     tasks::{
         configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
         fram::{read_data, write_with},
-        max::MaxCalibration,
     },
 };
 
@@ -80,8 +82,10 @@ pub async fn load_layout() -> Layout {
 }
 
 pub async fn store_calibration_data(data: &MaxCalibration) {
+    let file_to_save = CalibFile::new(*data);
+
     let res = write_with(CALIBRATION_RANGE.start, |buf| {
-        Ok(to_slice(&data, &mut *buf)?.len())
+        Ok(to_slice(&file_to_save, &mut *buf)?.len())
     })
     .await;
 
@@ -93,11 +97,30 @@ pub async fn store_calibration_data(data: &MaxCalibration) {
 pub async fn load_calibration_data() -> Option<MaxCalibration> {
     if let Ok(guard) = read_data(CALIBRATION_RANGE.start).await {
         let data = guard.data();
-        if !data.is_empty() {
-            if let Ok(calibration_data) = from_bytes::<MaxCalibration>(data) {
-                return Some(calibration_data);
-            }
+        if data.len() < 4 {
+            // Not enough data to be anything
+            return None;
         }
+
+        if data[0..4] == CALIB_FILE_MAGIC {
+            if let Ok(file) = from_bytes::<CalibFile>(data) {
+                if file.version == 2 {
+                    defmt::info!("V2 calibration data found.");
+                    return Some(file.data);
+                } else {
+                    defmt::warn!("Unsupported calibration file version: {}", file.version);
+                    return None;
+                }
+            }
+        } else if let Ok(old_data) = from_bytes::<MaxCalibrationV1>(data) {
+            defmt::info!("Old V1 calibration data found, converting to new format.");
+            let new_data = MaxCalibration::from(old_data);
+            // Re-save the data in the new V2 format for next time (not yet)
+            // store_calibration_data(&new_data).await;
+            return Some(new_data);
+        }
+
+        defmt::warn!("Failed to deserialize calibration data as any known format.");
     }
     None
 }

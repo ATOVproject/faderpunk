@@ -13,6 +13,7 @@ mod tasks;
 
 use core::sync::atomic::Ordering;
 
+use defmt::info;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::{ClockConfig, CoreVoltage};
 use embassy_rp::config::Config;

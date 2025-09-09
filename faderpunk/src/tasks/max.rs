@@ -14,9 +14,9 @@ use embassy_sync::{
 use embassy_time::Timer;
 use libfp::{
     latch::{AnalogLatch, LatchLayer},
-    types::{RegressionValuesInput, RegressionValuesOutput},
+    types::MaxCalibration,
+    CALIBRATION_SCALE_FACTOR,
 };
-use libm::roundf;
 use max11300::{
     config::{
         ConfigMode0, ConfigMode7, DeviceConfig, Mode, Port, ADCCTL, ADCRANGE, AVR, DACREF,
@@ -25,7 +25,6 @@ use max11300::{
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
 use portable_atomic::{AtomicBool, AtomicU16, Ordering};
-use serde::{Deserialize, Serialize};
 use static_cell::StaticCell;
 
 use crate::{
@@ -65,14 +64,6 @@ pub enum MaxCmd {
     ConfigurePort(Mode, Option<u16>),
     GpoSetHigh,
     GpoSetLow,
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, Default)]
-pub struct MaxCalibration {
-    /// Input calibration data
-    pub inputs: RegressionValuesInput,
-    /// Output calibration data
-    pub outputs: RegressionValuesOutput,
 }
 
 pub async fn start_max(
@@ -209,8 +200,8 @@ async fn read_fader(
 
         let val = fader_port.get_value().await.unwrap();
 
-        // Scale a bit across the dead-zone (~4087 -> 4095)
-        let val = (roundf(val as f32 * 1.002) as u16).clamp(0, 4095);
+        // Scale a bit across the dead-zone (~4087 -> 4095) using integer math
+        let val = (((val as u32 * 1002) / 1000) as u16).clamp(0, 4095);
 
         let latch = &mut fader_latches[channel];
 
@@ -275,11 +266,12 @@ async fn process_channel_values(
                             _ => 0, // Default to 0-10V range for other ranges
                         };
                         let (slope, intercept) = data.outputs[i][range_idx];
-                        let target_f32 = target_dac_value as f32;
-                        let raw_f32 = (target_f32 - intercept) / (1.0 + slope);
 
-                        // Round and clamp to the valid DAC range
-                        roundf(raw_f32).clamp(0.0, 4095.0) as u16
+                        (((target_dac_value as i64 * slope)
+                            + intercept
+                            + (CALIBRATION_SCALE_FACTOR / 2))
+                            >> 16)
+                            .clamp(0, 4095) as u16
                     } else {
                         target_dac_value
                     };
@@ -297,10 +289,14 @@ async fn process_channel_values(
                             _ => 0, // Default to 0-10V range for other ranges
                         };
                         let (slope, intercept) = data.inputs[range_idx];
-                        let raw_value_f32 = value as f32;
-                        let corrected_f32 = raw_value_f32 * (1.0 + slope) + intercept;
 
-                        roundf(corrected_f32).clamp(0.0, 4095.0) as u16
+                        // ideal = slope * raw + intercept
+                        // Using scaled integers: ideal = (raw * slope*S + intercept*S) / S
+                        // We use a bit shift for division by SCALE_FACTOR (a power of 2)
+                        // We add SCALE_FACTOR/2 for rounding
+                        (((value as i64 * slope) + intercept + (CALIBRATION_SCALE_FACTOR / 2))
+                            >> 16)
+                            .clamp(0, 4095) as u16
                     } else {
                         value
                     };
