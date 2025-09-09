@@ -1,5 +1,8 @@
 use defmt::info;
-use embassy_futures::join::{join, join3};
+use embassy_futures::{
+    join::join,
+    select::{select3, Either3},
+};
 use embassy_rp::{
     peripherals::USB,
     uart::{Async, BufferedUart, BufferedUartTx, Error as UartError, UartTx},
@@ -13,6 +16,7 @@ use embassy_sync::{
 use embassy_time::{with_timeout, Duration, TimeoutError};
 use embassy_usb::class::midi::{MidiClass, Sender as UsbSender};
 use embedded_io_async::{Read, Write};
+use heapless::Vec;
 use midly::{
     io::Cursor,
     live::{LiveEvent, SystemCommon, SystemRealtime},
@@ -33,7 +37,8 @@ midly::stack_buffer! {
     struct MidiStreamBuffer([u8; 64]);
 }
 
-const MIDI_CHANNEL_SIZE: usize = 16;
+// 16 apps plus clock
+const MIDI_CHANNEL_SIZE: usize = 17;
 
 pub type MidiSender =
     Sender<'static, CriticalSectionRawMutex, LiveEvent<'static>, MIDI_CHANNEL_SIZE>;
@@ -116,125 +121,150 @@ pub async fn start_midi_loops<'a>(
     let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, Async>> = Mutex::new(uart0);
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
     let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
+    let event_publisher = EVENT_PUBSUB.publisher().unwrap();
 
-    let midi_tx = async {
-        // TODO: Do not try to send midi message to USB when not connected
-        // usb_tx.wait_connection().await;
-        // TODO: Deal with backpressure as well (do it on core b maybe?)
-        // See https://claude.ai/chat/1a702bdf-b1f9-4d52-a004-aa221cbb4642 for improving this
+    let mut usb_rx_buf = [0; 64];
+    let mut uart_rx_buffer = [0u8; 64];
+    let mut midi_stream = MidiStream::<MidiStreamBuffer>::default();
+    let mut uart_events = Vec::<LiveEvent<'static>, 64>::new();
 
-        loop {
-            let midi_ev = MIDI_CHANNEL.receive().await;
+    loop {
+        let selected = select3(
+            MIDI_CHANNEL.receive(),
+            usb_rx.read_packet(&mut usb_rx_buf),
+            uart1_rx.read(&mut uart_rx_buffer),
+        )
+        .await;
 
-            let (_, _) = join(
-                write_msg_to_uart(&mut uart1_tx, midi_ev),
-                write_msg_to_usb(&mut usb_tx, midi_ev),
-            )
-            .await;
-        }
-    };
-
-    let usb_rx = async {
-        let mut buf = [0; 64];
-        let event_publisher = EVENT_PUBSUB.publisher().unwrap();
-        loop {
-            if let Ok(len) = usb_rx.read_packet(&mut buf).await {
-                if len == 0 {
-                    continue;
-                }
-                // Split data into 4 byte chunks
-                let packets = buf[..len].chunks_exact(4);
-                for packet in packets {
-                    let msg_len = len_from_cin(packet[0]);
-                    if msg_len == 0 {
+        match selected {
+            // MIDI TX
+            Either3::First(midi_ev) => {
+                // TODO: Do not try to send midi message to USB when not connected
+                // usb_tx.wait_connection().await;
+                // TODO: Deal with backpressure as well (do it on core b maybe?)
+                let (_, _) = join(
+                    write_msg_to_uart(&mut uart1_tx, midi_ev),
+                    write_msg_to_usb(&mut usb_tx, midi_ev),
+                )
+                .await;
+            }
+            // USB RX
+            Either3::Second(result) => {
+                if let Ok(len) = result {
+                    if len == 0 {
                         continue;
                     }
-                    // Remove USB-MIDI CIN and padding
-                    let msg = &packet[1..1 + msg_len];
-                    // Write to MIDI-THRU
-                    let mut tx = uart0_tx.lock().await;
-                    tx.write(msg).await.unwrap();
-                    match LiveEvent::parse(msg) {
-                        Ok(event) => {
-                            let config = get_global_config();
-                            match event {
-                                LiveEvent::Realtime(msg) => match msg {
+                    let packets = usb_rx_buf[..len].chunks_exact(4);
+                    for packet in packets {
+                        let msg_len = len_from_cin(packet[0]);
+                        if msg_len == 0 {
+                            continue;
+                        }
+
+                        let msg = &packet[1..1 + msg_len];
+                        // MIDI-THRU to uart0
+                        {
+                            let mut tx = uart0_tx.lock().await;
+                            tx.write(msg).await.unwrap();
+                        }
+
+                        // With this structure, you can now easily route from USB to other outputs
+                        // For example:
+                        // write_msg_to_uart(&mut uart1_tx, LiveEvent::parse(msg).unwrap()).await;
+
+                        match LiveEvent::parse(msg) {
+                            Ok(event) => {
+                                let config = get_global_config();
+                                match event {
+                                    LiveEvent::Realtime(msg) => {
+                                        match msg {
+                                            SystemRealtime::TimingClock => {
+                                                if let ClockSrc::MidiUsb = config.clock.clock_src {
+                                                    clock_publisher.publish(ClockEvent::Tick).await;
+                                                }
+                                            }
+                                            SystemRealtime::Start => {
+                                                if let ClockSrc::MidiUsb = config.clock.reset_src {
+                                                    clock_publisher
+                                                        .publish(ClockEvent::Start)
+                                                        .await;
+                                                }
+                                            }
+                                            SystemRealtime::Stop => {
+                                                if let ClockSrc::MidiUsb = config.clock.reset_src {
+                                                    clock_publisher
+                                                        .publish(ClockEvent::Reset)
+                                                        .await;
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+
+                                        // Pass through all realtime events to UART
+                                        let _ = write_msg_to_uart(&mut uart1_tx, event).await;
+                                    }
+                                    _ => {
+                                        event_publisher
+                                            .publish(InputEvent::MidiMsg(event.to_static()))
+                                            .await;
+                                    }
+                                }
+                            }
+                            Err(_err) => {
+                                info!("Error parsing USB MIDI. Len: {}, Data: {}", len, msg);
+                            }
+                        }
+                    }
+                }
+            }
+            // UART RX
+            Either3::Third(result) => {
+                if let Ok(bytes_read) = result {
+                    if bytes_read == 0 {
+                        continue;
+                    }
+
+                    uart_events.clear();
+                    midi_stream.feed(&uart_rx_buffer[..bytes_read], |event| {
+                        let _ = uart_events.push(event.to_static());
+                    });
+
+                    let config = get_global_config();
+                    for event in uart_events.iter() {
+                        match event {
+                            LiveEvent::Realtime(msg) => {
+                                match msg {
                                     SystemRealtime::TimingClock => {
-                                        if let ClockSrc::MidiUsb = config.clock.clock_src {
+                                        if let ClockSrc::MidiIn = config.clock.clock_src {
                                             clock_publisher.publish(ClockEvent::Tick).await;
                                         }
                                     }
                                     SystemRealtime::Start => {
-                                        if let ClockSrc::MidiUsb = config.clock.reset_src {
+                                        if let ClockSrc::MidiIn = config.clock.reset_src {
                                             clock_publisher.publish(ClockEvent::Start).await;
                                         }
                                     }
                                     SystemRealtime::Stop => {
-                                        if let ClockSrc::MidiUsb = config.clock.reset_src {
+                                        if let ClockSrc::MidiIn = config.clock.reset_src {
                                             clock_publisher.publish(ClockEvent::Reset).await;
                                         }
                                     }
                                     _ => {}
-                                },
-                                _ => {
-                                    event_publisher
-                                        .publish(InputEvent::MidiMsg(event.to_static()))
-                                        .await;
                                 }
+                                // Pass through all realtime events to USB
+                                let _ = write_msg_to_usb(&mut usb_tx, *event).await;
                             }
-                        }
-                        Err(_err) => {
-                            // TODO: Log with USB
-                            info!(
-                                "There was an error but we should not panic. Len: {}, Data: {}",
-                                len, msg
-                            );
+                            _ => {
+                                event_publisher
+                                    .publish(InputEvent::MidiMsg(event.to_static()))
+                                    .await;
+                            }
                         }
                     }
                 }
             }
         }
-    };
-
-    let uart_rx = async {
-        let mut uart_rx_buffer = [0u8; 64];
-        let mut midi_stream = MidiStream::<MidiStreamBuffer>::default();
-        let event_publisher = EVENT_PUBSUB.publisher().unwrap();
-        loop {
-            if let Ok(bytes_read) = uart1_rx.read(&mut uart_rx_buffer).await {
-                let config = get_global_config();
-                midi_stream.feed(
-                    &uart_rx_buffer[..bytes_read],
-                    |event: LiveEvent| match event {
-                        LiveEvent::Realtime(msg) => match msg {
-                            SystemRealtime::TimingClock => {
-                                if let ClockSrc::MidiIn = config.clock.clock_src {
-                                    clock_publisher.publish_immediate(ClockEvent::Tick);
-                                }
-                            }
-                            SystemRealtime::Start => {
-                                if let ClockSrc::MidiIn = config.clock.reset_src {
-                                    clock_publisher.publish_immediate(ClockEvent::Start);
-                                }
-                            }
-                            SystemRealtime::Stop => {
-                                if let ClockSrc::MidiIn = config.clock.reset_src {
-                                    clock_publisher.publish_immediate(ClockEvent::Reset);
-                                }
-                            }
-                            _ => {}
-                        },
-                        _ => {
-                            event_publisher
-                                .publish_immediate(InputEvent::MidiMsg(event.to_static()));
-                        }
-                    },
-                );
-            }
-        }
-    };
-
-    join3(midi_tx, usb_rx, uart_rx).await;
+    }
 }
 
 fn cin_from_live_event(midi_ev: &LiveEvent) -> CodeIndexNumber {
