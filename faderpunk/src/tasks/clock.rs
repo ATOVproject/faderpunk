@@ -1,6 +1,7 @@
+use defmt::info;
 use embassy_futures::{
     join::join4,
-    select::{select, Either},
+    select::{select, select3, Either, Either3},
 };
 use embassy_rp::{
     gpio::{Input, Pull},
@@ -8,7 +9,8 @@ use embassy_rp::{
     Peri,
 };
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
+    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
+    channel::Channel,
     pubsub::{PubSubChannel, Subscriber},
 };
 use embassy_time::Ticker;
@@ -35,6 +37,15 @@ pub static CLOCK_PUBSUB: PubSubChannel<
     16,
     5,
 > = PubSubChannel::new();
+
+pub static CLOCK_CMD_CHANNEL: Channel<ThreadModeRawMutex, ClockCmd, 8> = Channel::new();
+
+#[derive(Clone, Copy)]
+pub enum ClockCmd {
+    Start,
+    Stop,
+    Toggle,
+}
 
 #[derive(Clone, Copy)]
 pub enum ClockEvent {
@@ -93,15 +104,17 @@ async fn run_clock(aux_inputs: AuxInputs) {
     let internal_fut = async {
         let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
         let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
+        let clock_receiver = CLOCK_CMD_CHANNEL.receiver();
 
         let mut config = get_global_config();
         // TODO: Get PPQN from config
         const PPQN: u8 = 24;
         let mut ticker = Ticker::every(bpm_to_clock_duration(config.clock.internal_bpm, PPQN));
+        let mut is_running = false;
 
         loop {
             // TODO: How to handle internal reset?
-            let should_be_active = config.clock.clock_src == ClockSrc::Internal;
+            let should_be_active = is_running && config.clock.clock_src == ClockSrc::Internal;
 
             // This future only resolves on a tick when the internal clock is active.
             // Otherwise, it pends forever, preventing ticks from being generated.
@@ -113,14 +126,20 @@ async fn run_clock(aux_inputs: AuxInputs) {
                 }
             };
 
-            match select(tick_fut, config_receiver.changed()).await {
-                Either::First(_) => {
+            match select3(
+                tick_fut,
+                config_receiver.changed(),
+                clock_receiver.receive(),
+            )
+            .await
+            {
+                Either3::First(_) => {
                     clock_publisher.publish(ClockEvent::Tick).await;
                 }
-                Either::Second(new_config) => {
+                Either3::Second(new_config) => {
                     if new_config.clock != config.clock {
                         if new_config.clock.internal_bpm != config.clock.internal_bpm {
-                            // Adjust ticker if oly the bpm changed
+                            // Adjust ticker if only the bpm changed
                             if let ClockSrc::Internal = config.clock.clock_src {
                                 ticker = Ticker::every(bpm_to_clock_duration(
                                     config.clock.internal_bpm,
@@ -130,6 +149,20 @@ async fn run_clock(aux_inputs: AuxInputs) {
                         }
                         config = new_config;
                     }
+                }
+                Either3::Third(cmd) => {
+                    let next_is_running = match cmd {
+                        ClockCmd::Start => true,
+                        ClockCmd::Stop => false,
+                        ClockCmd::Toggle => !is_running,
+                    };
+
+                    if !is_running && next_is_running {
+                        clock_publisher.publish(ClockEvent::Start).await;
+                        clock_publisher.publish(ClockEvent::Tick).await;
+                        ticker.reset();
+                    }
+                    is_running = next_is_running;
                 }
             }
         }
