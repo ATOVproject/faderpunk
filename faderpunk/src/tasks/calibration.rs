@@ -5,8 +5,8 @@ use max11300::config::{ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, 
 use portable_atomic::{AtomicUsize, Ordering};
 
 use libfp::{
-    types::{RegressionValuesInput, RegressionValuesOutput},
-    Brightness, Color,
+    types::{MaxCalibration, RegressionValuesInput, RegressionValuesOutput},
+    Brightness, Color, CALIBRATION_SCALE_FACTOR,
 };
 
 use crate::app::Led;
@@ -15,19 +15,19 @@ use crate::storage::store_calibration_data;
 use crate::tasks::buttons::BUTTON_PRESSED;
 use crate::tasks::i2c::{I2cFollowerMessage, I2cFollowerReceiver};
 use crate::tasks::leds::{set_led_mode, LedMode, LedMsg};
-use crate::tasks::max::{
-    MaxCalibration, MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_FADER,
-};
+use crate::tasks::max::{MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_FADER};
 
 use super::max::MAX_VALUES_DAC;
 
 pub static CALIBRATION_PORT: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 const CHANNELS: usize = 16;
-const VALUES_0_10V: [u16; 3] = [410, 819, 3686];
-const VOLTAGES_0_10V: [f32; 3] = [1.0, 2.0, 9.0];
-const VALUES_NEG5_5V: [u16; 3] = [410, 2048, 3686];
-const VOLTAGES_NEG5_5V: [f32; 3] = [-4.0, 0.0, 4.0];
+const VALUES_OUT_0_10V: [u16; 3] = [819, 1638, 3276];
+const VOLTAGES_OUT_0_10V: [f32; 3] = [2.0, 4.0, 8.0];
+const VALUES_IN_0_10V: [u16; 3] = [0, 819, 4095];
+const VOLTAGES_IN_0_10V: [f32; 3] = [0.0, 2.0, 10.0];
+const VALUES_NEG5_5V: [u16; 3] = [819, 2048, 3276];
+const VOLTAGES_NEG5_5V: [f32; 3] = [-3.0, 0.0, 3.0];
 const LED_POS: [Led; 3] = [Led::Button, Led::Bottom, Led::Top];
 
 fn set_led_color(ch: usize, pos: Led, color: Color) {
@@ -73,18 +73,20 @@ async fn configure_jack(ch: usize, mode: Mode) {
 }
 
 async fn run_input_calibration() -> RegressionValuesInput {
-    let mut errors: [i16; 3] = Default::default();
     let mut input_results = RegressionValuesInput::default();
     let adc_ranges = [ADCRANGE::Rg0_10v, ADCRANGE::RgNeg5_5v];
-    let voltages_arrays = [VOLTAGES_0_10V, VOLTAGES_NEG5_5V];
-    let values_arrays = [VALUES_0_10V, VALUES_NEG5_5V];
+    let voltages_arrays = [VOLTAGES_IN_0_10V, VOLTAGES_NEG5_5V];
+    let values_arrays = [VALUES_IN_0_10V, VALUES_NEG5_5V];
     set_led_color(0, Led::Button, Color::Cyan);
     defmt::info!("Plug a good voltage source into channel 0, then press button");
     wait_for_button_press(0).await;
     for (range_index, &adc_range) in adc_ranges.iter().enumerate() {
+        let mut measured_values: [u16; 3] = Default::default();
+        let target_values = values_arrays[range_index];
+
         for (j, (&voltage, &target_value)) in voltages_arrays[range_index]
             .iter()
-            .zip(values_arrays[range_index].iter())
+            .zip(target_values.iter())
             .enumerate()
         {
             // Configure first channel to be input
@@ -102,9 +104,9 @@ async fn run_input_calibration() -> RegressionValuesInput {
             defmt::info!("Set voltage source to {}V, then press button", voltage);
             wait_for_button_press(0).await;
             let value = MAX_VALUES_ADC[0].load(Ordering::Relaxed);
+            measured_values[j] = value;
             set_led_color(0, pos, Color::Cyan);
             let error = target_value as i16 - value as i16;
-            errors[j] = error;
             defmt::info!("Target value: {}", target_value);
             defmt::info!("Value read: {}", value);
             defmt::info!("Error: {}", error);
@@ -112,19 +114,18 @@ async fn run_input_calibration() -> RegressionValuesInput {
         }
 
         if let Ok(results) = linear_regression::<f32, f32, f32>(
-            &[
-                (values_arrays[range_index][0] as i16 - errors[0]) as f32,
-                (values_arrays[range_index][1] as i16 - errors[1]) as f32,
-                (values_arrays[range_index][2] as i16 - errors[2]) as f32,
-            ],
-            &errors.map(|e| e as f32),
+            &measured_values.map(|v| v as f32),
+            &target_values.map(|v| v as f32),
         ) {
+            // Convert f32 results to i64 fixed-point format
+            let slope = (results.0 * CALIBRATION_SCALE_FACTOR as f32) as i64;
+            let intercept = (results.1 * CALIBRATION_SCALE_FACTOR as f32) as i64;
+            input_results[range_index] = (slope, intercept);
             defmt::info!(
                 "Linear regression results for range {}: {}",
                 range_index,
-                results
+                (slope, intercept)
             );
-            input_results[range_index] = results;
         } else {
             // Blink LED red if calibration didn't succeeed
             flash_led(0, Led::Button, Color::Red, None);
@@ -152,8 +153,8 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
     wait_for_button_press(0).await;
 
     let dac_ranges = [DACRANGE::Rg0_10v, DACRANGE::RgNeg5_5v];
-    let voltages_arrays = [VOLTAGES_0_10V, VOLTAGES_NEG5_5V];
-    let values_arrays = [VALUES_0_10V, VALUES_NEG5_5V];
+    let voltages_arrays = [VOLTAGES_OUT_0_10V, VOLTAGES_NEG5_5V];
+    let values_arrays = [VALUES_OUT_0_10V, VALUES_NEG5_5V];
 
     let channels_to_calibrate: [usize; 19] =
         core::array::from_fn(|i| if i < 16 { i } else { i + 1 });
@@ -169,7 +170,8 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
         }
 
         for (range_idx, &dac_range) in dac_ranges.iter().enumerate() {
-            let mut errors: [i16; 3] = Default::default();
+            let mut set_values: [u16; 3] = Default::default();
+            let target_values = values_arrays[range_idx];
 
             MAX_CHANNEL
                 .send((
@@ -182,7 +184,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
 
             for (j, (&voltage, &target_value)) in voltages_arrays[range_idx]
                 .iter()
-                .zip(values_arrays[range_idx].iter())
+                .zip(target_values.iter())
                 .enumerate()
             {
                 let pos = LED_POS[j];
@@ -242,8 +244,8 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                 }
 
                 set_led_color(ui_no, pos, Color::Green);
+                set_values[j] = value;
                 let error = target_value as i16 - value as i16;
-                errors[j] = error;
                 defmt::info!("Target value: {}", target_value);
                 defmt::info!("Read value: {}", value);
                 defmt::info!("Error: {} counts", error);
@@ -251,19 +253,19 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
             }
 
             if let Ok(results) = linear_regression::<f32, f32, f32>(
-                &[
-                    (values_arrays[range_idx][0] as i16 - errors[0]) as f32,
-                    (values_arrays[range_idx][1] as i16 - errors[1]) as f32,
-                    (values_arrays[range_idx][2] as i16 - errors[2]) as f32,
-                ],
-                &errors.map(|e| e as f32),
+                &set_values.map(|v| v as f32),
+                &target_values.map(|v| v as f32),
             ) {
-                output_results[chan][range_idx] = results;
+                // Convert f32 results to i64 fixed-point format
+                let slope = (results.0 * CALIBRATION_SCALE_FACTOR as f32) as i64;
+                let intercept = (results.1 * CALIBRATION_SCALE_FACTOR as f32) as i64;
+                output_results[chan][range_idx] = (slope, intercept);
                 defmt::info!(
-                    "Linear regression results for outputs channel {} range {}: {}",
+                    "Linear regression results for outputs channel {} range {}: ({}, {})",
                     chan,
                     range_idx,
-                    output_results[chan][range_idx]
+                    slope,
+                    intercept
                 );
             } else {
                 // Blink LED red if calibration didn't succeeed
