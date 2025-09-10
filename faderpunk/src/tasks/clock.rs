@@ -63,7 +63,6 @@ pub enum ClockCmd {
 pub enum ClockEvent {
     Tick,
     Start,
-    Stop,
     Reset,
 }
 
@@ -184,7 +183,7 @@ async fn run_clock(aux_inputs: AuxInputs) {
                             .send(LiveEvent::Realtime(SystemRealtime::TimingClock))
                             .await;
                     } else if is_running && !next_is_running {
-                        clock_publisher.publish(ClockEvent::Stop).await;
+                        clock_publisher.publish(ClockEvent::Reset).await;
                         MIDI_CHANNEL
                             .send(LiveEvent::Realtime(SystemRealtime::Stop))
                             .await;
