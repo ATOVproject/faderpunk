@@ -5,6 +5,12 @@ import {
   serialize,
 } from "@atov/fp-config";
 
+let receiveBuffer = new Uint8Array(0);
+
+export function clearReceiveBuffer() {
+  receiveBuffer = new Uint8Array(0);
+}
+
 const FRAME_DELIMITER = 0;
 const FADERPUNK_VENDOR_ID = 0xf569;
 const FADERPUNK_PRODUCT_ID = 0x1;
@@ -120,6 +126,8 @@ export async function connectToFaderPunk(): Promise<USBDevice> {
 
   await usbDevice.claimInterface(iface.interfaceNumber);
 
+  clearReceiveBuffer();
+
   return usbDevice;
 }
 
@@ -136,22 +144,48 @@ export async function sendMessage(
 export async function receiveMessage(
   usbDevice: USBDevice,
 ): Promise<ConfigMsgOut> {
-  const iface = await getInterface(usbDevice);
-  const data = await usbDevice.transferIn(
-    iface.interfaceNumber,
-    USB_TRANSFER_SIZE,
-  );
+  while (true) {
+    const delimiterPos = receiveBuffer.indexOf(FRAME_DELIMITER);
+    if (delimiterPos !== -1) {
+      const packet = receiveBuffer.slice(0, delimiterPos);
+      receiveBuffer = receiveBuffer.slice(delimiterPos + 1);
 
-  if (!data?.data?.buffer) {
-    throw new Error("No data received from device");
+      // An empty packet might be received, just continue
+      if (packet.length === 0) {
+        continue;
+      }
+
+      const cobsDecoded = cobsDecode(packet);
+      // This can happen if we get a corrupted message
+      if (cobsDecoded.length < 2) {
+        console.error("Received corrupted message, skipping");
+        continue;
+      }
+      const result = deserialize("ConfigMsgOut", cobsDecoded.slice(2));
+      return result.value;
+    }
+
+    const iface = await getInterface(usbDevice);
+    const data = await usbDevice.transferIn(
+      iface.interfaceNumber,
+      USB_TRANSFER_SIZE,
+    );
+
+    if (!data?.data?.buffer || data.data.byteLength === 0) {
+      // This can happen on timeout, just try again
+      continue;
+    }
+
+    const newData = new Uint8Array(
+      data.data.buffer,
+      data.data.byteOffset,
+      data.data.byteLength,
+    );
+    const newBuffer = new Uint8Array(receiveBuffer.length + newData.length);
+    newBuffer.set(receiveBuffer);
+    newBuffer.set(newData, receiveBuffer.length);
+    receiveBuffer = newBuffer;
   }
-
-  const dataBuf = new Uint8Array(data.data.buffer);
-  const cobsDecoded = cobsDecode(dataBuf.slice(0, dataBuf.length - 1));
-
-  const result = deserialize("ConfigMsgOut", cobsDecoded.slice(2));
-
-  return result.value;
 }
 
 export async function sendAndReceive(
