@@ -12,15 +12,12 @@ use embassy_sync::{
     channel::Channel,
     pubsub::{PubSubChannel, Subscriber},
 };
-use embassy_time::Ticker;
+use embassy_time::{Instant, Timer};
 
 use libfp::{utils::bpm_to_clock_duration, ClockSrc};
 use midly::live::{LiveEvent, SystemRealtime};
 
-use crate::{
-    tasks::{global_config::get_global_config, midi::MIDI_CHANNEL},
-    Spawner, GLOBAL_CONFIG_WATCH,
-};
+use crate::{tasks::midi::MIDI_CHANNEL, Spawner, GLOBAL_CONFIG_WATCH};
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
 // 16 apps
@@ -111,6 +108,7 @@ async fn run_clock(aux_inputs: AuxInputs) {
     let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
     let atom = Input::new(atom_pin, Pull::Up);
     let meteor = Input::new(meteor_pin, Pull::Up);
+
     let cube = Input::new(hexagon_pin, Pull::Up);
 
     let internal_fut = async {
@@ -118,10 +116,10 @@ async fn run_clock(aux_inputs: AuxInputs) {
         let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
         let clock_receiver = CLOCK_CMD_CHANNEL.receiver();
 
-        let mut config = get_global_config();
-        // TODO: Get PPQN from config
-        const PPQN: u8 = 24;
-        let mut ticker = Ticker::every(bpm_to_clock_duration(config.clock.internal_bpm, PPQN));
+        let mut config = config_receiver.get().await;
+        let mut tick_duration =
+            bpm_to_clock_duration(config.clock.internal_bpm, config.clock.ext_ppqn);
+        let mut next_tick_at = Instant::now();
         let mut is_running = false;
 
         loop {
@@ -132,7 +130,7 @@ async fn run_clock(aux_inputs: AuxInputs) {
             // Otherwise, it pends forever, preventing ticks from being generated.
             let tick_fut = async {
                 if should_be_active {
-                    ticker.next().await;
+                    Timer::at(next_tick_at).await;
                 } else {
                     core::future::pending::<()>().await;
                 }
@@ -146,24 +144,41 @@ async fn run_clock(aux_inputs: AuxInputs) {
             .await
             {
                 Either3::First(_) => {
+                    // Schedule next tick relative to the previous one to avoid drift.
+                    next_tick_at += tick_duration;
                     clock_publisher.publish(ClockEvent::Tick).await;
                     MIDI_CHANNEL
                         .send(LiveEvent::Realtime(SystemRealtime::TimingClock))
                         .await;
                 }
                 Either3::Second(new_config) => {
-                    if new_config.clock != config.clock {
-                        if new_config.clock.internal_bpm != config.clock.internal_bpm {
-                            // Adjust ticker if only the bpm changed
-                            if let ClockSrc::Internal = config.clock.clock_src {
-                                ticker = Ticker::every(bpm_to_clock_duration(
-                                    config.clock.internal_bpm,
-                                    PPQN,
-                                ));
+                    let old_tick_duration = tick_duration;
+                    let new_tick_duration = bpm_to_clock_duration(
+                        new_config.clock.internal_bpm,
+                        new_config.clock.ext_ppqn,
+                    );
+
+                    // If BPM changes while the clock is running, adjust the next tick time
+                    // to make the transition smooth.
+                    if old_tick_duration != new_tick_duration && should_be_active {
+                        let now = Instant::now();
+                        if let Some(time_until_next_tick) = next_tick_at.checked_duration_since(now)
+                        {
+                            if old_tick_duration.as_ticks() > 0 {
+                                let new_time_until_next_tick_ticks =
+                                    (time_until_next_tick.as_ticks() as u128
+                                        * new_tick_duration.as_ticks() as u128)
+                                        / old_tick_duration.as_ticks() as u128;
+                                let new_time_until_next_tick = embassy_time::Duration::from_ticks(
+                                    new_time_until_next_tick_ticks as u64,
+                                );
+                                next_tick_at = now + new_time_until_next_tick;
                             }
                         }
-                        config = new_config;
                     }
+
+                    config = new_config;
+                    tick_duration = new_tick_duration;
                 }
                 Either3::Third(cmd) => {
                     if config.clock.clock_src == ClockSrc::Internal {
@@ -174,14 +189,12 @@ async fn run_clock(aux_inputs: AuxInputs) {
                         };
 
                         if !is_running && next_is_running {
+                            // Schedule the first tick immediately. The main loop will
+                            // handle publishing it and scheduling the subsequent tick.
+                            next_tick_at = Instant::now();
                             clock_publisher.publish(ClockEvent::Start).await;
-                            clock_publisher.publish(ClockEvent::Tick).await;
-                            ticker.reset();
                             MIDI_CHANNEL
                                 .send(LiveEvent::Realtime(SystemRealtime::Start))
-                                .await;
-                            MIDI_CHANNEL
-                                .send(LiveEvent::Realtime(SystemRealtime::TimingClock))
                                 .await;
                         } else if is_running && !next_is_running {
                             clock_publisher.publish(ClockEvent::Reset).await;
@@ -197,6 +210,7 @@ async fn run_clock(aux_inputs: AuxInputs) {
     };
 
     let atom_fut = make_ext_clock_loop(atom, ClockSrc::Atom);
+
     let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor);
     let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube);
 

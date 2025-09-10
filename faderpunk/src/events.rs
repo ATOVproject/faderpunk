@@ -1,11 +1,8 @@
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
     pubsub::{PubSubChannel, Publisher, Subscriber},
-    watch::Watch,
 };
 use midly::live::LiveEvent;
-
-use libfp::{GlobalConfig, Layout};
 
 #[derive(Clone)]
 pub enum InputEvent {
