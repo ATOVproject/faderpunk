@@ -114,11 +114,12 @@ async fn write_msg_to_uart(
 
 pub async fn start_midi_loops<'a>(
     usb_midi: MidiClass<'a, Driver<'a, USB>>,
-    uart0: UartTx<'static, Async>,
+    _uart0: UartTx<'static, Async>,
     uart1: BufferedUart,
 ) {
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
-    let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, Async>> = Mutex::new(uart0);
+    // Deactivate MIDI through for now
+    // let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, Async>> = Mutex::new(uart0);
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
     let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
     let event_publisher = EVENT_PUBSUB.publisher().unwrap();
@@ -162,47 +163,36 @@ pub async fn start_midi_loops<'a>(
                         }
 
                         let msg = &packet[1..1 + msg_len];
-                        // MIDI-THRU to uart0
-                        {
-                            let mut tx = uart0_tx.lock().await;
-                            tx.write(msg).await.unwrap();
-                        }
 
-                        // With this structure, you can now easily route from USB to other outputs
-                        // For example:
-                        // write_msg_to_uart(&mut uart1_tx, LiveEvent::parse(msg).unwrap()).await;
+                        // Deactivate MIDI through for now
+                        // // MIDI-THRU to uart0
+                        // {
+                        //     let mut tx = uart0_tx.lock().await;
+                        //     tx.write(msg).await.unwrap();
+                        // }
 
                         match LiveEvent::parse(msg) {
                             Ok(event) => {
                                 let config = get_global_config();
                                 match event {
-                                    LiveEvent::Realtime(msg) => {
-                                        match msg {
-                                            SystemRealtime::TimingClock => {
-                                                if let ClockSrc::MidiUsb = config.clock.clock_src {
-                                                    clock_publisher.publish(ClockEvent::Tick).await;
-                                                }
+                                    LiveEvent::Realtime(msg) => match msg {
+                                        SystemRealtime::TimingClock => {
+                                            if let ClockSrc::MidiUsb = config.clock.clock_src {
+                                                clock_publisher.publish(ClockEvent::Tick).await;
                                             }
-                                            SystemRealtime::Start => {
-                                                if let ClockSrc::MidiUsb = config.clock.reset_src {
-                                                    clock_publisher
-                                                        .publish(ClockEvent::Start)
-                                                        .await;
-                                                }
-                                            }
-                                            SystemRealtime::Stop => {
-                                                if let ClockSrc::MidiUsb = config.clock.reset_src {
-                                                    clock_publisher
-                                                        .publish(ClockEvent::Reset)
-                                                        .await;
-                                                }
-                                            }
-                                            _ => {}
                                         }
-
-                                        // Pass through all realtime events to UART
-                                        let _ = write_msg_to_uart(&mut uart1_tx, event).await;
-                                    }
+                                        SystemRealtime::Start => {
+                                            if let ClockSrc::MidiUsb = config.clock.reset_src {
+                                                clock_publisher.publish(ClockEvent::Start).await;
+                                            }
+                                        }
+                                        SystemRealtime::Stop => {
+                                            if let ClockSrc::MidiUsb = config.clock.reset_src {
+                                                clock_publisher.publish(ClockEvent::Reset).await;
+                                            }
+                                        }
+                                        _ => {}
+                                    },
                                     _ => {
                                         event_publisher
                                             .publish(InputEvent::MidiMsg(event.to_static()))
@@ -232,28 +222,24 @@ pub async fn start_midi_loops<'a>(
                     let config = get_global_config();
                     for event in uart_events.iter() {
                         match event {
-                            LiveEvent::Realtime(msg) => {
-                                match msg {
-                                    SystemRealtime::TimingClock => {
-                                        if let ClockSrc::MidiIn = config.clock.clock_src {
-                                            clock_publisher.publish(ClockEvent::Tick).await;
-                                        }
+                            LiveEvent::Realtime(msg) => match msg {
+                                SystemRealtime::TimingClock => {
+                                    if let ClockSrc::MidiIn = config.clock.clock_src {
+                                        clock_publisher.publish(ClockEvent::Tick).await;
                                     }
-                                    SystemRealtime::Start => {
-                                        if let ClockSrc::MidiIn = config.clock.reset_src {
-                                            clock_publisher.publish(ClockEvent::Start).await;
-                                        }
-                                    }
-                                    SystemRealtime::Stop => {
-                                        if let ClockSrc::MidiIn = config.clock.reset_src {
-                                            clock_publisher.publish(ClockEvent::Reset).await;
-                                        }
-                                    }
-                                    _ => {}
                                 }
-                                // Pass through all realtime events to USB
-                                let _ = write_msg_to_usb(&mut usb_tx, *event).await;
-                            }
+                                SystemRealtime::Start => {
+                                    if let ClockSrc::MidiIn = config.clock.reset_src {
+                                        clock_publisher.publish(ClockEvent::Start).await;
+                                    }
+                                }
+                                SystemRealtime::Stop => {
+                                    if let ClockSrc::MidiIn = config.clock.reset_src {
+                                        clock_publisher.publish(ClockEvent::Reset).await;
+                                    }
+                                }
+                                _ => {}
+                            },
                             _ => {
                                 event_publisher
                                     .publish(InputEvent::MidiMsg(event.to_static()))
