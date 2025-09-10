@@ -166,29 +166,31 @@ async fn run_clock(aux_inputs: AuxInputs) {
                     }
                 }
                 Either3::Third(cmd) => {
-                    let next_is_running = match cmd {
-                        ClockCmd::Start => true,
-                        ClockCmd::Stop => false,
-                        ClockCmd::Toggle => !is_running,
-                    };
+                    if config.clock.clock_src == ClockSrc::Internal {
+                        let next_is_running = match cmd {
+                            ClockCmd::Start => true,
+                            ClockCmd::Stop => false,
+                            ClockCmd::Toggle => !is_running,
+                        };
 
-                    if !is_running && next_is_running {
-                        clock_publisher.publish(ClockEvent::Start).await;
-                        clock_publisher.publish(ClockEvent::Tick).await;
-                        ticker.reset();
-                        MIDI_CHANNEL
-                            .send(LiveEvent::Realtime(SystemRealtime::Start))
-                            .await;
-                        MIDI_CHANNEL
-                            .send(LiveEvent::Realtime(SystemRealtime::TimingClock))
-                            .await;
-                    } else if is_running && !next_is_running {
-                        clock_publisher.publish(ClockEvent::Reset).await;
-                        MIDI_CHANNEL
-                            .send(LiveEvent::Realtime(SystemRealtime::Stop))
-                            .await;
+                        if !is_running && next_is_running {
+                            clock_publisher.publish(ClockEvent::Start).await;
+                            clock_publisher.publish(ClockEvent::Tick).await;
+                            ticker.reset();
+                            MIDI_CHANNEL
+                                .send(LiveEvent::Realtime(SystemRealtime::Start))
+                                .await;
+                            MIDI_CHANNEL
+                                .send(LiveEvent::Realtime(SystemRealtime::TimingClock))
+                                .await;
+                        } else if is_running && !next_is_running {
+                            clock_publisher.publish(ClockEvent::Reset).await;
+                            MIDI_CHANNEL
+                                .send(LiveEvent::Realtime(SystemRealtime::Stop))
+                                .await;
+                        }
+                        is_running = next_is_running;
                     }
-                    is_running = next_is_running;
                 }
             }
         }
