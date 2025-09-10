@@ -19,6 +19,7 @@ export const setGlobalConfig = async (
     value: {
       clock: {
         clock_src,
+        ext_ppqn: 24,
         reset_src,
         internal_bpm: 120,
       },

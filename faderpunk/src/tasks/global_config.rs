@@ -10,9 +10,9 @@ use crate::storage::store_global_config;
 use crate::tasks::leds::{set_led_overlay_mode, LedMode, LED_BRIGHTNESS};
 use crate::QUANTIZER;
 
-// Receivers: ext clock loops (3), internal clock loop (1), global config loop (1), config storer
-// (1)
-const GLOBAL_CONFIG_WATCH_SUBSCRIBERS: usize = 6;
+// Receivers: ext clock loops (3), internal clock loop (1), clock ticker loop (1)
+// global config loop (1), config storer (1)
+const GLOBAL_CONFIG_WATCH_SUBSCRIBERS: usize = 7;
 
 const LED_BRIGHTNESS_FADER: usize = 0;
 const QUANTIZER_KEY_FADER: usize = 3;

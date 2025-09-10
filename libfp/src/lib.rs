@@ -247,6 +247,7 @@ impl Key {
 #[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq)]
 pub struct ClockConfig {
     pub clock_src: ClockSrc,
+    pub ext_ppqn: u8,
     pub reset_src: ClockSrc,
     pub internal_bpm: f32,
 }
@@ -255,6 +256,7 @@ pub struct ClockConfig {
 impl ClockConfig {
     pub const fn new() -> Self {
         Self {
+            ext_ppqn: 24,
             clock_src: ClockSrc::Internal,
             reset_src: ClockSrc::None,
             internal_bpm: 120.0,
