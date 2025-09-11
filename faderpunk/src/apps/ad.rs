@@ -22,7 +22,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 )
 .add_param(Param::i32 {
     name: "MIDI Channel",
-    min: 1,
+    min: 0,
     max: 16,
 });
 
@@ -32,7 +32,7 @@ pub struct Params {
 
 impl Default for Params {
     fn default() -> Self {
-        Self { midi_channel: 1 }
+        Self { midi_channel: 0 }
     }
 }
 
@@ -102,7 +102,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
+    let mut midi_in = app.use_midi_input((midi_chan as u8 - 1).clamp(0, 15));
 
     let times_glob = app.make_global([0.0682, 0.0682]);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
@@ -416,10 +416,14 @@ pub async fn run(
         loop {
             match midi_in.wait_for_message().await {
                 MidiMessage::NoteOn { key, vel } => {
-                    gate_on_glob.modify(|g| *g + 1);
+                    if midi_chan != 0 {
+                        gate_on_glob.modify(|g| *g + 1);
+                    }
                 }
                 MidiMessage::NoteOff { key, vel } => {
-                    gate_on_glob.modify(|g| (*g - 1).max(0));
+                    if midi_chan != 0 {
+                        gate_on_glob.modify(|g| (*g - 1).max(0));
+                    }
                 }
 
                 _ => {}
