@@ -41,7 +41,8 @@ pub async fn load_global_config() -> GlobalConfig {
     if let Ok(guard) = read_data(GLOBAL_CONFIG_RANGE.start).await {
         let data = guard.data();
         if !data.is_empty() {
-            if let Ok(config) = from_bytes::<GlobalConfig>(data) {
+            if let Ok(mut config) = from_bytes::<GlobalConfig>(data) {
+                config.validate();
                 return config;
             }
         }

@@ -1,13 +1,16 @@
+use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, watch::Watch};
 use embassy_time::Timer;
-use libfp::{Color, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
+use libfp::{AuxJackMode, Color, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
+use max11300::config::{ConfigMode0, ConfigMode3, Mode};
 use portable_atomic::Ordering;
 
 use crate::app::Led;
 use crate::storage::store_global_config;
 use crate::tasks::leds::{set_led_overlay_mode, LedMode, LED_BRIGHTNESS};
+use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
 use crate::QUANTIZER;
 
 // Receivers: ext clock loops (3), internal clock loop (1), clock ticker loop (1)
@@ -33,8 +36,8 @@ pub fn get_global_config() -> GlobalConfig {
 pub fn get_fader_value_from_config(chan: usize, config: &GlobalConfig) -> u16 {
     match chan {
         INTERNAL_BPM_FADER => (((config.clock.internal_bpm - 45.0) * 16.0) as u16).clamp(0, 4095),
-        QUANTIZER_KEY_FADER => (config.quantizer_key as u16 * 256).clamp(0, 4095),
-        QUANTIZER_TONIC_FADER => (config.quantizer_tonic as u16 * 342).clamp(0, 4095),
+        QUANTIZER_KEY_FADER => (config.quantizer.key as u16 * 256).clamp(0, 4095),
+        QUANTIZER_TONIC_FADER => (config.quantizer.tonic as u16 * 342).clamp(0, 4095),
         LED_BRIGHTNESS_FADER => ((config.led_brightness as u16 - 55) * 20).clamp(0, 4095),
         _ => 0,
     }
@@ -62,8 +65,8 @@ pub fn set_global_config_via_chan(chan: usize, val: u16) {
             global_config_sender.send_if_modified(|c| {
                 if let Some(config) = c {
                     let new_key: Key = unsafe { core::mem::transmute((val / 256) as u8) };
-                    if config.quantizer_key != new_key {
-                        config.quantizer_key = new_key;
+                    if config.quantizer.key != new_key {
+                        config.quantizer.key = new_key;
                         return true;
                     }
                 }
@@ -74,8 +77,8 @@ pub fn set_global_config_via_chan(chan: usize, val: u16) {
             global_config_sender.send_if_modified(|c| {
                 if let Some(config) = c {
                     let new_tonic: Note = unsafe { core::mem::transmute((val / 342) as u8) };
-                    if config.quantizer_tonic != new_tonic {
-                        config.quantizer_tonic = new_tonic;
+                    if config.quantizer.tonic != new_tonic {
+                        config.quantizer.tonic = new_tonic;
                         return true;
                     }
                 }
@@ -133,8 +136,20 @@ async fn global_config_change() {
 
     // Initialize quantizer with loaded config
     let mut quantizer = QUANTIZER.get().lock().await;
-    quantizer.set_scale(old.quantizer_key, old.quantizer_tonic);
+    quantizer.set_scale(old.quantizer.key, old.quantizer.tonic);
     drop(quantizer);
+
+    for (i, aux_jack) in old.aux.iter().enumerate() {
+        if let AuxJackMode::ClockOut(_) = aux_jack {
+            info!("SETTING CLOCK OUT TO JACK {}", 17 + i);
+            MAX_CHANNEL
+                .send((
+                    17 + i,
+                    MaxCmd::ConfigurePort(Mode::Mode3(ConfigMode3), Some(2048)),
+                ))
+                .await;
+        }
+    }
 
     // Clock has a subscriber to the config (so no need to Initialize it here)
     // TODO: Shall we blink an LED in the rythm of the clock for a couple of seconds when it was
@@ -143,13 +158,13 @@ async fn global_config_change() {
     // TODO: Actually find good colors or effects to signal the changes to global config
     loop {
         let config = receiver.changed().await;
-        if config.quantizer_key != old.quantizer_key
-            || config.quantizer_tonic != old.quantizer_tonic
+        if config.quantizer.key != old.quantizer.key
+            || config.quantizer.tonic != old.quantizer.tonic
         {
             let mut quantizer = QUANTIZER.get().lock().await;
-            quantizer.set_scale(config.quantizer_key, config.quantizer_tonic);
-            if config.quantizer_key != old.quantizer_key {
-                let color = Color::from(config.quantizer_key as usize);
+            quantizer.set_scale(config.quantizer.key, config.quantizer.tonic);
+            if config.quantizer.key != old.quantizer.key {
+                let color = Color::from(config.quantizer.key as usize);
                 set_led_overlay_mode(
                     QUANTIZER_KEY_FADER,
                     Led::Button,
@@ -157,7 +172,7 @@ async fn global_config_change() {
                 )
                 .await;
             } else {
-                let color = Color::from(config.quantizer_tonic as usize);
+                let color = Color::from(config.quantizer.tonic as usize);
                 set_led_overlay_mode(
                     QUANTIZER_TONIC_FADER,
                     Led::Button,
@@ -168,6 +183,27 @@ async fn global_config_change() {
         }
         if config.led_brightness != old.led_brightness {
             LED_BRIGHTNESS.store(config.led_brightness, Ordering::Relaxed);
+        }
+
+        for (i, (new_aux, old_aux)) in config.aux.iter().zip(old.aux.iter()).enumerate() {
+            if new_aux != old_aux {
+                if let AuxJackMode::ClockOut(_) = new_aux {
+                    info!("SETTING CLOCK OUT TO JACK {}", 17 + i);
+                    MAX_CHANNEL
+                        .send((
+                            17 + i,
+                            MaxCmd::ConfigurePort(Mode::Mode3(ConfigMode3), Some(2048)),
+                        ))
+                        .await;
+                } else {
+                    MAX_CHANNEL
+                        .send((
+                            17 + i,
+                            MaxCmd::ConfigurePort(Mode::Mode0(ConfigMode0), None),
+                        ))
+                        .await;
+                }
+            }
         }
         old = config;
     }

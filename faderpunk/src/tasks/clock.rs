@@ -1,3 +1,6 @@
+use core::sync::atomic::Ordering;
+
+use defmt::info;
 use embassy_futures::{
     join::join4,
     select::{select, select3, Either, Either3},
@@ -14,10 +17,13 @@ use embassy_sync::{
 };
 use embassy_time::{Instant, Timer};
 
-use libfp::{utils::bpm_to_clock_duration, ClockSrc};
+use libfp::{utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig};
 use midly::live::{LiveEvent, SystemRealtime};
 
-use crate::{tasks::midi::MIDI_CHANNEL, Spawner, GLOBAL_CONFIG_WATCH};
+use crate::{
+    tasks::{max::MAX_TRIGGERS_GPO, midi::MIDI_CHANNEL},
+    Spawner, GLOBAL_CONFIG_WATCH,
+};
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
 // 16 apps
@@ -103,13 +109,35 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     }
 }
 
+fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counts: &[u8; 3]) {
+    for (i, aux_jack) in config.aux.iter().enumerate() {
+        if let AuxJackMode::ClockOut(div) = aux_jack {
+            if counts[i] % *div as u8 == 0 {
+                spawner.spawn(analog_tick(17 + i)).unwrap();
+            }
+        }
+    }
+}
+
+#[embassy_executor::task]
+async fn analog_tick(gpo_index: usize) {
+    // Set the output high (ramp up).
+    MAX_TRIGGERS_GPO[gpo_index].store(2, Ordering::Relaxed);
+
+    // Wait for the pulse width. 10ms is a common value for triggers.
+    Timer::after_millis(10).await;
+
+    // Set the output low (ramp down).
+    MAX_TRIGGERS_GPO[gpo_index].store(1, Ordering::Relaxed);
+}
+
 #[embassy_executor::task]
 async fn run_clock(aux_inputs: AuxInputs) {
     let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
-    let atom = Input::new(atom_pin, Pull::Up);
-    let meteor = Input::new(meteor_pin, Pull::Up);
-
-    let cube = Input::new(hexagon_pin, Pull::Up);
+    let atom = Input::new(atom_pin, Pull::Down);
+    let meteor = Input::new(meteor_pin, Pull::Down);
+    let cube = Input::new(hexagon_pin, Pull::Down);
+    let spawner = Spawner::for_current_executor().await;
 
     let internal_fut = async {
         let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
@@ -121,6 +149,8 @@ async fn run_clock(aux_inputs: AuxInputs) {
             bpm_to_clock_duration(config.clock.internal_bpm, config.clock.ext_ppqn);
         let mut next_tick_at = Instant::now();
         let mut is_running = false;
+        // These are for clock divisions
+        let mut analog_out_counts: [u8; 3] = [0; 3];
 
         loop {
             // TODO: How to handle internal reset?
@@ -150,6 +180,11 @@ async fn run_clock(aux_inputs: AuxInputs) {
                     MIDI_CHANNEL
                         .send(LiveEvent::Realtime(SystemRealtime::TimingClock))
                         .await;
+                    send_analog_ticks(&spawner, &config, &analog_out_counts);
+                    // Increment counters for the *next* tick.
+                    for count in analog_out_counts.iter_mut() {
+                        *count = count.wrapping_add(1);
+                    }
                 }
                 Either3::Second(new_config) => {
                     let old_tick_duration = tick_duration;
@@ -189,6 +224,9 @@ async fn run_clock(aux_inputs: AuxInputs) {
                         };
 
                         if !is_running && next_is_running {
+                            // Reset analog clock phase on start
+                            analog_out_counts = [0; 3];
+
                             // Schedule the first tick immediately. The main loop will
                             // handle publishing it and scheduling the subsequent tick.
                             next_tick_at = Instant::now();
@@ -209,10 +247,11 @@ async fn run_clock(aux_inputs: AuxInputs) {
         }
     };
 
-    let atom_fut = make_ext_clock_loop(atom, ClockSrc::Atom);
+    // let atom_fut = make_ext_clock_loop(atom, ClockSrc::Atom);
+    //
+    // let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor);
+    // let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube);
 
-    let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor);
-    let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube);
-
-    join4(internal_fut, atom_fut, meteor_fut, cube_fut).await;
+    // join4(internal_fut, atom_fut, meteor_fut, cube_fut).await;
+    internal_fut.await;
 }

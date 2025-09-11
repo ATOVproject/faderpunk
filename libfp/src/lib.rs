@@ -199,9 +199,10 @@ impl FromValue for Note {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
 #[repr(u8)]
 pub enum Key {
+    #[default]
     Chromatic,
     Ionian,
     Dorian,
@@ -264,24 +265,90 @@ impl ClockConfig {
     }
 }
 
+#[derive(Clone, Default, Serialize, Deserialize, PostcardBindings, PartialEq)]
+pub struct QuantizerConfig {
+    pub key: Key,
+    pub tonic: Note,
+}
+
+#[allow(clippy::new_without_default)]
+impl QuantizerConfig {
+    pub const fn new() -> Self {
+        Self {
+            key: Key::Chromatic,
+            tonic: Note::C,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Serialize, PartialEq, Deserialize, PostcardBindings)]
+#[repr(u8)]
+pub enum ClockDivision {
+    _1 = 1,
+    _2 = 2,
+    _4 = 4,
+    _6 = 6,
+    _8 = 8,
+    _12 = 12,
+    _24 = 24,
+}
+
+#[derive(Clone, Serialize, PartialEq, Deserialize, PostcardBindings)]
+#[repr(u8)]
+pub enum AuxJackMode {
+    None,
+    ClockOut(ClockDivision),
+}
+
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]
 pub struct GlobalConfig {
+    pub aux: [AuxJackMode; 3],
     pub clock: ClockConfig,
     pub i2c_mode: I2cMode,
     pub led_brightness: u8,
-    pub quantizer_key: Key,
-    pub quantizer_tonic: Note,
+    pub quantizer: QuantizerConfig,
 }
 
 #[allow(clippy::new_without_default)]
 impl GlobalConfig {
     pub const fn new() -> Self {
         Self {
+            aux: [
+                AuxJackMode::ClockOut(ClockDivision::_1),
+                AuxJackMode::None,
+                AuxJackMode::None,
+            ],
             clock: ClockConfig::new(),
             i2c_mode: I2cMode::Leader,
             led_brightness: 150,
-            quantizer_key: Key::Chromatic,
-            quantizer_tonic: Note::C,
+            quantizer: QuantizerConfig::new(),
+        }
+    }
+
+    pub const fn validate(&mut self) {
+        match self.clock.clock_src {
+            ClockSrc::Atom => {
+                self.aux[0] = AuxJackMode::None;
+            }
+            ClockSrc::Meteor => {
+                self.aux[1] = AuxJackMode::None;
+            }
+            ClockSrc::Cube => {
+                self.aux[2] = AuxJackMode::None;
+            }
+            _ => {}
+        }
+        match self.clock.reset_src {
+            ClockSrc::Atom => {
+                self.aux[0] = AuxJackMode::None;
+            }
+            ClockSrc::Meteor => {
+                self.aux[1] = AuxJackMode::None;
+            }
+            ClockSrc::Cube => {
+                self.aux[2] = AuxJackMode::None;
+            }
+            _ => {}
         }
     }
 }

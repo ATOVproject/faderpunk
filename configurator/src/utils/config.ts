@@ -17,6 +17,11 @@ export const setGlobalConfig = async (
   await sendMessage(dev, {
     tag: "SetGlobalConfig",
     value: {
+      aux: [
+        { tag: "ClockOut", value: { tag: "_1" } },
+        { tag: "None" },
+        { tag: "None" },
+      ],
       clock: {
         clock_src,
         ext_ppqn: 24,
@@ -24,8 +29,10 @@ export const setGlobalConfig = async (
         internal_bpm: 120,
       },
       i2c_mode,
-      quantizer_key: { tag: "PentatonicMaj" },
-      quantizer_tonic: { tag: "C" },
+      quantizer: {
+        key: { tag: "PentatonicMaj" },
+        tonic: { tag: "C" },
+      },
       led_brightness: 150,
     },
   });

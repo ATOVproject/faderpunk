@@ -35,6 +35,7 @@ use libfp::quantizer::Quantizer;
 use libfp::I2cMode;
 use static_cell::StaticCell;
 
+use crate::storage::store_layout;
 use crate::tasks::global_config::GLOBAL_CONFIG_WATCH;
 
 use {defmt_rtt as _, panic_probe as _};
@@ -87,7 +88,10 @@ async fn main_core1(spawner: Spawner) {
     let mut receiver = LAYOUT_WATCH.receiver().unwrap();
     loop {
         let layout = receiver.changed().await;
-        lm.spawn_layout(layout).await;
+        if lm.spawn_layout(&layout).await {
+            // Store new layout if it changed
+            store_layout(&layout).await;
+        }
     }
 }
 
@@ -156,55 +160,55 @@ async fn main(spawner: Spawner) {
     let fram = Fm24v10::new(i2c1, Address(0, 0), write_buf);
 
     // AUX inputs
-    let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
+    // let aux_inputs = (p.PIN_1, p.PIN_2, p.PIN_3);
 
     // Initialize fram first, otherwise we can't load any config
     tasks::fram::start_fram(&spawner, fram).await;
 
     // Initialize the buttons, otherwise we can't detect a press during startup
-    tasks::buttons::start_buttons(&spawner, buttons).await;
+    // tasks::buttons::start_buttons(&spawner, buttons).await;
 
     let calibration_data = load_calibration_data().await;
-    let mut global_config = load_global_config().await;
+    // let mut global_config = load_global_config().await;
+    //
+    // // Load calibration if there is no calibration data or
+    // // when scene is pressed during startup
+    // if calibration_data.is_none() || BUTTON_PRESSED[16].load(Ordering::Relaxed) {
+    //     global_config.i2c_mode = I2cMode::Calibration;
+    // } else {
+    //     global_config.i2c_mode = I2cMode::Follower;
+    // }
+    //
+    // // Send off global config to all tasks that need it
+    // let config_sender = GLOBAL_CONFIG_WATCH.sender();
+    // config_sender.send(global_config);
 
-    // Load calibration if there is no calibration data or
-    // when scene is pressed during startup
-    if calibration_data.is_none() || BUTTON_PRESSED[16].load(Ordering::Relaxed) {
-        global_config.i2c_mode = I2cMode::Calibration;
-    } else {
-        global_config.i2c_mode = I2cMode::Follower;
-    }
-
-    // Send off global config to all tasks that need it
-    let config_sender = GLOBAL_CONFIG_WATCH.sender();
-    config_sender.send(global_config);
-
-    tasks::leds::start_leds(&spawner, spi1).await;
+    // tasks::leds::start_leds(&spawner, spi1).await;
 
     tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
 
-    tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20).await;
+    // tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20).await;
 
-    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
+    // tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
 
-    tasks::clock::start_clock(&spawner, aux_inputs).await;
+    // tasks::clock::start_clock(&spawner, aux_inputs).await;
 
-    tasks::global_config::start_global_config(&spawner).await;
+    // tasks::global_config::start_global_config(&spawner).await;
 
-    spawn_core1(
-        p.CORE1,
-        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
-        move || {
-            let executor1 = EXECUTOR1.init(Executor::new());
-            executor1.run(|spawner| {
-                spawner.spawn(main_core1(spawner)).unwrap();
-            });
-        },
-    );
-
-    let layout = load_layout().await;
-
-    // We're off to the races! Spawn our layout!
-    let layout_sender = LAYOUT_WATCH.sender();
-    layout_sender.send(layout);
+    // spawn_core1(
+    //     p.CORE1,
+    //     unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+    //     move || {
+    //         let executor1 = EXECUTOR1.init(Executor::new());
+    //         executor1.run(|spawner| {
+    //             spawner.spawn(main_core1(spawner)).unwrap();
+    //         });
+    //     },
+    // );
+    //
+    // let layout = load_layout().await;
+    //
+    // // We're off to the races! Spawn our layout!
+    // let layout_sender = LAYOUT_WATCH.sender();
+    // layout_sender.send(layout);
 }

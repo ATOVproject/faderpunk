@@ -14,7 +14,9 @@ fn main() {
         },
         javascript::GenerationSettings::enable_all(),
         generate_bindings!(
+            libfp::AuxJackMode,
             libfp::ClockConfig,
+            libfp::ClockDivision,
             libfp::ClockSrc,
             libfp::Color,
             libfp::ConfigMsgIn,
@@ -26,6 +28,7 @@ fn main() {
             libfp::Layout,
             libfp::Note,
             libfp::Param,
+            libfp::QuantizerConfig,
             libfp::Range,
             libfp::Value,
             libfp::Waveform

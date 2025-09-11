@@ -46,7 +46,9 @@ impl LayoutManager {
         }
     }
 
-    pub async fn spawn_layout(&'static self, layout: Layout) {
+    pub async fn spawn_layout(&'static self, layout: &Layout) -> bool {
+        let mut changed = false;
+
         // Build a representation of the desired layout, mapping start_channel to (app_id, channels)
         let mut desired_layout: [Option<(u8, usize)>; GLOBAL_CHANNELS] = [None; GLOBAL_CHANNELS];
         for (app_id, start_channel, channels) in layout.iter() {
@@ -65,6 +67,7 @@ impl LayoutManager {
             // If an app is running but the desired layout is different (or empty), exit the app
             if current_app.is_some() && current_app != desired_layout[start_channel] {
                 self.exit_app(start_channel).await;
+                changed = true;
             }
         }
 
@@ -80,8 +83,11 @@ impl LayoutManager {
                     spawn_app_by_id(app_id, start_channel, self.spawner, &self.exit_signals);
                     let mut current_layout = self.layout.lock().await;
                     current_layout[start_channel] = Some((app_id, channels));
+                    changed = true;
                 }
             }
         }
+
+        changed
     }
 }
