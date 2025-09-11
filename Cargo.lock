@@ -688,7 +688,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "faderpunk"
-version = "0.9.0"
+version = "0.0.0"
 dependencies = [
  "cobs 0.4.0",
  "cortex-m",
@@ -889,6 +889,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "heapless"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1edcd5a338e64688fbdcb7531a846cfd3476a54784dcb918a0844682bc7ada5"
+dependencies = [
+ "hash32 0.3.1",
+ "stable_deref_trait",
+]
+
+[[package]]
 name = "home"
 version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1024,15 +1034,15 @@ checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 
 [[package]]
 name = "max11300"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "775d3875cef4f32fcc98857108a89aab9985c21b8c9d0138f4fb50e4be24f238"
+checksum = "aaccaee3bce1b0aa23fb6ae5595bb3fb1f627dc4ff7054b837967616b01ffd1f"
 dependencies = [
  "critical-section",
  "embassy-sync 0.7.2",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
- "heapless 0.8.0",
+ "heapless 0.9.1",
  "seq-macro",
 ]
 
