@@ -17,15 +17,15 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 6;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Note Fader",
-    "Play notes manually or on clock",
-    Color::Red,
-    AppIcon::Knob,
+    "Play MIDI notes manually or on clock",
+    Color::Rose,
+    AppIcon::Note,
 )
 .add_param(Param::i32 {
     name: "MIDI Channel",
@@ -47,6 +47,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     min: 1,
     max: 100,
 })
+.add_param(Param::Enum {
+    name: "Out",
+    variants: &["CV", "Gate"],
+})
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -66,6 +70,7 @@ pub struct Params {
     note: i32,
     span: i32,
     gatel: i32,
+    outmode: usize,
     color: Color,
 }
 
@@ -92,7 +97,8 @@ impl AppParams for Params {
             note: i32::from_value(values[1]),
             span: i32::from_value(values[2]),
             gatel: i32::from_value(values[3]),
-            color: Color::from_value(values[4]),
+            outmode: usize::from_value(values[4]),
+            color: Color::from_value(values[5]),
         })
     }
 
@@ -102,6 +108,7 @@ impl AppParams for Params {
         vec.push(self.note.into()).unwrap();
         vec.push(self.span.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
+        vec.push(self.outmode.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec
     }
@@ -153,8 +160,8 @@ pub async fn run(
     storage: ManagedStorage<Storage>,
 ) {
     let range = Range::_0_10V;
-    let (midi_chan, gatel, base_note, span, led_color) =
-        params.query(|p| (p.midi_channel, p.gatel, p.note, p.span, p.color));
+    let (midi_chan, gatel, base_note, span, outmode, led_color) =
+        params.query(|p| (p.midi_channel, p.gatel, p.note, p.span, p.outmode, p.color));
 
     let mut clock = app.use_clock();
     let quantizer = app.use_quantizer(range);
@@ -194,8 +201,12 @@ pub async fn run(
         leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
 
         let out = quantizer.get_quantized_note(fadval).await;
+        if outmode == 0 {
+            jack.set_value(out.as_counts(range));
+        } else {
+            jack.set_value(4095)
+        }
 
-        jack.set_value(out.as_counts(range));
         let note = out.as_midi() as i32 + base_note;
         midi.send_note_on(note as u8, 4095).await;
         leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
@@ -209,7 +220,7 @@ pub async fn run(
         loop {
             match clock.wait_for_event(1).await {
                 ClockEvent::Reset => {
-                    clkn = 62;
+                    clkn = 0;
                     midi.send_note_off(note as u8).await;
                     note_on = false;
                 }
@@ -235,6 +246,9 @@ pub async fn run(
                             midi.send_note_off(note as u8).await;
                             leds.set(0, Led::Top, led_color, Brightness::Custom(0));
                             note_on = false;
+                            if outmode == 1 {
+                                jack.set_value(0)
+                            }
                         }
 
                         leds.set(0, Led::Bottom, led_color, Brightness::Custom(0));
@@ -281,6 +295,9 @@ pub async fn run(
                 Either::Second(_) => {
                     if !storage.query(|s| (s.clocked)) && !buttons.is_shift_pressed() {
                         midi.send_note_off(note as u8).await;
+                        if outmode == 1 {
+                            jack.set_value(0)
+                        }
                         leds.set(0, Led::Top, led_color, Brightness::Custom(0));
                         leds.set(0, Led::Button, led_color, Brightness::Lowest);
                     }
