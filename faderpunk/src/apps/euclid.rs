@@ -6,8 +6,8 @@ use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
-    constants::BJORKLUND_PATTERNS, ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color,
-    Config, Param, Value, APP_MAX_PARAMS,
+    constants::BJORKLUND_PATTERNS, ext::FromValue, latch::LatchLayer, AppIcon, Brightness,
+    ClockDivision, Color, Config, Param, Value, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -202,7 +202,7 @@ pub async fn run(
         let mut aux_on = false;
 
         loop {
-            match clock.wait_for_event(1).await {
+            match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
                     midi.send_note_off(note as u8 - 1).await;

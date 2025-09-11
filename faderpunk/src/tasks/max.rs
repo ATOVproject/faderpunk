@@ -338,12 +338,12 @@ async fn message_loop(max_driver: &'static SharedMax) {
                 }
                 _ => {}
             },
-            MaxCmd::GpoSetHigh => {
-                max.gpo_set_high(port).await.unwrap();
-            }
-            MaxCmd::GpoSetLow => {
-                max.gpo_set_low(port).await.unwrap();
-            }
+            _ => {} // MaxCmd::GpoSetHigh => {
+                    //     max.gpo_set_high(port).await.unwrap();
+                    // }
+                    // MaxCmd::GpoSetLow => {
+                    //     max.gpo_set_low(port).await.unwrap();
+                    // }
         }
     }
 }
