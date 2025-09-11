@@ -9,9 +9,8 @@ use embassy_rp::{
     usb::Driver,
 };
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    blocking_mutex::raw::CriticalSectionRawMutex,
     channel::{Channel, Sender},
-    mutex::Mutex,
 };
 use embassy_time::{with_timeout, Duration, TimeoutError};
 use embassy_usb::class::midi::{MidiClass, Sender as UsbSender};

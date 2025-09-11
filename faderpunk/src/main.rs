@@ -35,6 +35,7 @@ use libfp::quantizer::Quantizer;
 use libfp::I2cMode;
 use static_cell::StaticCell;
 
+use crate::storage::store_layout;
 use crate::tasks::global_config::GLOBAL_CONFIG_WATCH;
 
 use {defmt_rtt as _, panic_probe as _};
@@ -87,7 +88,10 @@ async fn main_core1(spawner: Spawner) {
     let mut receiver = LAYOUT_WATCH.receiver().unwrap();
     loop {
         let layout = receiver.changed().await;
-        lm.spawn_layout(layout).await;
+        if lm.spawn_layout(&layout).await {
+            // Store new layout if it changed
+            store_layout(&layout).await;
+        }
     }
 }
 

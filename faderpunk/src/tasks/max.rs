@@ -1,3 +1,6 @@
+use core::sync::atomic::AtomicU8;
+
+use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
@@ -53,8 +56,9 @@ pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, (usize, MaxCmd), MAX_CH
     Channel::new();
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
-pub static MAX_VALUES_DAC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
+pub static MAX_TRIGGERS_GPO: [AtomicU8; 20] = [const { AtomicU8::new(0) }; 20];
+pub static MAX_VALUES_DAC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static MAX_VALUES_ADC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static CALIBRATING: AtomicBool = AtomicBool::new(false);
 
@@ -90,23 +94,6 @@ pub async fn start_max(
     // TODO: Create an abstraction to be able to create just one port
     let ports = Ports::new(max);
 
-    // Put ports 17-19 into hi-impedance mode for interrupt testing
-    ports
-        .port17
-        .into_configured_port(ConfigMode0)
-        .await
-        .unwrap();
-    ports
-        .port18
-        .into_configured_port(ConfigMode0)
-        .await
-        .unwrap();
-    ports
-        .port19
-        .into_configured_port(ConfigMode0)
-        .await
-        .unwrap();
-
     // TODO: Make individual port
     spawner
         .spawn(read_fader(pio0, mux_pins, ports.port16))
@@ -119,6 +106,7 @@ pub async fn start_max(
     spawner.spawn(message_loop(max)).unwrap();
 }
 
+// TODO: I think we can combine all these tasks into one
 #[embassy_executor::task]
 async fn read_fader(
     pio0: Peri<'static, PIO0>,
@@ -251,6 +239,17 @@ async fn process_channel_values(
             let port = Port::try_from(i).unwrap();
             let mut max = max_driver.lock().await;
             match max.get_mode(port) {
+                Mode::Mode3(_) => match MAX_TRIGGERS_GPO[i].load(Ordering::Relaxed) {
+                    1 => {
+                        max.gpo_set_low(port).await.unwrap();
+                        MAX_TRIGGERS_GPO[i].store(0, Ordering::Relaxed);
+                    }
+                    2 => {
+                        max.gpo_set_high(port).await.unwrap();
+                        MAX_TRIGGERS_GPO[i].store(0, Ordering::Relaxed);
+                    }
+                    _ => {}
+                },
                 Mode::Mode5(config) => {
                     let target_dac_value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
                     let calibrated_value = if target_dac_value == 0 {
@@ -310,7 +309,6 @@ async fn process_channel_values(
 
 #[embassy_executor::task]
 async fn message_loop(max_driver: &'static SharedMax) {
-    // TODO: Put ports 17-19 in hi-impedance mode when using the internal GPIO interrupts
     loop {
         let (chan, msg) = MAX_CHANNEL.receive().await;
         if chan == 16 {
@@ -326,10 +324,11 @@ async fn message_loop(max_driver: &'static SharedMax) {
                     max.configure_port(port, ConfigMode0).await.unwrap();
                 }
                 Mode::Mode3(config) => {
-                    max.dac_set_value(port, gpo_level.unwrap_or(2048))
+                    max.configure_port(port, config).await.unwrap();
+                    max.gpo_configure_level(port, gpo_level.unwrap_or(2048))
                         .await
                         .unwrap();
-                    max.configure_port(port, config).await.unwrap();
+                    max.gpo_set_high(port).await.unwrap();
                 }
                 Mode::Mode5(config) => {
                     max.configure_port(port, config).await.unwrap();

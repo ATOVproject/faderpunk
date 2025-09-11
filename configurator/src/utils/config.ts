@@ -1,4 +1,4 @@
-import { ClockSrc, I2cMode, Layout } from "@atov/fp-config";
+import { ClockSrc, I2cMode, Layout, AuxJackMode } from "@atov/fp-config";
 
 import { ParsedApp } from "../pages";
 
@@ -12,11 +12,13 @@ export const setGlobalConfig = async (
   dev: USBDevice,
   clock_src: ClockSrc,
   reset_src: ClockSrc,
+  aux: [AuxJackMode, AuxJackMode, AuxJackMode],
   i2c_mode: I2cMode,
 ) => {
   await sendMessage(dev, {
     tag: "SetGlobalConfig",
     value: {
+      aux,
       clock: {
         clock_src,
         ext_ppqn: 24,
@@ -24,8 +26,10 @@ export const setGlobalConfig = async (
         internal_bpm: 120,
       },
       i2c_mode,
-      quantizer_key: { tag: "PentatonicMaj" },
-      quantizer_tonic: { tag: "C" },
+      quantizer: {
+        key: { tag: "PentatonicMaj" },
+        tonic: { tag: "C" },
+      },
       led_brightness: 150,
     },
   });
