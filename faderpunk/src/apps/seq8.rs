@@ -1,12 +1,3 @@
-//To Do:
-//add quantizer
-//add MIDI param
-//add latching to clock res
-//add latching to gatelength
-//add latching to clock res
-//add latching to gatelength
-
-use defmt::info;
 use embassy_futures::{
     join::{join3, join5},
     select::select,
@@ -105,6 +96,7 @@ pub struct Storage {
     seqres: [usize; 4],
     gate_length: [u8; 4],
     range: [u8; 4],
+    oct: [u8; 4],
 }
 
 impl Default for Storage {
@@ -117,6 +109,7 @@ impl Default for Storage {
             seqres: [4; 4],
             gate_length: [127; 4],
             range: [3; 4],
+            oct: [0; 4],
         }
     }
 }
@@ -364,7 +357,6 @@ pub async fn run(
                         // do the latching
                         latched[chan] = true;
                         latched_glob.set(latched);
-                        // info!("latched")
                     }
                     if latched[chan] {
                         storage
@@ -372,6 +364,18 @@ pub async fn run(
                                 |s| s.range[page / 2] = (vals[chan] / 1000) as u8 + 1,
                                 None,
                             )
+                            .await;
+                    }
+                }
+                if chan == 4 {
+                    if (vals[chan] / 1000) as u8 == storage.query(|s| s.oct[page / 2]) {
+                        // do the latching
+                        latched[chan] = true;
+                        latched_glob.set(latched);
+                    }
+                    if latched[chan] {
+                        storage
+                            .modify_and_save(|s| s.oct[page / 2] = (vals[chan] / 1000) as u8, None)
                             .await;
                     }
                 }
@@ -618,13 +622,14 @@ pub async fn run(
                                         (seq[clkindex] as u32
                                             * (storage.query(|s| s.range[n]) as u32)
                                             * 410
-                                            / 4095) as u16,
+                                            / 4095) as u16
+                                            + storage.query(|s| s.oct[n]) as u16 * 410,
                                     )
                                     .await;
                                 // if n == 0 {
                                 //     info!("{}", storage.query(|s| s.range[n]));
                                 // }
-                                lastnote[n] = (out.as_midi() as i32 + base_note) as u8;
+                                lastnote[n] = out.as_midi();
 
                                 midi[n].send_note_on(lastnote[n], 4095).await;
                                 gatelength1 = gatelength_glob.get();
