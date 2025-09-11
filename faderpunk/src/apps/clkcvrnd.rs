@@ -27,7 +27,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     "Random CC/CV",
     "Generate random values on clock",
     Color::Green,
-    AppIcon::CircleCircle,
+    AppIcon::Random,
 )
 .add_param(Param::i32 {
     name: "MIDI Channel",

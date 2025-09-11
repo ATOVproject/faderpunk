@@ -22,9 +22,9 @@ pub const PARAMS: usize = 4;
 // TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing",
-    "Classic turing machine, synched to internal clock",
+    "Turing machine, synched to internal clock",
     Color::Blue,
-    AppIcon::DotMatrix,
+    AppIcon::SequenceSquare,
 )
 .add_param(Param::Enum {
     name: "MIDI",
@@ -45,11 +45,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Color {
     name: "Color",
     variants: &[
-        Color::Yellow,
-        Color::Pink,
+        Color::Blue,
+        Color::Green,
+        Color::Rose,
+        Color::Orange,
         Color::Cyan,
-        Color::Red,
-        Color::White,
+        Color::Pink,
+        Color::Violet,
+        Color::Yellow,
     ],
 });
 // .add_param(Param::i32 {
@@ -72,7 +75,7 @@ impl Default for Params {
             midi_mode: 1,
             midi_channel: 1,
             midi_cc: 1,
-            color: Color::Yellow,
+            color: Color::Blue,
         }
     }
 }

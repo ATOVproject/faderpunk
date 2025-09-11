@@ -20,17 +20,20 @@ const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Envelope Follower",
     "Audio amplitude to CV",
-    Color::Yellow,
-    AppIcon::DotMatrix,
+    Color::Pink,
+    AppIcon::EnvFollower,
 )
 .add_param(Param::Color {
     name: "Color",
     variants: &[
-        Color::Yellow,
-        Color::Pink,
+        Color::Blue,
+        Color::Green,
+        Color::Rose,
+        Color::Orange,
         Color::Cyan,
-        Color::Red,
-        Color::White,
+        Color::Pink,
+        Color::Violet,
+        Color::Yellow,
     ],
 });
 
@@ -40,9 +43,7 @@ pub struct Params {
 
 impl Default for Params {
     fn default() -> Self {
-        Self {
-            color: Color::Yellow,
-        }
+        Self { color: Color::Pink }
     }
 }
 

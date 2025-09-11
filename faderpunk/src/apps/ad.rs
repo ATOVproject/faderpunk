@@ -16,9 +16,9 @@ pub const PARAMS: usize = 1;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "AD Envelope",
-    "variable curve AD, ASR or looping AD",
-    Color::Blue,
-    AppIcon::Knob,
+    "Variable curve AD, ASR or looping AD",
+    Color::Yellow,
+    AppIcon::AdEnv,
 )
 .add_param(Param::i32 {
     name: "MIDI Channel",

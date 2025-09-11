@@ -468,16 +468,22 @@ impl From<Brightness> for u8 {
 #[derive(Clone, Copy, Default, Serialize, Deserialize, PostcardBindings)]
 pub enum AppIcon {
     #[default]
-    Knob,
-    SineWave,
+    Fader,
+    AdEnv,
+    Random,
+    Euclid,
+    Attenuate,
     Die,
-    SquareWave,
-    CircleCircle,
-    SnareDrum,
-    ArrowCircle,
-    DotMatrix,
-    Speaker,
-    SignalBars,
+    Quantize,
+    Sequence,
+    Note,
+    EnvFollower,
+    SoftRandom,
+    Sine,
+    NoteBox,
+    SequenceSquare,
+    NoteGrid,
+    KnobRound,
 }
 
 #[allow(non_camel_case_types)]

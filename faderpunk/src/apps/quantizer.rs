@@ -17,17 +17,20 @@ pub const PARAMS: usize = 1;
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Quantizer",
     "Quantize CV passing through",
-    Color::Red,
-    AppIcon::Speaker,
+    Color::Blue,
+    AppIcon::Quantize,
 )
 .add_param(Param::Color {
     name: "Color",
     variants: &[
-        Color::Yellow,
-        Color::Pink,
+        Color::Blue,
+        Color::Green,
+        Color::Rose,
+        Color::Orange,
         Color::Cyan,
-        Color::Red,
-        Color::White,
+        Color::Pink,
+        Color::Violet,
+        Color::Yellow,
     ],
 });
 
@@ -37,9 +40,7 @@ pub struct Params {
 
 impl Default for Params {
     fn default() -> Self {
-        Self {
-            color: Color::Yellow,
-        }
+        Self { color: Color::Blue }
     }
 }
 

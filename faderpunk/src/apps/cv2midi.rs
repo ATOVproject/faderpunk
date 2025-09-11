@@ -18,10 +18,10 @@ pub const PARAMS: usize = 4;
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
-    "CV2MIDI",
-    "CV to MIDI cc",
-    Color::Yellow,
-    AppIcon::ArrowCircle,
+    "CV to MIDI",
+    "CV to MIDI CC",
+    Color::Violet,
+    AppIcon::NoteGrid,
 )
 .add_param(Param::Bool { name: "Bipolar" })
 .add_param(Param::i32 {
@@ -37,11 +37,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Color {
     name: "Color",
     variants: &[
-        Color::Yellow,
-        Color::Pink,
         Color::Blue,
-        Color::Red,
-        Color::White,
+        Color::Green,
+        Color::Rose,
+        Color::Orange,
+        Color::Cyan,
+        Color::Pink,
+        Color::Violet,
+        Color::Yellow,
     ],
 });
 
@@ -58,7 +61,7 @@ impl Default for Params {
             bipolar: false,
             midi_channel: 1,
             midi_cc: 32,
-            color: Color::Yellow,
+            color: Color::Violet,
         }
     }
 }

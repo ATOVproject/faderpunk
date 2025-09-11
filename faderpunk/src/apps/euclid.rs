@@ -23,8 +23,8 @@ const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Euclid",
     "Euclidean sequencer",
-    Color::Cyan,
-    AppIcon::DotMatrix,
+    Color::Orange,
+    AppIcon::Euclid,
 )
 .add_param(Param::i32 {
     name: "MIDI Channel",
@@ -49,11 +49,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Color {
     name: "Color",
     variants: &[
-        Color::Yellow,
-        Color::Pink,
         Color::Blue,
-        Color::Red,
-        Color::White,
+        Color::Green,
+        Color::Rose,
+        Color::Orange,
+        Color::Cyan,
+        Color::Pink,
+        Color::Violet,
+        Color::Yellow,
     ],
 });
 
@@ -72,7 +75,7 @@ impl Default for Params {
             note: 32,
             note2: 33,
             gatel: 50,
-            color: Color::Yellow,
+            color: Color::Orange,
         }
     }
 }

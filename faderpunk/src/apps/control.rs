@@ -21,7 +21,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     "Control",
     "Simple MIDI/CV controller",
     Color::Violet,
-    AppIcon::SignalBars,
+    AppIcon::Fader,
 )
 .add_param(Param::Curve {
     name: "Curve",
@@ -47,11 +47,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Color {
     name: "Color",
     variants: &[
-        Color::Yellow,
-        Color::Pink,
+        Color::Blue,
+        Color::Green,
+        Color::Rose,
+        Color::Orange,
         Color::Cyan,
-        Color::Red,
-        Color::White,
+        Color::Pink,
+        Color::Violet,
+        Color::Yellow,
     ],
 });
 
@@ -72,7 +75,7 @@ impl Default for Params {
             midi_channel: 1,
             midi_cc: 32,
             on_release: false,
-            color: Color::Yellow,
+            color: Color::Violet,
         }
     }
 }
