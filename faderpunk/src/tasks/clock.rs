@@ -13,13 +13,16 @@ use embassy_sync::{
     pubsub::{PubSubChannel, Subscriber},
 };
 use embassy_time::{Instant, Timer};
+use midly::live::SystemRealtime;
 use portable_atomic::Ordering;
 
 use libfp::{utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig};
-use midly::live::{LiveEvent, SystemRealtime};
 
 use crate::{
-    tasks::{max::MAX_TRIGGERS_GPO, midi::MIDI_CHANNEL},
+    tasks::{
+        max::MAX_TRIGGERS_GPO,
+        midi::{MidiClockTarget, MidiOutEvent, MIDI_CHANNEL},
+    },
     Spawner, GLOBAL_CONFIG_WATCH,
 };
 
@@ -51,7 +54,16 @@ pub static CLOCK_PUBSUB: PubSubChannel<
     CLOCK_PUBSUB_PUBLISHERS,
 > = PubSubChannel::new();
 
+pub static CLOCK_IN_CHANNEL: Channel<ThreadModeRawMutex, ClockInEvent, 16> = Channel::new();
 pub static CLOCK_CMD_CHANNEL: Channel<ThreadModeRawMutex, ClockCmd, 8> = Channel::new();
+
+#[derive(Clone, Copy)]
+pub enum ClockInEvent {
+    Tick(ClockSrc),
+    Start(ClockSrc),
+    Stop(ClockSrc),
+    Reset(ClockSrc),
+}
 
 #[derive(Clone, Copy)]
 pub enum ClockCmd {
@@ -67,8 +79,11 @@ pub enum ClockEvent {
     Reset,
 }
 
+const INTERNAL_PPQN: u8 = 24;
+
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
-    spawner.spawn(run_clock(aux_inputs)).unwrap();
+    spawner.spawn(run_clock_sources(aux_inputs)).unwrap();
+    spawner.spawn(run_clock_gatekeeper()).unwrap();
 }
 
 async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
@@ -107,58 +122,138 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     }
 }
 
-fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counts: &[u8; 3]) {
-    for (i, aux_jack) in config.aux.iter().enumerate() {
-        if let AuxJackMode::ClockOut(div) = aux_jack {
-            if counts[i] % *div as u8 == 0 {
-                spawner.spawn(analog_tick(17 + i)).unwrap();
+async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &mut [u8; 3]) {
+    for (i, aux) in config.aux.iter().enumerate() {
+        if let AuxJackMode::ClockOut(div) = aux {
+            if counters[i] == 0 {
+                // TODO: Adjust trigger_len based on division?
+                spawner.spawn(analog_tick(i, 8)).unwrap();
+            }
+
+            counters[i] += 1;
+            if counters[i] >= *div as u8 {
+                counters[i] = 0;
+            }
+        }
+    }
+}
+#[embassy_executor::task(pool_size = 6)]
+async fn analog_tick(aux_no: usize, trigger_len: u64) {
+    let gpo_index = 17 + aux_no;
+    MAX_TRIGGERS_GPO[gpo_index].store(2, Ordering::Relaxed);
+    Timer::after_millis(trigger_len).await;
+    MAX_TRIGGERS_GPO[gpo_index].store(1, Ordering::Relaxed);
+}
+
+#[embassy_executor::task]
+async fn run_clock_gatekeeper() {
+    let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
+    let midi_sender = MIDI_CHANNEL.sender();
+    let clock_in_receiver = CLOCK_IN_CHANNEL.receiver();
+    let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
+
+    let spawner = Spawner::for_current_executor().await;
+
+    let mut config = config_receiver.get().await;
+    let mut is_running = false;
+    let mut analog_tick_counters: [u8; 3] = [0; 3];
+
+    loop {
+        match select(clock_in_receiver.receive(), config_receiver.changed()).await {
+            Either::First(event) => {
+                let (is_event_for_tick, is_event_for_reset, source) = match event {
+                    ClockInEvent::Tick(s) | ClockInEvent::Start(s) | ClockInEvent::Stop(s) => {
+                        (true, false, s)
+                    }
+                    ClockInEvent::Reset(s) => (false, true, s),
+                };
+
+                let is_active_clock_source = is_event_for_tick && source == config.clock.clock_src;
+                let is_active_reset_source = is_event_for_reset && source == config.clock.reset_src;
+
+                if !is_active_clock_source && !is_active_reset_source {
+                    continue;
+                }
+
+                // Determine MIDI routing target
+                let midi_target = match source {
+                    ClockSrc::MidiUsb => MidiClockTarget::Uart,
+                    ClockSrc::MidiIn => MidiClockTarget::Usb,
+                    _ => MidiClockTarget::Both,
+                };
+
+                // Process the event
+                match event {
+                    ClockInEvent::Tick(source) => {
+                        if is_running {
+                            clock_publisher.publish(ClockEvent::Tick).await;
+                            send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
+                            let _ = midi_sender.try_send(MidiOutEvent::Clock(
+                                SystemRealtime::TimingClock,
+                                midi_target,
+                            ));
+                        }
+                    }
+                    ClockInEvent::Start(source) => {
+                        if !is_running {
+                            is_running = true;
+                            clock_publisher.publish(ClockEvent::Start).await;
+                            analog_tick_counters = [0; 3];
+                            let _ = midi_sender
+                                .try_send(MidiOutEvent::Clock(SystemRealtime::Start, midi_target));
+                        }
+                    }
+                    ClockInEvent::Stop(source) => {
+                        if is_running {
+                            is_running = false;
+                            clock_publisher.publish(ClockEvent::Reset).await;
+                            analog_tick_counters = [0; 3];
+                            let _ = midi_sender
+                                .try_send(MidiOutEvent::Clock(SystemRealtime::Stop, midi_target));
+                        }
+                    }
+                    ClockInEvent::Reset(source) => {
+                        is_running = true;
+                        clock_publisher.publish(ClockEvent::Reset).await;
+                        analog_tick_counters = [0; 3];
+                        let _ = midi_sender
+                            .try_send(MidiOutEvent::Clock(SystemRealtime::Start, midi_target));
+                    }
+                }
+            }
+            Either::Second(new_config) => {
+                config = new_config;
+                if config.clock.clock_src != ClockSrc::Internal {
+                    is_running = false;
+                }
             }
         }
     }
 }
 
-#[embassy_executor::task]
-async fn analog_tick(gpo_index: usize) {
-    // Set the output high (ramp up).
-    MAX_TRIGGERS_GPO[gpo_index].store(2, Ordering::Relaxed);
-
-    // Wait for the pulse width. 10ms is a common value for triggers.
-    Timer::after_millis(10).await;
-
-    // Set the output low (ramp down).
-    MAX_TRIGGERS_GPO[gpo_index].store(1, Ordering::Relaxed);
-}
-
 // TODO: Rework the clock to use only one tick generator with various tempo and sync sources
 #[embassy_executor::task]
-async fn run_clock(aux_inputs: AuxInputs) {
+async fn run_clock_sources(aux_inputs: AuxInputs) {
     let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
     let atom = Input::new(atom_pin, Pull::Down);
     let meteor = Input::new(meteor_pin, Pull::Down);
     let cube = Input::new(hexagon_pin, Pull::Down);
-    let spawner = Spawner::for_current_executor().await;
 
     let internal_fut = async {
         let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
-        let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
+        let clock_in_sender = CLOCK_IN_CHANNEL.sender();
         let clock_receiver = CLOCK_CMD_CHANNEL.receiver();
 
-        let mut config = config_receiver.get().await;
-        let mut tick_duration =
-            bpm_to_clock_duration(config.clock.internal_bpm, config.clock.ext_ppqn);
+        let config = config_receiver.get().await;
+        let mut tick_duration = bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
         let mut next_tick_at = Instant::now();
         let mut is_running = false;
-        // These are for clock divisions
-        let mut analog_out_counts: [u8; 3] = [0; 3];
 
         loop {
-            // TODO: How to handle internal reset?
-            let should_be_active = is_running && config.clock.clock_src == ClockSrc::Internal;
-
             // This future only resolves on a tick when the internal clock is active.
             // Otherwise, it pends forever, preventing ticks from being generated.
             let tick_fut = async {
-                if should_be_active {
+                if is_running {
                     Timer::at(next_tick_at).await;
                 } else {
                     core::future::pending::<()>().await;
@@ -175,26 +270,18 @@ async fn run_clock(aux_inputs: AuxInputs) {
                 Either3::First(_) => {
                     // Schedule next tick relative to the previous one to avoid drift.
                     next_tick_at += tick_duration;
-                    clock_publisher.publish(ClockEvent::Tick).await;
-                    send_analog_ticks(&spawner, &config, &analog_out_counts);
-                    MIDI_CHANNEL
-                        .send(LiveEvent::Realtime(SystemRealtime::TimingClock))
+                    clock_in_sender
+                        .send(ClockInEvent::Tick(ClockSrc::Internal))
                         .await;
-                    // Increment counters for the *next* tick.
-                    for count in analog_out_counts.iter_mut() {
-                        *count = count.wrapping_add(1);
-                    }
                 }
                 Either3::Second(new_config) => {
                     let old_tick_duration = tick_duration;
-                    let new_tick_duration = bpm_to_clock_duration(
-                        new_config.clock.internal_bpm,
-                        new_config.clock.ext_ppqn,
-                    );
+                    let new_tick_duration =
+                        bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
 
                     // If BPM changes while the clock is running, adjust the next tick time
                     // to make the transition smooth.
-                    if old_tick_duration != new_tick_duration && should_be_active {
+                    if old_tick_duration != new_tick_duration && is_running {
                         let now = Instant::now();
                         if let Some(time_until_next_tick) = next_tick_at.checked_duration_since(now)
                         {
@@ -211,43 +298,34 @@ async fn run_clock(aux_inputs: AuxInputs) {
                         }
                     }
 
-                    config = new_config;
                     tick_duration = new_tick_duration;
                 }
                 Either3::Third(cmd) => {
-                    if config.clock.clock_src == ClockSrc::Internal {
-                        let next_is_running = match cmd {
-                            ClockCmd::Start => true,
-                            ClockCmd::Stop => false,
-                            ClockCmd::Toggle => !is_running,
-                        };
+                    let next_is_running = match cmd {
+                        ClockCmd::Start => true,
+                        ClockCmd::Stop => false,
+                        ClockCmd::Toggle => !is_running,
+                    };
 
-                        if !is_running && next_is_running {
-                            // Reset analog clock phase on start
-                            analog_out_counts = [0; 3];
-
-                            // Schedule the first tick immediately. The main loop will
-                            // handle publishing it and scheduling the subsequent tick.
-                            next_tick_at = Instant::now();
-                            clock_publisher.publish(ClockEvent::Start).await;
-                            MIDI_CHANNEL
-                                .send(LiveEvent::Realtime(SystemRealtime::Start))
-                                .await;
-                        } else if is_running && !next_is_running {
-                            clock_publisher.publish(ClockEvent::Reset).await;
-                            MIDI_CHANNEL
-                                .send(LiveEvent::Realtime(SystemRealtime::Stop))
-                                .await;
-                        }
-                        is_running = next_is_running;
+                    if !is_running && next_is_running {
+                        // Schedule the first tick immediately. The main loop will
+                        // handle publishing it and scheduling the subsequent tick.
+                        next_tick_at = Instant::now();
+                        clock_in_sender
+                            .send(ClockInEvent::Start(ClockSrc::Internal))
+                            .await;
+                    } else if is_running && !next_is_running {
+                        clock_in_sender
+                            .send(ClockInEvent::Stop(ClockSrc::Internal))
+                            .await;
                     }
+                    is_running = next_is_running;
                 }
             }
         }
     };
 
     let atom_fut = make_ext_clock_loop(atom, ClockSrc::Atom);
-
     let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor);
     let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube);
 

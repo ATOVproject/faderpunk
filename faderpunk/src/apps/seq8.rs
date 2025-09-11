@@ -16,7 +16,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, AppIcon, Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue, AppIcon, Brightness, ClockDivision, Color, Config, Param, Range, Value,
+    APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -578,7 +579,7 @@ pub async fn run(
 
             // let gateseq = gateseq_glob.get_array();
 
-            match clk.wait_for_event(1).await {
+            match clk.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clockn = 0;
                     info!("reset!");

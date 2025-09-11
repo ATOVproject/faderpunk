@@ -6,18 +6,14 @@ use embassy_time::Timer;
 use max11300::config::{
     ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES,
 };
-use midly::{
-    live::LiveEvent,
-    num::{u14, u4},
-    MidiMessage, PitchBend,
-};
+use midly::{live::LiveEvent, num::u4, MidiMessage, PitchBend};
 use portable_atomic::Ordering;
 
 use libfp::{
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
     utils::scale_bits_12_7,
-    Brightness, Color, Range,
+    Brightness, ClockDivision, Color, Range,
 };
 
 use crate::{
@@ -27,8 +23,10 @@ use crate::{
         clock::{ClockSubscriber, CLOCK_PUBSUB},
         i2c::{I2cLeaderMessage, I2cLeaderSender, I2C_CONNECTED},
         leds::{set_led_mode, LedMode, LedMsg},
-        max::{MaxCmd, MaxSender, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
-        midi::MidiSender as MidiChannelSender,
+        max::{
+            MaxCmd, MaxSender, MAX_TRIGGERS_GPO, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
+        },
+        midi::{MidiOutEvent, MidiSender as MidiChannelSender},
     },
     QUANTIZER,
 };
@@ -105,27 +103,19 @@ impl InJack {
 
 pub struct GateJack {
     channel: usize,
-    max_sender: MaxSender,
 }
 
 impl GateJack {
-    fn new(channel: usize, max_sender: MaxSender) -> Self {
-        Self {
-            channel,
-            max_sender,
-        }
+    fn new(channel: usize) -> Self {
+        Self { channel }
     }
 
     pub async fn set_high(&self) {
-        self.max_sender
-            .send((self.channel, MaxCmd::GpoSetHigh))
-            .await;
+        MAX_TRIGGERS_GPO[self.channel].store(2, Ordering::Relaxed);
     }
 
     pub async fn set_low(&self) {
-        self.max_sender
-            .send((self.channel, MaxCmd::GpoSetLow))
-            .await;
+        MAX_TRIGGERS_GPO[self.channel].store(1, Ordering::Relaxed);
     }
 }
 
@@ -305,30 +295,30 @@ impl Faders<1> {
 
 pub struct Clock {
     subscriber: ClockSubscriber,
+    tick_count: usize,
 }
 
 impl Clock {
     pub fn new() -> Self {
         let subscriber = CLOCK_PUBSUB.subscriber().unwrap();
-        Self { subscriber }
+        Self {
+            subscriber,
+            tick_count: 0,
+        }
     }
 
-    // TODO: division needs to be an enum
-    pub async fn wait_for_event(&mut self, division: usize) -> ClockEvent {
-        let mut i: usize = 0;
-
+    pub async fn wait_for_event(&mut self, division: ClockDivision) -> ClockEvent {
         loop {
             match self.subscriber.next_message_pure().await {
                 ClockEvent::Tick => {
-                    i += 1;
-                    // TODO: Maybe we can make this more efficient by just having subscribers to
-                    // subdivisions of the clock
-                    if i == division {
+                    self.tick_count += 1;
+                    if self.tick_count >= division as usize {
+                        self.tick_count = 0;
                         return ClockEvent::Tick;
                     }
-                    continue;
                 }
-                clock_event => {
+                clock_event @ ClockEvent::Start | clock_event @ ClockEvent::Reset => {
+                    self.tick_count = 0;
                     return clock_event;
                 }
             }
@@ -378,68 +368,61 @@ impl MidiOutput {
         }
     }
 
+    async fn send_midi_msg(&self, msg: MidiMessage) {
+        let event = MidiOutEvent::Event(LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: msg,
+        });
+        self.midi_sender.send(event).await;
+    }
+
     /// Sends a MIDI CC message.
     /// value is normalized to a range of 0-4095
     pub async fn send_cc(&self, cc: u8, value: u16) {
-        let msg = LiveEvent::Midi {
-            channel: self.midi_channel,
-            message: MidiMessage::Controller {
-                controller: cc.into(),
-                value: scale_bits_12_7(value),
-            },
+        let msg = MidiMessage::Controller {
+            controller: cc.into(),
+            value: scale_bits_12_7(value),
         };
-        self.midi_sender.send(msg).await;
+        self.send_midi_msg(msg).await;
     }
 
     /// Sends a MIDI NoteOn message.
     /// velocity is normalized to a range of 0-4095
     pub async fn send_note_on(&self, note_number: u8, velocity: u16) {
-        let msg = LiveEvent::Midi {
-            channel: self.midi_channel,
-            message: MidiMessage::NoteOn {
-                key: note_number.into(),
+        let msg = MidiMessage::NoteOn {
+            key: note_number.into(),
 
-                vel: scale_bits_12_7(velocity),
-            },
+            vel: scale_bits_12_7(velocity),
         };
-        self.midi_sender.send(msg).await;
+        self.send_midi_msg(msg).await;
     }
 
     /// Sends a MIDI NoteOff message.
     pub async fn send_note_off(&self, note_number: u8) {
-        let msg = LiveEvent::Midi {
-            channel: self.midi_channel,
-            message: MidiMessage::NoteOff {
-                key: note_number.into(),
-                vel: 0.into(),
-            },
+        let msg = MidiMessage::NoteOff {
+            key: note_number.into(),
+            vel: 0.into(),
         };
-        self.midi_sender.send(msg).await;
+        self.send_midi_msg(msg).await;
     }
 
     /// Sends a MIDI Aftertouch message.
     /// velocity is normalized to a range of 0-4095
     pub async fn send_aftertouch(&self, note_number: u8, velocity: u16) {
-        let msg = LiveEvent::Midi {
-            channel: self.midi_channel,
-            message: MidiMessage::Aftertouch {
-                key: note_number.into(),
-                vel: scale_bits_12_7(velocity),
-            },
+        let msg = MidiMessage::Aftertouch {
+            key: note_number.into(),
+            vel: scale_bits_12_7(velocity),
         };
-        self.midi_sender.send(msg).await;
+        self.send_midi_msg(msg).await;
     }
 
     /// Sends a MIDI PitchBend message.
     /// bend is a value between 0 and 16,383
     pub async fn send_pitch_bend(&self, bend: u16) {
-        let msg = LiveEvent::Midi {
-            channel: self.midi_channel,
-            message: MidiMessage::PitchBend {
-                bend: PitchBend(bend.into()),
-            },
+        let msg = MidiMessage::PitchBend {
+            bend: PitchBend(bend.into()),
         };
-        self.midi_sender.send(msg).await;
+        self.send_midi_msg(msg).await;
     }
 }
 
@@ -643,7 +626,7 @@ impl<const N: usize> App<N> {
         self.reconfigure_jack(chan, Mode::Mode3(ConfigMode3), Some(level))
             .await;
 
-        GateJack::new(self.start_channel + chan, self.max_sender)
+        GateJack::new(self.start_channel + chan)
     }
 
     pub async fn delay_micros(&self, micros: u64) {

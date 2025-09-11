@@ -8,8 +8,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Param, Range, Value,
-    APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config, Param,
+    Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -218,7 +218,7 @@ pub async fn run(
         let mut note = 0;
 
         loop {
-            match clock.wait_for_event(1).await {
+            match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
                     midi.send_note_off(note as u8).await;

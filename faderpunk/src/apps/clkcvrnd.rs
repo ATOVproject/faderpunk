@@ -15,7 +15,7 @@ use libfp::{
     ext::FromValue,
     latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, split_unsigned_value},
-    AppIcon, Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
+    AppIcon, Brightness, ClockDivision, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 pub const CHANNELS: usize = 1;
@@ -159,7 +159,7 @@ pub async fn run(
 
     let fut1 = async {
         loop {
-            match clock.wait_for_event(1).await {
+            match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
                 }
