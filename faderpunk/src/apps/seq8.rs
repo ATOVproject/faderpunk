@@ -104,6 +104,7 @@ pub struct Storage {
     seq_length: [u8; 4],
     seqres: [usize; 4],
     gate_length: [u8; 4],
+    range: [u8; 4],
 }
 
 impl Default for Storage {
@@ -115,6 +116,7 @@ impl Default for Storage {
             seq_length: [16; 4],
             seqres: [4; 4],
             gate_length: [127; 4],
+            range: [3; 4],
         }
     }
 }
@@ -277,11 +279,11 @@ pub async fn run(
             }
 
             if _shift {
-                if (vals[0] / 256 + 1) as u8 == seq_length[page / 2] && _shift {
-                    latched[0] = true;
-                    latched_glob.set(latched);
-                    //info!("latching!");
-                }
+                // if (vals[0] / 256 + 1) as u8 == seq_length[page / 2] && _shift {
+                //     latched[0] = true;
+                //     latched_glob.set(latched);
+                //     //info!("latching!");
+                // }
                 // add check for latching
                 if chan == 0 {
                     if (vals[chan] / 256 + 1) as u8 == seq_length[page / 2] {
@@ -356,8 +358,22 @@ pub async fn run(
 
                         gatelength_glob.set(gatelength);
                     }
-
-                    //add saving
+                }
+                if chan == 3 {
+                    if (vals[chan] / 1000 + 1) as u8 == storage.query(|s| s.range[page / 2]) {
+                        // do the latching
+                        latched[chan] = true;
+                        latched_glob.set(latched);
+                        // info!("latched")
+                    }
+                    if latched[chan] {
+                        storage
+                            .modify_and_save(
+                                |s| s.range[page / 2] = (vals[chan] / 1000) as u8 + 1,
+                                None,
+                            )
+                            .await;
+                    }
                 }
             }
             led_flag_glob.set(true);
@@ -582,7 +598,7 @@ pub async fn run(
             match clk.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clockn = 0;
-                    info!("reset!");
+                    // info!("reset!");
                     for n in 0..4 {
                         midi[n].send_note_off(lastnote[n]).await;
                         gate_out[n].set_low().await;
@@ -597,7 +613,17 @@ pub async fn run(
                             if gateseq[clkindex] {
                                 let seq = seq_glob.get();
 
-                                let out = quantizer.get_quantized_note(seq[clkindex] / 4).await;
+                                let out = quantizer
+                                    .get_quantized_note(
+                                        (seq[clkindex] as u32
+                                            * (storage.query(|s| s.range[n]) as u32)
+                                            * 410
+                                            / 4095) as u16,
+                                    )
+                                    .await;
+                                // if n == 0 {
+                                //     info!("{}", storage.query(|s| s.range[n]));
+                                // }
                                 lastnote[n] = (out.as_midi() as i32 + base_note) as u8;
 
                                 midi[n].send_note_on(lastnote[n], 4095).await;
