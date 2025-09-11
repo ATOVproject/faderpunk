@@ -12,7 +12,15 @@ import {
   TableCell,
 } from "@heroui/table";
 import { button as buttonStyles } from "@heroui/theme";
-import { AppIcon, ClockSrc, Color, I2cMode, Param } from "@atov/fp-config";
+import {
+  AppIcon,
+  ClockDivision,
+  ClockSrc,
+  Color,
+  I2cMode,
+  Param,
+  AuxJackMode,
+} from "@atov/fp-config";
 
 import { AppConfigDrawer } from "@/components/app-config-drawer";
 import { title } from "@/components/primitives";
@@ -46,6 +54,9 @@ export default function IndexPage() {
   >([]);
   const [clockSrc, setClockSrc] = useState<ClockSrc>({ tag: "Internal" });
   const [resetSrc, setResetSrc] = useState<ClockSrc>({ tag: "Internal" });
+  const [auxJacks, setAuxJacks] = useState<
+    [AuxJackMode, AuxJackMode, AuxJackMode]
+  >([{ tag: "None" }, { tag: "None" }, { tag: "None" }]);
   const i2cMode: I2cMode = { tag: "Follower" };
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedAppForConfig, setSelectedAppForConfig] = useState<{
@@ -93,6 +104,9 @@ export default function IndexPage() {
       if (globalConfig && globalConfig.tag === "GlobalConfig") {
         setClockSrc(globalConfig.value.clock.clock_src);
         setResetSrc(globalConfig.value.clock.reset_src);
+        setAuxJacks(
+          globalConfig.value.aux as [AuxJackMode, AuxJackMode, AuxJackMode],
+        );
       }
 
       if (layout && layout.tag == "Layout") {
@@ -305,12 +319,83 @@ export default function IndexPage() {
                   <SelectItem key="MidiUsb">MIDI USB</SelectItem>
                 </Select>
               </div>
+              <div className="mt-4">
+                <h3 className="text-lg font-semibold mb-2">
+                  Aux Jack Configuration
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                  {["Atom", "Meteor", "Cube"].map((jackName, index) => (
+                    <div key={jackName} className="flex flex-col gap-2">
+                      <label className="text-sm font-medium">{jackName}</label>
+                      <Select
+                        placeholder="Select mode"
+                        selectedKeys={[auxJacks[index].tag]}
+                        onSelectionChange={(keys) => {
+                          const key = Array.from(keys)[0] as string;
+                          const newAuxJacks = [...auxJacks] as [
+                            AuxJackMode,
+                            AuxJackMode,
+                            AuxJackMode,
+                          ];
+
+                          if (key === "None") {
+                            newAuxJacks[index] = { tag: "None" };
+                          } else if (key === "ClockOut") {
+                            newAuxJacks[index] = {
+                              tag: "ClockOut",
+                              value: { tag: "_1" },
+                            };
+                          }
+                          setAuxJacks(newAuxJacks);
+                        }}
+                      >
+                        <SelectItem key="None">None</SelectItem>
+                        <SelectItem key="ClockOut">Clock Out</SelectItem>
+                      </Select>
+                      {auxJacks[index].tag === "ClockOut" && (
+                        <Select
+                          placeholder="Select division"
+                          selectedKeys={[auxJacks[index].value?.tag || "_1"]}
+                          onSelectionChange={(keys) => {
+                            const key = Array.from(keys)[0] as string;
+                            const newAuxJacks = [...auxJacks] as [
+                              AuxJackMode,
+                              AuxJackMode,
+                              AuxJackMode,
+                            ];
+
+                            newAuxJacks[index] = {
+                              tag: "ClockOut",
+                              value: { tag: key } as ClockDivision,
+                            };
+                            setAuxJacks(newAuxJacks);
+                          }}
+                        >
+                          <SelectItem key="_1">1/1</SelectItem>
+                          <SelectItem key="_2">1/2</SelectItem>
+                          <SelectItem key="_4">1/4</SelectItem>
+                          <SelectItem key="_6">1/6</SelectItem>
+                          <SelectItem key="_8">1/8</SelectItem>
+                          <SelectItem key="_12">1/12</SelectItem>
+                          <SelectItem key="_24">1/24</SelectItem>
+                        </Select>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
             <Button
               type="button"
               variant="bordered"
               onPress={() =>
-                setGlobalConfig(usbDevice, clockSrc, resetSrc, i2cMode)
+                setGlobalConfig(
+                  usbDevice,
+                  clockSrc,
+                  resetSrc,
+                  auxJacks,
+                  i2cMode,
+                )
               }
             >
               Set config

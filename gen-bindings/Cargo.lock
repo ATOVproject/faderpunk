@@ -315,6 +315,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "heapless"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1edcd5a338e64688fbdcb7531a846cfd3476a54784dcb918a0844682bc7ada5"
+dependencies = [
+ "hash32 0.3.1",
+ "stable_deref_trait",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -369,15 +379,15 @@ dependencies = [
 
 [[package]]
 name = "max11300"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "775d3875cef4f32fcc98857108a89aab9985c21b8c9d0138f4fb50e4be24f238"
+checksum = "aaccaee3bce1b0aa23fb6ae5595bb3fb1f627dc4ff7054b837967616b01ffd1f"
 dependencies = [
  "critical-section",
  "embassy-sync",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
- "heapless 0.8.0",
+ "heapless 0.9.1",
  "seq-macro",
 ]
 
