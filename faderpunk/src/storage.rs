@@ -442,6 +442,11 @@ impl<S: AppStorage> ManagedStorage<S> {
         }
     }
 
+    pub fn reset(&self) {
+        let mut guard = self.inner.borrow_mut();
+        *guard = S::default();
+    }
+
     pub fn query<F, R>(&self, accessor: F) -> R
     where
         F: FnOnce(&S) -> R,

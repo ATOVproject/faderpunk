@@ -4,14 +4,14 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
+use serde::{Deserialize, Serialize};
+
 use libfp::{
     latch::LatchLayer,
     utils::{attenuate_bipolar, split_unsigned_value},
-    AppIcon, Brightness, Color, Curve, Value, APP_MAX_PARAMS,
+    AppIcon, Brightness, ClockDivision, Color, Config, Curve, Range, Value, Waveform,
+    APP_MAX_PARAMS,
 };
-use serde::{Deserialize, Serialize};
-
-use libfp::{Config, Range, Waveform};
 
 use crate::{
     app::{App, AppStorage, ClockEvent, Led, ManagedStorage, SceneEvent},
@@ -260,7 +260,7 @@ pub async fn run(
     };
     let fut5 = async {
         loop {
-            match clk.wait_for_event(24).await {
+            match clk.wait_for_event(ClockDivision::_24).await {
                 ClockEvent::Tick => {
                     glob_tick.set(true);
                 }
