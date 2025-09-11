@@ -50,11 +50,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Color {
     name: "Color",
     variants: &[
-        Color::Yellow,
-        Color::Pink,
+        Color::Blue,
+        Color::Green,
+        Color::Rose,
+        Color::Orange,
         Color::Cyan,
-        Color::Red,
-        Color::White,
+        Color::Pink,
+        Color::Violet,
+        Color::Yellow,
     ],
 });
 
@@ -73,7 +76,8 @@ impl Default for Params {
             note: 48,
             span: 24,
             gatel: 50,
-            color: Color::Yellow,
+            outmode: 0,
+            color: Color::Rose,
         }
     }
 }

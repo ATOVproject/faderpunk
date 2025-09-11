@@ -23,7 +23,7 @@ pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 0;
 
 pub static CONFIG: Config<PARAMS> =
-    Config::new("LFO", "Wooooosh", Color::Blue, AppIcon::Speaker);
+    Config::new("LFO", "Multi shape LFO", Color::Yellow, AppIcon::Sine);
 
 pub struct Params {}
 

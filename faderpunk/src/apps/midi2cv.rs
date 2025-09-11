@@ -20,10 +20,10 @@ pub const PARAMS: usize = 6;
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
-    "MIDI2CV",
+    "MIDI to CV",
     "Multifunctional MIDI to CV",
-    Color::Green,
-    AppIcon::SignalBars,
+    Color::Cyan,
+    AppIcon::KnobRound,
 )
 .add_param(Param::Enum {
     name: "Mode",
@@ -52,11 +52,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Color {
     name: "Color",
     variants: &[
-        Color::Yellow,
-        Color::Pink,
+        Color::Blue,
+        Color::Green,
+        Color::Rose,
+        Color::Orange,
         Color::Cyan,
-        Color::Red,
-        Color::White,
+        Color::Pink,
+        Color::Violet,
+        Color::Yellow,
     ],
 });
 
@@ -77,7 +80,7 @@ impl Default for Params {
             midi_channel: 1,
             midi_cc: 32,
             bend_range: 12,
-            color: Color::Yellow,
+            color: Color::Cyan,
         }
     }
 }

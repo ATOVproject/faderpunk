@@ -20,8 +20,8 @@ const LED_BRIGHTNESS: Brightness = Brightness::Low;
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Random Triggers",
     "Generate random triggers on clock",
-    Color::Orange,
-    AppIcon::SineWave,
+    Color::Cyan,
+    AppIcon::Die,
 )
 .add_param(Param::i32 {
     name: "MIDI Channel",
@@ -41,11 +41,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Color {
     name: "Color",
     variants: &[
-        Color::Yellow,
-        Color::Pink,
+        Color::Blue,
+        Color::Green,
+        Color::Rose,
+        Color::Orange,
         Color::Cyan,
-        Color::Red,
-        Color::White,
+        Color::Pink,
+        Color::Violet,
+        Color::Yellow,
     ],
 });
 
@@ -64,7 +67,7 @@ impl Default for Params {
             note: 32,
             gatel: 50,
 
-            color: Color::Yellow,
+            color: Color::Cyan,
         }
     }
 }

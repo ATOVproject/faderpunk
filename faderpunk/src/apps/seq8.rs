@@ -30,8 +30,8 @@ pub const PARAMS: usize = 4;
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Sequencer",
     "4 x 16 step CV/gate sequencers",
-    Color::Violet,
-    AppIcon::SnareDrum,
+    Color::Yellow,
+    AppIcon::Sequence,
 )
 .add_param(Param::i32 {
     name: "MIDI Channel 1",
