@@ -295,35 +295,8 @@ pub async fn run(
                         length_flag.set(true);
                     }
                 }
+
                 if chan == 1 {
-                    // add latching to this
-                    let res_saved = storage.query(|s| s.seqres);
-
-                    if (vals[chan] / 512) == res_saved[page / 2] as u16 {
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-
-                    if latched[chan] {
-                        storage
-                            .modify_and_save(
-                                |s| s.seqres[page / 2] = vals[chan] as usize / 512,
-                                None,
-                            )
-                            .await;
-
-                        let mut clockres = clockres_glob.get();
-                        clockres[page / 2] = resolution[(vals[1] / 512) as usize];
-                        clockres_glob.set(clockres);
-
-                        let mut gatelength = gatelength_glob.get();
-                        gatelength[page / 2] =
-                            gatelength[page / 2].clamp(1, clockres[page / 2] as u8);
-                        gatelength_glob.set(gatelength);
-                    }
-                }
-
-                if chan == 2 {
                     // add latching to this
 
                     let mut gatelength_saved = storage.query(|s| s.gate_length); // get saved fader value
@@ -352,6 +325,18 @@ pub async fn run(
                         gatelength_glob.set(gatelength);
                     }
                 }
+                if chan == 2 {
+                    if (vals[chan] / 1000) as u8 == storage.query(|s| s.oct[page / 2]) {
+                        // do the latching
+                        latched[chan] = true;
+                        latched_glob.set(latched);
+                    }
+                    if latched[chan] {
+                        storage
+                            .modify_and_save(|s| s.oct[page / 2] = (vals[chan] / 1000) as u8, None)
+                            .await;
+                    }
+                }
                 if chan == 3 {
                     if (vals[chan] / 1000 + 1) as u8 == storage.query(|s| s.range[page / 2]) {
                         // do the latching
@@ -368,15 +353,30 @@ pub async fn run(
                     }
                 }
                 if chan == 4 {
-                    if (vals[chan] / 1000) as u8 == storage.query(|s| s.oct[page / 2]) {
-                        // do the latching
+                    // add latching to this
+                    let res_saved = storage.query(|s| s.seqres);
+
+                    if (vals[chan] / 512) == res_saved[page / 2] as u16 {
                         latched[chan] = true;
                         latched_glob.set(latched);
                     }
+
                     if latched[chan] {
                         storage
-                            .modify_and_save(|s| s.oct[page / 2] = (vals[chan] / 1000) as u8, None)
+                            .modify_and_save(
+                                |s| s.seqres[page / 2] = vals[chan] as usize / 512,
+                                None,
+                            )
                             .await;
+
+                        let mut clockres = clockres_glob.get();
+                        clockres[page / 2] = resolution[(vals[chan] / 512) as usize];
+                        clockres_glob.set(clockres);
+
+                        let mut gatelength = gatelength_glob.get();
+                        gatelength[page / 2] =
+                            gatelength[page / 2].clamp(1, clockres[page / 2] as u8);
+                        gatelength_glob.set(gatelength);
                     }
                 }
             }
