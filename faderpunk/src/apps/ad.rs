@@ -12,7 +12,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 1;
+pub const PARAMS: usize = 2;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "AD Envelope",
@@ -20,6 +20,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Yellow,
     AppIcon::AdEnv,
 )
+.add_param(Param::Bool { name: "MIDI In" })
 .add_param(Param::i32 {
     name: "MIDI Channel",
     min: 1,
@@ -27,24 +28,30 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 });
 
 pub struct Params {
+    midi_on: bool,
     midi_channel: i32,
 }
 
 impl Default for Params {
     fn default() -> Self {
-        Self { midi_channel: 1 }
+        Self {
+            midi_on: false,
+            midi_channel: 1,
+        }
     }
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         Some(Self {
-            midi_channel: i32::from_value(values[0]),
+            midi_on: bool::from_value(values[0]),
+            midi_channel: i32::from_value(values[1]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
+        vec.push(self.midi_on.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec
     }
@@ -98,7 +105,7 @@ pub async fn run(
     _params: &ParamStore<Params>,
     storage: ManagedStorage<Storage>,
 ) {
-    let midi_chan = _params.query(|p| (p.midi_channel));
+    let (midi_on, midi_chan) = _params.query(|p| (p.midi_on, p.midi_channel));
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
@@ -416,10 +423,14 @@ pub async fn run(
         loop {
             match midi_in.wait_for_message().await {
                 MidiMessage::NoteOn { key, vel } => {
-                    gate_on_glob.modify(|g| *g + 1);
+                    if midi_on {
+                        gate_on_glob.modify(|g| *g + 1);
+                    }
                 }
                 MidiMessage::NoteOff { key, vel } => {
-                    gate_on_glob.modify(|g| (*g - 1).max(0));
+                    if midi_on {
+                        gate_on_glob.modify(|g| (*g - 1).max(0));
+                    }
                 }
 
                 _ => {}
