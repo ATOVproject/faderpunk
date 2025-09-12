@@ -106,20 +106,23 @@ pub async fn start_global_config(spawner: &Spawner) {
 }
 
 async fn set_aux_config(aux_port: usize, aux_jack_mode: &AuxJackMode) {
-    if let AuxJackMode::ClockOut(_) = aux_jack_mode {
-        MAX_CHANNEL
-            .send((
-                17 + aux_port,
-                MaxCmd::ConfigurePort(Mode::Mode3(ConfigMode3), Some(2048)),
-            ))
-            .await;
-    } else {
-        MAX_CHANNEL
-            .send((
-                17 + aux_port,
-                MaxCmd::ConfigurePort(Mode::Mode0(ConfigMode0), None),
-            ))
-            .await;
+    match aux_jack_mode {
+        AuxJackMode::ClockOut(_) | AuxJackMode::ResetOut => {
+            MAX_CHANNEL
+                .send((
+                    17 + aux_port,
+                    MaxCmd::ConfigurePort(Mode::Mode3(ConfigMode3), Some(2048)),
+                ))
+                .await;
+        }
+        AuxJackMode::None => {
+            MAX_CHANNEL
+                .send((
+                    17 + aux_port,
+                    MaxCmd::ConfigurePort(Mode::Mode0(ConfigMode0), None),
+                ))
+                .await;
+        }
     }
 }
 
