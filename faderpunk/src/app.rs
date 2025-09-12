@@ -295,7 +295,7 @@ impl Faders<1> {
 
 pub struct Clock {
     subscriber: ClockSubscriber,
-    tick_count: usize,
+    tick_count: u16,
 }
 
 impl Clock {
@@ -312,7 +312,7 @@ impl Clock {
             match self.subscriber.next_message_pure().await {
                 ClockEvent::Tick => {
                     self.tick_count += 1;
-                    if self.tick_count >= division as usize {
+                    if self.tick_count >= division as u16 {
                         self.tick_count = 0;
                         return ClockEvent::Tick;
                     }

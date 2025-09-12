@@ -354,7 +354,7 @@ export default function IndexPage() {
                       </Select>
                       {auxJacks[index].tag === "ClockOut" && (
                         <Select
-                          placeholder="Select division"
+                          placeholder="Select division (PPQN)"
                           selectedKeys={[auxJacks[index].value?.tag || "_1"]}
                           onSelectionChange={(keys) => {
                             const key = Array.from(keys)[0] as string;
@@ -371,13 +371,16 @@ export default function IndexPage() {
                             setAuxJacks(newAuxJacks);
                           }}
                         >
-                          <SelectItem key="_1">1/1</SelectItem>
-                          <SelectItem key="_2">1/2</SelectItem>
-                          <SelectItem key="_4">1/4</SelectItem>
-                          <SelectItem key="_6">1/6</SelectItem>
-                          <SelectItem key="_8">1/8</SelectItem>
-                          <SelectItem key="_12">1/12</SelectItem>
-                          <SelectItem key="_24">1/24</SelectItem>
+                          <SelectItem key="_1">24 PPQN</SelectItem>
+                          <SelectItem key="_2">12 PPQN</SelectItem>
+                          <SelectItem key="_4">6 PPQN</SelectItem>
+                          <SelectItem key="_6">4 PPQN</SelectItem>
+                          <SelectItem key="_8">3 PPQN</SelectItem>
+                          <SelectItem key="_12">2 PPQN</SelectItem>
+                          <SelectItem key="_24">1 PPQN</SelectItem>
+                          <SelectItem key="_96">1 Bar</SelectItem>
+                          <SelectItem key="_192">2 Bars</SelectItem>
+                          <SelectItem key="_384">4 Bars</SelectItem>
                         </Select>
                       )}
                     </div>

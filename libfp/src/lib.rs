@@ -282,7 +282,7 @@ impl QuantizerConfig {
 }
 
 #[derive(Copy, Clone, Serialize, PartialEq, Deserialize, PostcardBindings)]
-#[repr(u8)]
+#[repr(u16)]
 pub enum ClockDivision {
     _1 = 1,
     _2 = 2,
@@ -290,7 +290,14 @@ pub enum ClockDivision {
     _6 = 6,
     _8 = 8,
     _12 = 12,
+    // 1 quarter note at 24 ppqn
     _24 = 24,
+    // 1 bar at 24 ppqn
+    _96 = 96,
+    // 2 bars
+    _192 = 192,
+    // 4 bars
+    _384 = 384,
 }
 
 #[derive(Clone, Serialize, PartialEq, Deserialize, PostcardBindings)]
