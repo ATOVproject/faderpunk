@@ -1,3 +1,5 @@
+use core::future::pending;
+
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -12,7 +14,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 1;
+pub const PARAMS: usize = 2;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "AD Envelope",
@@ -20,31 +22,38 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Yellow,
     AppIcon::AdEnv,
 )
+.add_param(Param::Bool { name: "Use MIDI" })
 .add_param(Param::i32 {
     name: "MIDI Channel",
-    min: 0,
+    min: 1,
     max: 16,
 });
 
 pub struct Params {
+    use_midi: bool,
     midi_channel: i32,
 }
 
 impl Default for Params {
     fn default() -> Self {
-        Self { midi_channel: 0 }
+        Self {
+            use_midi: false,
+            midi_channel: 0,
+        }
     }
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         Some(Self {
-            midi_channel: i32::from_value(values[0]),
+            use_midi: bool::from_value(values[0]),
+            midi_channel: i32::from_value(values[1]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
+        vec.push(self.use_midi.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec
     }
@@ -95,14 +104,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
 pub async fn run(
     app: &App<CHANNELS>,
-    _params: &ParamStore<Params>,
+    params: &ParamStore<Params>,
     storage: ManagedStorage<Storage>,
 ) {
-    let midi_chan = _params.query(|p| (p.midi_channel));
+    let (use_midi, midi_chan) = params.query(|p| (p.use_midi, p.midi_channel));
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let mut midi_in = app.use_midi_input((midi_chan as u8 - 1).clamp(0, 15));
+    let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
 
     let times_glob = app.make_global([0.0682, 0.0682]);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
@@ -142,7 +151,6 @@ pub async fn run(
     times_glob.set(times);
 
     let mut outval = 0;
-    let mut shift_old = false;
     let mut old_gate = false;
     let mut button_old = false;
     let mut timer: u32 = 5000;
@@ -412,21 +420,20 @@ pub async fn run(
     };
 
     let fut4 = async {
-        let mut note_num = 0;
         loop {
-            match midi_in.wait_for_message().await {
-                MidiMessage::NoteOn { key, vel } => {
-                    if midi_chan != 0 {
+            if use_midi {
+                match midi_in.wait_for_message().await {
+                    MidiMessage::NoteOn { .. } => {
                         gate_on_glob.modify(|g| *g + 1);
                     }
-                }
-                MidiMessage::NoteOff { key, vel } => {
-                    if midi_chan != 0 {
+                    MidiMessage::NoteOff { .. } => {
                         gate_on_glob.modify(|g| (*g - 1).max(0));
                     }
+                    _ => {}
                 }
-
-                _ => {}
+            } else {
+                // TODO: Make API for this
+                pending::<()>().await;
             }
         }
     };
