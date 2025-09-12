@@ -58,7 +58,7 @@ pub struct Layout(pub InnerLayout);
 #[allow(clippy::new_without_default)]
 impl Layout {
     pub const fn new() -> Self {
-        Self([None; GLOBAL_CHANNELS])
+        Self([Some((1, 1)); GLOBAL_CHANNELS])
     }
 
     pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) -> bool {
@@ -785,11 +785,11 @@ impl FromValue for Range {
 
 #[cfg(test)]
 mod tests {
-    use super::Layout;
+    use super::{Layout, GLOBAL_CHANNELS};
 
     fn mock_get_channels(app_id: u8) -> Option<usize> {
         match app_id {
-            1 => Some(2), // App 1 takes 2 channels
+            1 => Some(1), // App 1 takes 2 channels
             2 => Some(4), // App 2 takes 4 channels
             3 => Some(3), // App 3 takes 3 channels
             _ => None,    // Any other app_id is invalid
@@ -798,8 +798,8 @@ mod tests {
 
     #[test]
     fn validate_no_changes() {
-        let mut layout = Layout::new();
-        layout.0[0] = Some((1, 2));
+        let mut layout = Layout([None; GLOBAL_CHANNELS]);
+        layout.0[0] = Some((1, 1));
         layout.0[4] = Some((2, 4));
         let original_layout = layout.0;
 
@@ -811,28 +811,28 @@ mod tests {
 
     #[test]
     fn validate_removes_overlapping() {
-        let mut layout = Layout::new();
-        // App 1 is valid
-        layout.0[0] = Some((1, 2));
-        // App 3 overlaps with App 1
-        layout.0[1] = Some((3, 3));
-        // App 2 is also valid and does not overlap with App 1
-        layout.0[5] = Some((2, 4));
+        let mut layout = Layout([None; GLOBAL_CHANNELS]);
+        // App 2 is valid (takes 4 channels: 0, 1, 2, 3)
+        layout.0[0] = Some((2, 4));
+        // App 3 overlaps with App 2 (tries to start at channel 2 but channels 2, 3, 4 overlap with App 2)
+        layout.0[2] = Some((3, 3));
+        // App 1 is valid and doesn't overlap
+        layout.0[5] = Some((1, 1));
 
         let changed = layout.validate(mock_get_channels);
 
         assert!(changed);
+        // App 2 should remain (processed first)
+        assert_eq!(layout.0[0], Some((2, 4)));
+        // App 3 should be removed (overlaps)
+        assert_eq!(layout.0[2], None);
         // App 1 should remain
-        assert_eq!(layout.0[0], Some((1, 2)));
-        // App 3 should be removed
-        assert_eq!(layout.0[1], None);
-        // App 2 should remain
-        assert_eq!(layout.0[5], Some((2, 4)));
+        assert_eq!(layout.0[5], Some((1, 1)));
     }
 
     #[test]
     fn validate_removes_out_of_bounds() {
-        let mut layout = Layout::new();
+        let mut layout = Layout([None; GLOBAL_CHANNELS]);
         // This app goes from channel 14 up to 18, which is beyond GLOBAL_CHANNELS (16)
         layout.0[14] = Some((2, 4));
 
@@ -846,7 +846,7 @@ mod tests {
 
     #[test]
     fn validate_removes_invalid_id() {
-        let mut layout = Layout::new();
+        let mut layout = Layout([None; GLOBAL_CHANNELS]);
         // App ID 99 is not valid according to mock_get_channels
         layout.0[0] = Some((99, 2));
 
@@ -858,14 +858,14 @@ mod tests {
 
     #[test]
     fn validate_corrects_channel_size() {
-        let mut layout = Layout::new();
-        // The stored channel size is 99, but mock_get_channels returns 2 for app_id 1
+        let mut layout = Layout([None; GLOBAL_CHANNELS]);
+        // The stored channel size is 99, but mock_get_channels returns 1 for app_id 1
         layout.0[0] = Some((1, 99));
 
         let changed = layout.validate(mock_get_channels);
 
         assert!(changed);
-        // The channel size should be corrected to 2
-        assert_eq!(layout.0[0], Some((1, 2)));
+        // The channel size should be corrected to 1
+        assert_eq!(layout.0[0], Some((1, 1)));
     }
 }
