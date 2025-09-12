@@ -122,7 +122,7 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     }
 }
 
-async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &mut [u8; 3]) {
+async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &mut [u16; 3]) {
     for (i, aux) in config.aux.iter().enumerate() {
         if let AuxJackMode::ClockOut(div) = aux {
             if counters[i] == 0 {
@@ -131,7 +131,7 @@ async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &
             }
 
             counters[i] += 1;
-            if counters[i] >= *div as u8 {
+            if counters[i] >= *div as u16 {
                 counters[i] = 0;
             }
         }
@@ -156,7 +156,7 @@ async fn run_clock_gatekeeper() {
 
     let mut config = config_receiver.get().await;
     let mut is_running = false;
-    let mut analog_tick_counters: [u8; 3] = [0; 3];
+    let mut analog_tick_counters: [u16; 3] = [0; 3];
 
     loop {
         match select(clock_in_receiver.receive(), config_receiver.changed()).await {
