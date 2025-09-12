@@ -137,6 +137,15 @@ async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &
         }
     }
 }
+
+async fn send_analog_reset(spawner: &Spawner, config: &GlobalConfig) {
+    for (i, aux) in config.aux.iter().enumerate() {
+        if let AuxJackMode::ResetOut = aux {
+            // Send reset pulse with longer duration (10ms)
+            spawner.spawn(analog_tick(i, 10)).unwrap();
+        }
+    }
+}
 #[embassy_executor::task(pool_size = 6)]
 async fn analog_tick(aux_no: usize, trigger_len: u64) {
     let gpo_index = 17 + aux_no;
@@ -208,6 +217,7 @@ async fn run_clock_gatekeeper() {
                             is_running = false;
                             clock_publisher.publish(ClockEvent::Reset).await;
                             analog_tick_counters = [0; 3];
+                            send_analog_reset(&spawner, &config).await;
                             let _ = midi_sender
                                 .try_send(MidiOutEvent::Clock(SystemRealtime::Stop, midi_target));
                         }
@@ -216,6 +226,7 @@ async fn run_clock_gatekeeper() {
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         analog_tick_counters = [0; 3];
+                        send_analog_reset(&spawner, &config).await;
                         let _ = midi_sender
                             .try_send(MidiOutEvent::Clock(SystemRealtime::Start, midi_target));
                     }
