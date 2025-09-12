@@ -36,6 +36,8 @@ pub enum FramError {
     BufferOverflow,
     /// No data found for address (read length was 0)
     Empty,
+    /// CRC check failed
+    CrcMismatch,
 }
 
 pub const MAX_DATA_LEN: usize = 384;
@@ -228,6 +230,10 @@ where
     Ok(())
 }
 
+fn calculate_checksum(data: &[u8]) -> u8 {
+    data.iter().fold(0, |acc, &byte| acc.wrapping_add(byte))
+}
+
 struct Storage {
     fram: Fram,
     write_buf: Vec<u8, { MAX_DATA_LEN + 2 }>,
@@ -241,21 +247,25 @@ impl Storage {
         }
     }
 
-    /// Writes data to FRAM, prefixing it with a 2-byte little-endian length.
+    /// Writes data to FRAM, prefixing it with a 2-byte length and a 1-byte checksum.
     pub async fn store(&mut self, address: u32, data: &[u8]) -> Result<(), FramError> {
         if data.len() > MAX_DATA_LEN {
             return Err(FramError::BufferOverflow);
         }
         self.write_buf.clear();
-        // Resize buffer to hold length prefix (2 bytes) + data
-        if self.write_buf.resize(2 + data.len(), 0).is_err() {
+
+        let checksum = calculate_checksum(data);
+
+        // Resize buffer to hold header (2 bytes length + 1 byte checksum) + data
+        if self.write_buf.resize(3 + data.len(), 0).is_err() {
             return Err(FramError::BufferOverflow);
         }
-        // Write the length prefix and then the data
+        // Write the header and then the data
         let len_bytes = (data.len() as u16).to_le_bytes();
         self.write_buf[0] = len_bytes[0];
         self.write_buf[1] = len_bytes[1];
-        self.write_buf[2..].copy_from_slice(data);
+        self.write_buf[2] = checksum;
+        self.write_buf[3..].copy_from_slice(data);
 
         self.fram
             .write(address, &self.write_buf)
@@ -263,10 +273,15 @@ impl Storage {
             .map_err(|_| FramError::I2c)
     }
 
-    /// Reads length-prefixed data from FRAM into the provided buffer.
+    /// Reads data from FRAM. It attempts to verify a checksum and will automatically
+    /// migrate data from an old format (without checksum) to the new format.
+    /// WARNING: A genuine checksum failure on new-format data will be misinterpreted
+    /// as old-format data, which may lead to silent data corruption.
     pub async fn read(&mut self, address: u32, data_buf: &mut [u8]) -> FramReadResult {
+        const HEADER_SIZE_NEW: u32 = 3;
+        const HEADER_SIZE_OLD: u32 = 2;
+
         let mut len_bytes: [u8; 2] = [0; 2];
-        // Read the 2-byte length prefix first.
         self.fram
             .read(address, &mut len_bytes)
             .await
@@ -274,22 +289,93 @@ impl Storage {
         let data_length = u16::from_le_bytes(len_bytes) as usize;
 
         if data_length == 0 {
-            // No data to read.
             return Ok(0);
         }
         if data_length > data_buf.len() {
             return Err(FramError::BufferOverflow);
         }
 
-        // Read the actual data into the provided buffer.
+        // Try reading as new format with checksum
+        let mut stored_checksum_byte: [u8; 1] = [0; 1];
+        self.fram
+            .read(address + HEADER_SIZE_OLD, &mut stored_checksum_byte)
+            .await
+            .map_err(|_| FramError::I2c)?;
+        let stored_checksum = stored_checksum_byte[0];
+
         let read_slice = &mut data_buf[..data_length];
         self.fram
-            .read(address + 2, read_slice)
+            .read(address + HEADER_SIZE_NEW, read_slice)
             .await
             .map_err(|_| FramError::I2c)?;
 
-        Ok(data_length)
+        let calculated_checksum = calculate_checksum(read_slice);
+
+        if stored_checksum == calculated_checksum {
+            // Checksum is valid, data is in new format.
+            Ok(data_length)
+        } else {
+            // Checksum mismatch. Assume old format and migrate.
+            defmt::warn!(
+                "CRC mismatch at addr {}. Assuming old data format, migrating...",
+                address
+            );
+
+            // Re-read data from the old offset.
+            self.fram
+                .read(address + HEADER_SIZE_OLD, read_slice)
+                .await
+                .map_err(|_| FramError::I2c)?;
+
+            // Write the data back in the new format to migrate it.
+            self.store(address, read_slice).await?;
+
+            Ok(data_length)
+        }
     }
+
+    // TODO: Uncomment in next version once everyone had their data migrated
+    // /// Reads length-prefixed and checksummed data from FRAM into the provided buffer.
+    // pub async fn read(&mut self, address: u32, data_buf: &mut [u8]) -> FramReadResult {
+    //     const HEADER_SIZE: u32 = 3;
+    //     let mut header: [u8; HEADER_SIZE as usize] = [0; HEADER_SIZE as usize];
+    //
+    //     // Read the 3-byte header first.
+    //     self.fram
+    //         .read(address, &mut header)
+    //         .await
+    //         .map_err(|_| FramError::I2c)?;
+    //     let len_bytes = [header[0], header[1]];
+    //     let stored_checksum = header[2];
+    //     let data_length = u16::from_le_bytes(len_bytes) as usize;
+    //
+    //     if data_length == 0 {
+    //         // No data to read.
+    //         return Ok(0);
+    //     }
+    //     if data_length > data_buf.len() {
+    //         return Err(FramError::BufferOverflow);
+    //     }
+    //
+    //     // Read the actual data into the provided buffer.
+    //     let read_slice = &mut data_buf[..data_length];
+    //     self.fram
+    //         .read(address + HEADER_SIZE, read_slice)
+    //         .await
+    //         .map_err(|_| FramError::I2c)?;
+    //
+    //     let calculated_checksum = calculate_checksum(read_slice);
+    //     if stored_checksum != calculated_checksum {
+    //         defmt::error!(
+    //             "FRAM checksum mismatch! Stored: {}, calculated: {}",
+    //             stored_checksum,
+    //             calculated_checksum
+    //         );
+    //         return Err(FramError::CrcMismatch);
+    //     }
+    //
+    //     Ok(data_length)
+    // }
 }
 
 pub async fn start_fram(spawner: &Spawner, mut fram: Fram) {
