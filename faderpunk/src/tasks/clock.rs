@@ -127,7 +127,7 @@ async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &
         if let AuxJackMode::ClockOut(div) = aux {
             if counters[i] == 0 {
                 // TODO: Adjust trigger_len based on division?
-                spawner.spawn(analog_tick(i, 8)).unwrap();
+                spawner.spawn(analog_tick(i, 5)).unwrap();
             }
 
             counters[i] += 1;
