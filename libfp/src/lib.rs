@@ -305,6 +305,7 @@ pub enum ClockDivision {
 pub enum AuxJackMode {
     None,
     ClockOut(ClockDivision),
+    ResetOut,
 }
 
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]

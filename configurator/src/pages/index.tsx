@@ -345,12 +345,15 @@ export default function IndexPage() {
                               tag: "ClockOut",
                               value: { tag: "_1" },
                             };
+                          } else if (key === "ResetOut") {
+                            newAuxJacks[index] = { tag: "ResetOut" };
                           }
                           setAuxJacks(newAuxJacks);
                         }}
                       >
                         <SelectItem key="None">None</SelectItem>
                         <SelectItem key="ClockOut">Clock Out</SelectItem>
+                        <SelectItem key="ResetOut">Reset Out</SelectItem>
                       </Select>
                       {auxJacks[index].tag === "ClockOut" && (
                         <Select
