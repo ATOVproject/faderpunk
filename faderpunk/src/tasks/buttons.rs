@@ -92,6 +92,8 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
                     // Short press - Load scene
                     set_led_overlay_mode(i, Led::Button, LedMode::Flash(Color::Green, Some(2)))
                         .await;
+                    // TODO: experiment with using publish_immediate everywhere to prevent hanging
+                    // subscribers
                     event_publisher
                         .publish(InputEvent::LoadScene(i as u8))
                         .await;

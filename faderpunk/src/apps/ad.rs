@@ -1,14 +1,15 @@
-use core::future::pending;
-
-use embassy_futures::{join::join5, select::select};
+use embassy_futures::{
+    join::{join4, join5},
+    select::select,
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Curve, Param, Range,
-    Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, utils::attenuate, AppIcon, Brightness, Color, Config, Curve,
+    Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -111,7 +112,6 @@ pub async fn run(
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
 
     let times_glob = app.make_global([0.0682, 0.0682]);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
@@ -157,7 +157,7 @@ pub async fn run(
     let mut start_time = 0;
     let mut t2g = false;
 
-    let fut1 = async {
+    let main_loop = async {
         loop {
             app.delay_millis(1).await;
             timer += 1;
@@ -295,7 +295,7 @@ pub async fn run(
         }
     };
 
-    let fut2 = async {
+    let fader_handler = async {
         let mut latch = [
             app.make_latch(faders.get_value_at(0)),
             app.make_latch(faders.get_value_at(1)),
@@ -382,7 +382,7 @@ pub async fn run(
         }
     };
 
-    let fut3 = async {
+    let button_handler = async {
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             if !is_shift_pressed {
@@ -419,21 +419,17 @@ pub async fn run(
         }
     };
 
-    let fut4 = async {
+    let midi_handler = async {
+        let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
         loop {
-            if use_midi {
-                match midi_in.wait_for_message().await {
-                    MidiMessage::NoteOn { .. } => {
-                        gate_on_glob.modify(|g| *g + 1);
-                    }
-                    MidiMessage::NoteOff { .. } => {
-                        gate_on_glob.modify(|g| (*g - 1).max(0));
-                    }
-                    _ => {}
+            match midi_in.wait_for_message().await {
+                MidiMessage::NoteOn { .. } => {
+                    gate_on_glob.modify(|g| *g + 1);
                 }
-            } else {
-                // TODO: Make API for this
-                pending::<()>().await;
+                MidiMessage::NoteOff { .. } => {
+                    gate_on_glob.modify(|g| (*g - 1).max(0));
+                }
+                _ => {}
             }
         }
     };
@@ -471,15 +467,16 @@ pub async fn run(
         }
     };
 
-    join5(fut1, fut2, fut3, fut4, scene_handler).await;
-}
-
-fn is_close(a: u16, b: u16) -> bool {
-    a.abs_diff(b) < 75
-}
-
-fn attenuate(signal: u16, level: u16) -> u16 {
-    let attenuated = (signal as u32 * level as u32) / 4095;
-
-    attenuated as u16
+    if use_midi {
+        join5(
+            main_loop,
+            fader_handler,
+            button_handler,
+            midi_handler,
+            scene_handler,
+        )
+        .await;
+    } else {
+        join4(main_loop, fader_handler, button_handler, scene_handler).await;
+    }
 }
