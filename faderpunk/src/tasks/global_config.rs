@@ -37,7 +37,14 @@ pub fn get_fader_value_from_config(chan: usize, config: &GlobalConfig) -> u16 {
         INTERNAL_BPM_FADER => (((config.clock.internal_bpm - 45.0) * 16.0) as u16).clamp(0, 4095),
         QUANTIZER_KEY_FADER => (config.quantizer.key as u16 * 256).clamp(0, 4095),
         QUANTIZER_TONIC_FADER => (config.quantizer.tonic as u16 * 342).clamp(0, 4095),
-        LED_BRIGHTNESS_FADER => ((config.led_brightness as u16 - 55) * 20).clamp(0, 4095),
+        LED_BRIGHTNESS_FADER => {
+            let brightness_range = (LED_BRIGHTNESS_RANGE.end - LED_BRIGHTNESS_RANGE.start) as u32;
+            let norm_brightness =
+                (config.led_brightness as u32).saturating_sub(LED_BRIGHTNESS_RANGE.start as u32);
+            // Reverse the curve by taking the square root
+            let target_val = (norm_brightness * 4095) / brightness_range;
+            (target_val * 4095).isqrt().clamp(0, 4095) as u16
+        }
         _ => 0,
     }
 }
@@ -48,10 +55,17 @@ pub fn set_global_config_via_chan(chan: usize, val: u16) {
         LED_BRIGHTNESS_FADER => {
             global_config_sender.send_if_modified(|c| {
                 if let Some(config) = c {
-                    let new_brightness = (LED_BRIGHTNESS_RANGE.start as u16 + (val / 20)).clamp(
-                        LED_BRIGHTNESS_RANGE.start as u16,
-                        LED_BRIGHTNESS_RANGE.end as u16,
-                    ) as u8;
+                    // Apply an exponential curve by squaring the value
+                    let val_u32 = val as u32;
+                    let curved_val = (val_u32 * val_u32) / 4095;
+                    let brightness_range =
+                        (LED_BRIGHTNESS_RANGE.end - LED_BRIGHTNESS_RANGE.start) as u32;
+                    let new_brightness = (LED_BRIGHTNESS_RANGE.start as u32
+                        + (curved_val * brightness_range) / 4095)
+                        .clamp(
+                            LED_BRIGHTNESS_RANGE.start as u32,
+                            LED_BRIGHTNESS_RANGE.end as u32,
+                        ) as u8;
                     if config.led_brightness != new_brightness {
                         config.led_brightness = new_brightness;
                         return true;
