@@ -177,7 +177,7 @@ pub async fn run(
 
     length_glob.set(length);
     register_glob.set(register);
-    let curve = Curve::Logarithmic;
+    let curve = Curve::Exponential;
 
     let fut1 = async {
         let mut att_reg = 0;

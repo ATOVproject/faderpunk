@@ -141,7 +141,7 @@ pub async fn run(
     let mut clkn = 0;
     let mut val = 2048;
 
-    let curve = Curve::Logarithmic;
+    let curve = Curve::Exponential;
 
     let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_save));
 

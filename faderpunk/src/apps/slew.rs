@@ -110,7 +110,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: ManagedStorage<Storage>,
 ) {
-    let curve = Curve::Exponential;
+    let curve = Curve::Logarithmic;
     let led_color = params.query(|p| p.color);
 
     let buttons = app.use_buttons();

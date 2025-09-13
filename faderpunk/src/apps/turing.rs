@@ -182,7 +182,7 @@ pub async fn run(
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
-    let curve = Curve::Logarithmic;
+    let curve = Curve::Exponential;
 
     let (length, mut register, res) =
         storage.query(|s| (s.length_saved, s.register_saved, s.res_saved));

@@ -365,8 +365,8 @@ impl GlobalConfig {
 pub enum Curve {
     #[default]
     Linear,
-    Exponential,
     Logarithmic,
+    Exponential,
 }
 
 impl Curve {
@@ -374,16 +374,16 @@ impl Curve {
         let value = value.clamp(0, 4095);
         match self {
             Curve::Linear => value,
-            Curve::Logarithmic => CURVE_LOG[value as usize],
             Curve::Exponential => CURVE_EXP[value as usize],
+            Curve::Logarithmic => CURVE_LOG[value as usize],
         }
     }
 
     pub fn cycle(&self) -> Curve {
         match self {
-            Curve::Linear => Curve::Logarithmic,
-            Curve::Logarithmic => Curve::Exponential,
-            Curve::Exponential => Curve::Linear,
+            Curve::Linear => Curve::Exponential,
+            Curve::Exponential => Curve::Logarithmic,
+            Curve::Logarithmic => Curve::Linear,
         }
     }
 }
