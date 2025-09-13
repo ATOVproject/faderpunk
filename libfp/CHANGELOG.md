@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.5.0...libfp-v0.6.0) (2025-09-13)
+
+
+### Features
+
+* **app:** add color and icon config to apps ([35d19f9](https://github.com/ATOVproject/faderpunk/commit/35d19f92412597c0cb090c60d2c2ed06b4688342))
+* **calibration:** move to fixed point calibration ([574d899](https://github.com/ATOVproject/faderpunk/commit/574d89908ff705ab428a040bd6e8b095978e82ee))
+* **clock:** add analog clock out from internal clock ([7c3b619](https://github.com/ATOVproject/faderpunk/commit/7c3b619545862a5e22bd65f07dd9c37c0e3ca7c4))
+* **clock:** add really long clock divisions ([1a15f70](https://github.com/ATOVproject/faderpunk/commit/1a15f70c0bf96e1b3351e92d5a31a69c9084b6df))
+* **clock:** add reset out aux config option ([d021133](https://github.com/ATOVproject/faderpunk/commit/d02113302ed7f3cd45837acd013ff6b35e96eb3c))
+* **configurator:** add note param (in case we need it) ([22f50b3](https://github.com/ATOVproject/faderpunk/commit/22f50b368c90d894d3ee6f791fe342f732906b52))
+* **configurator:** add range param ([f5014a0](https://github.com/ATOVproject/faderpunk/commit/f5014a0ee0a53ffa0102d5e39f9750813ebf2ef6))
+* **i2c:** i2c leader (16n compatibility mode) ([0123546](https://github.com/ATOVproject/faderpunk/commit/012354629fbc6462891a9df604250e9fa34cbea4))
+* **layout:** make 16x control the default layout ([3480017](https://github.com/ATOVproject/faderpunk/commit/3480017b2a1748393b308712e8b974cb6e0438dc))
+* select color and icons for all app. Rework app order ([e97a390](https://github.com/ATOVproject/faderpunk/commit/e97a390490ff0f9187f809f8231f308718efab98))
+
+
+### Bug Fixes
+
+* **clock:** prevent drift and stutter while changing bpm ([da6af19](https://github.com/ATOVproject/faderpunk/commit/da6af19d93e2e8b9ac3bd4814442ac2bfdda9238))
+* exponential and logarithmic curves were switched ([6a2f311](https://github.com/ATOVproject/faderpunk/commit/6a2f3111712a0cb3a993bf2fae294efe3a6667bf))
+* **quantizer:** use the first 16 scale from o_C ([9a0e5c7](https://github.com/ATOVproject/faderpunk/commit/9a0e5c7ae073458aee048ab5aa3ddba1b1bb5131))
+
 ## [0.5.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.4.0...libfp-v0.5.0) (2025-09-04)
 
 
