@@ -252,11 +252,6 @@ pub async fn run(
             output.set_value(outval);
             if latch_active_layer == LatchLayer::Alt {
                 leds.set(1, Led::Button, color[mode as usize], Brightness::Lower);
-                if gate_on_glob.get() > 0 {
-                    leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
-                } else {
-                    leds.set(0, Led::Bottom, Color::Red, Brightness::Lower);
-                }
 
                 let att = storage.query(|s| s.att_saved);
                 leds.set(
@@ -284,6 +279,11 @@ pub async fn run(
                         leds.unset(n, Led::Top);
                     }
                 }
+            }
+            if gate_on_glob.get() > 0 {
+                leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+            } else {
+                leds.set(0, Led::Bottom, Color::Red, Brightness::Lower);
             }
 
             if button_old && !buttons.is_button_pressed(0) && buttons.is_shift_pressed() {
