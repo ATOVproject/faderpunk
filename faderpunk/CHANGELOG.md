@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.0.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.9.0...faderpunk-v1.0.0) (2025-09-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* the phoenix has risen from the ashes
+
+### Features
+
+* **ad:** add gate indicator ([afd94f5](https://github.com/ATOVproject/faderpunk/commit/afd94f5caa64856bcab8fedde4552fa4ed4b1aad))
+* **ad:** add the ability to deactivate the midi input ([ec9ffb8](https://github.com/ATOVproject/faderpunk/commit/ec9ffb82475ff4a824ae77f737cb8d6d46867bfa))
+* **ad:** add use_midi param ([e5f4510](https://github.com/ATOVproject/faderpunk/commit/e5f4510e68671ec771d8e2f8f14e72cdbb5925db))
+* **api:** add midi aftertouch and pitch bend API ([43c849c](https://github.com/ATOVproject/faderpunk/commit/43c849c3dc57b650fda0ee38b74971dc10980ebc))
+* **app:** add color and icon config to apps ([35d19f9](https://github.com/ATOVproject/faderpunk/commit/35d19f92412597c0cb090c60d2c2ed06b4688342))
+* **calibration:** move to fixed point calibration ([574d899](https://github.com/ATOVproject/faderpunk/commit/574d89908ff705ab428a040bd6e8b095978e82ee))
+* **clock:** add analog clock out from internal clock ([7c3b619](https://github.com/ATOVproject/faderpunk/commit/7c3b619545862a5e22bd65f07dd9c37c0e3ca7c4))
+* **clock:** add really long clock divisions ([1a15f70](https://github.com/ATOVproject/faderpunk/commit/1a15f70c0bf96e1b3351e92d5a31a69c9084b6df))
+* **clock:** add reset out aux config option ([d021133](https://github.com/ATOVproject/faderpunk/commit/d02113302ed7f3cd45837acd013ff6b35e96eb3c))
+* **clock:** passthrough midi clock usb&lt;-&gt;uart ([d9ad686](https://github.com/ATOVproject/faderpunk/commit/d9ad6869f2fd62134bdb3b0b158ff375007a576a))
+* **clock:** refactor clock to allow for improved routing ([1d76deb](https://github.com/ATOVproject/faderpunk/commit/1d76deb00552e08e32c9ab00029916753ebde427))
+* **clock:** remove all midi passthrough ([3ff3708](https://github.com/ATOVproject/faderpunk/commit/3ff3708966ef12944f0e7d11047ce62e72416e3b))
+* **clock:** send midi clock ticks when using internal clock ([919899d](https://github.com/ATOVproject/faderpunk/commit/919899d2358734d73cced6230604a9a1638c402f))
+* **clock:** start internal clock with scene+shift ([c8f9343](https://github.com/ATOVproject/faderpunk/commit/c8f9343131b1bbae418531d0f2b0c8d680dd1316))
+* **configurator:** add range param ([f5014a0](https://github.com/ATOVproject/faderpunk/commit/f5014a0ee0a53ffa0102d5e39f9750813ebf2ef6))
+* **configurator:** use enum for midi modes in midi2cv and turing ([9342d74](https://github.com/ATOVproject/faderpunk/commit/9342d7499ad7b24873cebf69c005b27b93356ffe))
+* **fram:** add crc check ([31247c0](https://github.com/ATOVproject/faderpunk/commit/31247c02d3c89e47f91016c9a4ddbaecccaf516e))
+* **i2c:** i2c leader (16n compatibility mode) ([0123546](https://github.com/ATOVproject/faderpunk/commit/012354629fbc6462891a9df604250e9fa34cbea4))
+* **midi2cv:** add gate on note mode ([e9c494f](https://github.com/ATOVproject/faderpunk/commit/e9c494f613e90f1f5f60004669ac700e5b51a131))
+* select color and icons for all app. Rework app order ([e97a390](https://github.com/ATOVproject/faderpunk/commit/e97a390490ff0f9187f809f8231f308718efab98))
+* **seq8:** add octave selection in shift functions ([26a0efa](https://github.com/ATOVproject/faderpunk/commit/26a0efaa5c22d1223380e508162f1f10756fc7d2))
+* **seq8:** add range option ([1d0faca](https://github.com/ATOVproject/faderpunk/commit/1d0facacc5694d93efb9fa9fbd922b5af3222264))
+* the phoenix has risen from the ashes ([17d9fdf](https://github.com/ATOVproject/faderpunk/commit/17d9fdf5aa92fd44e809fbb961465127000acf22))
+
+
+### Bug Fixes
+
+* **ad:** only conditionally run midi handler ([85181a1](https://github.com/ATOVproject/faderpunk/commit/85181a16217db1ff7d53c5420a3b46e202c3060f))
+* **calibration:** fix input calibration for -5 to 5V range ([e5e93b7](https://github.com/ATOVproject/faderpunk/commit/e5e93b74b1252f5204fd7cd150abf5c1f129d77f))
+* **calibration:** fix startup button press calibration ([c2178b4](https://github.com/ATOVproject/faderpunk/commit/c2178b4e89ab57c036195207685e8afe87b58200))
+* **clock:** do not send reset when external clock is used ([86c8c77](https://github.com/ATOVproject/faderpunk/commit/86c8c77e6b84227e951d96224b5a9daf5bff4527))
+* **clock:** prevent drift and stutter while changing bpm ([da6af19](https://github.com/ATOVproject/faderpunk/commit/da6af19d93e2e8b9ac3bd4814442ac2bfdda9238))
+* **clock:** reduce clock out trigger length to 5ms ([7166b69](https://github.com/ATOVproject/faderpunk/commit/7166b6993c064bdea5195e7d19a2c659eb4f9ca3))
+* **clock:** send reset event when internal clock is stopped ([6b66b05](https://github.com/ATOVproject/faderpunk/commit/6b66b0585ee3cf738842d9db66331b2b8d8a8724))
+* exponential and logarithmic curves were switched ([6a2f311](https://github.com/ATOVproject/faderpunk/commit/6a2f3111712a0cb3a993bf2fae294efe3a6667bf))
+* **fram:** add initialization check ([3e43ec3](https://github.com/ATOVproject/faderpunk/commit/3e43ec3bcbb9eeeed6a4c69ebef00645c24dee78))
+* **leds:** use exponential fader curve for global led brightness ([7001725](https://github.com/ATOVproject/faderpunk/commit/7001725daccc9589d6064b631448ec09b7c19c1f))
+* **notefader:** reset now actually reset to 0 ([b3691b1](https://github.com/ATOVproject/faderpunk/commit/b3691b18ff37936f6fee1654475b3dc0c0854c13))
+* **seq8:** rearrange the shift functions ([a8728fb](https://github.com/ATOVproject/faderpunk/commit/a8728fb3c5d43a974d85900b9884247982c5e3d9))
+
 ## [0.9.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.8.1...faderpunk-v0.9.0) (2025-09-08)
 
 
