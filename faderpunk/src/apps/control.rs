@@ -25,7 +25,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 )
 .add_param(Param::Curve {
     name: "Curve",
-    variants: &[Curve::Linear, Curve::Exponential, Curve::Logarithmic],
+    variants: &[Curve::Linear, Curve::Logarithmic, Curve::Exponential],
 })
 .add_param(Param::Range {
     name: "Range",

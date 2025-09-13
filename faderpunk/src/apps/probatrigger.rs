@@ -141,7 +141,7 @@ pub async fn run(
 ) {
     let (midi_chan, note, gatel, led_color) =
         params.query(|p| (p.midi_channel, p.note, p.gatel, p.color));
-    let curve = Curve::Logarithmic;
+    let curve = Curve::Exponential;
 
     let mut clock = app.use_clock();
     let die = app.use_die();

@@ -146,7 +146,7 @@ pub async fn run(
 
     let mut times: [f32; 2] = [0.0682, 0.0682];
     for n in 0..2 {
-        times[n] = Curve::Logarithmic.at(stored_faders[n]) as f32 + minispeed;
+        times[n] = Curve::Exponential.at(stored_faders[n]) as f32 + minispeed;
     }
     times_glob.set(times);
 
@@ -315,8 +315,9 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            times[chan] =
-                                Curve::Logarithmic.at(faders.get_value_at(chan)) as f32 + minispeed;
+                            times[chan] = Curve::Exponential.at(faders.get_value_at(chan))
+                                as f32
+                                + minispeed;
                             times_glob.set(times);
 
                             storage
@@ -352,8 +353,9 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            times[chan] =
-                                Curve::Logarithmic.at(faders.get_value_at(chan)) as f32 + minispeed;
+                            times[chan] = Curve::Exponential.at(faders.get_value_at(chan))
+                                as f32
+                                + minispeed;
                             times_glob.set(times);
 
                             storage
@@ -458,7 +460,7 @@ pub async fn run(
 
                     let mut times: [f32; 2] = [0.0682, 0.0682];
                     for n in 0..2 {
-                        times[n] = Curve::Logarithmic.at(stored_faders[n]) as f32 + minispeed;
+                        times[n] = Curve::Exponential.at(stored_faders[n]) as f32 + minispeed;
                     }
                     times_glob.set(times);
                 }

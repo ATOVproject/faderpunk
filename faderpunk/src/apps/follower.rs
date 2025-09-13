@@ -110,7 +110,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: ManagedStorage<Storage>,
 ) {
-    let curve_gain = Curve::Logarithmic;
+    let curve_gain = Curve::Exponential;
     let led_color = params.query(|p| p.color);
 
     let buttons = app.use_buttons();
@@ -118,7 +118,7 @@ pub async fn run(
     let leds = app.use_leds();
     let input = app.make_in_jack(0, Range::_Neg5_5V).await;
     let output = app.make_out_jack(1, Range::_Neg5_5V).await;
-    let curve = Curve::Exponential;
+    let curve = Curve::Logarithmic;
 
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
