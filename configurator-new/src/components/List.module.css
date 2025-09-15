@@ -1,0 +1,10 @@
+.List {
+  box-sizing: border-box;
+  gap: 10px;
+  border-radius: 5px;
+  transition: background-color 350ms ease;
+
+  &.horizontal {
+    width: 100%;
+  }
+}
