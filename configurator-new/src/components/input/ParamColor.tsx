@@ -1,0 +1,54 @@
+import { type UseFormRegister, type FieldValues } from "react-hook-form";
+import { type Color } from "@atov/fp-config";
+
+import { Select, SelectItem } from "@heroui/select";
+import { selectProps } from "./defaultProps.tsx";
+import { useMemo } from "react";
+import classNames from "classnames";
+import { COLORS_CLASSES } from "../../utils/class-helpers.ts";
+
+interface Props {
+  defaultValue: string;
+  name: string;
+  paramIndex: number;
+  register: UseFormRegister<FieldValues>;
+  variants: Color[];
+}
+
+type Item = { key: Color["tag"]; value: Color["tag"] };
+
+export const ParamColor = ({
+  defaultValue,
+  name,
+  paramIndex,
+  register,
+  variants,
+}: Props) => {
+  const items = useMemo(
+    () => variants.map((variant) => ({ key: variant.tag, value: variant.tag })),
+    [variants],
+  );
+  return (
+    <Select
+      defaultSelectedKeys={[defaultValue]}
+      {...register(`param-Color-${paramIndex}`)}
+      {...selectProps}
+      label={name}
+      items={items}
+      placeholder={name}
+    >
+      {(item: Item) => (
+        <SelectItem
+          className="text-white"
+          startContent={
+            <span
+              className={classNames("h-6", "w-6", COLORS_CLASSES[item.key])}
+            />
+          }
+        >
+          {item.value}
+        </SelectItem>
+      )}
+    </Select>
+  );
+};
