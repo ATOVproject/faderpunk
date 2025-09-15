@@ -199,6 +199,26 @@
 @theme {
   --font-sans: 'Barlow', sans-serif;
   --font-vox: 'VoxRound', sans-serif;
+
+  --color-*: initial;
+
+  --color-yellow-fp: #fdc42f;
+  --color-cyan-fp: #4cafb1;
+  --color-pink-fp: #ae348b;
+
+  --color-white: #fff;
+  --color-black: #000;
+  --color-gray-300: #333333;
+  --color-gray-500: #151515;
+
+  --color-blue: #2961dc;
+  --color-green: #309443;
+  --color-red: #c13636;
+  --color-orange: #cc7c05;
+  --color-cyan: #306e94;
+  --color-violet: #8a48d6;
+  --color-pink: #b23d9c;
+  --color-yellow: #c1aa29;
 }
 
 @config "../tailwind.config.js"
