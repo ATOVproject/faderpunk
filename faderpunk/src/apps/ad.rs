@@ -39,7 +39,7 @@ impl Default for Params {
     fn default() -> Self {
         Self {
             use_midi: false,
-            midi_channel: 0,
+            midi_channel: 1,
         }
     }
 }

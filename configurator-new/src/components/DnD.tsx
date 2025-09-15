@@ -3,10 +3,17 @@ import { horizontalListSortingStrategy } from "@dnd-kit/sortable";
 
 import { List } from "./List.tsx";
 import { Sortable } from "./Sortable";
-import { COLORS_CLASSES, WIDTHS_CLASSES } from "../class-helpers.ts";
+import { COLORS_CLASSES, WIDTHS_CLASSES } from "../utils/class-helpers.ts";
 
 const WIDTHS = [2, 1, 8, 1, 1, 2];
-const COLORS = ["Red", "Blue", "Yellow", "Pink", "Green", "Violet"];
+const COLORS: Color["tag"][] = [
+  "Red",
+  "Blue",
+  "Yellow",
+  "Pink",
+  "Green",
+  "Violet",
+];
 
 export const VariableWidths = () => {
   return (
@@ -14,7 +21,6 @@ export const VariableWidths = () => {
       Container={(props: any) => <List horizontal {...props} />}
       itemCount={6}
       strategy={horizontalListSortingStrategy}
-      // TODO: We need wrapperClasses for tailwind
       wrapperClasses={({ id }) =>
         `${WIDTHS_CLASSES[WIDTHS[Number(id)]]} ${COLORS_CLASSES[COLORS[Number(id)]]}`
       }

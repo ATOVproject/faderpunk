@@ -11,7 +11,7 @@ const tailwindPluginPath = import.meta.resolve("prettier-plugin-tailwindcss");
 export default tseslint.config([
   globalIgnores(["dist"]),
   {
-    files: ["**/*.{ts,tsx,mjs}"],
+    files: ["**/*.{ts,tsx,mjs}", "tailwind.config.js"],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,
