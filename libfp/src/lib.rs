@@ -403,6 +403,7 @@ pub enum Waveform {
     Triangle,
     Saw,
     SawInv,
+    // TODO: v2 Rename to Square
     Rect,
     Sine,
 }
@@ -570,9 +571,11 @@ pub enum Param {
         min: i32,
         max: i32,
     },
+    // TODO: v2 rename to f32, add min, max
     Float {
         name: &'static str,
     },
+    // TODO: v2 rename to bool
     Bool {
         name: &'static str,
     },

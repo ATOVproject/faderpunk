@@ -36,7 +36,7 @@ import {
 import { Item } from "./Item.tsx";
 import { List } from "./List.tsx";
 import { Wrapper } from "./Wrapper.tsx";
-import { createRange } from "../utils.ts";
+import { createRange } from "../utils/utils.ts";
 
 export interface Props {
   activationConstraint?: PointerActivationConstraint;
