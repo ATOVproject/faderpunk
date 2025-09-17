@@ -7,7 +7,7 @@ import {
   sendAndReceive,
   sendMessage,
 } from "../utils/usb-protocol";
-import { transformParamValues } from "./utils";
+import { makeId, transformParamValues } from "./utils";
 
 export const setGlobalConfig = async (
   dev: USBDevice,
@@ -109,7 +109,7 @@ export const getAllApps = async (dev: USBDevice) => {
     )
     .forEach((app) => {
       const appConfig = {
-        id: app.value[0],
+        appId: app.value[0],
         channels: app.value[1],
         paramCount: app.value[2][0],
         name: app.value[2][1] as string,
@@ -119,7 +119,7 @@ export const getAllApps = async (dev: USBDevice) => {
         params: app.value[2][5],
       };
 
-      parsedApps.set(appConfig.id, appConfig);
+      parsedApps.set(appConfig.appId, appConfig);
     });
 
   return parsedApps;
@@ -180,21 +180,23 @@ export const getLayout = async (
   let i = 0;
   let lastUsed = -1;
 
+  // It's ok to assign a new random id every time
+  // We just need it to refer to it during layout changes
   while (i < 16) {
     const app = response.value[0][i];
     if (!app) {
       if (i > lastUsed) {
-        layout.push({ slotNumber: i });
+        layout.push({ slotNumber: i, id: makeId() });
         lastUsed++;
       }
     } else {
       const appData = apps.get(app[0]);
       if (!appData) {
-        layout.push({ slotNumber: i });
+        layout.push({ slotNumber: i, id: makeId() });
         lastUsed++;
       } else {
         const end = i + Number(appData.channels) - 1;
-        layout.push({ ...appData, start: i, end });
+        layout.push({ ...appData, start: i, end, id: makeId() });
         lastUsed = end;
       }
     }

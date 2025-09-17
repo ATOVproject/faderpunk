@@ -1,27 +1,27 @@
 import { type Color } from "@atov/fp-config";
 
 export const WIDTHS_CLASSES: Record<number, string> = {
-  1: "grow-1",
-  2: "grow-2",
-  3: "grow-3",
-  4: "grow-4",
-  5: "grow-5",
-  6: "grow-6",
-  7: "grow-7",
-  8: "grow-8",
-  9: "grow-9",
-  10: "grow-10",
-  11: "grow-11",
-  12: "grow-12",
-  13: "grow-13",
-  14: "grow-14",
-  15: "grow-15",
-  16: "grow-16",
+  1: "col-span-1",
+  2: "col-span-2",
+  3: "col-span-3",
+  4: "col-span-4",
+  5: "col-span-5",
+  6: "col-span-6",
+  7: "col-span-7",
+  8: "col-span-8",
+  9: "col-span-9",
+  10: "col-span-10",
+  11: "col-span-11",
+  12: "col-span-12",
+  13: "col-span-13",
+  14: "col-span-14",
+  15: "col-span-15",
+  16: "col-span-16",
 };
 
-type AllColors = Color["tag"] & "None";
+type AllColors = Color["tag"] | "Black";
 
-export const COLORS_CLASSES: Record<Color["tag"], string> = {
+export const COLORS_CLASSES: Record<AllColors, string> = {
   Blue: "bg-blue",
   Green: "bg-green",
   Rose: "bg-red",
@@ -39,5 +39,5 @@ export const COLORS_CLASSES: Record<Color["tag"], string> = {
   Salmon: "bg-pink",
   LightBlue: "bg-blue",
   Custom: "bg-transparent",
-  // None: "bg-transparent",
+  Black: "bg-black",
 };

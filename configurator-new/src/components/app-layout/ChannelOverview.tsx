@@ -1,7 +1,8 @@
 import classNames from "classnames";
-import { COLORS_CLASSES, WIDTHS_CLASSES } from "../utils/class-helpers";
-import type { AppInLayout, AppLayout } from "../utils/types";
-import { getSlots } from "../utils/utils";
+
+import { COLORS_CLASSES, WIDTHS_CLASSES } from "../../utils/class-helpers";
+import type { AppInLayout, AppLayout } from "../../utils/types";
+import { getSlots } from "../../utils/utils";
 
 interface AppSlotProps {
   app: AppInLayout;
@@ -42,15 +43,19 @@ const EmptySlot = ({ slotNumber }: EmptySlotProps) => (
 
 interface Props {
   apps?: AppLayout;
+  onClick(): void;
 }
 
-export const ChannelOverview = ({ apps }: Props) => {
+export const ChannelOverview = ({ apps, onClick }: Props) => {
   // TODO: Loading skeleton
   if (!apps) {
     return null;
   }
   return (
-    <div className="flex gap-2">
+    <button
+      className="grid w-full cursor-pointer grid-cols-16 gap-2"
+      onClick={onClick}
+    >
       {apps.map((app) =>
         "slotNumber" in app ? (
           <EmptySlot
@@ -61,6 +66,6 @@ export const ChannelOverview = ({ apps }: Props) => {
           <AppSlots key={app.start} app={app} />
         ),
       )}
-    </div>
+    </button>
   );
 };

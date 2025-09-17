@@ -8,7 +8,7 @@ import {
   type Waveform,
 } from "@atov/fp-config";
 
-import type { AppInLayout } from "./types";
+import type { AppInLayout, EmptySlot } from "./types";
 
 const defaultInitializer = (index: number) => index;
 
@@ -131,3 +131,8 @@ export const transformParamValues = (
 
   return result;
 };
+
+export const getId = (item: AppInLayout | EmptySlot) =>
+  "slotNumber" in item ? `${item.slotNumber}` : item.start;
+
+export const makeId = () => crypto.randomUUID().substring(0, 8);

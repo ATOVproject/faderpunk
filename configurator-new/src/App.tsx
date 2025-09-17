@@ -1,19 +1,9 @@
-import {
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  Button,
-  useDisclosure,
-} from "@heroui/react";
+import { useDisclosure } from "@heroui/react";
 
 import { ButtonPrimary } from "./components/Button";
-import { ChannelOverview } from "./components/ChannelOverview";
-import { VariableWidths } from "./components/DnD";
+import { ChannelOverview } from "./components/app-layout/ChannelOverview";
 import { Icon } from "./components/Icon";
 import { Layout } from "./components/Layout";
-import type { App } from "./utils/types";
 import { ActiveApps } from "./components/ActiveApps";
 import { useStore } from "./store";
 
@@ -24,37 +14,14 @@ const App = () => {
   // TODO: Why is the layout scrolling??
   if (!usbDevice) {
     return (
-      <Layout>
+      <Layout isModalOpen={isOpen} onModalOpenChange={onOpenChange}>
         <ButtonPrimary onPress={connect}>Connect</ButtonPrimary>
-        <ButtonPrimary onPress={onOpen}>Open Modal</ButtonPrimary>
-        <Modal size="5xl" isOpen={isOpen} onOpenChange={onOpenChange}>
-          <ModalContent>
-            {(onClose) => (
-              <>
-                <ModalHeader className="flex flex-col gap-1">
-                  Modal Title
-                </ModalHeader>
-                <ModalBody>
-                  <VariableWidths />
-                </ModalBody>
-                <ModalFooter>
-                  <Button color="danger" variant="light" onPress={onClose}>
-                    Close
-                  </Button>
-                  <Button color="primary" onPress={onClose}>
-                    Action
-                  </Button>
-                </ModalFooter>
-              </>
-            )}
-          </ModalContent>
-        </Modal>
       </Layout>
     );
   }
 
   return (
-    <Layout>
+    <Layout isModalOpen={isOpen} onModalOpenChange={onOpenChange}>
       <div className="mb-8 text-center">
         <img src="/img/fp-logo.svg" className="inline w-64" />
         <p className="font-vox mt-3 text-xl font-semibold tracking-wider text-white uppercase">
@@ -78,7 +45,7 @@ const App = () => {
         <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
           Channel Overview
         </h2>
-        <ChannelOverview apps={layout} />
+        <ChannelOverview onClick={onOpen} apps={layout} />
       </div>
 
       <div>
