@@ -3,18 +3,24 @@ import { create } from "zustand";
 import type { AllApps, AppLayout } from "./utils/types";
 import { connectToFaderPunk } from "./utils/usb-protocol";
 import { getAllApps, getLayout } from "./utils/config";
+import { testLayout } from "./utils/test-data";
 
 interface AppState {
   usbDevice: USBDevice | undefined;
   apps: AllApps | undefined;
   layout: AppLayout | undefined;
   connect: () => Promise<void>;
+  setLayout: (layout: AppLayout) => void;
 }
 
-export const useStore = create<AppState>((set) => ({
+const initialState = {
   usbDevice: undefined,
   apps: undefined,
-  layout: undefined,
+  layout: import.meta.env.DEV ? testLayout : undefined,
+};
+
+export const useStore = create<AppState>((set) => ({
+  ...initialState,
   connect: async () => {
     try {
       const device = await connectToFaderPunk();
@@ -27,4 +33,5 @@ export const useStore = create<AppState>((set) => ({
       set({ usbDevice: undefined, apps: undefined, layout: undefined });
     }
   },
+  setLayout: (layout) => set({ layout }),
 }));
