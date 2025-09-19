@@ -1,4 +1,4 @@
-import { useDisclosure } from "@heroui/react";
+import { useDisclosure } from "@heroui/modal";
 
 import { ButtonPrimary } from "./components/Button";
 import { ChannelOverview } from "./components/app-layout/ChannelOverview";
