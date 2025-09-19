@@ -108,7 +108,7 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             }
             ConfigMsgIn::SetAppParams { layout_id, values } => {
                 APP_PARAM_SIGNALS[layout_id as usize].signal(AppParamCmd::SetAppParams { values });
-                // TODO: This should answer to refresh UI
+                // FIXME: This should answer to refresh UI
             }
             ConfigMsgIn::SetGlobalConfig(mut global_config) => {
                 global_config.validate();

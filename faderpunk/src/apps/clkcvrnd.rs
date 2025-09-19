@@ -96,14 +96,15 @@ impl AppStorage for Storage {}
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id);
+    let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
+
+    param_store.load().await;
+    storage.load(None).await;
 
     let app_loop = async {
         loop {
-            let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
-            param_store.load().await;
-            storage.load(None).await;
             select(
-                run(&app, &param_store, storage),
+                run(&app, &param_store, &storage),
                 param_store.param_handler(),
             )
             .await;
@@ -116,7 +117,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 pub async fn run(
     app: &App<CHANNELS>,
     params: &ParamStore<Params>,
-    storage: ManagedStorage<Storage>,
+    storage: &ManagedStorage<Storage>,
 ) {
     let (midi_chan, cc) = params.query(|p| (p.midi_channel, p.midi_cc));
 
