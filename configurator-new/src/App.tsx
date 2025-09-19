@@ -45,14 +45,14 @@ const App = () => {
         <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
           Channel Overview
         </h2>
-        <ChannelOverview onClick={onOpen} apps={layout} />
+        <ChannelOverview onClick={onOpen} layout={layout} />
       </div>
 
       <div>
         <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
           Active Apps
         </h2>
-        <ActiveApps apps={layout} />
+        <ActiveApps layout={layout} />
       </div>
       <div className="border-default-100 mt-16 border-t-3">
         <div className="flex items-center justify-between py-8">
