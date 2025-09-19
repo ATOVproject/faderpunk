@@ -351,8 +351,7 @@ impl<P: AppParams> ParamStore<P> {
         loop {
             match APP_PARAM_SIGNALS[self.layout_id as usize].wait().await {
                 AppParamCmd::SetAppParams { values } => {
-                    let mut guard = self.inner.borrow_mut();
-                    let mut current_values = guard.to_values();
+                    let mut current_values = self.inner.borrow().to_values();
                     let mut changed = false;
 
                     for (index, &value) in values.iter().enumerate() {
@@ -365,9 +364,14 @@ impl<P: AppParams> ParamStore<P> {
                     }
 
                     if changed {
-                        if let Some(new_params) = P::from_values(&current_values) {
-                            *guard = new_params;
-                            drop(guard);
+                        let updated = if let Some(new_params) = P::from_values(&current_values) {
+                            *self.inner.borrow_mut() = new_params;
+                            true
+                        } else {
+                            false
+                        };
+
+                        if updated {
                             self.save().await;
                             // Re-spawn app
                             break;
