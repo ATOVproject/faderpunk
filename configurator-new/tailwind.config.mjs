@@ -9,6 +9,7 @@ module.exports = {
     "./node_modules/@heroui/theme/dist/components/select.js",
     "./node_modules/@heroui/theme/dist/components/skeleton.js",
     "./node_modules/@heroui/theme/dist/components/switch.js",
+    "./node_modules/@heroui/theme/dist/components/tooltip.js",
   ],
   theme: {
     extend: {},

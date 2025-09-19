@@ -1,4 +1,6 @@
 import { useCallback, useState } from "react";
+import { Button } from "@heroui/button";
+import { ModalBody, ModalFooter, ModalHeader } from "@heroui/modal";
 import {
   closestCenter,
   DndContext,
@@ -21,7 +23,6 @@ import {
 import { SortableItem } from "./SortableItem";
 import { Item } from "./Item";
 import type { AppLayout } from "../../utils/types";
-import { Button, ModalBody, ModalFooter, ModalHeader } from "@heroui/react";
 import { ButtonPrimary, ButtonSecondary } from "../Button";
 import { Icon } from "../Icon";
 import { setLayout } from "../../utils/config";
@@ -54,8 +55,13 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
   const { usbDevice } = useStore();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [layout, setItems] = useState<AppLayout>(initialLayout);
+  const [deletePopoverId, setDeletePopoverId] = useState<number | null>(null);
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -64,6 +70,7 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
     setActiveId(active.id);
+    setDeletePopoverId(null);
   }, []);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -88,6 +95,40 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
       });
     }
     setActiveId(null);
+  }, []);
+
+  const handleDeleteItem = useCallback((idToDelete: number) => {
+    setItems((items) => {
+      const itemToDeleteIndex = items.findIndex(({ id }) => id === idToDelete);
+      if (itemToDeleteIndex === -1) {
+        return items;
+      }
+
+      const itemToDelete = items[itemToDeleteIndex];
+      const channelsToDelete = Number(itemToDelete.app?.channels) || 1;
+      const startChannelOfDeleted = itemToDelete.startChannel;
+
+      const emptySlotIds = items
+        .filter((item) => !item.app)
+        .map((item) => item.id);
+      const lastId = emptySlotIds.length > 0 ? Math.max(...emptySlotIds) : 15;
+      let nextId = lastId + 1;
+
+      const newEmptySlots = Array.from(
+        { length: channelsToDelete },
+        (_, i) => ({
+          id: nextId++,
+          app: null,
+          startChannel: startChannelOfDeleted + i,
+        }),
+      );
+
+      const finalItems = [...items];
+      finalItems.splice(itemToDeleteIndex, 1, ...newEmptySlots);
+
+      return finalItems;
+    });
+    setDeletePopoverId(null);
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -133,14 +174,26 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
                   {layout
                     .filter((item) => item.app !== undefined)
                     .map((item) => (
-                      <SortableItem item={item} key={item.id} />
+                      <SortableItem
+                        onDeleteItem={handleDeleteItem}
+                        deletePopoverId={deletePopoverId}
+                        setDeletePopoverId={setDeletePopoverId}
+                        item={item}
+                        key={item.id}
+                      />
                     ))}
                 </div>
               </div>
             </SortableContext>
             <DragOverlay>
               {activeItem ? (
-                <Item className="opacity-60 shadow-md" item={activeItem} />
+                <Item
+                  className="opacity-60 shadow-md"
+                  onDeleteItem={handleDeleteItem}
+                  deletePopoverId={deletePopoverId}
+                  setDeletePopoverId={setDeletePopoverId}
+                  item={activeItem}
+                />
               ) : null}
             </DragOverlay>
           </DndContext>
