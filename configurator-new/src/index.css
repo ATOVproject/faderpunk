@@ -220,4 +220,4 @@
   --color-yellow: #c1aa29;
 }
 
-@config "../tailwind.config.js"
+@config "../tailwind.config.mjs"
