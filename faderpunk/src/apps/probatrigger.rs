@@ -13,7 +13,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 4;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Low;
 
@@ -116,11 +116,11 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
+    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id);
 
     let app_loop = async {
         loop {
-            let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
+            let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
             param_store.load().await;
             storage.load(None).await;
             select(

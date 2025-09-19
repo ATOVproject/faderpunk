@@ -1,6 +1,7 @@
 #![no_std]
 
 use embassy_time::Duration;
+use heapless::Vec;
 use max11300::config::DACRANGE;
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
@@ -49,23 +50,32 @@ pub const CALIB_FILE_MAGIC: [u8; 4] = *b"FPBC";
 pub type ConfigMeta<'a> = (usize, &'a str, &'a str, Color, AppIcon, &'a [Param]);
 
 /// The config layout is a layout with all the apps in the appropriate spots
-// (app_id, channels)
-type InnerLayout = [Option<(u8, usize)>; GLOBAL_CHANNELS];
+// (app_id, channels, layout_id)
+pub type InnerLayout = [Option<(u8, usize, u8)>; GLOBAL_CHANNELS];
 
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]
 pub struct Layout(pub InnerLayout);
 
-#[allow(clippy::new_without_default)]
 impl Layout {
-    pub const fn new() -> Self {
-        Self([Some((1, 1)); GLOBAL_CHANNELS])
-    }
-
     pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) -> bool {
         let mut validated: InnerLayout = [None; GLOBAL_CHANNELS];
         let mut occupied = [false; GLOBAL_CHANNELS];
+        let mut used_ids: Vec<u8, { GLOBAL_CHANNELS }> = Vec::new();
 
-        for (app_id, start_channel, _channels) in self.iter() {
+        for (app_id, start_channel, _channels, layout_id) in self.iter() {
+            let validated_layout_id =
+                if used_ids.contains(&layout_id) || layout_id >= GLOBAL_CHANNELS as u8 {
+                    // ID is a duplicate or out of bounds, find the next available one
+                    (0..GLOBAL_CHANNELS as u8)
+                        .find(|id| !used_ids.contains(id))
+                        // This is safe because a free slot is guaranteed
+                        .unwrap()
+                } else {
+                    layout_id
+                };
+
+            let _ = used_ids.push(validated_layout_id);
+
             // Re-verify the channel count for the app_id. Skip if it's not a valid app_id
             let Some(channels) = get_channels(app_id) else {
                 continue;
@@ -82,7 +92,7 @@ impl Layout {
                     *occ = true;
                 }
                 // Add the app to the validated layout
-                validated[start_channel] = Some((app_id, channels));
+                validated[start_channel] = Some((app_id, channels, validated_layout_id));
             }
         }
 
@@ -97,14 +107,21 @@ impl Layout {
     }
 }
 
+impl Default for Layout {
+    fn default() -> Self {
+        let inner_layout: InnerLayout = core::array::from_fn(|idx| Some((1, 1, idx as u8)));
+        Self(inner_layout)
+    }
+}
+
 pub struct LayoutIter<'a> {
-    slice: &'a [Option<(u8, usize)>],
+    slice: &'a [Option<(u8, usize, u8)>],
     index: usize,
 }
 
 impl Iterator for LayoutIter<'_> {
-    // (app_id, start_channel, channels)
-    type Item = (u8, usize, usize);
+    // (app_id, start_channel, channels, layout_id)
+    type Item = (u8, usize, usize, u8);
 
     fn next(&mut self) -> Option<Self::Item> {
         // Skip None values
@@ -112,7 +129,7 @@ impl Iterator for LayoutIter<'_> {
             if let Some(value) = self.slice[self.index] {
                 let idx = self.index;
                 self.index += 1;
-                return Some((value.0, idx, value.1));
+                return Some((value.0, idx, value.1, value.2));
             }
             self.index += 1;
         }
@@ -121,7 +138,7 @@ impl Iterator for LayoutIter<'_> {
 }
 
 impl<'a> IntoIterator for &'a Layout {
-    type Item = (u8, usize, usize);
+    type Item = (u8, usize, usize, u8);
     type IntoIter = LayoutIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -676,10 +693,10 @@ pub enum ConfigMsgIn {
     GetLayout,
     SetLayout(Layout),
     GetAppParams {
-        start_channel: usize,
+        layout_id: u8,
     },
     SetAppParams {
-        start_channel: usize,
+        layout_id: u8,
         values: [Option<Value>; APP_MAX_PARAMS],
     },
 }
@@ -692,7 +709,7 @@ pub enum ConfigMsgOut<'a> {
     GlobalConfig(GlobalConfig),
     Layout(Layout),
     AppConfig(u8, usize, ConfigMeta<'a>),
-    AppState(usize, &'a [Value]),
+    AppState(u8, &'a [Value]),
 }
 
 pub struct Config<const N: usize> {
@@ -789,6 +806,7 @@ impl FromValue for Range {
 #[cfg(test)]
 mod tests {
     use super::{Layout, GLOBAL_CHANNELS};
+    use heapless::Vec;
 
     fn mock_get_channels(app_id: u8) -> Option<usize> {
         match app_id {
@@ -802,8 +820,8 @@ mod tests {
     #[test]
     fn validate_no_changes() {
         let mut layout = Layout([None; GLOBAL_CHANNELS]);
-        layout.0[0] = Some((1, 1));
-        layout.0[4] = Some((2, 4));
+        layout.0[0] = Some((1, 1, 0));
+        layout.0[4] = Some((2, 4, 1));
         let original_layout = layout.0;
 
         let changed = layout.validate(mock_get_channels);
@@ -816,28 +834,28 @@ mod tests {
     fn validate_removes_overlapping() {
         let mut layout = Layout([None; GLOBAL_CHANNELS]);
         // App 2 is valid (takes 4 channels: 0, 1, 2, 3)
-        layout.0[0] = Some((2, 4));
-        // App 3 overlaps with App 2 (tries to start at channel 2 but channels 2, 3, 4 overlap with App 2)
-        layout.0[2] = Some((3, 3));
+        layout.0[0] = Some((2, 4, 0));
+        // App 3 overlaps with App 2 (tries to start at channel 2 but channels 2, 3 overlap with App 2)
+        layout.0[2] = Some((3, 3, 1));
         // App 1 is valid and doesn't overlap
-        layout.0[5] = Some((1, 1));
+        layout.0[5] = Some((1, 1, 2));
 
         let changed = layout.validate(mock_get_channels);
 
         assert!(changed);
         // App 2 should remain (processed first)
-        assert_eq!(layout.0[0], Some((2, 4)));
+        assert_eq!(layout.0[0], Some((2, 4, 0)));
         // App 3 should be removed (overlaps)
         assert_eq!(layout.0[2], None);
         // App 1 should remain
-        assert_eq!(layout.0[5], Some((1, 1)));
+        assert_eq!(layout.0[5], Some((1, 1, 2)));
     }
 
     #[test]
     fn validate_removes_out_of_bounds() {
         let mut layout = Layout([None; GLOBAL_CHANNELS]);
         // This app goes from channel 14 up to 18, which is beyond GLOBAL_CHANNELS (16)
-        layout.0[14] = Some((2, 4));
+        layout.0[14] = Some((2, 4, 0));
 
         let changed = layout.validate(mock_get_channels);
 
@@ -851,7 +869,7 @@ mod tests {
     fn validate_removes_invalid_id() {
         let mut layout = Layout([None; GLOBAL_CHANNELS]);
         // App ID 99 is not valid according to mock_get_channels
-        layout.0[0] = Some((99, 2));
+        layout.0[0] = Some((99, 2, 0));
 
         let changed = layout.validate(mock_get_channels);
 
@@ -863,12 +881,40 @@ mod tests {
     fn validate_corrects_channel_size() {
         let mut layout = Layout([None; GLOBAL_CHANNELS]);
         // The stored channel size is 99, but mock_get_channels returns 1 for app_id 1
-        layout.0[0] = Some((1, 99));
+        layout.0[0] = Some((1, 99, 0));
 
         let changed = layout.validate(mock_get_channels);
 
         assert!(changed);
         // The channel size should be corrected to 1
-        assert_eq!(layout.0[0], Some((1, 1)));
+        assert_eq!(layout.0[0], Some((1, 1, 0)));
+    }
+
+    #[test]
+    fn validate_resolves_duplicate_and_oob_layout_ids() {
+        let mut layout = Layout([None; GLOBAL_CHANNELS]);
+        // Set up layout with duplicates and an out-of-bounds ID
+        layout.0[0] = Some((1, 1, 5)); // Valid
+        layout.0[2] = Some((1, 1, 2)); // Will be kept
+        layout.0[4] = Some((1, 1, 2)); // Duplicate of ID 2
+        layout.0[6] = Some((1, 1, 16)); // Out of bounds (>= GLOBAL_CHANNELS)
+        layout.0[8] = Some((1, 1, 5)); // Duplicate of ID 5
+
+        let changed = layout.validate(mock_get_channels);
+        assert!(changed);
+
+        // Expected layout_id assignments based on iteration order
+        assert_eq!(layout.0[0].unwrap().2, 5);
+        assert_eq!(layout.0[2].unwrap().2, 2);
+        assert_eq!(layout.0[4].unwrap().2, 0); // First free ID
+        assert_eq!(layout.0[6].unwrap().2, 1); // Second free ID
+        assert_eq!(layout.0[8].unwrap().2, 3); // Third free ID
+
+        // Verify all final layout_ids are unique
+        let mut final_ids: Vec<u8, { GLOBAL_CHANNELS }> = Vec::new();
+        for (_, _, _, layout_id) in layout.iter() {
+            assert!(!final_ids.contains(&layout_id));
+            final_ids.push(layout_id).unwrap();
+        }
     }
 }

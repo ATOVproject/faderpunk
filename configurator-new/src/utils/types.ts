@@ -14,7 +14,7 @@ export interface App {
 export type AllApps = Map<number, App>;
 
 export interface AppSlot {
-  id: string;
+  id: number;
   app: App | null;
   startChannel: number;
 }

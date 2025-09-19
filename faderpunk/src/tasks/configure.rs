@@ -40,7 +40,7 @@ pub static APP_PARAM_SIGNALS: [Signal<CriticalSectionRawMutex, AppParamCmd>; GLO
 
 pub static APP_PARAM_CHANNEL: Channel<
     CriticalSectionRawMutex,
-    (usize, Vec<Value, APP_MAX_PARAMS>),
+    (u8, Vec<Value, APP_MAX_PARAMS>),
     GLOBAL_CHANNELS,
 > = Channel::new();
 
@@ -59,6 +59,7 @@ pub enum ProtocolError {
 
 pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
     let mut proto = ConfigProtocol::new(webusb);
+    let mut layout_receiver = LAYOUT_WATCH.receiver().unwrap();
     // TODO: think about sending apps individually to save on buffer size
     // Then add batching to messages (message x/y) to the header
     proto.wait_enabled().await;
@@ -84,7 +85,7 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
             ConfigMsgIn::GetLayout => {
-                let layout = LAYOUT_WATCH.try_get().unwrap();
+                let layout = layout_receiver.get().await;
                 proto.send_msg(ConfigMsgOut::Layout(layout)).await.unwrap();
             }
             ConfigMsgIn::GetGlobalConfig => {
@@ -94,22 +95,19 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                     .await
                     .unwrap();
             }
-            ConfigMsgIn::GetAppParams { start_channel } => {
-                APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::RequestParamValues);
-                if let Ok((res_start_channel, values)) =
+            ConfigMsgIn::GetAppParams { layout_id } => {
+                APP_PARAM_SIGNALS[layout_id as usize].signal(AppParamCmd::RequestParamValues);
+                if let Ok((res_layout_id, values)) =
                     with_timeout(Duration::from_secs(1), APP_PARAM_CHANNEL.receive()).await
                 {
                     proto
-                        .send_msg(ConfigMsgOut::AppState(res_start_channel, &values))
+                        .send_msg(ConfigMsgOut::AppState(res_layout_id, &values))
                         .await
                         .unwrap();
                 }
             }
-            ConfigMsgIn::SetAppParams {
-                start_channel,
-                values,
-            } => {
-                APP_PARAM_SIGNALS[start_channel].signal(AppParamCmd::SetAppParams { values });
+            ConfigMsgIn::SetAppParams { layout_id, values } => {
+                APP_PARAM_SIGNALS[layout_id as usize].signal(AppParamCmd::SetAppParams { values });
                 // TODO: This should answer to refresh UI
             }
             ConfigMsgIn::SetGlobalConfig(mut global_config) => {
