@@ -29,6 +29,7 @@ macro_rules! register_apps {
         pub fn spawn_app_by_id(
             app_id: u8,
             start_channel: usize,
+            layout_id: u8,
             spawner: Spawner,
             exit_signals: &'static [Signal<NoopRawMutex, bool>; 16]
         ) {
@@ -38,6 +39,7 @@ macro_rules! register_apps {
                         let app = App::<{ $app_mod::CHANNELS }>::new(
                             app_id,
                             start_channel,
+                            layout_id,
                             &EVENT_PUBSUB,
                             I2C_LEADER_CHANNEL.sender(),
                             MAX_CHANNEL.sender(),

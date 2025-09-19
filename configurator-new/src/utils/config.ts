@@ -1,9 +1,4 @@
-import type {
-  ClockSrc,
-  I2cMode,
-  /* Layout, */ AuxJackMode,
-  Layout,
-} from "@atov/fp-config";
+import type { ClockSrc, I2cMode, AuxJackMode, Layout } from "@atov/fp-config";
 
 import type { AllApps, App, AppLayout } from "../utils/types";
 
@@ -12,7 +7,7 @@ import {
   sendAndReceive,
   sendMessage,
 } from "../utils/usb-protocol";
-import { makeId, transformParamValues } from "./utils";
+import { transformParamValues } from "./utils";
 
 export const setGlobalConfig = async (
   dev: USBDevice,
@@ -70,7 +65,11 @@ export const setLayout = async (dev: USBDevice, layout: AppLayout) => {
       return;
     }
     if (appSlot.app) {
-      sendLayout[0][currentChan] = [appSlot.app.appId, appSlot.app.channels];
+      sendLayout[0][currentChan] = [
+        appSlot.app.appId,
+        appSlot.app.channels,
+        appSlot.id,
+      ];
       currentChan += Number(appSlot.app.channels);
     } else {
       currentChan++;
@@ -122,10 +121,10 @@ export const getAllApps = async (dev: USBDevice) => {
   return parsedApps;
 };
 
-export const getAppParams = async (dev: USBDevice, startChannel: number) => {
+export const getAppParams = async (dev: USBDevice, layoutId: number) => {
   const response = await sendAndReceive(dev, {
     tag: "GetAppParams",
-    value: { start_channel: BigInt(startChannel) },
+    value: { layout_id: layoutId },
   });
 
   if (response.tag !== "AppState") {
@@ -139,14 +138,14 @@ export const getAppParams = async (dev: USBDevice, startChannel: number) => {
 
 export const setAppParams = async (
   dev: USBDevice,
-  startChannel: number,
+  layoutId: number,
   paramValues: Record<string, string | boolean>,
 ) => {
   const values = transformParamValues(paramValues);
   return sendMessage(dev, {
     tag: "SetAppParams",
     value: {
-      start_channel: BigInt(startChannel),
+      layout_id: layoutId,
       values,
     },
   });
@@ -174,6 +173,7 @@ export const getLayout = async (
 
   const layout: AppLayout = [];
   let lastUsed = -1;
+  let nextEmptyId = 16;
 
   response.value[0].forEach((slot, idx) => {
     if (idx <= lastUsed) {
@@ -181,18 +181,18 @@ export const getLayout = async (
     }
     if (!slot) {
       lastUsed++;
-      layout.push({ id: makeId(), app: null, startChannel: idx });
+      layout.push({ id: nextEmptyId++, app: null, startChannel: idx });
       return;
     }
-    const [appId, channels] = slot;
+    const [appId, channels, layoutId] = slot;
     const app = apps.get(appId);
     if (!app) {
       lastUsed++;
-      layout.push({ id: makeId(), app: null, startChannel: idx });
+      layout.push({ id: nextEmptyId++, app: null, startChannel: idx });
       return;
     }
     lastUsed = idx + Number(channels) - 1;
-    layout.push({ id: makeId(), app, startChannel: idx });
+    layout.push({ id: layoutId, app, startChannel: idx });
   });
 
   return layout;

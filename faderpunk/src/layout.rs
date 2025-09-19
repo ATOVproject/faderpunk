@@ -8,21 +8,21 @@ use embassy_sync::{
 use embassy_time::Timer;
 use static_cell::StaticCell;
 
-use libfp::{Layout, GLOBAL_CHANNELS};
+use libfp::{InnerLayout, Layout, GLOBAL_CHANNELS};
 
 use crate::apps::spawn_app_by_id;
 
-// Receiver: layout spawn loop
-const LAYOUT_WATCH_SUBSCRIBERS: usize = 1;
+// Receivers: layout spawn loop, configure
+const LAYOUT_WATCH_SUBSCRIBERS: usize = 2;
 
 pub static LAYOUT_WATCH: Watch<CriticalSectionRawMutex, Layout, LAYOUT_WATCH_SUBSCRIBERS> =
-    Watch::new_with(Layout::new());
+    Watch::new();
 
 pub static LAYOUT_MANAGER: StaticCell<LayoutManager> = StaticCell::new();
 
 pub struct LayoutManager {
     exit_signals: [Signal<NoopRawMutex, bool>; GLOBAL_CHANNELS],
-    layout: Mutex<NoopRawMutex, [Option<(u8, usize)>; GLOBAL_CHANNELS]>,
+    layout: Mutex<NoopRawMutex, InnerLayout>,
     spawner: Spawner,
 }
 
@@ -50,10 +50,10 @@ impl LayoutManager {
         let mut changed = false;
 
         // Build a representation of the desired layout, mapping start_channel to (app_id, channels)
-        let mut desired_layout: [Option<(u8, usize)>; GLOBAL_CHANNELS] = [None; GLOBAL_CHANNELS];
-        for (app_id, start_channel, channels) in layout.iter() {
+        let mut desired_layout: InnerLayout = [None; GLOBAL_CHANNELS];
+        for (app_id, start_channel, channels, layout_id) in layout.iter() {
             if start_channel < GLOBAL_CHANNELS {
-                desired_layout[start_channel] = Some((app_id, channels));
+                desired_layout[start_channel] = Some((app_id, channels, layout_id));
             }
         }
 
@@ -73,16 +73,22 @@ impl LayoutManager {
 
         // Pass 2: Spawn new or changed apps
         for start_channel in 0..GLOBAL_CHANNELS {
-            if let Some((app_id, channels)) = desired_layout[start_channel] {
+            if let Some((app_id, channels, layout_id)) = desired_layout[start_channel] {
                 let should_spawn = {
                     let current_layout = self.layout.lock().await;
                     current_layout[start_channel].is_none()
                 };
 
                 if should_spawn {
-                    spawn_app_by_id(app_id, start_channel, self.spawner, &self.exit_signals);
+                    spawn_app_by_id(
+                        app_id,
+                        start_channel,
+                        layout_id,
+                        self.spawner,
+                        &self.exit_signals,
+                    );
                     let mut current_layout = self.layout.lock().await;
-                    current_layout[start_channel] = Some((app_id, channels));
+                    current_layout[start_channel] = Some((app_id, channels, layout_id));
                     changed = true;
                 }
             }
