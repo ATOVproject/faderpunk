@@ -306,6 +306,14 @@ impl<P: AppParams> ParamStore<P> {
         None
     }
 
+    async fn send_values(&self) {
+        let values = {
+            let guard = self.inner.borrow();
+            guard.to_values()
+        };
+        APP_PARAM_CHANNEL.send((self.layout_id, values)).await;
+    }
+
     async fn save(&self) {
         let address = AppParamsAddress::new(self.layout_id);
         let values = {
@@ -373,17 +381,15 @@ impl<P: AppParams> ParamStore<P> {
 
                         if updated {
                             self.save().await;
+                            self.send_values().await;
                             // Re-spawn app
                             break;
                         }
                     }
+                    self.send_values().await;
                 }
                 AppParamCmd::RequestParamValues => {
-                    let values = {
-                        let guard = self.inner.borrow();
-                        guard.to_values()
-                    };
-                    APP_PARAM_CHANNEL.send((self.layout_id, values)).await;
+                    self.send_values().await;
                 }
             }
         }
