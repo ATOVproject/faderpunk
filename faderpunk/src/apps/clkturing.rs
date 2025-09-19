@@ -23,11 +23,9 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Pink,
     AppIcon::SequenceSquare,
 )
-.add_param(Param::i32 {
-    //I want to be able to choose between none, CC and note
-    name: "MIDI 0=off, 1=Note, 2=CC",
-    min: 0,
-    max: 2,
+.add_param(Param::Enum {
+    name: "MIDI mode",
+    variants: &["Off", "Note", "CC"],
 })
 .add_param(Param::i32 {
     //is it possible to have this apear only if CC or note are selected
@@ -56,7 +54,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 });
 
 pub struct Params {
-    midi_mode: i32,
+    midi_mode: usize,
     midi_channel: i32,
     midi_cc: i32,
     color: Color,
@@ -79,7 +77,7 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_mode: i32::from_value(values[0]),
+            midi_mode: usize::from_value(values[0]),
             midi_channel: i32::from_value(values[1]),
             midi_cc: i32::from_value(values[2]),
             color: Color::from_value(values[3]),
@@ -116,11 +114,11 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.start_channel);
+    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id);
 
     let app_loop = async {
         loop {
-            let storage = ManagedStorage::<Storage>::new(app.app_id, app.start_channel);
+            let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
             param_store.load().await;
             storage.load(None).await;
             select(

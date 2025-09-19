@@ -35,7 +35,6 @@ pub use crate::{
     storage::{AppParams, AppStorage, Arr, ManagedStorage, ParamStore},
     tasks::{clock::ClockEvent, leds::Led},
 };
-pub use smart_leds::RGB8;
 
 #[derive(Clone, Copy)]
 pub struct Leds<const N: usize> {
@@ -547,6 +546,7 @@ pub enum AppError {
 pub struct App<const N: usize> {
     pub app_id: u8,
     pub start_channel: usize,
+    pub layout_id: u8,
     event_pubsub: &'static EventPubSubChannel,
     i2c_sender: I2cLeaderSender,
     max_sender: MaxSender,
@@ -557,6 +557,7 @@ impl<const N: usize> App<N> {
     pub fn new(
         app_id: u8,
         start_channel: usize,
+        layout_id: u8,
         event_pubsub: &'static EventPubSubChannel,
         i2c_sender: I2cLeaderSender,
         max_sender: MaxSender,
@@ -566,6 +567,7 @@ impl<const N: usize> App<N> {
             app_id,
             event_pubsub,
             i2c_sender,
+            layout_id,
             max_sender,
             midi_sender,
             start_channel,

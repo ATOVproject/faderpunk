@@ -77,7 +77,7 @@ pub async fn load_layout() -> Layout {
         }
     }
     // Fallback layout. We store it directly to start fresh
-    let layout = Layout::new();
+    let layout = Layout::default();
     store_layout(&layout).await;
     layout
 }
@@ -204,7 +204,7 @@ impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T,
 #[derive(Clone, Copy)]
 // TODO: Allocator should alloate a certain part of the fram to app storage
 pub struct AppStorageAddress {
-    pub start_channel: usize,
+    pub layout_id: u8,
     pub scene: Option<u8>,
 }
 
@@ -215,8 +215,7 @@ impl From<AppStorageAddress> for u32 {
             Some(s) => (s as u32) + 1,
         };
 
-        let app_base_offset =
-            (key.start_channel as u32) * (SCENES_PER_APP + 1) * APP_STORAGE_MAX_BYTES;
+        let app_base_offset = (key.layout_id as u32) * (SCENES_PER_APP + 1) * APP_STORAGE_MAX_BYTES;
         let scene_offset_in_app = scene_index * APP_STORAGE_MAX_BYTES;
         APP_STORAGE_RANGE.start + app_base_offset + scene_offset_in_app
     }
@@ -227,8 +226,8 @@ impl From<u32> for AppStorageAddress {
         let bytes_per_app_block: u32 = (SCENES_PER_APP + 1) * APP_STORAGE_MAX_BYTES;
         let app_storage_address = address - APP_STORAGE_RANGE.start;
 
-        let start_channel_raw = app_storage_address / bytes_per_app_block;
-        let start_channel = start_channel_raw as usize;
+        let layout_id_raw = app_storage_address / bytes_per_app_block;
+        let layout_id = layout_id_raw as u8;
 
         let offset_within_app_block = app_storage_address % bytes_per_app_block;
         let scene_index_raw = offset_within_app_block / APP_STORAGE_MAX_BYTES;
@@ -239,30 +238,24 @@ impl From<u32> for AppStorageAddress {
             Some((scene_index_raw - 1) as u8)
         };
 
-        Self {
-            start_channel,
-            scene,
-        }
+        Self { layout_id, scene }
     }
 }
 
 impl AppStorageAddress {
-    pub fn new(start_channel: usize, scene: Option<u8>) -> Self {
-        Self {
-            start_channel,
-            scene,
-        }
+    pub fn new(layout_id: u8, scene: Option<u8>) -> Self {
+        Self { layout_id, scene }
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct AppParamsAddress {
-    pub start_channel: usize,
+    pub layout_id: u8,
 }
 
 impl From<AppParamsAddress> for u32 {
     fn from(key: AppParamsAddress) -> Self {
-        APP_PARAM_RANGE.start + (key.start_channel as u32) * APP_PARAMS_MAX_BYTES
+        APP_PARAM_RANGE.start + (key.layout_id as u32) * APP_PARAMS_MAX_BYTES
     }
 }
 
@@ -270,15 +263,15 @@ impl From<u32> for AppParamsAddress {
     fn from(address: u32) -> Self {
         let app_storage_address = address - APP_PARAM_RANGE.start;
 
-        let start_channel = (app_storage_address / APP_PARAMS_MAX_BYTES) as usize;
+        let layout_id = (app_storage_address / APP_PARAMS_MAX_BYTES) as u8;
 
-        Self { start_channel }
+        Self { layout_id }
     }
 }
 
 impl AppParamsAddress {
-    pub fn new(start_channel: usize) -> Self {
-        Self { start_channel }
+    pub fn new(layout_id: u8) -> Self {
+        Self { layout_id }
     }
 }
 
@@ -290,15 +283,15 @@ pub trait AppParams: Sized + Default + Send + Sync + 'static {
 pub struct ParamStore<P: AppParams> {
     app_id: u8,
     inner: RefCell<P>,
-    start_channel: usize,
+    layout_id: u8,
 }
 
 impl<P: AppParams> ParamStore<P> {
-    pub fn new(app_id: u8, start_channel: usize) -> Self {
+    pub fn new(app_id: u8, layout_id: u8) -> Self {
         Self {
             app_id,
             inner: RefCell::new(P::default()),
-            start_channel,
+            layout_id,
         }
     }
 
@@ -314,7 +307,7 @@ impl<P: AppParams> ParamStore<P> {
     }
 
     async fn save(&self) {
-        let address = AppParamsAddress::new(self.start_channel);
+        let address = AppParamsAddress::new(self.layout_id);
         let values = {
             let guard = self.inner.borrow_mut();
             guard.to_values()
@@ -332,7 +325,7 @@ impl<P: AppParams> ParamStore<P> {
     }
 
     pub async fn load(&self) {
-        let address = AppParamsAddress::new(self.start_channel);
+        let address = AppParamsAddress::new(self.layout_id);
         if let Ok(guard) = read_data(address.into()).await {
             let data = guard.data();
             if !data.is_empty() {
@@ -354,9 +347,9 @@ impl<P: AppParams> ParamStore<P> {
     }
 
     pub async fn param_handler(&self) {
-        APP_PARAM_SIGNALS[self.start_channel].reset();
+        APP_PARAM_SIGNALS[self.layout_id as usize].reset();
         loop {
-            match APP_PARAM_SIGNALS[self.start_channel].wait().await {
+            match APP_PARAM_SIGNALS[self.layout_id as usize].wait().await {
                 AppParamCmd::SetAppParams { values } => {
                     let mut guard = self.inner.borrow_mut();
                     let mut current_values = guard.to_values();
@@ -386,7 +379,7 @@ impl<P: AppParams> ParamStore<P> {
                         let guard = self.inner.borrow();
                         guard.to_values()
                     };
-                    APP_PARAM_CHANNEL.send((self.start_channel, values)).await;
+                    APP_PARAM_CHANNEL.send((self.layout_id, values)).await;
                 }
             }
         }
@@ -401,20 +394,20 @@ pub trait AppStorage:
 pub struct ManagedStorage<S: AppStorage> {
     app_id: u8,
     inner: RefCell<S>,
-    start_channel: usize,
+    layout_id: u8,
 }
 
 impl<S: AppStorage> ManagedStorage<S> {
-    pub fn new(app_id: u8, start_channel: usize) -> Self {
+    pub fn new(app_id: u8, layout_id: u8) -> Self {
         Self {
             app_id,
             inner: RefCell::new(S::default()),
-            start_channel,
+            layout_id,
         }
     }
 
     pub async fn load(&self, scene: Option<u8>) {
-        let address = AppStorageAddress::new(self.start_channel, scene).into();
+        let address = AppStorageAddress::new(self.layout_id, scene).into();
         if let Ok(guard) = read_data(address).await {
             let data = guard.data();
             if !data.is_empty() && data[0] == self.app_id {
@@ -427,7 +420,7 @@ impl<S: AppStorage> ManagedStorage<S> {
     }
 
     pub async fn save(&self, scene: Option<u8>) {
-        let address = AppStorageAddress::new(self.start_channel, scene).into();
+        let address = AppStorageAddress::new(self.layout_id, scene).into();
 
         let res = write_with(address, |buf| {
             buf[0] = self.app_id;
@@ -467,7 +460,7 @@ impl<S: AppStorage> ManagedStorage<S> {
     where
         F: FnOnce(&mut S) -> R,
     {
-        let address = AppStorageAddress::new(self.start_channel, scene).into();
+        let address = AppStorageAddress::new(self.layout_id, scene).into();
 
         let result = {
             let mut inner = self.inner.borrow_mut();

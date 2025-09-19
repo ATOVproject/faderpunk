@@ -26,12 +26,13 @@ const ParamSkeleton = () => (
 
 interface Props {
   app: App;
+  layoutId: number;
   startChannel: number;
 }
 
 // TODO: Save button turns green after save (and says "Saved") for a couple of seconds
 
-export const ActiveApp = ({ app, startChannel }: Props) => {
+export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
   const { usbDevice } = useStore();
   const [hasBeenOpened, setHasBeenOpened] = useState<boolean>(false);
   const [currentParamValues, setParams] = useState<Value[]>();
@@ -46,17 +47,18 @@ export const ActiveApp = ({ app, startChannel }: Props) => {
       if (e.currentTarget.open && !hasBeenOpened) {
         setHasBeenOpened(true);
         if (usbDevice) {
-          const params = await getAppParams(usbDevice, startChannel);
+          const params = await getAppParams(usbDevice, layoutId);
           setParams(params);
         }
       }
     },
-    [hasBeenOpened, usbDevice, startChannel],
+    [hasBeenOpened, usbDevice, layoutId],
   );
 
   const onSubmit = async (data: Record<string, string | boolean>) => {
     if (usbDevice) {
-      return setAppParams(usbDevice, startChannel, data);
+      // FIXME: When saving app parameters, also update the store.
+      return setAppParams(usbDevice, layoutId, data);
     }
   };
 

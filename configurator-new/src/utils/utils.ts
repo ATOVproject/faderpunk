@@ -122,5 +122,3 @@ export const transformParamValues = (
 
   return result;
 };
-
-export const makeId = () => crypto.randomUUID().substring(0, 8);
