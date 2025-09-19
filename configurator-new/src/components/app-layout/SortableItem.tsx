@@ -10,7 +10,7 @@ interface Props {
 
 export const SortableItem = ({ item }: Props) => {
   const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: item.id, disabled: "slotNumber" in item });
+    useSortable({ id: item.id, disabled: !item.app });
 
   const style = {
     transform: CSS.Transform.toString(transform),

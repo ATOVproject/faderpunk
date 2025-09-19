@@ -24,6 +24,8 @@ import type { AppLayout } from "../../utils/types";
 import { Button, ModalBody, ModalFooter, ModalHeader } from "@heroui/react";
 import { ButtonPrimary, ButtonSecondary } from "../Button";
 import { Icon } from "../Icon";
+import { setLayout } from "../../utils/config";
+import { useStore } from "../../store";
 
 interface Props {
   initialLayout: AppLayout;
@@ -41,7 +43,7 @@ const GridBackground = () => {
           key={item}
           className="border-default-100 border-r-1.5 border-l-1.5 flex translate-y-8 items-end justify-center text-lg font-bold select-none first:border-l-3 last:border-r-3"
         >
-          {item}
+          {item + 1}
         </div>
       ))}
     </div>
@@ -49,6 +51,7 @@ const GridBackground = () => {
 };
 
 export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
+  const { usbDevice } = useStore();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [layout, setItems] = useState<AppLayout>(initialLayout);
   const sensors = useSensors(
@@ -68,18 +71,31 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
 
     if (active.id !== over?.id) {
       setItems((items) => {
-        const oldIndex = items.findIndex(({ id }) => active.id == id);
-        const newIndex = items.findIndex(({ id }) => over?.id == id);
+        const oldIndex = items.findIndex(({ id }) => active.id === id);
+        const newIndex = items.findIndex(({ id }) => over?.id === id);
 
-        return arrayMove(items, oldIndex, newIndex);
+        const reorderedItems = arrayMove(items, oldIndex, newIndex);
+
+        let runningChannel = 0;
+        const finalItems = reorderedItems.map((item) => {
+          const newItem = { ...item, startChannel: runningChannel };
+          // The next item's start channel is the current one's start plus its channel count
+          runningChannel += Number(item.app?.channels) || 1;
+          return newItem;
+        });
+
+        return finalItems;
       });
     }
     setActiveId(null);
   }, []);
 
-  const handleSave = useCallback(() => {
-    onSave(layout);
-  }, [layout, onSave]);
+  const handleSave = useCallback(async () => {
+    if (usbDevice) {
+      await setLayout(usbDevice, layout);
+      onSave(layout);
+    }
+  }, [usbDevice, layout, onSave]);
 
   const activeItem = !!activeId && layout.find(({ id }) => id == activeId);
 
@@ -111,13 +127,14 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
               items={layout}
               strategy={horizontalListSortingStrategy}
             >
-              {/* before:absolute before:inset-0 before:z-0 before:bg-[repeating-linear-gradient(to_right,rgba(255,255,255,0.1)_0,rgba(255,255,255,0.1)_2px,transparent_1px,transparent_100%)] before:bg-[length:calc(100%/16)_100%] before:content-[''] */}
               <div className="relative mb-10">
                 <GridBackground />
                 <div className="mr-1.5 ml-1.5 grid grid-cols-16 gap-3">
-                  {layout.map((item) => (
-                    <SortableItem item={item} key={item.id} />
-                  ))}
+                  {layout
+                    .filter((item) => item.app !== undefined)
+                    .map((item) => (
+                      <SortableItem item={item} key={item.id} />
+                    ))}
                 </div>
               </div>
             </SortableContext>
