@@ -142,13 +142,21 @@ export const setAppParams = async (
   paramValues: Record<string, string | boolean>,
 ) => {
   const values = transformParamValues(paramValues);
-  return sendMessage(dev, {
+  const response = await sendAndReceive(dev, {
     tag: "SetAppParams",
     value: {
       layout_id: layoutId,
       values,
     },
   });
+
+  if (response.tag !== "AppState") {
+    throw new Error(
+      `Could not fetch app params. Unexpected repsonse tag: ${response.tag}`,
+    );
+  }
+
+  return response.value[1];
 };
 
 export const getGlobalConfig = async (dev: USBDevice) => {

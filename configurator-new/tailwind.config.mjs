@@ -1,4 +1,4 @@
-const { heroui } = require("@heroui/theme");
+import { heroui } from "@heroui/theme";
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -33,6 +33,10 @@ module.exports = {
             secondary: {
               DEFAULT: "#fdc42f",
               foreground: "#000000",
+            },
+            success: {
+              DEFAULT: "#309443",
+              foreground: "#ffffff",
             },
           },
         },

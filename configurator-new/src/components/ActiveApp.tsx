@@ -30,12 +30,11 @@ interface Props {
   startChannel: number;
 }
 
-// TODO: Save button turns green after save (and says "Saved") for a couple of seconds
-
 export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
   const { usbDevice } = useStore();
   const [hasBeenOpened, setHasBeenOpened] = useState<boolean>(false);
   const [currentParamValues, setParams] = useState<Value[]>();
+  const [saved, setSaved] = useState<boolean>(false);
   const {
     register,
     handleSubmit,
@@ -57,8 +56,12 @@ export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
 
   const onSubmit = async (data: Record<string, string | boolean>) => {
     if (usbDevice) {
-      // FIXME: When saving app parameters, also update the store.
-      return setAppParams(usbDevice, layoutId, data);
+      const params = await setAppParams(usbDevice, layoutId, data);
+      setParams(params);
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+      }, 2000);
     }
   };
 
@@ -127,11 +130,15 @@ export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
             </div>
             <div className="flex justify-end p-4">
               <ButtonPrimary
+                color={saved ? "success" : "primary"}
                 disabled={isSubmitting}
                 isLoading={isSubmitting}
+                startContent={
+                  saved ? <Icon className="h-5 w-5" name="check" /> : undefined
+                }
                 type="submit"
               >
-                Save
+                {saved ? "Saved" : "Save"}
               </ButtonPrimary>
             </div>
           </div>
