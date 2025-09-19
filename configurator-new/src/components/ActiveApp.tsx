@@ -8,7 +8,7 @@ import { COLORS_CLASSES } from "../utils/class-helpers";
 import { pascalToKebab, getDefaultValue, getSlots } from "../utils/utils";
 import { ButtonPrimary } from "./Button";
 import { Icon } from "./Icon";
-import type { AppInLayout } from "../utils/types";
+import type { App } from "../utils/types";
 import { getAppParams, setAppParams } from "../utils/config.ts";
 import { useStore } from "../store.ts";
 import { AppParam } from "./input/AppParam.tsx";
@@ -25,12 +25,13 @@ const ParamSkeleton = () => (
 );
 
 interface Props {
-  app: AppInLayout;
+  app: App;
+  startChannel: number;
 }
 
 // TODO: Save button turns green after save (and says "Saved") for a couple of seconds
 
-export const ActiveApp = ({ app }: Props) => {
+export const ActiveApp = ({ app, startChannel }: Props) => {
   const { usbDevice } = useStore();
   const [hasBeenOpened, setHasBeenOpened] = useState<boolean>(false);
   const [currentParamValues, setParams] = useState<Value[]>();
@@ -45,17 +46,17 @@ export const ActiveApp = ({ app }: Props) => {
       if (e.currentTarget.open && !hasBeenOpened) {
         setHasBeenOpened(true);
         if (usbDevice) {
-          const params = await getAppParams(usbDevice, app.start);
+          const params = await getAppParams(usbDevice, startChannel);
           setParams(params);
         }
       }
     },
-    [hasBeenOpened, usbDevice, app.start],
+    [hasBeenOpened, usbDevice, startChannel],
   );
 
   const onSubmit = async (data: Record<string, string | boolean>) => {
     if (usbDevice) {
-      return setAppParams(usbDevice, app.start, data);
+      return setAppParams(usbDevice, startChannel, data);
     }
   };
 
@@ -86,7 +87,7 @@ export const ActiveApp = ({ app }: Props) => {
             <p className="text-yellow-fp text-sm font-bold uppercase">
               {app.channels > 1 ? "Channels" : "Channel"}
             </p>
-            <p className="text-lg font-medium">{getSlots(app)}</p>
+            <p className="text-lg font-medium">{getSlots(app, startChannel)}</p>
           </div>
           <div className="flex-1">
             <p className="text-yellow-fp text-sm font-bold uppercase">Slots</p>
@@ -109,11 +110,11 @@ export const ActiveApp = ({ app }: Props) => {
               <div className="grid grid-cols-4 gap-x-16 gap-y-8 px-4">
                 {!currentParamValues
                   ? app.params.map((_, idx) => (
-                      <ParamSkeleton key={`param-${app.start}-${idx}`} />
+                      <ParamSkeleton key={`param-${startChannel}-${idx}`} />
                     ))
                   : app.params.map((param, idx) => (
                       <AppParam
-                        key={`param-${app.start}-${idx}`}
+                        key={`param-${startChannel}-${idx}`}
                         param={param}
                         paramIndex={idx}
                         register={register}

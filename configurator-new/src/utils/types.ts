@@ -13,17 +13,10 @@ export interface App {
 
 export type AllApps = Map<number, App>;
 
-export interface AppInLayout extends App {
+export interface AppSlot {
   id: string;
-  start: number;
-  end: number;
+  app: App | null;
+  startChannel: number;
 }
-
-export interface EmptySlot {
-  id: string;
-  slotNumber: number;
-}
-
-export type AppSlot = AppInLayout | EmptySlot;
 
 export type AppLayout = AppSlot[];

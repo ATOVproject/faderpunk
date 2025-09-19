@@ -1,29 +1,26 @@
-import type { AppInLayout, AppLayout } from "../utils/types";
+import type { AppLayout, App } from "../utils/types";
 import { ActiveApp } from "./ActiveApp";
 
 interface Props {
-  apps?: AppLayout;
+  layout?: AppLayout;
 }
 
-// NEXT:
-// - Create Select/Input components for all Value types
-// - Render param inputs (use loading screen)
-// - Set param values implementation
-// - Somehow we need a success message. See if sticky params are a problem
-
-export const ActiveApps = ({ apps }: Props) => {
+export const ActiveApps = ({ layout }: Props) => {
   // TODO: Skeleton loader
-  if (!apps) {
+  if (!layout) {
     return null;
   }
   return (
     <ul className="space-y-6">
-      {apps
-        .filter((app): app is AppInLayout => !("slotNumber" in app))
-        .map((app) => {
+      {layout
+        .filter(
+          (slot): slot is { app: App; id: string; startChannel: number } =>
+            !!slot.app,
+        )
+        .map(({ app, id, startChannel }) => {
           return (
-            <li key={app.start}>
-              <ActiveApp app={app} />
+            <li key={id}>
+              <ActiveApp app={app} startChannel={startChannel} />
             </li>
           );
         })}

@@ -1,4 +1,9 @@
-import type { ClockSrc, I2cMode, Layout, AuxJackMode } from "@atov/fp-config";
+import type {
+  ClockSrc,
+  I2cMode,
+  /* Layout, */ AuxJackMode,
+  Layout,
+} from "@atov/fp-config";
 
 import type { AllApps, App, AppLayout } from "../utils/types";
 
@@ -36,12 +41,8 @@ export const setGlobalConfig = async (
   });
 };
 
-export const setLayout = async (
-  dev: USBDevice,
-  layout: Array<number>,
-  allApps: Map<number, App>,
-) => {
-  const send_layout: Layout = [
+export const setLayout = async (dev: USBDevice, layout: AppLayout) => {
+  const sendLayout: Layout = [
     [
       undefined,
       undefined,
@@ -62,27 +63,23 @@ export const setLayout = async (
     ],
   ];
 
-  let current_chan = 0;
-
-  for (let i = 0; i < Math.min(layout.length, 16); i++) {
-    if (layout[i]) {
-      const app = allApps.get(layout[i]);
-
-      if (app) {
-        const { channels } = app;
-
-        if (current_chan + channels > 16) {
-          break;
-        }
-        send_layout[0][current_chan] = [layout[i], BigInt(channels)];
-        current_chan += channels;
-      }
+  let currentChan = 0;
+  layout.forEach((appSlot) => {
+    if (currentChan >= 16) {
+      // Safeguard if for some reason the layout is messed up
+      return;
     }
-  }
+    if (appSlot.app) {
+      sendLayout[0][currentChan] = [appSlot.app.appId, appSlot.app.channels];
+      currentChan += Number(appSlot.app.channels);
+    } else {
+      currentChan++;
+    }
+  });
 
   await sendMessage(dev, {
     tag: "SetLayout",
-    value: send_layout,
+    value: sendLayout,
   });
 };
 
@@ -176,32 +173,27 @@ export const getLayout = async (
   }
 
   const layout: AppLayout = [];
-
-  let i = 0;
   let lastUsed = -1;
 
-  // It's ok to assign a new random id every time
-  // We just need it to refer to it during layout changes
-  while (i < 16) {
-    const app = response.value[0][i];
-    if (!app) {
-      if (i > lastUsed) {
-        layout.push({ slotNumber: i, id: makeId() });
-        lastUsed++;
-      }
-    } else {
-      const appData = apps.get(app[0]);
-      if (!appData) {
-        layout.push({ slotNumber: i, id: makeId() });
-        lastUsed++;
-      } else {
-        const end = i + Number(appData.channels) - 1;
-        layout.push({ ...appData, start: i, end, id: makeId() });
-        lastUsed = end;
-      }
+  response.value[0].forEach((slot, idx) => {
+    if (idx <= lastUsed) {
+      return;
     }
-    i++;
-  }
+    if (!slot) {
+      lastUsed++;
+      layout.push({ id: makeId(), app: null, startChannel: idx });
+      return;
+    }
+    const [appId, channels] = slot;
+    const app = apps.get(appId);
+    if (!app) {
+      lastUsed++;
+      layout.push({ id: makeId(), app: null, startChannel: idx });
+      return;
+    }
+    lastUsed = idx + Number(channels) - 1;
+    layout.push({ id: makeId(), app, startChannel: idx });
+  });
 
-  return layout.slice(0, 15);
+  return layout;
 };

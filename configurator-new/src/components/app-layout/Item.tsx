@@ -11,7 +11,7 @@ interface Props extends ComponentProps<"div"> {
 
 export const Item = forwardRef(
   ({ item, className, ...props }: Props, ref: ForwardedRef<HTMLDivElement>) => {
-    if ("slotNumber" in item) {
+    if (!item.app) {
       return (
         <div
           className={classNames("grow-1 outline-none", className)}
@@ -23,18 +23,19 @@ export const Item = forwardRef(
       );
     }
 
+    const { app } = item;
     return (
       <div
         className={classNames(
           "z-10 flex cursor-grab touch-manipulation justify-center rounded-sm p-2 whitespace-nowrap outline-none",
           className,
-          COLORS_CLASSES[item.color],
-          WIDTHS_CLASSES[Number(item.channels)],
+          COLORS_CLASSES[app.color],
+          WIDTHS_CLASSES[Number(app.channels)],
         )}
         {...props}
         ref={ref}
       >
-        <Icon className="h-8 w-8 text-black" name={pascalToKebab(item.icon)} />
+        <Icon className="h-8 w-8 text-black" name={pascalToKebab(app.icon)} />
       </div>
     );
   },

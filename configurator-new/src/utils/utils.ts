@@ -8,16 +8,7 @@ import {
   type Waveform,
 } from "@atov/fp-config";
 
-import type { AppInLayout, EmptySlot } from "./types";
-
-const defaultInitializer = (index: number) => index;
-
-export const createRange = <T = number>(
-  length: number,
-  initializer: (index: number) => any = defaultInitializer,
-): T[] => {
-  return [...new Array(length)].map((_, index) => initializer(index));
-};
+import type { App } from "./types";
 
 export const kebabToPascal = (str: string): string => {
   if (!str) return "";
@@ -33,11 +24,11 @@ export const pascalToKebab = (str: string): string => {
   return camelized.replace(/([A-Z])/g, "-$1").toLowerCase();
 };
 
-export const getSlots = (app: AppInLayout) => {
+export const getSlots = (app: App, startChannel: number) => {
   if (app.channels > 1) {
-    return `${app.start + 1}-${app.end + 1}`;
+    return `${startChannel + 1}-${startChannel + Number(app.channels)}`;
   } else {
-    return `${app.start + 1}`;
+    return `${startChannel + 1}`;
   }
 };
 
@@ -131,8 +122,5 @@ export const transformParamValues = (
 
   return result;
 };
-
-export const getId = (item: AppInLayout | EmptySlot) =>
-  "slotNumber" in item ? `${item.slotNumber}` : item.start;
 
 export const makeId = () => crypto.randomUUID().substring(0, 8);

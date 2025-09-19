@@ -1,14 +1,15 @@
 import classNames from "classnames";
 
 import { COLORS_CLASSES, WIDTHS_CLASSES } from "../../utils/class-helpers";
-import type { AppInLayout, AppLayout } from "../../utils/types";
+import type { AppLayout, App } from "../../utils/types";
 import { getSlots } from "../../utils/utils";
 
 interface AppSlotProps {
-  app: AppInLayout;
+  app: App;
+  startChannel: number;
 }
 
-const AppSlots = ({ app }: AppSlotProps) => {
+const AppSlots = ({ app, startChannel }: AppSlotProps) => {
   return (
     <div
       className={classNames(
@@ -22,7 +23,7 @@ const AppSlots = ({ app }: AppSlotProps) => {
         &nbsp;
       </div>
       <div className="flex-1 text-center text-base font-bold">
-        {getSlots(app)}
+        {getSlots(app, startChannel)}
       </div>
     </div>
   );
@@ -42,30 +43,27 @@ const EmptySlot = ({ slotNumber }: EmptySlotProps) => (
 );
 
 interface Props {
-  apps?: AppLayout;
+  layout?: AppLayout;
   onClick(): void;
 }
 
-export const ChannelOverview = ({ apps, onClick }: Props) => {
+export const ChannelOverview = ({ layout, onClick }: Props) => {
   // TODO: Loading skeleton
-  if (!apps) {
+  if (!layout) {
     return null;
   }
+
   return (
     <button
       className="grid w-full cursor-pointer grid-cols-16 gap-2"
       onClick={onClick}
     >
-      {apps.map((app) =>
-        "slotNumber" in app ? (
-          <EmptySlot
-            key={`empty-${app.slotNumber}`}
-            slotNumber={app.slotNumber}
-          />
-        ) : (
-          <AppSlots key={app.start} app={app} />
-        ),
-      )}
+      {layout.map(({ id, app, startChannel }) => {
+        if (app) {
+          return <AppSlots startChannel={startChannel} key={id} app={app} />;
+        }
+        return <EmptySlot key={id} slotNumber={startChannel} />;
+      })}
     </button>
   );
 };
