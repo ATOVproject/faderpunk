@@ -5,7 +5,7 @@ fn main() {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
-            .join("configurator-new")
+            .join("configurator")
             .join("node_modules")
             .as_path(),
         PackageInfo {

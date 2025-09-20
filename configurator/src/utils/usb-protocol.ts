@@ -1,6 +1,6 @@
 import {
-  ConfigMsgIn,
-  ConfigMsgOut,
+  type ConfigMsgIn,
+  type ConfigMsgOut,
   deserialize,
   serialize,
 } from "@atov/fp-config";
