@@ -15,12 +15,17 @@ const App = () => {
 
   if (!usbDevice) {
     return (
-      <Layout
-        onModalOpenChange={(isOpen) => setModalApp(isOpen ? -1 : null)}
-        modalApp={modalApp}
-      >
-        <ButtonPrimary onPress={connect}>Connect</ButtonPrimary>
-      </Layout>
+      <main className="flex min-h-screen min-w-screen items-center justify-center bg-gray-500 text-white">
+        <div className="border-pink-fp flex flex-col items-center justify-center gap-8 rounded-sm border-3 p-10 shadow-[0px_0px_11px_2px_#B7B2B240]">
+          <img src="/img/fp-logo-alt.svg" className="w-48" />
+          <ButtonPrimary
+            className="shadow-[0px_0px_11px_2px_#B7B2B240]"
+            onPress={connect}
+          >
+            Connect Device
+          </ButtonPrimary>
+        </div>
+      </main>
     );
   }
 
@@ -59,11 +64,19 @@ const App = () => {
 
       <div className="border-default-100 mt-16 border-t-3">
         <div className="flex items-center justify-between py-8">
-          <img src="/img/atov-logo.svg" className="w-16" />
+          <a href="https://atov.de" target="_blank">
+            <img src="/img/atov-logo.svg" className="w-16" />
+          </a>
           <div className="flex items-center gap-4">
-            <Icon className="h-6 w-6" name="discord" />
-            <Icon className="h-6 w-6" name="github" />
-            <Icon className="h-6 w-6" name="instagram" />
+            <a href="https://atov.de/discord" target="_blank">
+              <Icon className="h-6 w-6" name="discord" />
+            </a>
+            <a href="https://github.com/ATOVproject/faderpunk" target="_blank">
+              <Icon className="h-6 w-6" name="github" />
+            </a>
+            <a href="https://www.instagram.com/atovproject/" target="_blank">
+              <Icon className="h-6 w-6" name="instagram" />
+            </a>
           </div>
         </div>
       </div>
