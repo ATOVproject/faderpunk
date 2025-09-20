@@ -1,12 +1,13 @@
-import { ClockSrc, I2cMode, Layout, AuxJackMode } from "@atov/fp-config";
+import type { ClockSrc, I2cMode, AuxJackMode, Layout } from "@atov/fp-config";
 
-import { ParsedApp } from "../pages";
+import type { AllApps, App, AppLayout } from "../utils/types";
 
 import {
   receiveBatchMessages,
   sendAndReceive,
   sendMessage,
-} from "./usb-protocol";
+} from "../utils/usb-protocol";
+import { transformParamValues } from "./utils";
 
 export const setGlobalConfig = async (
   dev: USBDevice,
@@ -35,12 +36,8 @@ export const setGlobalConfig = async (
   });
 };
 
-export const setLayout = async (
-  dev: USBDevice,
-  layout: Array<number>,
-  allApps: Map<number, ParsedApp>,
-) => {
-  let send_layout: Layout = [
+export const setLayout = async (dev: USBDevice, layout: AppLayout) => {
+  const sendLayout: Layout = [
     [
       undefined,
       undefined,
@@ -61,97 +58,105 @@ export const setLayout = async (
     ],
   ];
 
-  let current_chan = 0;
-
-  for (let i = 0; i < Math.min(layout.length, 16); i++) {
-    if (layout[i]) {
-      const app = allApps.get(layout[i]);
-
-      if (app) {
-        const { channels } = app;
-
-        if (current_chan + parseInt(channels, 10) > 16) {
-          break;
-        }
-        send_layout[0][current_chan] = [layout[i], BigInt(channels)];
-        current_chan += parseInt(channels, 10);
-      }
+  let currentChan = 0;
+  layout.forEach((appSlot) => {
+    if (currentChan >= 16) {
+      // Safeguard if for some reason the layout is messed up
+      return;
     }
-  }
+    if (appSlot.app) {
+      sendLayout[0][currentChan] = [
+        appSlot.app.appId,
+        appSlot.app.channels,
+        appSlot.id,
+      ];
+      currentChan += Number(appSlot.app.channels);
+    } else {
+      currentChan++;
+    }
+  });
 
   await sendMessage(dev, {
     tag: "SetLayout",
-    value: send_layout,
+    value: sendLayout,
   });
 };
 
 export const getAllApps = async (dev: USBDevice) => {
-  const result = await sendAndReceive(dev, {
+  const response = await sendAndReceive(dev, {
     tag: "GetAllApps",
   });
 
-  if (result.tag === "BatchMsgStart") {
-    return receiveBatchMessages(dev, result.value);
+  if (response.tag !== "BatchMsgStart") {
+    throw new Error(
+      `Could not fetch apps. Unexpected repsonse tag: ${response.tag}`,
+    );
   }
+
+  const apps = await receiveBatchMessages(dev, response.value);
+
+  // Parse apps data into a Map for easy lookup by app ID
+  const parsedApps = new Map<number, App>();
+
+  apps
+    .filter(
+      (item): item is Extract<typeof item, { tag: "AppConfig" }> =>
+        item.tag === "AppConfig",
+    )
+    .forEach((app) => {
+      const appConfig = {
+        appId: app.value[0],
+        channels: app.value[1],
+        paramCount: app.value[2][0],
+        name: app.value[2][1] as string,
+        description: app.value[2][2] as string,
+        color: app.value[2][3].tag,
+        icon: app.value[2][4].tag,
+        params: app.value[2][5],
+      };
+
+      parsedApps.set(appConfig.appId, appConfig);
+    });
+
+  return parsedApps;
 };
 
-export const getAppParams = async (dev: USBDevice, startChannel: string) => {
-  return sendAndReceive(dev, {
+export const getAppParams = async (dev: USBDevice, layoutId: number) => {
+  const response = await sendAndReceive(dev, {
     tag: "GetAppParams",
-    value: { start_channel: BigInt(startChannel) },
+    value: { layout_id: layoutId },
   });
+
+  if (response.tag !== "AppState") {
+    throw new Error(
+      `Could not fetch app params. Unexpected repsonse tag: ${response.tag}`,
+    );
+  }
+
+  return response.value[1];
 };
 
 export const setAppParams = async (
   dev: USBDevice,
-  startChannel: number,
-  paramValues: any[],
+  layoutId: number,
+  paramValues: Record<string, string | boolean>,
 ) => {
-  // Transform form values to Value enum format
-  const transformValue = (paramValue: any) => {
-    if (!paramValue || paramValue.tag === "None") {
-      return undefined;
-    }
-
-    switch (paramValue.tag) {
-      case "i32":
-        return { tag: "i32", value: paramValue.value };
-      case "f32":
-        return { tag: "f32", value: paramValue.value };
-      case "bool":
-        return { tag: "bool", value: paramValue.value };
-      case "Enum":
-        return { tag: "Enum", value: paramValue.value };
-      case "Curve":
-        return { tag: "Curve", value: paramValue.value };
-      case "Waveform":
-        return { tag: "Waveform", value: paramValue.value };
-      case "Color":
-        return { tag: "Color", value: paramValue.value };
-      default:
-        return undefined;
-    }
-  };
-
-  // Create fixed-length tuple of 8 values (APP_MAX_PARAMS = 8)
-  const values: [any, any, any, any, any, any, any, any] = [
-    paramValues.length > 0 ? transformValue(paramValues[0]) : undefined,
-    paramValues.length > 1 ? transformValue(paramValues[1]) : undefined,
-    paramValues.length > 2 ? transformValue(paramValues[2]) : undefined,
-    paramValues.length > 3 ? transformValue(paramValues[3]) : undefined,
-    paramValues.length > 4 ? transformValue(paramValues[4]) : undefined,
-    paramValues.length > 5 ? transformValue(paramValues[5]) : undefined,
-    paramValues.length > 6 ? transformValue(paramValues[6]) : undefined,
-    paramValues.length > 7 ? transformValue(paramValues[7]) : undefined,
-  ];
-
-  return sendMessage(dev, {
+  const values = transformParamValues(paramValues);
+  const response = await sendAndReceive(dev, {
     tag: "SetAppParams",
     value: {
-      start_channel: BigInt(startChannel),
-      values: values,
+      layout_id: layoutId,
+      values,
     },
   });
+
+  if (response.tag !== "AppState") {
+    throw new Error(
+      `Could not fetch app params. Unexpected repsonse tag: ${response.tag}`,
+    );
+  }
+
+  return response.value[1];
 };
 
 export const getGlobalConfig = async (dev: USBDevice) => {
@@ -160,8 +165,43 @@ export const getGlobalConfig = async (dev: USBDevice) => {
   });
 };
 
-export const getLayout = async (dev: USBDevice) => {
-  return sendAndReceive(dev, {
+export const getLayout = async (
+  dev: USBDevice,
+  apps: AllApps,
+): Promise<AppLayout> => {
+  const response = await sendAndReceive(dev, {
     tag: "GetLayout",
   });
+
+  if (response.tag !== "Layout") {
+    throw new Error(
+      `Could not fetch layout. Unexpected repsonse tag: ${response.tag}`,
+    );
+  }
+
+  const layout: AppLayout = [];
+  let lastUsed = -1;
+  let nextEmptyId = 16;
+
+  response.value[0].forEach((slot, idx) => {
+    if (idx <= lastUsed) {
+      return;
+    }
+    if (!slot) {
+      lastUsed++;
+      layout.push({ id: nextEmptyId++, app: null, startChannel: idx });
+      return;
+    }
+    const [appId, channels, layoutId] = slot;
+    const app = apps.get(appId);
+    if (!app) {
+      lastUsed++;
+      layout.push({ id: nextEmptyId++, app: null, startChannel: idx });
+      return;
+    }
+    lastUsed = idx + Number(channels) - 1;
+    layout.push({ id: layoutId, app, startChannel: idx });
+  });
+
+  return layout;
 };

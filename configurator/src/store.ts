@@ -32,5 +32,5 @@ export const useStore = create<AppState>((set) => ({
       set({ usbDevice: undefined, apps: undefined, layout: undefined });
     }
   },
-  setLayout: (layout) => console.log(layout) || set({ layout }),
+  setLayout: (layout) => set({ layout }),
 }));
