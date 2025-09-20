@@ -144,12 +144,13 @@ export const EditLayoutModal = ({
     }
   }, [usbDevice, layout, onSave]);
 
-  const activeItem = !!activeId && layout.find(({ id }) => id == activeId);
+  const activeItem =
+    activeId !== null && layout.find(({ id }) => id == activeId);
   const appToAdd =
     apps && modalApp && modalApp >= 0 ? apps.get(modalApp) : undefined;
 
   useEffect(() => {
-    if (!appToAdd || modalApp === null || newAppId) return;
+    if (!appToAdd || modalApp === null || newAppId !== null) return;
 
     const { success, newLayout, newId } = addAppToLayout(layout, appToAdd);
 
@@ -159,7 +160,7 @@ export const EditLayoutModal = ({
     }
   }, [layout, newAppId, appToAdd, modalApp]);
 
-  const cantAddError = appToAdd && !newAppId;
+  const cantAddError = appToAdd && newAppId === null;
 
   return (
     <>
