@@ -107,7 +107,7 @@ pub async fn run(
     let glob_div = app.make_global(24);
 
     let curve = Curve::Exponential;
-    let resolution = [384, 184, 92, 48, 24, 16, 12, 8, 6];
+    let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6];
 
     let (speed, wave) = storage.query(|s| (s.layer_speed, s.wave));
 

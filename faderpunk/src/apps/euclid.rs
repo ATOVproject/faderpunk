@@ -177,7 +177,7 @@ pub async fn run(
         app.make_gate_jack(1, 4095).await,
     ];
 
-    let resolution = [384, 184, 92, 48, 24, 16, 12, 8, 6, 4, 3, 2];
+    let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
     let mut clkn = 0;
 
