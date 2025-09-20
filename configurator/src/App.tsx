@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { Tabs, Tab } from "@heroui/tabs";
-import classNames from "classnames";
 
 import { ButtonPrimary } from "./components/Button";
-import { ChannelOverview } from "./components/app-layout/ChannelOverview";
 import { Icon } from "./components/Icon";
 import { Layout } from "./components/Layout";
 import { useStore } from "./store";
@@ -13,10 +11,6 @@ import { AppsTab } from "./components/AppsTab";
 const App = () => {
   const { usbDevice, layout, apps, connect } = useStore();
   const [modalApp, setModalApp] = useState<number | null>(null);
-
-  const [selectedTab, setSelectedTab] = useState<
-    "device" | "apps" | "settings"
-  >("device");
 
   if (!usbDevice) {
     return (
@@ -41,55 +35,24 @@ const App = () => {
         </p>
       </div>
 
-      <div className="border-default-100 mb-8 flex border-b-3">
-        <button
-          className={classNames(
-            "cursor-pointer rounded-t-md px-12 py-3 text-lg font-bold text-white uppercase",
-            {
-              "bg-black": selectedTab == "device",
-            },
-          )}
-          onClick={() => setSelectedTab("device")}
-        >
-          Device
-        </button>
-        <button
-          className={classNames(
-            "cursor-pointer rounded-t-md px-12 py-3 text-lg font-bold text-white uppercase",
-            {
-              "bg-black": selectedTab == "apps",
-            },
-          )}
-          onClick={() => setSelectedTab("apps")}
-        >
-          Apps
-        </button>
-        <button
-          className={classNames(
-            "cursor-pointer rounded-t-md px-12 py-3 text-lg font-bold text-white uppercase",
-            {
-              "bg-black": selectedTab == "settings",
-            },
-          )}
-          onClick={() => setSelectedTab("settings")}
-        >
-          Settings
-        </button>
-      </div>
-
-      <div className="mb-12">
-        <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
-          Channel Overview
-        </h2>
-        <ChannelOverview onClick={() => setModalApp(-1)} layout={layout} />
-      </div>
-
-      <Tabs classNames={{ base: "hidden" }} selectedKey={selectedTab}>
+      <Tabs
+        className="border-default-100 mb-8 w-full border-b-3"
+        classNames={{
+          tabList: "flex p-0 rounded-none gap-0",
+          cursor: "rounded-none rounded-t-md dark:bg-black",
+          tab: "px-12 py-6",
+          tabContent: "text-white font-bold uppercase text-lg",
+        }}
+        variant="light"
+      >
         <Tab key="device" title="Device">
-          <DeviceTab layout={layout} />
+          <DeviceTab layout={layout} setModalApp={setModalApp} />
         </Tab>
         <Tab key="apps" title="Apps">
-          <AppsTab apps={apps} setModalApp={setModalApp} />
+          <AppsTab apps={apps} layout={layout} setModalApp={setModalApp} />
+        </Tab>
+        <Tab key="settings" title="Settings">
+          <div>Settings</div>
         </Tab>
       </Tabs>
 

@@ -23,17 +23,17 @@ import {
 
 import { SortableItem } from "./SortableItem";
 import { Item } from "./Item";
-import type { AppLayout } from "../../utils/types";
-import { ButtonPrimary, ButtonSecondary } from "../Button";
-import { Icon } from "../Icon";
-import { setLayout } from "../../utils/config";
-import { useStore } from "../../store";
-import { COLORS_CLASSES } from "../../utils/class-helpers";
+import type { AppLayout } from "../utils/types";
+import { ButtonPrimary, ButtonSecondary } from "./Button";
+import { Icon } from "./Icon";
+import { setLayout } from "../utils/config";
+import { useStore } from "../store";
+import { COLORS_CLASSES } from "../utils/class-helpers";
 import {
   addAppToLayout,
   pascalToKebab,
   recalculateStartChannels,
-} from "../../utils/utils";
+} from "../utils/utils";
 
 interface Props {
   initialLayout: AppLayout;

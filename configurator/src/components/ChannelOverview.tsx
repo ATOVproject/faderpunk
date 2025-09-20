@@ -1,8 +1,8 @@
 import classNames from "classnames";
 
-import { COLORS_CLASSES, WIDTHS_CLASSES } from "../../utils/class-helpers";
-import type { AppLayout, App } from "../../utils/types";
-import { getSlots } from "../../utils/utils";
+import { COLORS_CLASSES, WIDTHS_CLASSES } from "../utils/class-helpers";
+import type { AppLayout, App } from "../utils/types";
+import { getSlots } from "../utils/utils";
 
 interface AppSlotProps {
   app: App;

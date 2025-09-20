@@ -2,7 +2,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import { Item } from "./Item";
-import type { AppSlot } from "../../utils/types";
+import type { AppSlot } from "../utils/types";
 import type { Dispatch, SetStateAction } from "react";
 
 interface Props {

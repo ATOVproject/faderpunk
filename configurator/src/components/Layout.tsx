@@ -2,7 +2,7 @@ import type { PropsWithChildren } from "react";
 import { Modal, ModalContent } from "@heroui/modal";
 
 import { useStore } from "../store";
-import { EditLayoutModal } from "../components/app-layout/EditLayoutModal";
+import { EditLayoutModal } from "./EditLayoutModal";
 
 interface Props {
   modalApp: number | null;
