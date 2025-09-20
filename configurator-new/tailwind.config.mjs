@@ -9,6 +9,7 @@ module.exports = {
     "./node_modules/@heroui/theme/dist/components/select.js",
     "./node_modules/@heroui/theme/dist/components/skeleton.js",
     "./node_modules/@heroui/theme/dist/components/switch.js",
+    "./node_modules/@heroui/theme/dist/components/tabs.js",
     "./node_modules/@heroui/theme/dist/components/tooltip.js",
   ],
   theme: {
@@ -37,6 +38,10 @@ module.exports = {
             },
             success: {
               DEFAULT: "#309443",
+              foreground: "#ffffff",
+            },
+            danger: {
+              DEFAULT: "#C13636",
               foreground: "#ffffff",
             },
           },

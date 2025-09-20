@@ -131,7 +131,7 @@ export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
             <div className="flex justify-end p-4">
               <ButtonPrimary
                 color={saved ? "success" : "primary"}
-                disabled={isSubmitting}
+                isDisabled={isSubmitting}
                 isLoading={isSubmitting}
                 startContent={
                   saved ? <Icon className="h-5 w-5" name="check" /> : undefined

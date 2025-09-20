@@ -5,13 +5,13 @@ import { useStore } from "../store";
 import { EditLayoutModal } from "../components/app-layout/EditLayoutModal";
 
 interface Props {
-  isModalOpen: boolean;
-  onModalOpenChange(): void;
+  modalApp: number | null;
+  onModalOpenChange(isOpen: boolean): void;
 }
 
 export const Layout = ({
   children,
-  isModalOpen,
+  modalApp,
   onModalOpenChange,
 }: PropsWithChildren<Props>) => {
   const { setLayout, layout } = useStore();
@@ -22,7 +22,7 @@ export const Layout = ({
         <Modal
           // size="5xl"
           className="max-w-6xl"
-          isOpen={isModalOpen}
+          isOpen={!!modalApp}
           backdrop="blur"
           onOpenChange={onModalOpenChange}
           hideCloseButton
@@ -34,6 +34,7 @@ export const Layout = ({
                 onSave={setLayout}
                 initialLayout={layout}
                 onClose={onClose}
+                modalApp={modalApp}
               />
             )}
           </ModalContent>
