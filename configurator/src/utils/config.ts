@@ -1,4 +1,4 @@
-import type { ClockSrc, I2cMode, AuxJackMode, Layout } from "@atov/fp-config";
+import type { Layout, GlobalConfig } from "@atov/fp-config";
 
 import type { AllApps, App, AppLayout } from "../utils/types";
 
@@ -9,32 +9,39 @@ import {
 } from "../utils/usb-protocol";
 import { transformParamValues } from "./utils";
 
-export const setGlobalConfig = async (
-  dev: USBDevice,
-  clock_src: ClockSrc,
-  reset_src: ClockSrc,
-  aux: [AuxJackMode, AuxJackMode, AuxJackMode],
-  i2c_mode: I2cMode,
-) => {
+export const setGlobalConfig = async (dev: USBDevice, config: GlobalConfig) => {
   await sendMessage(dev, {
     tag: "SetGlobalConfig",
-    value: {
-      aux,
-      clock: {
-        clock_src,
-        ext_ppqn: 24,
-        reset_src,
-        internal_bpm: 120,
-      },
-      i2c_mode,
-      quantizer: {
-        key: { tag: "PentatonicMaj" },
-        tonic: { tag: "C" },
-      },
-      led_brightness: 150,
-    },
+    value: config,
   });
 };
+
+// export const setGlobalConfig = async (
+//   dev: USBDevice,
+//   clock_src: ClockSrc,
+//   reset_src: ClockSrc,
+//   aux: [AuxJackMode, AuxJackMode, AuxJackMode],
+//   i2c_mode: I2cMode,
+// ) => {
+//   await sendMessage(dev, {
+//     tag: "SetGlobalConfig",
+//     value: {
+//       aux,
+//       clock: {
+//         clock_src,
+//         ext_ppqn: 24,
+//         reset_src,
+//         internal_bpm: 120,
+//       },
+//       i2c_mode,
+//       quantizer: {
+//         key: { tag: "PentatonicMaj" },
+//         tonic: { tag: "C" },
+//       },
+//       led_brightness: 150,
+//     },
+//   });
+// };
 
 export const setLayout = async (dev: USBDevice, layout: AppLayout) => {
   const sendLayout: Layout = [
@@ -160,9 +167,17 @@ export const setAppParams = async (
 };
 
 export const getGlobalConfig = async (dev: USBDevice) => {
-  return sendAndReceive(dev, {
+  const response = await sendAndReceive(dev, {
     tag: "GetGlobalConfig",
   });
+
+  if (response.tag !== "GlobalConfig") {
+    throw new Error(
+      `Could not fetch app params. Unexpected repsonse tag: ${response.tag}`,
+    );
+  }
+
+  return response.value;
 };
 
 export const getLayout = async (

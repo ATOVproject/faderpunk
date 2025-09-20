@@ -1,21 +1,24 @@
 import { create } from "zustand";
+import { type GlobalConfig } from "@atov/fp-config";
 
 import type { AllApps, AppLayout } from "./utils/types";
 import { connectToFaderPunk } from "./utils/usb-protocol";
-import { getAllApps, getLayout } from "./utils/config";
+import { getAllApps, getGlobalConfig, getLayout } from "./utils/config";
 
 interface AppState {
-  usbDevice: USBDevice | undefined;
   apps: AllApps | undefined;
-  layout: AppLayout | undefined;
   connect: () => Promise<void>;
+  config: GlobalConfig | undefined;
+  layout: AppLayout | undefined;
   setLayout: (layout: AppLayout) => void;
+  usbDevice: USBDevice | undefined;
 }
 
 const initialState = {
-  usbDevice: undefined,
   apps: undefined,
+  config: undefined,
   layout: undefined,
+  usbDevice: undefined,
 };
 
 export const useStore = create<AppState>((set) => ({
@@ -23,13 +26,19 @@ export const useStore = create<AppState>((set) => ({
   connect: async () => {
     try {
       const device = await connectToFaderPunk();
-      const allApps = await getAllApps(device);
-      const appLayout = await getLayout(device, allApps);
-      set({ usbDevice: device, apps: allApps, layout: appLayout });
+      const apps = await getAllApps(device);
+      const layout = await getLayout(device, apps);
+      const config = await getGlobalConfig(device);
+      set({ apps, config, layout, usbDevice: device });
     } catch (error) {
       console.error("Failed to connect to device:", error);
       // Reset state on failure
-      set({ usbDevice: undefined, apps: undefined, layout: undefined });
+      set({
+        apps: undefined,
+        config: undefined,
+        layout: undefined,
+        usbDevice: undefined,
+      });
     }
   },
   setLayout: (layout) => set({ layout }),
