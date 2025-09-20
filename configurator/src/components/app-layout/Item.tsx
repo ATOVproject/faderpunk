@@ -6,6 +6,7 @@ import {
   type Dispatch,
   type SetStateAction,
   useCallback,
+  useState,
 } from "react";
 import { Tooltip } from "@heroui/tooltip";
 
@@ -29,18 +30,20 @@ const DeletePopover = ({ handleDeleteItem }: DeleteTooltipProps) => (
 );
 
 interface Props extends ComponentProps<"div"> {
-  item: AppSlot;
-  onDeleteItem(itemId: number): void;
   deletePopoverId: number | null;
+  isDragging?: boolean;
+  item: AppSlot;
   newAppId: number | null;
+  onDeleteItem(itemId: number): void;
   setDeletePopoverId: Dispatch<SetStateAction<number | null>>;
 }
 
 export const Item = forwardRef(
   (
     {
-      item,
       className,
+      isDragging,
+      item,
       onDeleteItem,
       newAppId,
       deletePopoverId,
@@ -49,6 +52,8 @@ export const Item = forwardRef(
     }: Props,
     ref: ForwardedRef<HTMLDivElement>,
   ) => {
+    const [isHovered, setIsHovered] = useState(false);
+
     const handleClick = useCallback(() => {
       if (item.id === deletePopoverId) {
         setDeletePopoverId(null);
@@ -92,7 +97,7 @@ export const Item = forwardRef(
           )
         }
         showArrow={true}
-        isOpen={showDeletePopover ? true : undefined}
+        isOpen={!isDragging && (isHovered || showDeletePopover)}
       >
         <div
           className={classNames(
@@ -106,6 +111,8 @@ export const Item = forwardRef(
           )}
           {...props}
           onClick={handleClick}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
           ref={ref}
         >
           <Icon className="h-8 w-8 text-black" name={pascalToKebab(app.icon)} />

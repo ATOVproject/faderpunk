@@ -6,10 +6,10 @@ import type { AppSlot } from "../../utils/types";
 import type { Dispatch, SetStateAction } from "react";
 
 interface Props {
-  item: AppSlot;
   deletePopoverId: number | null;
-  onDeleteItem(itemId: number): void;
+  item: AppSlot;
   newAppId: number | null;
+  onDeleteItem(itemId: number): void;
   setDeletePopoverId: Dispatch<SetStateAction<number | null>>;
 }
 
@@ -20,8 +20,14 @@ export const SortableItem = ({
   newAppId,
   setDeletePopoverId,
 }: Props) => {
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: item.id, disabled: !item.app });
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: item.id, disabled: !item.app });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -32,6 +38,7 @@ export const SortableItem = ({
     <Item
       ref={setNodeRef}
       style={style}
+      isDragging={isDragging}
       item={item}
       newAppId={newAppId}
       onDeleteItem={onDeleteItem}

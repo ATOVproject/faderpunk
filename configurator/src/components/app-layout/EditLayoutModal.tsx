@@ -264,6 +264,7 @@ export const EditLayoutModal = ({
                   onDeleteItem={handleDeleteItem}
                   deletePopoverId={deletePopoverId}
                   newAppId={newAppId}
+                  isDragging={true}
                   setDeletePopoverId={setDeletePopoverId}
                   item={activeItem}
                 />
