@@ -297,10 +297,10 @@ This project is licensed under the terms specified in the [LICENSE](LICENSE) fil
 
 - Built with ❤️ in Berlin by ATOV
 - UI and UX by the wonderful and extraordinarily talented [Leise St. Clair](https://github.com/estcla)
-- Some UI components based on HeroUI
-- Icon design by the ATOV design team
+- Icon design by [papernoise](https://www.papernoise.net)
 - log, lin and exp icons by [Robbe de Clerck](https://thenounproject.com/creator/declerckrobbe/)
 - MIDI icon by [onlinewebfonts](https://www.onlinewebfonts.com/icon/496520)
+- Some UI components based on HeroUI
 
 ---
 
