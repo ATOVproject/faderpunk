@@ -1,12 +1,16 @@
 import { Button, type ButtonProps } from "@heroui/button";
+import classNames from "classnames";
 
 export const ButtonPrimary = (props: ButtonProps) => {
   return (
     <Button
       radius="sm"
       color="primary"
-      className="px-8 py-2.5 text-sm font-semibold"
       {...props}
+      className={classNames(
+        "px-8 py-2.5 text-sm font-semibold",
+        props.className,
+      )}
     />
   );
 };
