@@ -35,9 +35,7 @@ export const ParamEnum = ({
       items={items}
       placeholder={name}
     >
-      {(item: Item) => (
-        <SelectItem className="text-white">{item.value}</SelectItem>
-      )}
+      {(item: Item) => <SelectItem>{item.value}</SelectItem>}
     </Select>
   );
 };
