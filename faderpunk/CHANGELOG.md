@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.0.0...faderpunk-v1.1.0) (2025-09-20)
+
+
+### Features
+
+* **configurator:** add saved confirmation ([9c12c2f](https://github.com/ATOVproject/faderpunk/commit/9c12c2fc404874721ec5caa75e622834d2cecd3e))
+* **configurator:** new app overview, get and set app params ([06bf6c3](https://github.com/ATOVproject/faderpunk/commit/06bf6c338f6abd07688952d88dcebd06dfadb8c6))
+
+
+### Bug Fixes
+
+* **apps:** fix sticky params race condition ([0d9d817](https://github.com/ATOVproject/faderpunk/commit/0d9d817e85a156683b03c243bce849dca56b6154))
+* **configurator:** retain storage and parameters when app is moved ([6ea3cab](https://github.com/ATOVproject/faderpunk/commit/6ea3cab3c1e5ae7a8213c57c10b453972b2b48c0))
+
 ## [1.0.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.9.0...faderpunk-v1.0.0) (2025-09-13)
 
 
