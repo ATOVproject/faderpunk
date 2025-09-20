@@ -10,10 +10,10 @@ import {
 } from "react";
 import { Tooltip } from "@heroui/tooltip";
 
-import { Icon } from "../Icon";
-import type { AppSlot } from "../../utils/types";
-import { COLORS_CLASSES, WIDTHS_CLASSES } from "../../utils/class-helpers";
-import { pascalToKebab } from "../../utils/utils";
+import { Icon } from "./Icon";
+import type { AppSlot } from "../utils/types";
+import { COLORS_CLASSES, WIDTHS_CLASSES } from "../utils/class-helpers";
+import { pascalToKebab } from "../utils/utils";
 
 interface DeleteTooltipProps {
   handleDeleteItem(): void;
