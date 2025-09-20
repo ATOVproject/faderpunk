@@ -8,7 +8,7 @@ import {
   type Waveform,
 } from "@atov/fp-config";
 
-import type { App } from "./types";
+import type { AllApps, App, AppLayout } from "./types";
 
 export const kebabToPascal = (str: string): string => {
   if (!str) return "";
@@ -121,4 +121,119 @@ export const transformParamValues = (
   });
 
   return result;
+};
+
+export const groupAndSortApps = (allApps: AllApps): App[][] => {
+  return Array.from(
+    Array.from(allApps.values())
+      .reduce((groups, app) => {
+        const existing = groups.get(app.channels) || [];
+        existing.push(app);
+        groups.set(app.channels, existing);
+        return groups;
+      }, new Map<bigint, App[]>())
+      .entries(),
+  )
+    .sort(([channelsA], [channelsB]) => {
+      // Sort by channels (ascending)
+      if (channelsA < channelsB) return -1;
+      if (channelsA > channelsB) return 1;
+      return 0;
+    })
+    .map(([, apps]) => apps.sort((a, b) => a.name.localeCompare(b.name)));
+};
+
+export const recalculateStartChannels = (layout: AppLayout) => {
+  let runningChannel = 0;
+  return layout.map((item) => {
+    const newItem = { ...item, startChannel: runningChannel };
+    runningChannel += Number(item.app?.channels) || 1;
+    return newItem;
+  });
+};
+
+const findFreeSlot = (layout: AppLayout, requiredChannels: number) => {
+  if (requiredChannels <= 0) {
+    return null;
+  }
+
+  const emptySlots = layout
+    .filter((slot) => slot.app === null)
+    .sort((a, b) => a.startChannel - b.startChannel);
+
+  if (emptySlots.length < requiredChannels) {
+    return null;
+  }
+
+  for (let i = 0; i <= emptySlots.length - requiredChannels; i++) {
+    let isContiguous = true;
+    for (let j = 0; j < requiredChannels - 1; j++) {
+      if (
+        emptySlots[i + j].startChannel + 1 !==
+        emptySlots[i + j + 1].startChannel
+      ) {
+        isContiguous = false;
+        break;
+      }
+    }
+
+    if (isContiguous) {
+      return emptySlots[i].startChannel;
+    }
+  }
+
+  return null;
+};
+
+export const addAppToLayout = (layout: AppLayout, appToAdd: App) => {
+  const requiredChannels = Number(appToAdd.channels);
+  const startChannel = findFreeSlot(layout, requiredChannels);
+
+  if (startChannel === null) {
+    return { success: false, newLayout: layout, newId: null };
+  }
+
+  const usedIds = new Set(
+    layout.filter((item) => item.app).map((item) => item.id),
+  );
+
+  let newId = -1;
+  for (let i = 0; i < 16; i++) {
+    if (!usedIds.has(i)) {
+      newId = i;
+      break;
+    }
+  }
+
+  if (newId === -1) {
+    return { success: false, newLayout: layout, newId: null };
+  }
+
+  const slotsToReplace = layout.filter(
+    (item) =>
+      !item.app &&
+      item.startChannel >= startChannel &&
+      item.startChannel < startChannel + requiredChannels,
+  );
+
+  const newAppItem = {
+    id: newId,
+    app: appToAdd,
+    startChannel: startChannel,
+  };
+
+  const slotsToReplaceIds = new Set(slotsToReplace.map((s) => s.id));
+  const layoutWithoutReplacedSlots = layout.filter(
+    (item) => !slotsToReplaceIds.has(item.id),
+  );
+
+  const newLayoutWithApp = [...layoutWithoutReplacedSlots, newAppItem].sort(
+    (a, b) => a.startChannel - b.startChannel,
+  );
+
+  return {
+    success: true,
+    newLayout: recalculateStartChannels(newLayoutWithApp),
+    newId,
+  };
 };

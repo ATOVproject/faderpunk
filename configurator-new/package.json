@@ -19,6 +19,7 @@
     "@heroui/skeleton": "^2.2.16",
     "@heroui/switch": "^2.2.23",
     "@heroui/system": "^2.4.20",
+    "@heroui/tabs": "^2.2.23",
     "@heroui/theme": "^2.4.20",
     "@heroui/tooltip": "^2.2.23",
     "@types/w3c-web-usb": "^1.0.12",

@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import classNames from "classnames";
 import { Button } from "@heroui/button";
 import { ModalBody, ModalFooter, ModalHeader } from "@heroui/modal";
 import {
@@ -27,11 +28,18 @@ import { ButtonPrimary, ButtonSecondary } from "../Button";
 import { Icon } from "../Icon";
 import { setLayout } from "../../utils/config";
 import { useStore } from "../../store";
+import { COLORS_CLASSES } from "../../utils/class-helpers";
+import {
+  addAppToLayout,
+  pascalToKebab,
+  recalculateStartChannels,
+} from "../../utils/utils";
 
 interface Props {
   initialLayout: AppLayout;
   onSave: (layout: AppLayout) => void;
   onClose: () => void;
+  modalApp: number | null;
 }
 
 const GridBackground = () => {
@@ -51,10 +59,16 @@ const GridBackground = () => {
   );
 };
 
-export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
-  const { usbDevice } = useStore();
+export const EditLayoutModal = ({
+  initialLayout,
+  onSave,
+  onClose,
+  modalApp,
+}: Props) => {
+  const { usbDevice, apps } = useStore();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [layout, setItems] = useState<AppLayout>(initialLayout);
+  const [newAppId, setNewAppId] = useState<number | null>(null);
   const [deletePopoverId, setDeletePopoverId] = useState<number | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -83,15 +97,7 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
 
         const reorderedItems = arrayMove(items, oldIndex, newIndex);
 
-        let runningChannel = 0;
-        const finalItems = reorderedItems.map((item) => {
-          const newItem = { ...item, startChannel: runningChannel };
-          // The next item's start channel is the current one's start plus its channel count
-          runningChannel += Number(item.app?.channels) || 1;
-          return newItem;
-        });
-
-        return finalItems;
+        return recalculateStartChannels(reorderedItems);
       });
     }
     setActiveId(null);
@@ -139,13 +145,28 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
   }, [usbDevice, layout, onSave]);
 
   const activeItem = !!activeId && layout.find(({ id }) => id == activeId);
+  const appToAdd =
+    apps && modalApp && modalApp >= 0 ? apps.get(modalApp) : undefined;
+
+  useEffect(() => {
+    if (!appToAdd || modalApp === null || newAppId) return;
+
+    const { success, newLayout, newId } = addAppToLayout(layout, appToAdd);
+
+    if (success) {
+      setItems(newLayout);
+      setNewAppId(newId);
+    }
+  }, [layout, newAppId, appToAdd, modalApp]);
+
+  const cantAddError = appToAdd && !newAppId;
 
   return (
     <>
       <ModalHeader className="px-10 pt-10 pb-0">
         <div className="flex w-full justify-between">
           <span className="text-yellow-fp text-lg font-bold uppercase">
-            Edit Layout
+            {appToAdd ? "Add App" : "Edit Layout"}
           </span>
           <Button
             isIconOnly
@@ -158,6 +179,58 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
       </ModalHeader>
       <ModalBody className="px-10">
         <div className="border-default-100 border-t-3 border-b-3 py-10">
+          {appToAdd ? (
+            <div className="mb-12 flex items-start gap-x-4">
+              <div
+                className={classNames(
+                  "rounded-sm p-2",
+                  COLORS_CLASSES[appToAdd.color],
+                )}
+              >
+                <Icon
+                  className="h-12 w-12 text-black"
+                  name={pascalToKebab(appToAdd.icon)}
+                />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-yellow-fp text-sm font-bold uppercase">
+                  App
+                </h3>
+                <div className="text-lg font-bold">{appToAdd.name}</div>
+                <div className="text-sm font-medium">
+                  {appToAdd.description}
+                </div>
+              </div>
+              <div
+                className={classNames({
+                  "flex-1": appToAdd.paramCount <= 4,
+                  "flex-2": appToAdd.paramCount > 4,
+                })}
+              >
+                <h3 className="text-yellow-fp text-sm font-bold uppercase">
+                  Parameters
+                </h3>
+                <ul
+                  className={classNames("grid text-base/8", {
+                    "grid-cols-1": appToAdd.paramCount <= 4,
+                    "grid-cols-2": appToAdd.paramCount > 4,
+                  })}
+                >
+                  {appToAdd.params.map((param, idx) => (
+                    <li key={idx}>
+                      {param.tag !== "None" && param.value.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-yellow-fp text-sm font-bold uppercase">
+                  Channels
+                </h3>
+                <div className="text-base">{Number(appToAdd.channels)}</div>
+              </div>
+            </div>
+          ) : null}
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -171,17 +244,16 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
               <div className="relative mb-10">
                 <GridBackground />
                 <div className="mr-1.5 ml-1.5 grid grid-cols-16 gap-3">
-                  {layout
-                    .filter((item) => item.app !== undefined)
-                    .map((item) => (
-                      <SortableItem
-                        onDeleteItem={handleDeleteItem}
-                        deletePopoverId={deletePopoverId}
-                        setDeletePopoverId={setDeletePopoverId}
-                        item={item}
-                        key={item.id}
-                      />
-                    ))}
+                  {layout.map((item) => (
+                    <SortableItem
+                      onDeleteItem={handleDeleteItem}
+                      deletePopoverId={deletePopoverId}
+                      setDeletePopoverId={setDeletePopoverId}
+                      newAppId={newAppId}
+                      item={item}
+                      key={item.id}
+                    />
+                  ))}
                 </div>
               </div>
             </SortableContext>
@@ -191,6 +263,7 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
                   className="opacity-60 shadow-md"
                   onDeleteItem={handleDeleteItem}
                   deletePopoverId={deletePopoverId}
+                  newAppId={newAppId}
                   setDeletePopoverId={setDeletePopoverId}
                   item={activeItem}
                 />
@@ -199,16 +272,25 @@ export const EditLayoutModal = ({ initialLayout, onSave, onClose }: Props) => {
           </DndContext>
         </div>
       </ModalBody>
-      <ModalFooter>
-        <ButtonPrimary
-          onPress={() => {
-            handleSave();
-            onClose();
-          }}
-        >
-          Save
-        </ButtonPrimary>
-        <ButtonSecondary onPress={onClose}>Cancel</ButtonSecondary>
+      <ModalFooter className="flex justify-between px-10">
+        {cantAddError && (
+          <span className="text-danger">
+            I can't find space for the app. Try to remove apps or move them
+            around.
+          </span>
+        )}
+        <span className="ml-auto">
+          <ButtonPrimary
+            isDisabled={cantAddError}
+            onPress={() => {
+              handleSave();
+              onClose();
+            }}
+          >
+            Save
+          </ButtonPrimary>
+          <ButtonSecondary onPress={onClose}>Cancel</ButtonSecondary>
+        </span>
       </ModalFooter>
     </>
   );
