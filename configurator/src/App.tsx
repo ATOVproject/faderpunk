@@ -7,9 +7,10 @@ import { Layout } from "./components/Layout";
 import { useStore } from "./store";
 import { DeviceTab } from "./components/DeviceTab";
 import { AppsTab } from "./components/AppsTab";
+import { SettingsTab } from "./components/SettingsTab";
 
 const App = () => {
-  const { usbDevice, layout, apps, connect } = useStore();
+  const { apps, config, layout, usbDevice, connect } = useStore();
   const [modalApp, setModalApp] = useState<number | null>(null);
 
   if (!usbDevice) {
@@ -52,7 +53,7 @@ const App = () => {
           <AppsTab apps={apps} layout={layout} setModalApp={setModalApp} />
         </Tab>
         <Tab key="settings" title="Settings">
-          <div>Settings</div>
+          <SettingsTab config={config} />
         </Tab>
       </Tabs>
 

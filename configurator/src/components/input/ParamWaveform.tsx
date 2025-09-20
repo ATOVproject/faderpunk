@@ -44,8 +44,7 @@ export const ParamWaveform = ({
     >
       {(item: Item) => (
         <SelectItem
-          className="text-white"
-          startContent={<Icon name={item.icon} />}
+          startContent={<Icon className="h-5 w-5" name={item.icon} />}
         >
           {item.value}
         </SelectItem>

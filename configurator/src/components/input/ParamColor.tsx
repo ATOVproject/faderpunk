@@ -39,10 +39,9 @@ export const ParamColor = ({
     >
       {(item: Item) => (
         <SelectItem
-          className="text-white"
           startContent={
             <span
-              className={classNames("h-6", "w-6", COLORS_CLASSES[item.key])}
+              className={classNames("h-5", "w-5", COLORS_CLASSES[item.key])}
             />
           }
         >

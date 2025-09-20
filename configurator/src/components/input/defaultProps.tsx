@@ -22,7 +22,8 @@ export const selectProps = {
 
 export const inputProps = {
   className: "max-w-40",
-  labelPlacement: "outside-top",
+  labelPlacement: "outside",
+  disableAnimation: true,
   classNames: {
     label: "font-medium",
   },
