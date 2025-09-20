@@ -180,7 +180,7 @@ pub async fn run(
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
-    let resolution = [384, 184, 92, 48, 24, 16, 12, 8, 6, 4, 3, 2];
+    let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
     let mut clkn = 0;
 
