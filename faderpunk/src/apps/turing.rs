@@ -175,8 +175,6 @@ pub async fn run(
 
     let latched_glob = app.make_global(true);
 
-    let base_note = 48;
-
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
     leds.set(0, Led::Button, led_color, Brightness::Lower);
