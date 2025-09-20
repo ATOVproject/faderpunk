@@ -9,6 +9,7 @@ interface Props {
   item: AppSlot;
   deletePopoverId: number | null;
   onDeleteItem(itemId: number): void;
+  newAppId: number | null;
   setDeletePopoverId: Dispatch<SetStateAction<number | null>>;
 }
 
@@ -16,6 +17,7 @@ export const SortableItem = ({
   item,
   onDeleteItem,
   deletePopoverId,
+  newAppId,
   setDeletePopoverId,
 }: Props) => {
   const { attributes, listeners, setNodeRef, transform, transition } =
@@ -31,6 +33,7 @@ export const SortableItem = ({
       ref={setNodeRef}
       style={style}
       item={item}
+      newAppId={newAppId}
       onDeleteItem={onDeleteItem}
       deletePopoverId={deletePopoverId}
       setDeletePopoverId={setDeletePopoverId}

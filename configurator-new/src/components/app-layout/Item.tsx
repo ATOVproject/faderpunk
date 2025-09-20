@@ -32,6 +32,7 @@ interface Props extends ComponentProps<"div"> {
   item: AppSlot;
   onDeleteItem(itemId: number): void;
   deletePopoverId: number | null;
+  newAppId: number | null;
   setDeletePopoverId: Dispatch<SetStateAction<number | null>>;
 }
 
@@ -41,6 +42,7 @@ export const Item = forwardRef(
       item,
       className,
       onDeleteItem,
+      newAppId,
       deletePopoverId,
       setDeletePopoverId,
       ...props
@@ -73,7 +75,7 @@ export const Item = forwardRef(
 
     const { app, id } = item;
 
-    const showDeletePopover = deletePopoverId === id;
+    const showDeletePopover = deletePopoverId === id && newAppId !== id;
 
     return (
       <Tooltip
@@ -98,6 +100,9 @@ export const Item = forwardRef(
             className,
             COLORS_CLASSES[app.color],
             WIDTHS_CLASSES[Number(app.channels)],
+            {
+              "shadow-[0px_0px_16px_2px_#FFFFFFCC]": newAppId === id,
+            },
           )}
           {...props}
           onClick={handleClick}
