@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.6.0...libfp-v0.7.0) (2025-09-20)
+
+
+### Features
+
+* **configurator:** new app overview, get and set app params ([06bf6c3](https://github.com/ATOVproject/faderpunk/commit/06bf6c338f6abd07688952d88dcebd06dfadb8c6))
+
+
+### Bug Fixes
+
+* **configurator:** retain storage and parameters when app is moved ([6ea3cab](https://github.com/ATOVproject/faderpunk/commit/6ea3cab3c1e5ae7a8213c57c10b453972b2b48c0))
+
 ## [0.6.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.5.0...libfp-v0.6.0) (2025-09-13)
 
 
