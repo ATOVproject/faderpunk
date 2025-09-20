@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.0.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.4.0...configurator-v1.0.0) (2025-09-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **configurator:** release configurator 1.0
+
+### Features
+
+* **configurator:** connect page, minor additions ([1cdc8fa](https://github.com/ATOVproject/faderpunk/commit/1cdc8fa2aa7c5317e34098bbccf467846a3ef4a7))
+* **configurator:** release configurator 1.0 ([92e3091](https://github.com/ATOVproject/faderpunk/commit/92e30914e5ff6fb1166a851732133617dbcc89ac))
+* **configurator:** remove old configurator ([b7a6e8d](https://github.com/ATOVproject/faderpunk/commit/b7a6e8dbf9178e843c263c4dd770563a45285b53))
+* **configurator:** save global settings ([f4327d5](https://github.com/ATOVproject/faderpunk/commit/f4327d5cf02dc863f2a128905cf3f416ac6e40ce))
+
+
+### Bug Fixes
+
+* **configurator:** disable popover when dragging in layout ([63dc2ba](https://github.com/ATOVproject/faderpunk/commit/63dc2bae4d2ace8bd0af23505d5678ba0ef9c79e))
+* **configurator:** properly check activeId against null ([90fb701](https://github.com/ATOVproject/faderpunk/commit/90fb701aa63a5194b88faac822afe6193f6b051a))
+
 ## [0.2.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.2.0...configurator-v0.2.1) (2025-08-21)
 
 
