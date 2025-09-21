@@ -182,7 +182,7 @@ pub async fn run(
     let fut2 = async {
         loop {
             buttons.wait_for_any_down().await;
-            if buttons.is_shift_pressed() {
+            if !buttons.is_shift_pressed() {
                 let muted = glob_muted.toggle();
 
                 storage
