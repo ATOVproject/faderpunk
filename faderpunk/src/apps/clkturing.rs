@@ -195,6 +195,14 @@ pub async fn run(
 
                 let rotation = rotate_select_bit(register, prob, rand, length);
                 register = rotation.0;
+                storage
+                    .modify_and_save(
+                        |s| {
+                            s.register_saved = register;
+                        },
+                        None,
+                    )
+                    .await;
 
                 //leds.set(0, Led::Button, led_color.into(), 100 * rotation.1 as u8);
 
