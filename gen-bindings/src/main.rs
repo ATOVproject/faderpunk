@@ -31,6 +31,7 @@ fn main() {
             libfp::Param,
             libfp::QuantizerConfig,
             libfp::Range,
+            libfp::ResetSrc,
             libfp::Value,
             libfp::Waveform
         ),

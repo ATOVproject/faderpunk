@@ -6,6 +6,7 @@ import type {
   I2cMode,
   Key,
   Note,
+  ResetSrc,
 } from "@atov/fp-config";
 import { FormProvider, useForm, type SubmitHandler } from "react-hook-form";
 import { useCallback, useState } from "react";
@@ -35,7 +36,7 @@ export interface Inputs {
   i2cMode: I2cMode["tag"];
   internalBpm: number;
   ledBrightness: number;
-  resetSrc: ClockSrc["tag"];
+  resetSrc: ResetSrc["tag"];
   quantizerKey: Key["tag"];
   quantizerTonic: Note["tag"];
 }

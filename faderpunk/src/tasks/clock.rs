@@ -90,15 +90,19 @@ pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
 
 async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
-    let mut current_config = config_receiver.get().await;
+    let config = config_receiver.get().await;
+    let mut current_clock_src = config.clock.clock_src;
+    let mut current_reset_src: ClockSrc = config.clock.reset_src.into();
     let clock_in_sender = CLOCK_IN_CHANNEL.sender();
 
     loop {
-        let should_be_active = current_config.clock.clock_src == clock_src
-            || current_config.clock.reset_src == clock_src;
+        // Cast into ClockSrc
+        let should_be_active = current_clock_src == clock_src || current_reset_src == clock_src;
 
         if !should_be_active {
-            current_config = config_receiver.changed().await;
+            let new_config = config_receiver.changed().await;
+            current_clock_src = new_config.clock.clock_src;
+            current_reset_src = new_config.clock.reset_src.into();
             // Re-check active condition with new config
             continue;
         }
@@ -108,7 +112,7 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
                 // Pin event happened.
                 pin.wait_for_low().await;
 
-                let clock_event = if current_config.clock.reset_src == clock_src {
+                let clock_event = if current_reset_src == clock_src {
                     ClockInEvent::Reset(clock_src)
                 } else {
                     ClockInEvent::Tick(clock_src)
@@ -118,7 +122,8 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
             }
             Either::Second(new_config) => {
                 // Config change happened.
-                current_config = new_config;
+                current_clock_src = new_config.clock.clock_src;
+                current_reset_src = new_config.clock.reset_src.into();
             }
         }
     }
@@ -172,18 +177,15 @@ async fn run_clock_gatekeeper() {
     loop {
         match select(clock_in_receiver.receive(), config_receiver.changed()).await {
             Either::First(event) => {
-                let (is_event_for_tick, is_event_for_reset, source) = match event {
+                let (is_active, source) = match event {
                     ClockInEvent::Tick(s)
                     | ClockInEvent::Start(s)
                     | ClockInEvent::Stop(s)
-                    | ClockInEvent::Continue(s) => (true, false, s),
-                    ClockInEvent::Reset(s) => (false, true, s),
+                    | ClockInEvent::Continue(s) => (s == config.clock.clock_src, s),
+                    ClockInEvent::Reset(s) => (s == config.clock.reset_src.into(), s),
                 };
 
-                let is_active_clock_source = is_event_for_tick && source == config.clock.clock_src;
-                let is_active_reset_source = is_event_for_reset && source == config.clock.reset_src;
-
-                if !is_active_clock_source && !is_active_reset_source {
+                if !is_active {
                     continue;
                 }
 
