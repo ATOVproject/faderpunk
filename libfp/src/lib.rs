@@ -161,6 +161,26 @@ pub enum ClockSrc {
     MidiUsb,
 }
 
+impl From<ResetSrc> for ClockSrc {
+    fn from(value: ResetSrc) -> Self {
+        match value {
+            ResetSrc::None => ClockSrc::None,
+            ResetSrc::Atom => ClockSrc::Atom,
+            ResetSrc::Meteor => ClockSrc::Meteor,
+            ResetSrc::Cube => ClockSrc::Cube,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[repr(u8)]
+pub enum ResetSrc {
+    None,
+    Atom,
+    Meteor,
+    Cube,
+}
+
 #[derive(Clone, Serialize, Deserialize, PostcardBindings)]
 #[repr(u8)]
 pub enum I2cMode {
@@ -266,7 +286,7 @@ impl Key {
 pub struct ClockConfig {
     pub clock_src: ClockSrc,
     pub ext_ppqn: u8,
-    pub reset_src: ClockSrc,
+    pub reset_src: ResetSrc,
     pub internal_bpm: f32,
 }
 
@@ -276,7 +296,7 @@ impl ClockConfig {
         Self {
             ext_ppqn: 24,
             clock_src: ClockSrc::Internal,
-            reset_src: ClockSrc::None,
+            reset_src: ResetSrc::None,
             internal_bpm: 120.0,
         }
     }
@@ -364,13 +384,13 @@ impl GlobalConfig {
             _ => {}
         }
         match self.clock.reset_src {
-            ClockSrc::Atom => {
+            ResetSrc::Atom => {
                 self.aux[0] = AuxJackMode::None;
             }
-            ClockSrc::Meteor => {
+            ResetSrc::Meteor => {
                 self.aux[1] = AuxJackMode::None;
             }
-            ClockSrc::Cube => {
+            ResetSrc::Cube => {
                 self.aux[2] = AuxJackMode::None;
             }
             _ => {}

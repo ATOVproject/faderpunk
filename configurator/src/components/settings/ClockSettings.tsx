@@ -1,4 +1,4 @@
-import type { ClockSrc } from "@atov/fp-config";
+import type { ClockSrc, ResetSrc } from "@atov/fp-config";
 import { Select, SelectItem } from "@heroui/select";
 import { Input } from "@heroui/input";
 import { useFormContext } from "react-hook-form";
@@ -10,6 +10,13 @@ import type { Inputs } from "../SettingsTab";
 
 interface ClockSrcItem {
   key: ClockSrc["tag"];
+  value: string;
+  icon?: string;
+  iconClass?: string;
+}
+
+interface ResetSrcItems {
+  key: ResetSrc["tag"];
   value: string;
   icon?: string;
   iconClass?: string;
@@ -28,6 +35,18 @@ const clockSrcItems: ClockSrcItem[] = [
   { key: "Internal", value: "Internal", icon: "timer" },
   { key: "MidiIn", value: "MIDI In", icon: "midi" },
   { key: "MidiUsb", value: "MIDI USB", icon: "usb" },
+];
+
+const resetSrcItems: ResetSrcItems[] = [
+  { key: "None", value: "None" },
+  { key: "Atom", value: "Atom", icon: "atom", iconClass: "text-cyan-fp" },
+  {
+    key: "Meteor",
+    value: "Meteor",
+    icon: "meteor",
+    iconClass: "text-yellow-fp",
+  },
+  { key: "Cube", value: "Cube", icon: "cube", iconClass: "text-pink-fp" },
 ];
 
 export const ClockSettings = () => {
@@ -63,7 +82,7 @@ export const ClockSettings = () => {
           {...register("resetSrc")}
           {...selectProps}
           label="Reset source"
-          items={clockSrcItems}
+          items={resetSrcItems}
           placeholder="Reset source"
         >
           {(item) => (
