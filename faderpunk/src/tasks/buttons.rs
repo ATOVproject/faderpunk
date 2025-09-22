@@ -13,7 +13,7 @@ use portable_atomic::{AtomicBool, Ordering};
 
 use crate::app::Led;
 use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
-use crate::tasks::clock::{ClockCmd, CLOCK_CMD_CHANNEL};
+use crate::tasks::clock::{TransportCmd, TRANSPORT_CMD_CHANNEL};
 
 use super::leds::{set_led_overlay_mode, LedMode};
 
@@ -165,7 +165,7 @@ async fn process_modifier_button(i: usize, mut button: Input<'_>) {
 
         // Start clock if shift is pressed while scene is held
         if i == 17 && BUTTON_PRESSED[16].load(Ordering::Relaxed) {
-            CLOCK_CMD_CHANNEL.send(ClockCmd::Toggle).await;
+            TRANSPORT_CMD_CHANNEL.send(TransportCmd::Toggle).await;
         } else {
             // Do not register the button press
             BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
