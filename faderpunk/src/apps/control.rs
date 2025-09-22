@@ -191,6 +191,7 @@ pub async fn run(
         let mut main_layer_value = fader.get_value();
         let mut fad_val = 0;
         let mut out = 0;
+        let mut last_out = 0;
 
         loop {
             app.delay_millis(1).await;
@@ -247,7 +248,11 @@ pub async fn run(
                 ((val as u32 * att_layer_value as u32) / 4095) as u16
             };
             out = slew_2(out, attenuated, 3);
+            if last_out / 32 != out / 32 {
+                midi.send_cc(midi_cc as u8, out).await;
+            }
             jack.set_value(out);
+            last_out = out;
 
             // Update LEDs
             match latch_active_layer {
@@ -328,7 +333,7 @@ pub async fn run(
                 LatchLayer::Main => {
                     let out = output_glob.get();
                     // Send MIDI & I2C messages
-                    midi.send_cc(midi_cc as u8, out).await;
+
                     i2c.send_fader_value(0, out).await;
                 }
                 LatchLayer::Alt => {
