@@ -302,6 +302,6 @@ fn get_color_for(wave: Waveform) -> Color {
         Waveform::Triangle => Color::Pink,
         Waveform::Saw => Color::Cyan,
         Waveform::SawInv => Color::Red,
-        Waveform::Rect => Color::White,
+        Waveform::Square => Color::White,
     }
 }

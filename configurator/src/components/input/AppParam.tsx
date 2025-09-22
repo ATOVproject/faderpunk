@@ -2,7 +2,7 @@ import { type UseFormRegister, type FieldValues } from "react-hook-form";
 import { type Param } from "@atov/fp-config";
 
 import { ParamI32 } from "./ParamI32.tsx";
-import { ParamFloat } from "./ParamFloat.tsx";
+import { ParamF32 } from "./ParamF32.tsx";
 import { ParamBool } from "./ParamBool.tsx";
 import { ParamNote } from "./ParamNote.tsx";
 import { ParamCurve } from "./ParamCurve.tsx";
@@ -35,9 +35,9 @@ export const AppParam = ({
         />
       );
     }
-    case "Float": {
+    case "f32": {
       return (
-        <ParamFloat
+        <ParamF32
           {...param.value}
           defaultValue={defaultValue as string}
           paramIndex={paramIndex}
@@ -45,7 +45,7 @@ export const AppParam = ({
         />
       );
     }
-    case "Bool": {
+    case "bool": {
       return (
         <ParamBool
           {...param.value}
