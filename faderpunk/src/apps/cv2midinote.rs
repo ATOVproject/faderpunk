@@ -22,7 +22,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Orange,
     AppIcon::NoteBox,
 )
-.add_param(Param::Bool { name: "Bipolar" })
+.add_param(Param::bool { name: "Bipolar" })
 .add_param(Param::i32 {
     name: "MIDI Channel",
     min: 1,

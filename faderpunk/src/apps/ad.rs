@@ -23,7 +23,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Yellow,
     AppIcon::AdEnv,
 )
-.add_param(Param::Bool { name: "Use MIDI" })
+.add_param(Param::bool { name: "Use MIDI" })
 .add_param(Param::i32 {
     name: "MIDI Channel",
     min: 1,

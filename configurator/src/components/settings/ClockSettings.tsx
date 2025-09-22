@@ -84,10 +84,12 @@ export const ClockSettings = () => {
         <Input
           {...register("internalBpm", { valueAsNumber: true })}
           {...inputProps}
-          min={45}
-          max={300}
           label="Internal BPM"
           type="number"
+          inputMode="decimal"
+          min={45.0}
+          max={300.0}
+          step="any"
         />
       </div>
     </div>

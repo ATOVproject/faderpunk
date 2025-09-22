@@ -5,8 +5,8 @@ import { inputProps } from "./defaultProps";
 
 interface Props {
   paramIndex: number;
-  min: string | number;
-  max: string | number;
+  min: number;
+  max: number;
   name: string;
   defaultValue: string;
   register: UseFormRegister<FieldValues>;

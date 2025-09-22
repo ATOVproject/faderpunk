@@ -16,7 +16,7 @@ pub mod types;
 pub mod utils;
 
 use constants::{
-    CURVE_EXP, CURVE_LOG, WAVEFORM_RECT, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE,
+    CURVE_EXP, CURVE_LOG, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE, WAVEFORM_SQUARE,
     WAVEFORM_TRIANGLE,
 };
 use smart_leds::RGB8;
@@ -420,8 +420,7 @@ pub enum Waveform {
     Triangle,
     Saw,
     SawInv,
-    // TODO: v2 Rename to Square
-    Rect,
+    Square,
     Sine,
 }
 
@@ -433,7 +432,7 @@ impl Waveform {
             Waveform::Triangle => WAVEFORM_TRIANGLE[i],
             Waveform::Saw => WAVEFORM_SAW[i],
             Waveform::SawInv => WAVEFORM_SAW_INV[i],
-            Waveform::Rect => WAVEFORM_RECT[i],
+            Waveform::Square => WAVEFORM_SQUARE[i],
         }
     }
 
@@ -442,8 +441,8 @@ impl Waveform {
             Waveform::Sine => Waveform::Triangle,
             Waveform::Triangle => Waveform::Saw,
             Waveform::Saw => Waveform::SawInv,
-            Waveform::SawInv => Waveform::Rect,
-            Waveform::Rect => Waveform::Sine,
+            Waveform::SawInv => Waveform::Square,
+            Waveform::Square => Waveform::Sine,
         }
     }
 }
@@ -588,12 +587,12 @@ pub enum Param {
         min: i32,
         max: i32,
     },
-    // TODO: v2 rename to f32, add min, max
-    Float {
+    f32 {
         name: &'static str,
+        min: f32,
+        max: f32,
     },
-    // TODO: v2 rename to bool
-    Bool {
+    bool {
         name: &'static str,
     },
     Enum {
@@ -669,6 +668,12 @@ impl From<Note> for Value {
 impl From<i32> for Value {
     fn from(value: i32) -> Self {
         Value::i32(value)
+    }
+}
+
+impl From<f32> for Value {
+    fn from(value: f32) -> Self {
+        Value::f32(value)
     }
 }
 
