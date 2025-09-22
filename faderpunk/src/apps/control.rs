@@ -41,7 +41,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     min: 1,
     max: 128,
 })
-.add_param(Param::Bool {
+.add_param(Param::bool {
     name: "Mute on release",
 })
 .add_param(Param::Color {
