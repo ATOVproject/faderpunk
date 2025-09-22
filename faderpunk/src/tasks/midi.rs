@@ -208,6 +208,16 @@ pub async fn start_midi_loops<'a>(
                                             .send(ClockInEvent::Start(ClockSrc::MidiUsb))
                                             .await;
                                     }
+                                    SystemRealtime::Continue => {
+                                        clock_in_sender
+                                            .send(ClockInEvent::Continue(ClockSrc::MidiUsb))
+                                            .await;
+                                    }
+                                    SystemRealtime::Reset => {
+                                        clock_in_sender
+                                            .send(ClockInEvent::Reset(ClockSrc::MidiUsb))
+                                            .await;
+                                    }
                                     SystemRealtime::Stop => {
                                         clock_in_sender
                                             .send(ClockInEvent::Stop(ClockSrc::MidiUsb))
@@ -256,6 +266,16 @@ pub async fn start_midi_loops<'a>(
                                 SystemRealtime::Stop => {
                                     clock_in_sender
                                         .send(ClockInEvent::Stop(ClockSrc::MidiIn))
+                                        .await;
+                                }
+                                SystemRealtime::Continue => {
+                                    clock_in_sender
+                                        .send(ClockInEvent::Continue(ClockSrc::MidiIn))
+                                        .await;
+                                }
+                                SystemRealtime::Reset => {
+                                    clock_in_sender
+                                        .send(ClockInEvent::Reset(ClockSrc::MidiIn))
                                         .await;
                                 }
                                 _ => {}

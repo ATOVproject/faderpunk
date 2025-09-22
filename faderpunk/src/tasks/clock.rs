@@ -55,7 +55,7 @@ pub static CLOCK_PUBSUB: PubSubChannel<
 > = PubSubChannel::new();
 
 pub static CLOCK_IN_CHANNEL: Channel<ThreadModeRawMutex, ClockInEvent, 16> = Channel::new();
-pub static CLOCK_CMD_CHANNEL: Channel<ThreadModeRawMutex, ClockCmd, 8> = Channel::new();
+pub static TRANSPORT_CMD_CHANNEL: Channel<ThreadModeRawMutex, TransportCmd, 8> = Channel::new();
 
 #[derive(Clone, Copy)]
 pub enum ClockInEvent {
@@ -63,10 +63,11 @@ pub enum ClockInEvent {
     Start(ClockSrc),
     Stop(ClockSrc),
     Reset(ClockSrc),
+    Continue(ClockSrc),
 }
 
 #[derive(Clone, Copy)]
-pub enum ClockCmd {
+pub enum TransportCmd {
     Start,
     Stop,
     Toggle,
@@ -76,6 +77,7 @@ pub enum ClockCmd {
 pub enum ClockEvent {
     Tick,
     Start,
+    Stop,
     Reset,
 }
 
@@ -89,7 +91,7 @@ pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
 async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
     let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
     let mut current_config = config_receiver.get().await;
-    let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
+    let clock_in_sender = CLOCK_IN_CHANNEL.sender();
 
     loop {
         let should_be_active = current_config.clock.clock_src == clock_src
@@ -107,12 +109,12 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
                 pin.wait_for_low().await;
 
                 let clock_event = if current_config.clock.reset_src == clock_src {
-                    ClockEvent::Reset
+                    ClockInEvent::Reset(clock_src)
                 } else {
-                    ClockEvent::Tick
+                    ClockInEvent::Tick(clock_src)
                 };
 
-                clock_publisher.publish(clock_event).await;
+                clock_in_sender.send(clock_event).await;
             }
             Either::Second(new_config) => {
                 // Config change happened.
@@ -171,9 +173,10 @@ async fn run_clock_gatekeeper() {
         match select(clock_in_receiver.receive(), config_receiver.changed()).await {
             Either::First(event) => {
                 let (is_event_for_tick, is_event_for_reset, source) = match event {
-                    ClockInEvent::Tick(s) | ClockInEvent::Start(s) | ClockInEvent::Stop(s) => {
-                        (true, false, s)
-                    }
+                    ClockInEvent::Tick(s)
+                    | ClockInEvent::Start(s)
+                    | ClockInEvent::Stop(s)
+                    | ClockInEvent::Continue(s) => (true, false, s),
                     ClockInEvent::Reset(s) => (false, true, s),
                 };
 
@@ -193,6 +196,7 @@ async fn run_clock_gatekeeper() {
 
                 // Process the event
                 match event {
+                    // Clock tick. Only process if clock is running
                     ClockInEvent::Tick(source) => {
                         if is_running {
                             clock_publisher.publish(ClockEvent::Tick).await;
@@ -203,40 +207,47 @@ async fn run_clock_gatekeeper() {
                             ));
                         }
                     }
+                    // Start the clock without resetting the phase
+                    ClockInEvent::Continue(source) => {
+                        is_running = true;
+                        clock_publisher.publish(ClockEvent::Start).await;
+                        let _ = midi_sender
+                            .try_send(MidiOutEvent::Clock(SystemRealtime::Continue, midi_target));
+                    }
+                    // (Re-)start the clock. Full phase reset
                     ClockInEvent::Start(source) => {
-                        if !is_running {
-                            is_running = true;
-                            clock_publisher.publish(ClockEvent::Start).await;
-                            analog_tick_counters = [0; 3];
-                            let _ = midi_sender
-                                .try_send(MidiOutEvent::Clock(SystemRealtime::Start, midi_target));
-                        }
-                    }
-                    ClockInEvent::Stop(source) => {
-                        if is_running {
-                            is_running = false;
-                            clock_publisher.publish(ClockEvent::Reset).await;
-                            analog_tick_counters = [0; 3];
-                            send_analog_reset(&spawner, &config).await;
-                            let _ = midi_sender
-                                .try_send(MidiOutEvent::Clock(SystemRealtime::Stop, midi_target));
-                        }
-                    }
-                    ClockInEvent::Reset(source) => {
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
+                        clock_publisher.publish(ClockEvent::Start).await;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
                         let _ = midi_sender
                             .try_send(MidiOutEvent::Clock(SystemRealtime::Start, midi_target));
                     }
+                    // Stop the clock. No phase reset
+                    ClockInEvent::Stop(source) => {
+                        is_running = false;
+                        clock_publisher.publish(ClockEvent::Stop).await;
+                        let _ = midi_sender
+                            .try_send(MidiOutEvent::Clock(SystemRealtime::Stop, midi_target));
+                    }
+                    // Reset the phase without affecting the run state
+                    ClockInEvent::Reset(source) => {
+                        clock_publisher.publish(ClockEvent::Reset).await;
+                        analog_tick_counters = [0; 3];
+                        send_analog_reset(&spawner, &config).await;
+                        let _ = midi_sender
+                            .try_send(MidiOutEvent::Clock(SystemRealtime::Reset, midi_target));
+                    }
                 }
             }
             Either::Second(new_config) => {
-                config = new_config;
-                if config.clock.clock_src != ClockSrc::Internal {
+                // If the clock source has been changed, reset the running state.
+                if config.clock.clock_src != new_config.clock.clock_src {
                     is_running = false;
+                    analog_tick_counters = [0; 3];
                 }
+                config = new_config;
             }
         }
     }
@@ -253,7 +264,7 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
     let internal_fut = async {
         let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
         let clock_in_sender = CLOCK_IN_CHANNEL.sender();
-        let clock_receiver = CLOCK_CMD_CHANNEL.receiver();
+        let clock_receiver = TRANSPORT_CMD_CHANNEL.receiver();
 
         let config = config_receiver.get().await;
         let mut tick_duration = bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
@@ -313,9 +324,9 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
                 }
                 Either3::Third(cmd) => {
                     let next_is_running = match cmd {
-                        ClockCmd::Start => true,
-                        ClockCmd::Stop => false,
-                        ClockCmd::Toggle => !is_running,
+                        TransportCmd::Start => true,
+                        TransportCmd::Stop => false,
+                        TransportCmd::Toggle => !is_running,
                     };
 
                     if !is_running && next_is_running {

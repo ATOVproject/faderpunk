@@ -316,6 +316,9 @@ impl Clock {
                         return ClockEvent::Tick;
                     }
                 }
+                ClockEvent::Stop => {
+                    return ClockEvent::Stop;
+                }
                 clock_event @ ClockEvent::Start | clock_event @ ClockEvent::Reset => {
                     self.tick_count = 0;
                     return clock_event;
