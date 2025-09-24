@@ -16,8 +16,10 @@ export const Layout = ({
 }: PropsWithChildren<Props>) => {
   const { setLayout, layout } = useStore();
   return (
-    <main className="min-h-screen bg-gray-500 text-white">
-      <div className="mx-auto max-w-6xl py-14">{children}</div>
+    <main className="flex min-h-screen flex-col bg-gray-500 text-white">
+      <div className="mx-auto flex w-full max-w-6xl flex-grow flex-col py-14">
+        {children}
+      </div>
       {layout ? (
         <Modal
           // size="5xl"
