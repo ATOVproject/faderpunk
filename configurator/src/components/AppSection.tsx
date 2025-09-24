@@ -13,7 +13,7 @@ interface Props {
 
 export const AppSection = ({ channels, section, setModalApp }: Props) => {
   return (
-    <div className="mb-15">
+    <div className="mb-15 last:mb-0">
       <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
         {channels} {channels > 1 ? "channels" : "channel"}
       </h2>
