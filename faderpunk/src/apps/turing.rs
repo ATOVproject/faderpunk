@@ -17,7 +17,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 6;
 
 // TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
@@ -42,6 +42,16 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     min: 1,
     max: 128,
 })
+.add_param(Param::i32 {
+    name: "Base Note",
+    min: 1,
+    max: 128,
+})
+.add_param(Param::i32 {
+    name: "GATE %",
+    min: 1,
+    max: 100,
+})
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -55,17 +65,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 });
-// .add_param(Param::i32 {
-//     //is it possible to have this apear only if CC
-//     name: "Scale",
-//     min: 0,
-//     max: 127,
-// });
 
 pub struct Params {
     midi_mode: usize,
     midi_channel: i32,
     midi_cc: i32,
+    note: i32,
+    gatel: i32,
     color: Color,
 }
 
@@ -75,6 +81,8 @@ impl Default for Params {
             midi_mode: 1,
             midi_channel: 1,
             midi_cc: 1,
+            note: 36,
+            gatel: 50,
             color: Color::Blue,
         }
     }
@@ -89,7 +97,9 @@ impl AppParams for Params {
             midi_mode: usize::from_value(values[0]),
             midi_channel: i32::from_value(values[1]),
             midi_cc: i32::from_value(values[2]),
-            color: Color::from_value(values[3]),
+            note: i32::from_value(values[3]),
+            gatel: i32::from_value(values[4]),
+            color: Color::from_value(values[5]),
         })
     }
 
@@ -98,6 +108,8 @@ impl AppParams for Params {
         vec.push(self.midi_mode.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
+        vec.push(self.note.into()).unwrap();
+        vec.push(self.gatel.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec
     }
@@ -150,8 +162,16 @@ pub async fn run(
     storage: &ManagedStorage<Storage>,
 ) {
     let range = Range::_0_10V;
-    let (midi_mode, midi_cc, led_color, midi_chan) =
-        params.query(|p| (p.midi_mode, p.midi_cc, p.color, p.midi_channel));
+    let (midi_mode, midi_cc, led_color, midi_chan, base_note, gatel) = params.query(|p| {
+        (
+            p.midi_mode,
+            p.midi_cc,
+            p.color,
+            p.midi_channel,
+            p.note,
+            p.gatel,
+        )
+    });
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
@@ -161,10 +181,6 @@ pub async fn run(
     let quantizer = app.use_quantizer(range);
 
     let midi = app.use_midi_output(midi_chan as u8 - 1);
-
-    // let mut prob_glob = app.make_global_with_store(0, StorageSlot::A);
-    // let mut length_glob = app.make_global_with_store(15, StorageSlot::B);
-    // let mut att_glob = app.make_global_with_store(4095, StorageSlot::C);
 
     let prob_glob = app.make_global(0);
 
@@ -226,7 +242,7 @@ pub async fn run(
                         );
                         // info!("{}", register_scalled);
                         if midi_mode == 1 {
-                            let note = out.as_midi();
+                            let note = out.as_midi() + base_note as u8;
                             midi.send_note_on(note, 4095).await;
 
                             midi_note.set(note);
@@ -239,7 +255,7 @@ pub async fn run(
                             leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
                         }
                     }
-                    if clkn % div == div / 2 {
+                    if clkn % div == (div * gatel as u16 / 100).clamp(1, div - 1) {
                         leds.unset(0, Led::Bottom);
 
                         if midi_mode == 1 {
@@ -358,8 +374,6 @@ pub async fn run(
                 rec_flag.set(false);
                 let length = length_rec.get();
                 if length >= 1 {
-                    // let note = midi_note.get();
-                    // midi.send_note_off(note).await;
                     storage
                         .modify_and_save(|s| s.length_saved = length, None)
                         .await;
