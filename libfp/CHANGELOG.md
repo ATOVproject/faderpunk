@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.7.0...libfp-v0.8.0) (2025-09-25)
+
+
+### Features
+
+* **configurator:** rename params, fix float field ([9349aa6](https://github.com/ATOVproject/faderpunk/commit/9349aa624432e3aef66b71a7a1a19e2b40dacef8))
+
+
+### Bug Fixes
+
+* **clock:** limit extra reset sources ([7fc8619](https://github.com/ATOVproject/faderpunk/commit/7fc861910648376d5f7963214c1c6f2a33df7bd5))
+
 ## [0.7.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.6.0...libfp-v0.7.0) (2025-09-20)
 
 

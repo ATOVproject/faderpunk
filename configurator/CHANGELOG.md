@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.0.0...configurator-v1.1.0) (2025-09-25)
+
+
+### Features
+
+* **configurator:** rename params, fix float field ([9349aa6](https://github.com/ATOVproject/faderpunk/commit/9349aa624432e3aef66b71a7a1a19e2b40dacef8))
+
+
+### Bug Fixes
+
+* **clock:** limit extra reset sources ([7fc8619](https://github.com/ATOVproject/faderpunk/commit/7fc861910648376d5f7963214c1c6f2a33df7bd5))
+* **configurator:** add about tab and attributions ([8d9ab89](https://github.com/ATOVproject/faderpunk/commit/8d9ab8931922e0896094a5cd518bd5de71b207ca))
+
 ## [1.0.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.4.0...configurator-v1.0.0) (2025-09-20)
 
 
