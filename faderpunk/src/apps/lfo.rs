@@ -7,9 +7,10 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
+    ext::FromValue,
     latch::LatchLayer,
     utils::{attenuate_bipolar, split_unsigned_value},
-    AppIcon, Brightness, ClockDivision, Color, Config, Curve, Range, Value, Waveform,
+    AppIcon, Brightness, ClockDivision, Color, Config, Curve, Param, Range, Value, Waveform,
     APP_MAX_PARAMS,
 };
 
@@ -20,29 +21,34 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 0;
+pub const PARAMS: usize = 1;
 
 pub static CONFIG: Config<PARAMS> =
-    Config::new("LFO", "Multi shape LFO", Color::Yellow, AppIcon::Sine);
+    Config::new("LFO", "Multi shape LFO", Color::Yellow, AppIcon::Sine).add_param(Param::Enum {
+        name: "Speed",
+        variants: &["Normal", "Slow", "Slowest"],
+    });
 
-pub struct Params {}
+pub struct Params {
+    speed_mult: usize,
+}
 
 impl Default for Params {
     fn default() -> Self {
-        Self {}
+        Self { speed_mult: 0 }
     }
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        // if values.len() < PARAMS {
-        //     return None;
-        // }
-        Some(Self {})
+        Some(Self {
+            speed_mult: usize::from_value(values[0]),
+        })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
+        vec.push(self.speed_mult.into()).unwrap();
         vec
     }
 }
@@ -91,9 +97,10 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
 
 pub async fn run(
     app: &App<CHANNELS>,
-    _params: &ParamStore<Params>,
+    params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
+    let speed_mult = 2u32.pow(params.query(|p| p.speed_mult) as u32);
     let output = app.make_out_jack(0, Range::_Neg5_5V).await;
     let fader = app.use_faders();
     let buttons = app.use_buttons();
@@ -142,9 +149,9 @@ pub async fn run(
             let lfo_pos = glob_lfo_pos.get();
 
             let next_pos = if sync {
-                (lfo_pos + quant_speed) % 4096.0
+                (lfo_pos + quant_speed / speed_mult as f32) % 4096.0
             } else {
-                (lfo_pos + lfo_speed) % 4096.0
+                (lfo_pos + lfo_speed / speed_mult as f32) % 4096.0
             };
 
             let attenuation = storage.query(|s| s.layer_attenuation);
