@@ -21,7 +21,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-          components: rustfmt
+          components: rustfmt clippy
           targets: thumbv8m.main-none-eabihf
       - name: Run formatting check
         run: cargo fmt -- --check
