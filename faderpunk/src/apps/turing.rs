@@ -340,7 +340,7 @@ pub async fn run(
 
             if buttons.is_shift_pressed() {
                 if !shift_old {
-                    latched_glob.set(false);
+                    // latched_glob.set(false);
                     shift_old = true;
                     rec_flag.set(true);
                     length_rec.set(0);
@@ -353,11 +353,11 @@ pub async fn run(
                 );
             }
             if !buttons.is_shift_pressed() && shift_old {
-                latched_glob.set(false);
+                // latched_glob.set(false);
                 shift_old = false;
                 rec_flag.set(false);
                 let length = length_rec.get();
-                if length > 1 {
+                if length >= 1 {
                     // let note = midi_note.get();
                     // midi.send_note_off(note).await;
                     storage
@@ -369,12 +369,12 @@ pub async fn run(
             if buttons.is_button_pressed(0) {
                 //button going down
                 if !button_old {
-                    latched_glob.set(false);
+                    // latched_glob.set(false);
                     button_old = true;
                 }
             }
             if !buttons.is_button_pressed(0) && button_old {
-                latched_glob.set(false);
+                // latched_glob.set(false);
                 button_old = false;
                 leds.unset(0, Led::Bottom);
             }
@@ -407,7 +407,7 @@ pub async fn run(
 }
 
 fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
-    let bit_index = (15 - bit_index).clamp(0, 15);
+    let bit_index = (16 - bit_index).clamp(0, 16);
 
     // Extract the original bit
     let original_bit = ((x >> bit_index) & 1) as u8;
@@ -428,29 +428,6 @@ fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
     let flipped = bit != original_bit;
     (result, flipped)
 }
-
-// fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
-//     let bit_index = bit_index.clamp(0, 15);
-
-//     // Extract the original bit
-//     let original_bit = ((x >> bit_index) & 1) as u8;
-//     let mut bit = original_bit;
-
-//     // Invert the bit if a > b
-//     if a > b {
-//         bit ^= 1;
-//     }
-
-//     // Shift x left by 1, and keep it within 16 bits
-//     let shifted = x << 1;
-
-//     // Insert the (possibly inverted) bit into the LSB
-//     let result = shifted | (bit as u16);
-
-//     // Return the new value and whether the bit was flipped
-//     let flipped = bit != original_bit;
-//     (result, flipped)
-// }
 
 fn scale_to_12bit(input: u16, x: u8) -> u16 {
     let x = x.clamp(1, 16);
