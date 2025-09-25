@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.2.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.1.0...faderpunk-v1.2.0) (2025-09-25)
+
+
+### Features
+
+* **configurator:** rename params, fix float field ([9349aa6](https://github.com/ATOVproject/faderpunk/commit/9349aa624432e3aef66b71a7a1a19e2b40dacef8))
+* **lfo:** add speed  param ([4c3cef2](https://github.com/ATOVproject/faderpunk/commit/4c3cef20f0b52515a395a8418aa0728e688b67bf))
+* **turing:** add base note and gate % param ([f41908e](https://github.com/ATOVproject/faderpunk/commit/f41908e9ee75b89def7c91c78d48586acc3778dc))
+
+
+### Bug Fixes
+
+* **clkcvrnd:** fix LED on mute ([a78f3c7](https://github.com/ATOVproject/faderpunk/commit/a78f3c75f78dcc471a3cc7f128cceaf2702b8fab))
+* **clkcvrnd:** fix mute control ([e13539a](https://github.com/ATOVproject/faderpunk/commit/e13539aec8f0ba5c63622a5c77921e326b1d458c))
+* **clkturing:** fix saving of the registers ([4dd4dfe](https://github.com/ATOVproject/faderpunk/commit/4dd4dfe82fd411236a5357ebf9f31cb43f5b6128))
+* **clock:** fix clock transport commands ([4e690ac](https://github.com/ATOVproject/faderpunk/commit/4e690ac818723ab11a309d71b1008a4e32923080))
+* **clock:** limit extra reset sources ([7fc8619](https://github.com/ATOVproject/faderpunk/commit/7fc861910648376d5f7963214c1c6f2a33df7bd5))
+* **control:** app not sending midi ([1ce6d83](https://github.com/ATOVproject/faderpunk/commit/1ce6d83aeb7a97fff627b11d4ce9d198c5e640a9))
+* fix subdivision numbers ([bb99959](https://github.com/ATOVproject/faderpunk/commit/bb99959d27df505b97fcddce64ee4c690c455277))
+* **turing:** fix issues with sequences length is 16 ([67aa1b8](https://github.com/ATOVproject/faderpunk/commit/67aa1b8cc416dc5184d5f343b08831c432d43d94))
+
 ## [1.1.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.0.0...faderpunk-v1.1.0) (2025-09-20)
 
 
