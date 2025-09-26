@@ -179,7 +179,7 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-    let mut clkn = 0;
+    let mut clkn: u32 = 0;
 
     let (fader_saved, shift_fader_saved, mute) =
         storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.mute_saved));
@@ -231,7 +231,7 @@ pub async fn run(
                                 note_on = true;
                             }
                             if storage.query(|s| s.mode) {
-                                if clkn / div % num_beat_glob.get() as u16 == 0 {
+                                if clkn / div % num_beat_glob.get() as u32 == 0 {
                                     jack[1].set_high().await;
                                     midi.send_note_on(note2 as u8 - 1, 4095).await;
 
@@ -249,7 +249,7 @@ pub async fn run(
                         }
                     }
 
-                    if clkn % div == (div * gatel as u16 / 100).clamp(1, div - 1) {
+                    if clkn % div == (div * gatel as u32 / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note as u8 - 1).await;
 
