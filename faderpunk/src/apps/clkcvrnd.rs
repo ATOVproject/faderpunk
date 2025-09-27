@@ -2,6 +2,8 @@
 // Save div, mute, attenuation - Added the saving slots, need to add write/read in the app.
 // Add attenuator (shift + fader)
 
+use core::arch::global_asm;
+
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -148,6 +150,15 @@ pub async fn run(
 
     glob_muted.set(mute);
     div_glob.set(resolution[res as usize / 345]);
+    if mute {
+        leds.unset(0, Led::Button);
+        output.set_value(2047);
+        midi.send_cc(cc as u8, 0).await;
+        leds.unset(0, Led::Top);
+        leds.unset(0, Led::Bottom);
+    } else {
+        leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
+    }
 
     let fut1 = async {
         loop {
@@ -173,7 +184,7 @@ pub async fn run(
     let fut2 = async {
         loop {
             buttons.wait_for_any_down().await;
-            if !buttons.is_shift_pressed() {
+            if buttons.is_shift_pressed() {
                 let muted = glob_muted.toggle();
 
                 storage
@@ -187,9 +198,11 @@ pub async fn run(
                     .await;
 
                 if muted {
-                    output.set_value(2047);
+                    // output.set_value(2047);
                     midi.send_cc(cc as u8, 0).await;
                     leds.unset_all();
+                } else {
+                    leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
                 }
             }
         }
@@ -244,7 +257,7 @@ pub async fn run(
                     glob_muted.set(mute);
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
-                        // leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
+                        leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
                         output.set_value(2047);
                         midi.send_cc(cc as u8, 0).await;
                         leds.unset(0, Led::Top);
@@ -286,32 +299,29 @@ pub async fn run(
 
             out = slew_2(out, jackval, curve.at(storage.query(|s| s.slew_saved)));
             // out = slew_2(out, jackval, 4095);
-            output.set_value(out as u16);
-            if new_color.get() {
+            if glob_muted.get() {
+                output.set_value(2047);
+            } else {
+                output.set_value(out as u16);
+            }
+            if new_color.get() && !glob_muted.get() {
                 new_color.set(false);
                 r = (rnd.roll() / 16) as u8;
                 g = (rnd.roll() / 16) as u8;
                 b = (rnd.roll() / 16) as u8;
             }
-            let color = Color::Custom(r, g, b);
             if glob_muted.get() {
-                leds.unset(0, Led::Button);
-            } else {
-                leds.set(0, Led::Button, color, Brightness::Lower);
+                r = 0;
+                g = 0;
+                b = 0;
             }
+            let color = Color::Custom(r, g, b);
+            leds.set(0, Led::Button, color, Brightness::Lower);
 
             if latch_active_layer == LatchLayer::Main {
                 let ledj = split_unsigned_value(out as u16);
-
-                if glob_muted.get() {
-                    output.set_value(2047);
-                    midi.send_cc(cc as u8, 0).await;
-                    leds.unset(0, Led::Top);
-                    leds.unset(0, Led::Bottom);
-                } else {
-                    leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
-                    leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
-                }
+                leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
+                leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
             }
             if latch_active_layer == LatchLayer::Alt {
                 leds.set(
@@ -320,7 +330,7 @@ pub async fn run(
                     Color::Red,
                     Brightness::Custom((att / 16) as u8),
                 );
-                //leds.set(0, Led::Button, Color::Red, Brightness::Low);
+                // leds.set(0, Led::Button, Color::Red, Brightness::Low);
             }
             if latch_active_layer == LatchLayer::Third {
                 leds.set(
@@ -329,7 +339,7 @@ pub async fn run(
                     Color::Green,
                     Brightness::Custom((storage.query(|s| s.slew_saved) / 16) as u8),
                 );
-                //leds.set(0, Led::Button, Color::Green, Brightness::Low);
+                // leds.set(0, Led::Button, Color::Green, Brightness::Low);
             }
         }
     };
