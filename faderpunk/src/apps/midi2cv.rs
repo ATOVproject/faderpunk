@@ -48,6 +48,11 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     min: 1,
     max: 24,
 })
+.add_param(Param::i32 {
+    name: "note",
+    min: 1,
+    max: 128,
+})
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -80,7 +85,7 @@ impl Default for Params {
             midi_channel: 1,
             midi_cc: 32,
             bend_range: 12,
-            note: 32,
+            note: 36,
             color: Color::Cyan,
         }
     }
