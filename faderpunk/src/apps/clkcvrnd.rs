@@ -2,8 +2,6 @@
 // Save div, mute, attenuation - Added the saving slots, need to add write/read in the app.
 // Add attenuator (shift + fader)
 
-use core::arch::global_asm;
-
 use embassy_futures::{join::join5, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -134,7 +132,7 @@ pub async fn run(
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
     let val_glob = app.make_global(0);
-    let new_color = app.make_global(false);
+    let glob_button_color = app.make_global(Color::White);
 
     let latched_glob = app.make_global(false);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
@@ -142,7 +140,6 @@ pub async fn run(
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
     let mut clkn = 0;
-    let mut val = 2048;
 
     let curve = Curve::Exponential;
 
@@ -172,7 +169,19 @@ pub async fn run(
                     let div = div_glob.get();
                     if clkn % div == 0 && !muted {
                         val_glob.set(rnd.roll());
-                        new_color.set(true);
+
+                        let color = if !glob_muted.get() {
+                            let r = (rnd.roll() / 16) as u8;
+                            let g = (rnd.roll() / 16) as u8;
+                            let b = (rnd.roll() / 16) as u8;
+
+                            Color::Custom(r, g, b)
+                        } else {
+                            Color::Custom(0, 0, 0)
+                        };
+                        glob_button_color.set(color);
+
+                        leds.set(0, Led::Button, color, Brightness::Lower);
                     }
                     clkn += 1;
                 }
@@ -275,9 +284,6 @@ pub async fn run(
 
     let shift = async {
         let mut out = 0.;
-        let mut r = (rnd.roll() / 16) as u8;
-        let mut g = (rnd.roll() / 16) as u8;
-        let mut b = (rnd.roll() / 16) as u8;
         loop {
             app.delay_millis(1).await;
             let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
@@ -295,8 +301,6 @@ pub async fn run(
             let midival = attenuate(val_glob.get(), att);
             let jackval = attenuate_bipolar(val_glob.get(), att);
 
-            midi.send_cc(cc as u8, midival).await;
-
             out = slew_2(out, jackval, curve.at(storage.query(|s| s.slew_saved)));
             // out = slew_2(out, jackval, 4095);
             if glob_muted.get() {
@@ -304,21 +308,11 @@ pub async fn run(
             } else {
                 output.set_value(out as u16);
             }
-            if new_color.get() && !glob_muted.get() {
-                new_color.set(false);
-                r = (rnd.roll() / 16) as u8;
-                g = (rnd.roll() / 16) as u8;
-                b = (rnd.roll() / 16) as u8;
-            }
-            if glob_muted.get() {
-                r = 0;
-                g = 0;
-                b = 0;
-            }
-            let color = Color::Custom(r, g, b);
-            leds.set(0, Led::Button, color, Brightness::Lower);
+
+            midi.send_cc(cc as u8, midival).await;
 
             if latch_active_layer == LatchLayer::Main {
+                let color = glob_button_color.get();
                 let ledj = split_unsigned_value(out as u16);
                 leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
                 leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
