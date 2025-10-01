@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.2.0...faderpunk-v1.2.1) (2025-10-01)
+
+
+### Bug Fixes
+
+* **clkcvrnd:** fix crash on unmute ([152456d](https://github.com/ATOVproject/faderpunk/commit/152456d5fe6474dfe78a03216d7befcae74d2d5a))
+* **clkcvrnd:** move color change to clock handler ([4aba760](https://github.com/ATOVproject/faderpunk/commit/4aba760da1566a447b9c2be58e0fa0d6911206d4))
+* **euclid:** fix warping issues making it loose phase ([47e0ff1](https://github.com/ATOVproject/faderpunk/commit/47e0ff1a42eb018b4d2ca337f0dec777fa11ab07))
+
 ## [1.2.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.1.0...faderpunk-v1.2.0) (2025-09-25)
 
 
