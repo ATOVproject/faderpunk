@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.2.1...faderpunk-v1.2.2) (2025-10-01)
+
+
+### Bug Fixes
+
+* **midi2cv:** fix param size ([9362331](https://github.com/ATOVproject/faderpunk/commit/93623319a56ba4117437b47e19b4f195416f00b5))
+
 ## [1.2.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.2.0...faderpunk-v1.2.1) (2025-10-01)
 
 
