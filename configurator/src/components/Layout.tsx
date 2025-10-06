@@ -1,47 +1,24 @@
 import type { PropsWithChildren } from "react";
-import { Modal, ModalContent } from "@heroui/modal";
+import { useLocation } from "react-router-dom";
 
-import { useStore } from "../store";
-import { EditLayoutModal } from "./EditLayoutModal";
+import { Footer } from "./Footer";
 
-interface Props {
-  modalApp: number | null;
-  onModalOpenChange(isOpen: boolean): void;
-}
-
-export const Layout = ({
-  children,
-  modalApp,
-  onModalOpenChange,
-}: PropsWithChildren<Props>) => {
-  const { setLayout, layout } = useStore();
+export const Layout = ({ children }: PropsWithChildren) => {
+  const location = useLocation();
   return (
     <main className="flex min-h-screen flex-col bg-gray-500 text-white">
       <div className="mx-auto flex w-full max-w-6xl flex-grow flex-col py-14">
-        {children}
+        <div className="flex-grow">
+          <div className="mb-8 text-center">
+            <img src="/img/fp-logo.svg" className="inline w-64" />
+            <h1 className="font-vox mt-3 text-xl font-semibold tracking-wider uppercase">
+              {location.pathname.substring(1)}
+            </h1>
+          </div>
+          {children}
+          <Footer />
+        </div>
       </div>
-      {layout ? (
-        <Modal
-          // size="5xl"
-          className="max-w-6xl"
-          isOpen={!!modalApp}
-          backdrop="blur"
-          onOpenChange={onModalOpenChange}
-          hideCloseButton
-          radius="sm"
-        >
-          <ModalContent>
-            {(onClose) => (
-              <EditLayoutModal
-                onSave={setLayout}
-                initialLayout={layout}
-                onClose={onClose}
-                modalApp={modalApp}
-              />
-            )}
-          </ModalContent>
-        </Modal>
-      ) : null}
     </main>
   );
 };
