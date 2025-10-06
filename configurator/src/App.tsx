@@ -9,6 +9,7 @@ import { AppsTab } from "./components/AppsTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { About } from "./components/About";
 import { Footer } from "./components/Footer";
+import { ManualApp, type ManualAppData } from "./components/ManualApp";
 
 const enum Page {
   Configurator = "Configurator",
@@ -19,6 +20,28 @@ const App = () => {
   const { apps, config, layout, usbDevice, connect } = useStore();
   const [modalApp, setModalApp] = useState<number | null>(null);
   const [page, setPage] = useState<Page>(Page.Configurator);
+
+  const app: ManualAppData = {
+    title: "Control",
+    description: "Simple MIDI/CV controller",
+    color: "Violet",
+    icon: "fader",
+    text: "Long description manual text",
+    channels: [
+      {
+        jackTitle: "Output",
+        jackDescription: "CV Output value in given range.",
+        faderTitle: "CV and MIDI value",
+        faderDescription: "Determines CV and Midi value.",
+        faderPlusShiftTitle: "Attenuation",
+        faderPlusShiftDescription: "Attenuation for chosen range.",
+        fnTitle: "Mute",
+        fnDescription: "Mute CV and MIDI output.",
+      },
+    ],
+  };
+
+  // return <ManualApp app={app} />;
 
   if (!usbDevice) {
     return (
