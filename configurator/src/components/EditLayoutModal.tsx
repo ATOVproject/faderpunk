@@ -230,6 +230,16 @@ export const EditLayoutModal = ({
                 </h3>
                 <div className="text-base">{Number(appToAdd.channels)}</div>
               </div>
+              <div className="justify-self-end">
+                <h3 className="text-yellow-fp text-sm font-bold uppercase">
+                  Resources
+                </h3>
+                <div className="text-base underline">
+                  <a href={`/manual#app${appToAdd.appId}`} target="fpmanual">
+                    See app in manual
+                  </a>
+                </div>
+              </div>
             </div>
           ) : null}
           <DndContext

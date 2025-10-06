@@ -1,126 +1,37 @@
-import { useState } from "react";
-import { Tabs, Tab } from "@heroui/tabs";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import { ButtonPrimary } from "./components/Button";
-import { Layout } from "./components/Layout";
 import { useStore } from "./store";
-import { DeviceTab } from "./components/DeviceTab";
-import { AppsTab } from "./components/AppsTab";
-import { SettingsTab } from "./components/SettingsTab";
-import { About } from "./components/About";
-import { Footer } from "./components/Footer";
-import { ManualApp, type ManualAppData } from "./components/ManualApp";
-
-const enum Page {
-  Configurator = "Configurator",
-  About = "About",
-}
+import { ConfiguratorPage } from "./components/ConfiguratorPage";
+import { AboutPage } from "./components/AboutPage";
+import { ConnectPage } from "./components/ConnectPage";
+import { ManualPage } from "./components/ManualPage";
 
 const App = () => {
-  const { apps, config, layout, usbDevice, connect } = useStore();
-  const [modalApp, setModalApp] = useState<number | null>(null);
-  const [page, setPage] = useState<Page>(Page.Configurator);
-
-  const app: ManualAppData = {
-    title: "Control",
-    description: "Simple MIDI/CV controller",
-    color: "Violet",
-    icon: "fader",
-    text: "Long description manual text",
-    channels: [
-      {
-        jackTitle: "Output",
-        jackDescription: "CV Output value in given range.",
-        faderTitle: "CV and MIDI value",
-        faderDescription: "Determines CV and Midi value.",
-        faderPlusShiftTitle: "Attenuation",
-        faderPlusShiftDescription: "Attenuation for chosen range.",
-        fnTitle: "Mute",
-        fnDescription: "Mute CV and MIDI output.",
-      },
-    ],
-  };
-
-  // return <ManualApp app={app} />;
-
-  if (!usbDevice) {
-    return (
-      <main className="flex min-h-screen min-w-screen items-center justify-center bg-gray-500">
-        {page === Page.Configurator ? (
-          <div className="flex flex-col justify-center">
-            <div className="border-pink-fp flex flex-col items-center justify-center gap-8 rounded-sm border-3 p-10 shadow-[0px_0px_11px_2px_#B7B2B240]">
-              <img src="/img/fp-logo-alt.svg" className="w-48" />
-              <ButtonPrimary
-                className="shadow-[0px_0px_11px_2px_#B7B2B240]"
-                onPress={connect}
-              >
-                Connect Device
-              </ButtonPrimary>
-            </div>
-            <button
-              className="text-default-400 mt-4 cursor-pointer underline"
-              onClick={() => setPage(Page.About)}
-            >
-              What is this?
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center">
-            <About />
-            <button
-              className="text-default-400 mt-4 cursor-pointer underline"
-              onClick={() => setPage(Page.Configurator)}
-            >
-              Take me back
-            </button>
-          </div>
-        )}
-      </main>
-    );
-  }
+  const { usbDevice } = useStore();
 
   return (
-    <Layout
-      modalApp={modalApp}
-      onModalOpenChange={(isOpen) => setModalApp(isOpen ? -1 : null)}
-    >
-      <div className="flex-grow">
-        <div className="mb-8 text-center">
-          <img src="/img/fp-logo.svg" className="inline w-64" />
-          <h1 className="font-vox mt-3 text-xl font-semibold tracking-wider uppercase">
-            {page}
-          </h1>
-        </div>
-        {page === Page.Configurator ? (
-          <Tabs
-            className="border-default-100 mb-8 w-full border-b-3"
-            classNames={{
-              tabList: "flex p-0 rounded-none gap-0",
-              cursor: "rounded-none rounded-t-md dark:bg-black",
-              tab: "px-12 py-6",
-              tabContent: "text-white font-bold uppercase text-lg",
-            }}
-            variant="light"
-          >
-            <Tab key="device" title="Device">
-              <DeviceTab layout={layout} setModalApp={setModalApp} />
-            </Tab>
-            <Tab key="apps" title="Apps">
-              <AppsTab apps={apps} layout={layout} setModalApp={setModalApp} />
-            </Tab>
-            <Tab key="settings" title="Settings">
-              <SettingsTab config={config} />
-            </Tab>
-            <Tab key="about" title="About">
-              <About />
-            </Tab>
-          </Tabs>
-        ) : (
-          <About />
-        )}
-      </div>
-      <Footer />
-    </Layout>
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            usbDevice ? (
+              <Navigate to="/configurator" replace />
+            ) : (
+              <ConnectPage />
+            )
+          }
+        />
+        <Route
+          path="/configurator"
+          element={
+            usbDevice ? <ConfiguratorPage /> : <Navigate to="/" replace />
+          }
+        />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/manual" element={<ManualPage />} />
+      </Routes>
+    </BrowserRouter>
   );
 };
 
