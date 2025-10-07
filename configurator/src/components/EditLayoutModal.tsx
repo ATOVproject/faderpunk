@@ -185,7 +185,7 @@ export const EditLayoutModal = ({
               <div
                 className={classNames(
                   "rounded-sm p-2",
-                  COLORS_CLASSES[appToAdd.color],
+                  COLORS_CLASSES[appToAdd.color].bg,
                 )}
               >
                 <Icon

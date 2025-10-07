@@ -20,3 +20,5 @@ export interface AppSlot {
 }
 
 export type AppLayout = AppSlot[];
+
+export type AllColors = Color["tag"] | "Black";

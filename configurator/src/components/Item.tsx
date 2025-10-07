@@ -103,7 +103,7 @@ export const Item = forwardRef(
           className={classNames(
             "z-10 flex cursor-grab touch-manipulation justify-center rounded-sm p-2 whitespace-nowrap outline-none",
             className,
-            COLORS_CLASSES[app.color],
+            COLORS_CLASSES[app.color].bg,
             WIDTHS_CLASSES[Number(app.channels)],
             {
               "shadow-[0px_0px_16px_2px_#FFFFFFCC]": newAppId === id,
