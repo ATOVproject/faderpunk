@@ -56,7 +56,6 @@ pub struct Params {
     midi_channel: i32,
     note: i32,
     gatel: i32,
-
     color: Color,
 }
 
@@ -66,7 +65,6 @@ impl Default for Params {
             midi_channel: 1,
             note: 32,
             gatel: 50,
-
             color: Color::Cyan,
         }
     }
@@ -81,8 +79,7 @@ impl AppParams for Params {
             midi_channel: i32::from_value(values[0]),
             note: i32::from_value(values[1]),
             gatel: i32::from_value(values[2]),
-
-            color: Color::from_value(values[4]),
+            color: Color::from_value(values[3]),
         })
     }
 
