@@ -27,7 +27,7 @@ export const AppSection = ({ channels, section, setModalApp }: Props) => {
             <div
               className={classNames(
                 "rounded-sm p-2",
-                COLORS_CLASSES[app.color],
+                COLORS_CLASSES[app.color].bg,
               )}
             >
               <Icon

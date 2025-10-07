@@ -18,7 +18,10 @@ const AppSlots = ({ app, startChannel }: AppSlotProps) => {
       )}
     >
       <div
-        className={classNames("flex-1 rounded-md", COLORS_CLASSES[app.color])}
+        className={classNames(
+          "flex-1 rounded-md",
+          COLORS_CLASSES[app.color].bg,
+        )}
       >
         &nbsp;
       </div>

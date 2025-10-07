@@ -76,7 +76,9 @@ export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
             },
           )}
         >
-          <div className={`${COLORS_CLASSES[app.color]} h-16 w-16 rounded p-2`}>
+          <div
+            className={`${COLORS_CLASSES[app.color].bg} h-16 w-16 rounded p-2`}
+          >
             {app.icon && (
               <Icon
                 name={pascalToKebab(app.icon)}
