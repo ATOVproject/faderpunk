@@ -1,28 +1,62 @@
 import { type ReactNode } from "react";
 import clx from "classnames";
-import { type Color } from "@atov/fp-config";
 
 import { COLORS_CLASSES } from "../utils/class-helpers";
 import { Icon } from "./Icon";
+import { AllColors } from "../utils/types";
+
+interface ArrowIconProps {
+  className?: string;
+}
+
+const ArrowIcon = ({ className }: ArrowIconProps) => (
+  <svg
+    className={className}
+    width="43.3404"
+    height="10.8268"
+    viewBox="0 0 43.3404 10.8268"
+  >
+    <g>
+      <path
+        d="M13.223,3.9317h29.7638c-1.1399-1.1399-3.5782-3.5782-3.5782-3.5782"
+        fill="none"
+        stroke="currentColor"
+        strokeMiterlimit="1.5"
+      />
+      <path
+        d="M3.9768,10.4732L.3536,6.85c8.1959,0,29.7638,0,29.7638,0"
+        fill="none"
+        stroke="currentColor"
+        strokeMiterlimit="1.5"
+      />
+    </g>
+  </svg>
+);
 
 export interface ManualAppData {
   appId: number;
   title: string;
   description: ReactNode;
   icon: string;
-  color: Color["tag"];
+  color: AllColors;
   text: ReactNode;
-  channels: Omit<ChannelProps, "idx">[];
+  channels: Omit<ChannelProps, "idx" | "color" | "singleChannel">[];
 }
 
 interface FunctionFieldProps {
+  color: AllColors;
   title: string;
   description?: ReactNode;
 }
 
-const FunctionField = ({ title, description }: FunctionFieldProps) => (
+const FunctionField = ({ color, title, description }: FunctionFieldProps) => (
   <div>
-    <div className="border-pink-fp border-b-1 px-2 py-0 font-semibold">
+    <div
+      className={clx(
+        COLORS_CLASSES[color].border,
+        "border-b-1 px-2 py-0 font-semibold",
+      )}
+    >
       {title}
     </div>
     <div className="px-2 text-sm italic">{description}</div>
@@ -47,6 +81,7 @@ const Button = ({ className, label }: ButtonProps) => (
 
 interface ChannelProps {
   idx: number;
+  color: AllColors;
   jackTitle: string;
   jackDescription: ReactNode;
   faderTitle: string;
@@ -65,10 +100,12 @@ interface ChannelProps {
   ledBottom: ReactNode;
   ledBottomPlusShift?: ReactNode;
   ledBottomPlusFn?: ReactNode;
+  singleChannel: boolean;
 }
 
 const Channel = ({
   idx,
+  color,
   jackTitle,
   jackDescription,
   faderTitle,
@@ -87,19 +124,28 @@ const Channel = ({
   ledBottom,
   ledBottomPlusShift,
   ledBottomPlusFn,
+  singleChannel,
 }: ChannelProps) => (
   <>
-    <div
-      className="row-start-1 flex items-center justify-center"
-      style={{ gridColumn: idx + 3 }}
-    >
-      <h1 className="font-vox font-semibold">Channel {idx + 1}</h1>
-    </div>
-    <div className="row-start-2" style={{ gridColumn: idx + 3 }}>
-      <div className="h-3 rounded-t-full border-t border-r border-l"></div>
-    </div>
+    {!singleChannel ? (
+      <div
+        className="row-start-1 flex items-center justify-center"
+        style={{ gridColumn: idx + 3 }}
+      >
+        <h1 className="font-vox font-semibold">Channel {idx + 1}</h1>
+      </div>
+    ) : null}
+    {!singleChannel ? (
+      <div className="row-start-2" style={{ gridColumn: idx + 3 }}>
+        <div className="h-3 rounded-t-full border-t border-r border-l"></div>
+      </div>
+    ) : null}
     <div className="row-start-3 px-2 pb-4" style={{ gridColumn: idx + 3 }}>
-      <FunctionField title={jackTitle} description={jackDescription} />
+      <FunctionField
+        color={color}
+        title={jackTitle}
+        description={jackDescription}
+      />
     </div>
     <div className="row-start-4 pt-1 pb-4" style={{ gridColumn: idx + 3 }}>
       <div className="px-2 text-sm italic">{ledTop}</div>
@@ -116,11 +162,16 @@ const Channel = ({
       ) : null}
     </div>
     <div className="row-start-6 p-2" style={{ gridColumn: idx + 3 }}>
-      <FunctionField title={faderTitle} description={faderDescription} />
+      <FunctionField
+        color={color}
+        title={faderTitle}
+        description={faderDescription}
+      />
     </div>
     {faderPlusFnTitle ? (
       <div className="row-start-7 p-2" style={{ gridColumn: idx + 3 }}>
         <FunctionField
+          color={color}
           title={faderPlusFnTitle}
           description={faderPlusFnDescription}
         />
@@ -129,6 +180,7 @@ const Channel = ({
     {faderPlusShiftTitle ? (
       <div className="row-start-8 p-2" style={{ gridColumn: idx + 3 }}>
         <FunctionField
+          color={color}
           title={faderPlusShiftTitle}
           description={faderPlusShiftDescription}
         />
@@ -149,11 +201,16 @@ const Channel = ({
       ) : null}
     </div>
     <div className="row-start-11 px-2 pt-6" style={{ gridColumn: idx + 3 }}>
-      <FunctionField title={fnTitle} description={fnDescription} />
+      <FunctionField
+        color={color}
+        title={fnTitle}
+        description={fnDescription}
+      />
     </div>
     {fnPlusShiftTitle ? (
       <div className="row-start-12 p-2" style={{ gridColumn: idx + 3 }}>
         <FunctionField
+          color={color}
           title={fnPlusShiftTitle}
           description={fnPlusShiftDescription}
         />
@@ -179,7 +236,7 @@ export const ManualApp = ({ app }: Props) => {
         <div
           className={clx(
             "flex items-center justify-center rounded-sm p-2",
-            COLORS_CLASSES[app.color],
+            COLORS_CLASSES[app.color].bg,
           )}
         >
           <Icon className="h-12 w-12 text-black" name={app.icon} />
@@ -234,25 +291,41 @@ export const ManualApp = ({ app }: Props) => {
         </div>
 
         <div className="z-10 col-start-2 row-start-3 flex items-start justify-center pt-4">
-          <img src="/img/arrow-bidirectional.svg" />
+          {/* <img src="/img/arrow-bidirectional.svg" /> */}
+          <ArrowIcon className={COLORS_CLASSES[app.color].text} />
         </div>
         <div className="z-10 col-start-2 row-start-4 flex items-start pt-2 pr-2">
           <div className="flex flex-1 items-center">
             <img src="/img/led.svg" />
             <div className="relative flex-1">
-              <div className="bg-pink-fp absolute top-[calc(50%-0.5px)] left-0 ml-1 h-px w-[calc(100%-0.25rem)]"></div>
+              <div
+                className={clx(
+                  COLORS_CLASSES[app.color].bg,
+                  "absolute top-[calc(50%-0.5px)] left-0 ml-1 h-px w-[calc(100%-0.25rem)]",
+                )}
+              ></div>
             </div>
           </div>
         </div>
         <div className="relative z-10 col-start-2 row-start-6 p-2">
-          <div className="font-vox border-pink-fp border-b-1 px-2 py-0">
+          <div
+            className={clx(
+              COLORS_CLASSES[app.color].border,
+              "font-vox border-b-1 px-2 py-0",
+            )}
+          >
             &nbsp;
           </div>
           <div className="px-2 text-xs italic"></div>
         </div>
         {hasFaderPlusFn ? (
           <div className="relative z-10 col-start-2 row-start-7 flex items-start justify-center pt-4">
-            <span className="text-pink-fp font-vox mr-1 text-2xl font-bold">
+            <span
+              className={clx(
+                COLORS_CLASSES[app.color].text,
+                "font-vox mr-1 text-2xl font-semibold",
+              )}
+            >
               +
             </span>
             <Button className="h-8 w-8" label="Fn" />
@@ -260,7 +333,12 @@ export const ManualApp = ({ app }: Props) => {
         ) : null}
         {hasFaderPlusShift ? (
           <div className="relative z-10 col-start-2 row-start-8 flex items-start justify-center pt-4">
-            <span className="text-pink-fp font-vox mr-1 text-2xl font-bold">
+            <span
+              className={clx(
+                COLORS_CLASSES[app.color].text,
+                "font-vox mr-1 text-2xl font-semibold",
+              )}
+            >
               +
             </span>
             <Button className="h-8 w-8" label="Shift" />
@@ -270,26 +348,47 @@ export const ManualApp = ({ app }: Props) => {
           <div className="flex flex-1 items-center">
             <img src="/img/led.svg" />
             <div className="relative flex-1">
-              <div className="bg-pink-fp absolute top-[calc(50%-0.5px)] left-0 ml-1 h-px w-[calc(100%-0.25rem)]"></div>
+              <div
+                className={clx(
+                  COLORS_CLASSES[app.color].bg,
+                  "absolute top-[calc(50%-0.5px)] left-0 ml-1 h-px w-[calc(100%-0.25rem)]",
+                )}
+              ></div>
             </div>
           </div>
         </div>
         <div className="relative z-10 col-start-2 row-start-11 px-2 pt-6">
-          <div className="font-vox border-pink-fp border-b-1 px-2 py-0">
+          <div
+            className={clx(
+              COLORS_CLASSES[app.color].border,
+              "font-vox border-b-1 px-2 py-0",
+            )}
+          >
             &nbsp;
           </div>
           <div className="px-2 text-xs italic"></div>
         </div>
         {hasFnPlusShift ? (
           <div className="relative z-10 col-start-2 row-start-12 flex items-start justify-center pt-4">
-            <span className="text-pink-fp font-vox mr-1 text-2xl font-bold">
+            <span
+              className={clx(
+                COLORS_CLASSES[app.color].text,
+                "font-vox mr-1 text-2xl font-semibold",
+              )}
+            >
               +
             </span>
             <Button className="h-8 w-8" label="Shift" />
           </div>
         ) : null}
         {app.channels.map((props, idx) => (
-          <Channel key={idx} {...props} idx={idx} />
+          <Channel
+            key={idx}
+            {...props}
+            idx={idx}
+            color={app.color}
+            singleChannel={app.channels.length === 1}
+          />
         ))}
       </div>
     </div>

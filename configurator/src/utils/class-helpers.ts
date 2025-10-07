@@ -1,4 +1,4 @@
-import { type Color } from "@atov/fp-config";
+import { AllColors } from "./types";
 
 export const WIDTHS_CLASSES: Record<number, string> = {
   1: "col-span-1",
@@ -19,25 +19,30 @@ export const WIDTHS_CLASSES: Record<number, string> = {
   16: "col-span-16",
 };
 
-type AllColors = Color["tag"] | "Black";
-
-export const COLORS_CLASSES: Record<AllColors, string> = {
-  Blue: "bg-blue",
-  Green: "bg-green",
-  Rose: "bg-red",
-  Orange: "bg-orange",
-  Cyan: "bg-cyan",
-  Violet: "bg-violet",
-  Pink: "bg-pink",
-  Yellow: "bg-yellow",
-  White: "bg-white",
-  Red: "bg-red",
-  Lime: "bg-green",
-  SkyBlue: "bg-blue",
-  PaleGreen: "bg-green",
-  Sand: "bg-yellow",
-  Salmon: "bg-pink",
-  LightBlue: "bg-blue",
-  Custom: "bg-transparent",
-  Black: "bg-black",
+export const COLORS_CLASSES: Record<
+  AllColors,
+  { bg: string; text: string; border: string }
+> = {
+  Blue: { bg: "bg-blue", text: "text-blue", border: "border-blue" },
+  Green: { bg: "bg-green", text: "text-green", border: "border-green" },
+  Rose: { bg: "bg-red", text: "text-red", border: "border-red" },
+  Orange: { bg: "bg-orange", text: "text-orange", border: "border-orange" },
+  Cyan: { bg: "bg-cyan", text: "text-cyan", border: "border-cyan" },
+  Violet: { bg: "bg-violet", text: "text-violet", border: "border-violet" },
+  Pink: { bg: "bg-pink", text: "text-pink", border: "border-pink" },
+  Yellow: { bg: "bg-yellow", text: "text-yellow", border: "border-yellow" },
+  White: { bg: "bg-white", text: "text-white", border: "border-white" },
+  Red: { bg: "bg-red", text: "text-red", border: "border-red" },
+  Lime: { bg: "bg-green", text: "text-green", border: "border-green" },
+  SkyBlue: { bg: "bg-blue", text: "text-blue", border: "border-blue" },
+  PaleGreen: { bg: "bg-green", text: "text-green", border: "border-green" },
+  Sand: { bg: "bg-yellow", text: "text-yellow", border: "border-yellow" },
+  Salmon: { bg: "bg-pink", text: "text-pink", border: "border-pink" },
+  LightBlue: { bg: "bg-blue", text: "text-blue", border: "border-blue" },
+  Custom: {
+    bg: "bg-transparent",
+    text: "text-transparent",
+    border: "border-transparent",
+  },
+  Black: { bg: "bg-black", text: "text-black", border: "border-black" },
 };
