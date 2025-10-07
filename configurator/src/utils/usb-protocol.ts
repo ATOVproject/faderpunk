@@ -218,5 +218,9 @@ export async function receiveBatchMessages(
 }
 
 export function getDeviceName(usbDevice: USBDevice): string {
-  return `${usbDevice.manufacturerName} ${usbDevice.productName} v${usbDevice.deviceVersionMajor}.${usbDevice.deviceVersionMinor}.${usbDevice.deviceVersionSubminor}`;
+  return `${usbDevice.manufacturerName} ${usbDevice.productName} v${getDeviceVersion}`;
+}
+
+export function getDeviceVersion(usbDevice: USBDevice): string {
+  return `${usbDevice.deviceVersionMajor}.${usbDevice.deviceVersionMinor}.${usbDevice.deviceVersionSubminor}`;
 }
