@@ -1,10 +1,11 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { ButtonPrimary } from "./Button";
 import { useStore } from "../store";
 
 export const ConnectPage = () => {
   const { connect } = useStore();
+  const navigate = useNavigate();
 
   return (
     <main className="flex min-h-screen min-w-screen items-center justify-center bg-gray-500">
@@ -13,7 +14,7 @@ export const ConnectPage = () => {
           <img src="/img/fp-logo-alt.svg" className="w-48" />
           <ButtonPrimary
             className="shadow-[0px_0px_11px_2px_#B7B2B240]"
-            onPress={connect}
+            onPress={() => connect(navigate)}
           >
             Connect Device
           </ButtonPrimary>
