@@ -2,7 +2,7 @@ register_apps!(
     1 => control,
     2 => lfo,
     3 => ad,
-    4 => clkcvrnd,
+    4 => rndcvcc,
     5 => seq8,
     6 => turing,
     7 => clkturing,
