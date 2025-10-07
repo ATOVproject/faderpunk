@@ -12,7 +12,7 @@ import { ParamWaveform } from "./ParamWaveform.tsx";
 import { ParamColor } from "./ParamColor.tsx";
 
 interface Props {
-  defaultValue: string | boolean;
+  defaultValue: string | boolean | number;
   param: Param;
   paramIndex: number;
   register: UseFormRegister<FieldValues>;

@@ -41,7 +41,7 @@ export const getDefaultValue = (val: Value) => {
       return val.value.toString();
     }
     case "Enum": {
-      return val.value.toString();
+      return Number(val.value);
     }
     case "bool": {
       return val.value;
