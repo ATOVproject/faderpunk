@@ -2,7 +2,6 @@
 // Save div, mute, attenuation - Added the saving slots, need to add write/read in the app.
 // Add attenuator (shift + fader)
 
-use defmt::info;
 use embassy_futures::{
     join::{join, join5},
     select::select,
@@ -168,7 +167,6 @@ pub async fn run(
     if mute {
         leds.unset(0, Led::Button);
         output.set_value(2047);
-        // midi.send_cc(cc as u8, 0).await;
         leds.unset(0, Led::Top);
         leds.unset(0, Led::Bottom);
     } else {
@@ -212,7 +210,6 @@ pub async fn run(
         loop {
             buttons.wait_for_any_down().await;
             if buttons.is_shift_pressed() {
-                info!("short");
                 let muted = glob_muted.toggle();
 
                 storage
@@ -226,8 +223,6 @@ pub async fn run(
                     .await;
 
                 if muted {
-                    // output.set_value(2047);
-                    // midi.send_cc(cc as u8, 0).await;
                     leds.unset_all();
                 } else {
                     leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
@@ -240,25 +235,12 @@ pub async fn run(
             buttons.wait_for_any_long_press().await;
 
             if buttons.is_shift_pressed() {
-                info!("long!");
-                let clocked = storage
-                    .modify_and_save(
-                        |s| {
-                            s.clocked = !s.clocked;
-                            s.clocked
-                        },
-                        None,
-                    )
-                    .await;
                 let muted = glob_muted.toggle();
                 if muted {
-                    // output.set_value(2047);
-                    // midi.send_cc(cc as u8, 0).await;
                     leds.unset_all();
                 } else {
                     leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
                 }
-                info!("long! {}", clocked);
             }
         }
     };
@@ -274,7 +256,6 @@ pub async fn run(
                 LatchLayer::Main => storage.query(|s| s.fader_saved),
                 LatchLayer::Alt => storage.query(|s| s.att_saved),
                 LatchLayer::Third => storage.query(|s| s.slew_saved),
-                _ => unreachable!(),
             };
 
             if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
@@ -282,7 +263,6 @@ pub async fn run(
                     LatchLayer::Main => {
                         div_glob.set(resolution[new_value as usize / 345]);
                         time_div.set((curve.at(4095 - new_value) as u32 * 5000 / 4095 + 71) as u16);
-                        info!("{}", time_div.get());
                         storage
                             .modify_and_save(|s| s.fader_saved = new_value, None)
                             .await;
@@ -297,7 +277,6 @@ pub async fn run(
                             .modify_and_save(|s| s.slew_saved = new_value, None)
                             .await
                     }
-                    _ => unreachable!(),
                 }
             }
         }
@@ -308,15 +287,13 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load(Some(scene)).await;
-                    let (res, mute, att) =
+                    let (res, mute, _) =
                         storage.query(|s| (s.fader_saved, s.mute_save, s.att_saved));
 
                     glob_muted.set(mute);
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
                         leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
-                        // output.set_value(2047);
-                        // midi.send_cc(cc as u8, 0).await;
                         leds.unset(0, Led::Top);
                         leds.unset(0, Led::Bottom);
                     }
@@ -360,12 +337,10 @@ pub async fn run(
                     jackval,
                     fader_curve.at(storage.query(|s| s.slew_saved)),
                 )
+            } else if bipolar {
+                2047.0
             } else {
-                if bipolar {
-                    2047.
-                } else {
-                    0.
-                }
+                0.0
             };
 
             output.set_value(out as u16);
@@ -408,7 +383,6 @@ pub async fn run(
                     Color::Green,
                     Brightness::Custom((storage.query(|s| s.slew_saved) / 16) as u8),
                 );
-                // leds.set(0, Led::Button, Color::Green, Brightness::Low);
             }
             if !storage.query(|s: &Storage| s.clocked) {
                 count += 1;
