@@ -259,9 +259,9 @@ async fn run_clock_gatekeeper() {
 #[embassy_executor::task]
 async fn run_clock_sources(aux_inputs: AuxInputs) {
     let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
-    let atom = Input::new(atom_pin, Pull::Down);
-    let meteor = Input::new(meteor_pin, Pull::Down);
-    let cube = Input::new(hexagon_pin, Pull::Down);
+    let atom = Input::new(atom_pin, Pull::Up);
+    let meteor = Input::new(meteor_pin, Pull::Up);
+    let cube = Input::new(hexagon_pin, Pull::Up);
 
     let internal_fut = async {
         let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
