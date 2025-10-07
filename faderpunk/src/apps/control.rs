@@ -15,7 +15,7 @@ use libfp::{Config, Curve, Param, Range, Value};
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 7;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Control",
@@ -44,6 +44,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::bool {
     name: "Mute on release",
 })
+.add_param(Param::bool { name: "Invert" })
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -64,6 +65,7 @@ pub struct Params {
     midi_channel: i32,
     midi_cc: i32,
     on_release: bool,
+    invert: bool,
     color: Color,
 }
 
@@ -75,6 +77,7 @@ impl Default for Params {
             midi_channel: 1,
             midi_cc: 32,
             on_release: false,
+            invert: false,
             color: Color::Violet,
         }
     }
@@ -91,7 +94,8 @@ impl AppParams for Params {
             midi_channel: i32::from_value(values[2]),
             midi_cc: i32::from_value(values[3]),
             on_release: bool::from_value(values[4]),
-            color: Color::from_value(values[5]),
+            invert: bool::from_value(values[5]),
+            color: Color::from_value(values[6]),
         })
     }
 
@@ -102,6 +106,7 @@ impl AppParams for Params {
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.on_release.into()).unwrap();
+        vec.push(self.invert.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec
     }
@@ -151,13 +156,14 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (curve, midi_chan, midi_cc, on_release, range, led_color) = params.query(|p| {
+    let (curve, midi_chan, midi_cc, on_release, range, inverted, led_color) = params.query(|p| {
         (
             p.curve,
             p.midi_channel,
             p.midi_cc,
             p.on_release,
             p.range,
+            p.invert,
             p.color,
         )
     });
@@ -242,12 +248,16 @@ pub async fn run(
             };
 
             let att_layer_value = storage.query(|s| s.att_saved);
-            let attenuated = if bipolar {
+            let mut attenuated = if bipolar {
                 attenuate_bipolar(val, att_layer_value)
             } else {
                 ((val as u32 * att_layer_value as u32) / 4095) as u16
             };
+            if inverted {
+                attenuated = 4095 - attenuated;
+            }
             out = slew_2(out, attenuated, 3);
+
             if last_out / 32 != out / 32 {
                 midi.send_cc(midi_cc as u8, out).await;
             }
