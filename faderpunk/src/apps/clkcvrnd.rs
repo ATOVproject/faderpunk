@@ -19,7 +19,7 @@ use libfp::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 2;
+pub const PARAMS: usize = 3;
 
 const LED_COLOR: Color = Color::Violet;
 
@@ -29,6 +29,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Green,
     AppIcon::Random,
 )
+.add_param(Param::bool { name: "Bipolar" })
 .add_param(Param::i32 {
     name: "MIDI Channel",
     min: 1,
@@ -41,6 +42,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 });
 
 pub struct Params {
+    bipolar: bool,
     midi_channel: i32,
     midi_cc: i32,
 }
@@ -48,6 +50,7 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
+            bipolar: false,
             midi_channel: 1,
             midi_cc: 32,
         }
@@ -60,13 +63,15 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_channel: i32::from_value(values[0]),
-            midi_cc: i32::from_value(values[1]),
+            bipolar: bool::from_value(values[0]),
+            midi_channel: i32::from_value(values[1]),
+            midi_cc: i32::from_value(values[2]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
+        vec.push(self.bipolar.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec
@@ -119,7 +124,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_chan, cc) = params.query(|p| (p.midi_channel, p.midi_cc));
+    let (bipolar, midi_chan, cc) = params.query(|p| (p.bipolar, p.midi_channel, p.midi_cc));
 
     let mut clock = app.use_clock();
     let rnd = app.use_die();
@@ -127,7 +132,12 @@ pub async fn run(
     let buttons = app.use_buttons();
     let leds = app.use_leds();
     let midi = app.use_midi_output(midi_chan as u8 - 1);
-    let output = app.make_out_jack(0, Range::_Neg5_5V).await;
+    let range = if bipolar {
+        Range::_Neg5_5V
+    } else {
+        Range::_0_10V
+    };
+    let output = app.make_out_jack(0, range).await;
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
@@ -150,7 +160,7 @@ pub async fn run(
     if mute {
         leds.unset(0, Led::Button);
         output.set_value(2047);
-        midi.send_cc(cc as u8, 0).await;
+        // midi.send_cc(cc as u8, 0).await;
         leds.unset(0, Led::Top);
         leds.unset(0, Led::Bottom);
     } else {
@@ -208,7 +218,7 @@ pub async fn run(
 
                 if muted {
                     // output.set_value(2047);
-                    midi.send_cc(cc as u8, 0).await;
+                    // midi.send_cc(cc as u8, 0).await;
                     leds.unset_all();
                 } else {
                     leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
@@ -267,8 +277,8 @@ pub async fn run(
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
                         leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
-                        output.set_value(2047);
-                        midi.send_cc(cc as u8, 0).await;
+                        // output.set_value(2047);
+                        // midi.send_cc(cc as u8, 0).await;
                         leds.unset(0, Led::Top);
                         leds.unset(0, Led::Bottom);
                     }
@@ -284,6 +294,7 @@ pub async fn run(
 
     let shift = async {
         let mut out = 0.;
+        let mut last_out = 0;
         loop {
             app.delay_millis(1).await;
             let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
@@ -298,24 +309,43 @@ pub async fn run(
 
             let att = storage.query(|s| (s.att_saved));
 
-            let midival = attenuate(val_glob.get(), att);
-            let jackval = attenuate_bipolar(val_glob.get(), att);
-
-            out = slew_2(out, jackval, curve.at(storage.query(|s| s.slew_saved)));
-            // out = slew_2(out, jackval, 4095);
-            if glob_muted.get() {
-                output.set_value(2047);
+            let jackval = if bipolar {
+                attenuate_bipolar(val_glob.get(), att)
             } else {
-                output.set_value(out as u16);
-            }
+                attenuate(val_glob.get(), att)
+            };
 
-            midi.send_cc(cc as u8, midival).await;
+            out = if !glob_muted.get() {
+                slew_2(out, jackval, curve.at(storage.query(|s| s.slew_saved)))
+            } else {
+                if bipolar {
+                    2047.
+                } else {
+                    0.
+                }
+            };
+
+            output.set_value(out as u16);
+
+            if last_out / 32 != out as u16 / 32 {
+                midi.send_cc(cc as u8, out as u16).await;
+            }
+            last_out = out as u16;
 
             if latch_active_layer == LatchLayer::Main {
                 let color = glob_button_color.get();
-                let ledj = split_unsigned_value(out as u16);
-                leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
-                leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
+                if bipolar {
+                    let ledj = split_unsigned_value(out as u16);
+                    leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
+                    leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
+                } else {
+                    leds.set(
+                        0,
+                        Led::Top,
+                        color,
+                        Brightness::Custom((last_out / 16) as u8),
+                    );
+                }
             }
             if latch_active_layer == LatchLayer::Alt {
                 leds.set(
