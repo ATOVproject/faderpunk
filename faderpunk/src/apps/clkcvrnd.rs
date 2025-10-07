@@ -2,7 +2,11 @@
 // Save div, mute, attenuation - Added the saving slots, need to add write/read in the app.
 // Add attenuator (shift + fader)
 
-use embassy_futures::{join::join5, select::select};
+use defmt::info;
+use embassy_futures::{
+    join::{join, join5},
+    select::select,
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
@@ -84,6 +88,7 @@ pub struct Storage {
     mute_save: bool,
     att_saved: u16,
     slew_saved: u16,
+    clocked: bool,
 }
 
 impl Default for Storage {
@@ -93,6 +98,7 @@ impl Default for Storage {
             mute_save: false,
             att_saved: 4096,
             slew_saved: 0,
+            clocked: true,
         }
     }
 }
@@ -143,6 +149,7 @@ pub async fn run(
     let div_glob = app.make_global(6);
     let val_glob = app.make_global(0);
     let glob_button_color = app.make_global(Color::White);
+    let time_div = app.make_global(125);
 
     let latched_glob = app.make_global(false);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
@@ -152,6 +159,7 @@ pub async fn run(
     let mut clkn = 0;
 
     let curve = Curve::Exponential;
+    let fader_curve = Curve::Exponential;
 
     let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_save));
 
@@ -177,7 +185,7 @@ pub async fn run(
                     let muted = glob_muted.get();
 
                     let div = div_glob.get();
-                    if clkn % div == 0 && !muted {
+                    if clkn % div == 0 && !muted && storage.query(|s: &Storage| s.clocked) {
                         val_glob.set(rnd.roll());
 
                         let color = if !glob_muted.get() {
@@ -204,6 +212,7 @@ pub async fn run(
         loop {
             buttons.wait_for_any_down().await;
             if buttons.is_shift_pressed() {
+                info!("short");
                 let muted = glob_muted.toggle();
 
                 storage
@@ -226,6 +235,33 @@ pub async fn run(
             }
         }
     };
+    let long_press = async {
+        loop {
+            buttons.wait_for_any_long_press().await;
+
+            if buttons.is_shift_pressed() {
+                info!("long!");
+                let clocked = storage
+                    .modify_and_save(
+                        |s| {
+                            s.clocked = !s.clocked;
+                            s.clocked
+                        },
+                        None,
+                    )
+                    .await;
+                let muted = glob_muted.toggle();
+                if muted {
+                    // output.set_value(2047);
+                    // midi.send_cc(cc as u8, 0).await;
+                    leds.unset_all();
+                } else {
+                    leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
+                }
+                info!("long! {}", clocked);
+            }
+        }
+    };
 
     let fut3 = async {
         let mut latch = app.make_latch(fader.get_value());
@@ -245,6 +281,8 @@ pub async fn run(
                 match latch_layer {
                     LatchLayer::Main => {
                         div_glob.set(resolution[new_value as usize / 345]);
+                        time_div.set((curve.at(4095 - new_value) as u32 * 5000 / 4095 + 71) as u16);
+                        info!("{}", time_div.get());
                         storage
                             .modify_and_save(|s| s.fader_saved = new_value, None)
                             .await;
@@ -292,9 +330,10 @@ pub async fn run(
         }
     };
 
-    let shift = async {
+    let timed_loop = async {
         let mut out = 0.;
         let mut last_out = 0;
+        let mut count: u32 = 0;
         loop {
             app.delay_millis(1).await;
             let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
@@ -316,7 +355,11 @@ pub async fn run(
             };
 
             out = if !glob_muted.get() {
-                slew_2(out, jackval, curve.at(storage.query(|s| s.slew_saved)))
+                slew_2(
+                    out,
+                    jackval,
+                    fader_curve.at(storage.query(|s| s.slew_saved)),
+                )
             } else {
                 if bipolar {
                     2047.
@@ -354,7 +397,9 @@ pub async fn run(
                     Color::Red,
                     Brightness::Custom((att / 16) as u8),
                 );
-                // leds.set(0, Led::Button, Color::Red, Brightness::Low);
+                if storage.query(|s: &Storage| s.clocked) {
+                    leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                }
             }
             if latch_active_layer == LatchLayer::Third {
                 leds.set(
@@ -365,10 +410,33 @@ pub async fn run(
                 );
                 // leds.set(0, Led::Button, Color::Green, Brightness::Low);
             }
+            if !storage.query(|s: &Storage| s.clocked) {
+                count += 1;
+                if count % time_div.get() as u32 == 0 {
+                    val_glob.set(rnd.roll());
+
+                    let color = if !glob_muted.get() {
+                        let r = (rnd.roll() / 16) as u8;
+                        let g = (rnd.roll() / 16) as u8;
+                        let b = (rnd.roll() / 16) as u8;
+
+                        Color::Custom(r, g, b)
+                    } else {
+                        Color::Custom(0, 0, 0)
+                    };
+                    glob_button_color.set(color);
+
+                    leds.set(0, Led::Button, color, Brightness::Lower);
+                }
+            }
         }
     };
 
-    join5(fut1, fut2, fut3, scene_handler, shift).await;
+    join(
+        long_press,
+        join5(fut1, fut2, fut3, scene_handler, timed_loop),
+    )
+    .await;
 }
 
 fn slew_2(prev: f32, input: u16, slew: u16) -> f32 {
