@@ -200,7 +200,9 @@ async fn run_clock_gatekeeper() {
                 match event {
                     // Clock tick. Only process if clock is running
                     ClockInEvent::Tick(source) => {
-                        if is_running {
+                        if is_running
+                            || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
+                        {
                             clock_publisher.publish(ClockEvent::Tick).await;
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
                             let _ = midi_sender.try_send(MidiOutEvent::Clock(
