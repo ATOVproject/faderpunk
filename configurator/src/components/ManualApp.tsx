@@ -39,6 +39,7 @@ export interface ManualAppData {
   description: ReactNode;
   icon: string;
   color: AllColors;
+  params?: string[];
   text: ReactNode;
   channels: Omit<ChannelProps, "idx" | "color" | "singleChannel">[];
 }
@@ -246,6 +247,20 @@ export const ManualApp = ({ app }: Props) => {
           <p>{app.description}</p>
         </div>
       </div>
+      {app.params ? (
+        <div className="mb-4">
+          <h3 className="text-sm font-bold uppercase">
+            Available app parameters
+          </h3>
+          <ul className="list-inside list-disc">
+            {app.params.map((param) => (
+              <li className="text-sm" key={param}>
+                {param}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <p className="mb-4">{app.text}</p>
       <div
         className="inline-grid"
