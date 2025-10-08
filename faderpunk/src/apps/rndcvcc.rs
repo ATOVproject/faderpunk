@@ -28,7 +28,7 @@ const LED_COLOR: Color = Color::Violet;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Random CC/CV",
-    "Generate random values on clock",
+    "Generate random CC and CV values",
     Color::Green,
     AppIcon::Random,
 )
