@@ -18,13 +18,13 @@ type Item = { key: Range["tag"]; value: string };
 const getValue = (key: Range["tag"]) => {
   switch (key) {
     case "_0_10V": {
-      return "0V - 10V";
+      return "0V to 10V";
     }
     case "_0_5V": {
-      return "0V - 5V";
+      return "0V to 5V";
     }
     case "_Neg5_5V": {
-      return "-5V - 5V";
+      return "-5V to 5V";
     }
   }
 };
