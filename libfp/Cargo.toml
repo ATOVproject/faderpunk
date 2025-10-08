@@ -3,7 +3,7 @@ name = "libfp"
 description = "Faderpunk shared libraries"
 version = "0.8.1"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0"
 
 [dependencies]
 defmt = "1.0.1"
