@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.1.0...configurator-v1.1.1) (2025-10-08)
+
+
+### Bug Fixes
+
+* **configurator:** disambiguate range names ([87947ef](https://github.com/ATOVproject/faderpunk/commit/87947eff463d2df42dd188c7e4e625f18bbcfc08))
+* **configurator:** properly parse enum defaultValue ([00db2a0](https://github.com/ATOVproject/faderpunk/commit/00db2a0a3bf569ce80076519ba075b3a451232b6))
+
 ## [1.1.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.0.0...configurator-v1.1.0) (2025-09-25)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.3.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.2.2...faderpunk-v1.3.0) (2025-10-08)
+
+
+### Features
+
+* **clkcvrnd:** add slew to CV and bipolar param ([b0d5525](https://github.com/ATOVproject/faderpunk/commit/b0d552562c646393004f0461a4d60b25bc26e650))
+* **control:** add invert param ([4304662](https://github.com/ATOVproject/faderpunk/commit/4304662f0f079a94f15a0449863066a3a2615ce5))
+* **rndcvcc:** add free running mode ([a5dba5b](https://github.com/ATOVproject/faderpunk/commit/a5dba5b2b9215bdbb0a388f16b59aee7784c4460))
+* **rndcvcc:** change clkcvrnd name to rndcvcc ([5638b80](https://github.com/ATOVproject/faderpunk/commit/5638b80b3e891fe62a4f0117173fc13f9b0cd1bd))
+
+
+### Bug Fixes
+
+* **clock:** always pass through analog ticks ([6ed1093](https://github.com/ATOVproject/faderpunk/commit/6ed109396ecb01c703e32a2b921cf23854eaafc7))
+* **clock:** apply correct pull for analog clock inputs ([89e778b](https://github.com/ATOVproject/faderpunk/commit/89e778b477a2a31876a757426d04621403ccad69))
+* **max:** reduce number of sample readings for adc ([577646e](https://github.com/ATOVproject/faderpunk/commit/577646e032bcc98b5a5d09eb58c9e7cbe4315da3))
+* **midi:** add midi throttling to 500 messages per second ([bfb502d](https://github.com/ATOVproject/faderpunk/commit/bfb502d52ef54cc934263cfdc8c53786da12242b))
+* **probatrigger:** param change making the app crash ([c8b233d](https://github.com/ATOVproject/faderpunk/commit/c8b233db5163029bee857f973d18c29412478018))
+* **rndcvcc:** Change description ([edda804](https://github.com/ATOVproject/faderpunk/commit/edda804da43eff04339bef417ec4a1e04791fec0))
+* **storage:** enable calibration data migration ([b8f140e](https://github.com/ATOVproject/faderpunk/commit/b8f140e1548559ea25032ef32868ae597800e0aa))
+
 ## [1.2.2](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.2.1...faderpunk-v1.2.2) (2025-10-01)
 
 
