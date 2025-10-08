@@ -26,7 +26,7 @@ use crate::{
         max::{
             MaxCmd, MaxSender, MAX_TRIGGERS_GPO, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
         },
-        midi::{MidiOutEvent, MidiSender as MidiChannelSender},
+        midi::{AppMidiSender, MidiOutEvent},
     },
     QUANTIZER,
 };
@@ -358,24 +358,26 @@ impl<const N: usize> I2cOutput<N> {
 
 #[derive(Clone, Copy)]
 pub struct MidiOutput {
-    midi_sender: MidiChannelSender,
+    start_channel: usize,
+    midi_sender: AppMidiSender,
     midi_channel: u4,
 }
 
 impl MidiOutput {
-    pub fn new(midi_channel: u4, midi_sender: MidiChannelSender) -> Self {
+    pub fn new(start_channel: usize, midi_channel: u4, midi_sender: AppMidiSender) -> Self {
         Self {
+            start_channel,
             midi_sender,
             midi_channel,
         }
     }
 
     async fn send_midi_msg(&self, msg: MidiMessage) {
-        let event = MidiOutEvent::Event(LiveEvent::Midi {
+        let event = LiveEvent::Midi {
             channel: self.midi_channel,
             message: msg,
-        });
-        self.midi_sender.send(event).await;
+        };
+        self.midi_sender.send((self.start_channel, event)).await;
     }
 
     /// Sends a MIDI CC message.
@@ -553,7 +555,7 @@ pub struct App<const N: usize> {
     event_pubsub: &'static EventPubSubChannel,
     i2c_sender: I2cLeaderSender,
     max_sender: MaxSender,
-    midi_sender: MidiChannelSender,
+    midi_sender: AppMidiSender,
 }
 
 impl<const N: usize> App<N> {
@@ -564,7 +566,7 @@ impl<const N: usize> App<N> {
         event_pubsub: &'static EventPubSubChannel,
         i2c_sender: I2cLeaderSender,
         max_sender: MaxSender,
-        midi_sender: MidiChannelSender,
+        midi_sender: AppMidiSender,
     ) -> Self {
         Self {
             app_id,
@@ -630,10 +632,6 @@ impl<const N: usize> App<N> {
         GateJack::new(self.start_channel + chan)
     }
 
-    pub async fn delay_micros(&self, micros: u64) {
-        Timer::after_micros(micros).await
-    }
-
     pub async fn delay_millis(&self, millis: u64) {
         Timer::after_millis(millis).await
     }
@@ -671,7 +669,7 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_midi_output(&self, midi_channel: u8) -> MidiOutput {
-        MidiOutput::new(midi_channel.into(), self.midi_sender)
+        MidiOutput::new(self.start_channel, midi_channel.into(), self.midi_sender)
     }
 
     pub fn use_i2c_output(&self) -> I2cOutput<N> {

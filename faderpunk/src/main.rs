@@ -13,7 +13,6 @@ mod tasks;
 
 use core::sync::atomic::Ordering;
 
-use defmt::info;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::{ClockConfig, CoreVoltage};
 use embassy_rp::config::Config;
@@ -37,6 +36,7 @@ use static_cell::StaticCell;
 
 use crate::storage::store_layout;
 use crate::tasks::global_config::GLOBAL_CONFIG_WATCH;
+use crate::tasks::midi::midi_distributor;
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -44,7 +44,7 @@ use layout::{LayoutManager, LAYOUT_MANAGER, LAYOUT_WATCH};
 use storage::{load_calibration_data, load_global_config, load_layout};
 use tasks::{
     buttons::BUTTON_PRESSED, fram::MAX_DATA_LEN, i2c::I2C_LEADER_CHANNEL, max::MAX_CHANNEL,
-    midi::MIDI_CHANNEL,
+    midi::APP_MIDI_CHANNEL,
 };
 
 // Program metadata for `picotool info`.
@@ -84,6 +84,7 @@ pub static QUANTIZER: LazyLock<Mutex<CriticalSectionRawMutex, Quantizer>> =
 
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
+    spawner.spawn(midi_distributor()).unwrap();
     let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
     let mut receiver = LAYOUT_WATCH.receiver().unwrap();
     loop {
