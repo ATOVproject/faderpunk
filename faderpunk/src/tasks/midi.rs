@@ -1,7 +1,7 @@
 use defmt::info;
 use embassy_futures::{
     join::join,
-    select::{select3, Either3},
+    select::{select, select3, Either, Either3},
 };
 use embassy_rp::{
     peripherals::USB,
@@ -9,13 +9,13 @@ use embassy_rp::{
     usb::Driver,
 };
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
+    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
     channel::{Channel, Sender},
 };
-use embassy_time::{with_timeout, Duration, TimeoutError};
+use embassy_time::{with_timeout, Duration, Ticker, TimeoutError};
 use embassy_usb::class::midi::{MidiClass, Sender as UsbSender};
 use embedded_io_async::{Read, Write};
-use heapless::Vec;
+use heapless::{Deque, Vec};
 use midly::{
     io::Cursor,
     live::{LiveEvent, SystemCommon, SystemRealtime},
@@ -34,8 +34,8 @@ midly::stack_buffer! {
     struct MidiStreamBuffer([u8; 64]);
 }
 
-// 16 apps plus clock
-const MIDI_CHANNEL_SIZE: usize = 17;
+const MIDI_CHANNEL_SIZE: usize = 16;
+const MIDI_APP_QUEUE_SIZE: usize = 16;
 
 #[derive(Clone, Copy)]
 pub enum MidiClockTarget {
@@ -50,9 +50,51 @@ pub enum MidiOutEvent {
     Clock(SystemRealtime, MidiClockTarget),
 }
 
-pub type MidiSender = Sender<'static, CriticalSectionRawMutex, MidiOutEvent, MIDI_CHANNEL_SIZE>;
 pub static MIDI_CHANNEL: Channel<CriticalSectionRawMutex, MidiOutEvent, MIDI_CHANNEL_SIZE> =
     Channel::new();
+
+// Channel for apps (Core 1) to send MIDI to the distributor task (Core 1)
+pub static APP_MIDI_CHANNEL: Channel<
+    ThreadModeRawMutex,
+    (usize, LiveEvent<'static>),
+    MIDI_CHANNEL_SIZE,
+> = Channel::new();
+
+pub type AppMidiSender =
+    Sender<'static, ThreadModeRawMutex, (usize, LiveEvent<'static>), MIDI_CHANNEL_SIZE>;
+
+#[embassy_executor::task]
+pub async fn midi_distributor() {
+    let mut app_queues: [Deque<LiveEvent<'static>, MIDI_APP_QUEUE_SIZE>; 16] =
+        core::array::from_fn(|_| Deque::new());
+    let mut last_app_id: usize = 0;
+    let midi_out_sender = MIDI_CHANNEL.sender();
+    let app_midi_receiver = APP_MIDI_CHANNEL.receiver();
+    let mut ticker = Ticker::every(Duration::from_millis(2));
+
+    loop {
+        match select(app_midi_receiver.receive(), ticker.next()).await {
+            // A new message from an app has arrived, enqueue it.
+            Either::First((start_channel, ev)) => {
+                if !app_queues[start_channel].is_full() {
+                    app_queues[start_channel].push_back(ev).unwrap();
+                }
+            }
+            // The 1ms throttle timer has fired, send one message.
+            Either::Second(_) => {
+                // Find the next app with a message in its queue (round-robin)
+                for i in 0..16 {
+                    let app_idx = (last_app_id + 1 + i) % 16;
+                    if let Some(ev) = app_queues[app_idx].pop_front() {
+                        midi_out_sender.send(MidiOutEvent::Event(ev)).await;
+                        last_app_id = app_idx;
+                        break; // Stop after sending one message
+                    }
+                }
+            }
+        }
+    }
+}
 
 #[derive(Copy, Clone)]
 enum CodeIndexNumber {
