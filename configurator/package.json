@@ -2,6 +2,7 @@
   "name": "configurator",
   "private": true,
   "version": "1.1.1",
+  "license": "GPL-3.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
