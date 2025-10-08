@@ -50,8 +50,6 @@ pub enum ProtocolError {
     MessageTooLarge,
     DecodingError,
     EncodingError,
-    InvalidMessageType,
-    IncompleteMessage,
     TransmissionError,
     CorruptedMessage,
     Timeout,
@@ -60,8 +58,6 @@ pub enum ProtocolError {
 pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
     let mut proto = ConfigProtocol::new(webusb);
     let mut layout_receiver = LAYOUT_WATCH.receiver().unwrap();
-    // TODO: think about sending apps individually to save on buffer size
-    // Then add batching to messages (message x/y) to the header
     proto.wait_enabled().await;
     loop {
         // Test: send some app config to parse on the client side
@@ -133,7 +129,6 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
 
 struct ConfigProtocol<'a> {
     send_buf: [u8; MAX_PAYLOAD_SIZE + COBS_BYTES + PROTOCOL_BYTES],
-    recv_buf: [u8; MAX_PAYLOAD_SIZE + COBS_BYTES + PROTOCOL_BYTES],
     webusb_tx: UsbEndpoint<'a, USB, In>,
     webusb_rx: UsbEndpoint<'a, USB, Out>,
 }
@@ -143,7 +138,6 @@ impl<'a> ConfigProtocol<'a> {
         let (webusb_tx, webusb_rx) = webusb.split();
         ConfigProtocol {
             send_buf: [0; MAX_PAYLOAD_SIZE + COBS_BYTES + PROTOCOL_BYTES],
-            recv_buf: [0; MAX_PAYLOAD_SIZE + COBS_BYTES + PROTOCOL_BYTES],
             webusb_rx,
             webusb_tx,
         }
@@ -190,7 +184,6 @@ impl<'a> ConfigProtocol<'a> {
         let msg = from_bytes(&buf[2..rx_size]).map_err(|_| ProtocolError::DecodingError)?;
         Ok(msg)
     }
-    // TODO: chunk up message
     async fn read_msg(&mut self) -> Result<ConfigMsgIn, ProtocolError> {
         let mut buf = [0; MAX_PAYLOAD_SIZE + PROTOCOL_BYTES + COBS_BYTES];
 
