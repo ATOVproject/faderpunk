@@ -5,6 +5,8 @@ use crate::{Key, Note, Range};
 use heapless::Vec;
 use libm::roundf;
 
+const CODEBOOK_SIZE: usize = 216;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Pitch {
     pub octave: i8,
@@ -63,7 +65,7 @@ impl Default for QuantizerState {
 }
 
 pub struct Quantizer {
-    codebook: [i16; 128],
+    codebook: [i16; CODEBOOK_SIZE],
     version: u64,
 }
 
@@ -86,9 +88,9 @@ impl Quantizer {
         let mut codebook_idx = 0;
 
         // Cover a wide range of octaves to ensure we can quantize any reasonable input
-        for octave in -8..=8 {
+        for octave in -6..=11 {
             for &note_offset in &notes {
-                if codebook_idx >= 128 {
+                if codebook_idx >= CODEBOOK_SIZE {
                     break;
                 }
 
@@ -101,7 +103,7 @@ impl Quantizer {
                 self.codebook[codebook_idx] = fixed_point;
                 codebook_idx += 1;
             }
-            if codebook_idx >= 128 {
+            if codebook_idx >= CODEBOOK_SIZE {
                 break;
             }
         }
@@ -109,7 +111,7 @@ impl Quantizer {
         // Fill any remaining slots with the last note (highest)
         if codebook_idx > 0 {
             let last_note = self.codebook[codebook_idx - 1];
-            for i in codebook_idx..128 {
+            for i in codebook_idx..CODEBOOK_SIZE {
                 self.codebook[i] = last_note;
             }
         }
@@ -188,7 +190,7 @@ impl Quantizer {
 impl Default for Quantizer {
     fn default() -> Self {
         let mut q = Self {
-            codebook: [0; 128],
+            codebook: [0; CODEBOOK_SIZE],
             version: 0,
         };
         // Default to C Chromatic
@@ -284,6 +286,43 @@ mod tests {
         );
 
         // ~5V -> 4095 counts. Should be C5. Closest note is C5
+        assert_eq!(
+            q.get_quantized_note(&mut state, 4095, Range::_Neg5_5V),
+            Pitch {
+                octave: 5,
+                note: Note::C
+            }
+        );
+    }
+
+    #[test]
+    fn test_full_range() {
+        let mut q = Quantizer::default();
+        q.set_scale(Key::Chromatic, Note::C);
+        let mut state = QuantizerState::default();
+
+        // Test the top of the 0-10V range
+        // 10V -> 4095 counts. Should be C10
+        assert_eq!(
+            q.get_quantized_note(&mut state, 4095, Range::_0_10V),
+            Pitch {
+                octave: 10,
+                note: Note::C
+            }
+        );
+
+        // Test the bottom of the bipolar -5V to 5V range
+        // -5V -> 0 counts. Should be C-5
+        assert_eq!(
+            q.get_quantized_note(&mut state, 0, Range::_Neg5_5V),
+            Pitch {
+                octave: -5,
+                note: Note::C
+            }
+        );
+
+        // Test the top of the bipolar -5V to 5V range
+        // ~5V -> 4095 counts. Should be C5
         assert_eq!(
             q.get_quantized_note(&mut state, 4095, Range::_Neg5_5V),
             Pitch {
