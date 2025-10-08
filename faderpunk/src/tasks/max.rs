@@ -119,7 +119,7 @@ async fn read_fader(
         .into_configured_port(ConfigMode7(
             AVR::InternalRef,
             ADCRANGE::Rg0_2v5,
-            NSAMPLES::Samples16,
+            NSAMPLES::Samples1,
         ))
         .await
         .unwrap();

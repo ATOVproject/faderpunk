@@ -602,11 +602,7 @@ impl<const N: usize> App<N> {
         };
         self.reconfigure_jack(
             chan,
-            Mode::Mode7(ConfigMode7(
-                AVR::InternalRef,
-                adc_range,
-                NSAMPLES::Samples16,
-            )),
+            Mode::Mode7(ConfigMode7(AVR::InternalRef, adc_range, NSAMPLES::Samples1)),
             None,
         )
         .await;
