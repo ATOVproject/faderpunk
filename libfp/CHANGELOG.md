@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.8.0...libfp-v0.8.1) (2025-10-08)
+
+
+### Bug Fixes
+
+* **quantizer:** increase codebook size for increased range ([291f35d](https://github.com/ATOVproject/faderpunk/commit/291f35da6f18adc0b2dfe52c8ed23b16ac0b32e4))
+
 ## [0.8.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.7.0...libfp-v0.8.0) (2025-09-25)
 
 
