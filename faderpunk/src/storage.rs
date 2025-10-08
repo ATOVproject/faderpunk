@@ -106,7 +106,6 @@ pub async fn load_calibration_data() -> Option<MaxCalibration> {
         if data[0..4] == CALIB_FILE_MAGIC {
             if let Ok(file) = from_bytes::<CalibFile>(data) {
                 if file.version == 2 {
-                    defmt::info!("V2 calibration data found.");
                     return Some(file.data);
                 } else {
                     defmt::warn!("Unsupported calibration file version: {}", file.version);
@@ -116,8 +115,8 @@ pub async fn load_calibration_data() -> Option<MaxCalibration> {
         } else if let Ok(old_data) = from_bytes::<MaxCalibrationV1>(data) {
             defmt::info!("Old V1 calibration data found, converting to new format.");
             let new_data = MaxCalibration::from(old_data);
-            // Re-save the data in the new V2 format for next time (not yet)
-            // store_calibration_data(&new_data).await;
+            // Re-save the data in the new V2 format for next time
+            store_calibration_data(&new_data).await;
             return Some(new_data);
         }
 
