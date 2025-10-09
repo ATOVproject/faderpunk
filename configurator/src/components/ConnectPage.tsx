@@ -21,7 +21,7 @@ export const ConnectPage = () => {
         </div>
         <Link
           to="/about"
-          className="text-default-400 mt-4 cursor-pointer underline"
+          className="text-default-400 mt-4 cursor-pointer text-center underline"
         >
           What is this?
         </Link>
