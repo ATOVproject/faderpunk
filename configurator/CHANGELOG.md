@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.1.1...configurator-v1.2.0) (2025-10-09)
+
+
+### Features
+
+* **configurator:** add initial version of all app manuals ([97b56ac](https://github.com/ATOVproject/faderpunk/commit/97b56ac8cc710de155e91d75991c91e817336086))
+* **configurator:** add manual page ([85385e0](https://github.com/ATOVproject/faderpunk/commit/85385e0b8e120beb1da348b64f72b74a90878daf))
+* **configurator:** add manual template ([7085070](https://github.com/ATOVproject/faderpunk/commit/7085070a91ee656017a0609ef877c792688835ba))
+* **configurator:** add update guide and fw link ([d7107ef](https://github.com/ATOVproject/faderpunk/commit/d7107ef0bc6f471b7db07487f801f2b8fd98ba2f))
+* **configurator:** display update message ([7d9894f](https://github.com/ATOVproject/faderpunk/commit/7d9894f1a00586aadf572688de869befd9213318))
+* **configurator:** manual app style improvements ([e49bde3](https://github.com/ATOVproject/faderpunk/commit/e49bde3ae6fc3673980b923e082d92b676ba0104))
+
+
+### Bug Fixes
+
+* **configurator:** add app params to manual ([155e9dd](https://github.com/ATOVproject/faderpunk/commit/155e9dd28b5538a9c38c537d81168a478c6c8c3e))
+* **configurator:** add favicon ([86f45d4](https://github.com/ATOVproject/faderpunk/commit/86f45d4a64771430ea2af9c43db3ed65ae9378e0))
+
 ## [1.1.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.1.0...configurator-v1.1.1) (2025-10-08)
 
 
