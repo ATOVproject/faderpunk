@@ -122,13 +122,25 @@ export const UpdateGuide = () => (
         The Faderpunk will <strong>automatically reboot</strong> with the new
         firmware installed
       </li>
-      <li>This happens within a few seconds—you don't need to do anything!</li>
+      <li>
+        This happens within a few seconds — you don't need to do anything!
+      </li>
     </ul>
 
     <h3 className="mt-6 font-bold">Step 5: Verify the Update</h3>
     <ol className="mb-4 list-inside list-decimal">
-      <li>Open the Faderpunk configurator software on your computer</li>
       <li>Connect your Faderpunk normally (without holding any buttons)</li>
+      <li>
+        Open the{" "}
+        <a
+          className="font-semibold underline"
+          href="/configurator"
+          target="_blank"
+        >
+          Faderpunk Configurator
+        </a>{" "}
+        in your browser, press the "Connect" button
+      </li>
       <li>
         Check the firmware version number in the configurator to confirm the
         update was successful
