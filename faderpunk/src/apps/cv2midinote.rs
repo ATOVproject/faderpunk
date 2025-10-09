@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{ext::FromValue, Config, Param, Range, Value};
 
-use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
+use crate::{
+    app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent},
+    tasks::leds::LED_BRIGHTNESS,
+};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 4;
@@ -168,7 +171,7 @@ pub async fn run(
     let gate_in = app.make_in_jack(1, Range::_0_10V).await;
 
     if !storage.query(|s| s.offset_toggle) {
-        leds.set(0, Led::Button, led_color, Brightness::Lower);
+        leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
     } else {
         leds.unset(0, Led::Button);
     }
@@ -203,10 +206,6 @@ pub async fn run(
                         .as_counts(range) as u32
                         * 120
                         / 4095) as u8;
-                    info!(
-                        "note = {}, oct = {}, st = {}, midi out = {}",
-                        note, oct, st, midi_out
-                    );
 
                     midi.send_note_on(midi_out, 4095).await;
                     note_on = true;
@@ -220,7 +219,7 @@ pub async fn run(
                     led_color,
                     Brightness::Custom(note_led[1] * 2),
                 );
-                leds.set(1, Led::Top, led_color, Brightness::Lower);
+                leds.set(1, Led::Top, led_color, LED_BRIGHTNESS);
 
                 // info!("note on")
             }
