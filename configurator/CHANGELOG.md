@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.0...configurator-v1.2.1) (2025-10-09)
+
+
+### Bug Fixes
+
+* **configurator:** lil update procedure fix ([57a4be6](https://github.com/ATOVproject/faderpunk/commit/57a4be60a0d82dd4e61fb84e94aeb927f3bdfc94))
+
 ## [1.2.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.1.1...configurator-v1.2.0) (2025-10-09)
 
 
