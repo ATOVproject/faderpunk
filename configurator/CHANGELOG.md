@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.1...configurator-v1.2.2) (2025-10-09)
+
+
+### Bug Fixes
+
+* **configurator:** fix routing for GitHub pages ([492e4e0](https://github.com/ATOVproject/faderpunk/commit/492e4e0fa7e15e6c9a06de207a7c1fafb273ea7b))
+
 ## [1.2.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.0...configurator-v1.2.1) (2025-10-09)
 
 
