@@ -13,7 +13,7 @@ Faderpunk is an embedded Rust project that uses an RP2350B to create a feature-r
 - **Dual-Core Performance**: Hardware tasks on Core 0, application logic on Core 1
 - **WebUSB Configuration**: Browser-based configurator with drag-and-drop layout management
 - **FRAM Storage**: Persistent scene storage with fast save/recall
-- **Full MIDI Support**: USB MIDI device and host capabilities
+- **Full MIDI Support**: USB MIDI device capabilities
 - **I2C Integration**: Compatible with 16n faderbank protocol
 - **Real-time Control**: Async architecture ensures responsive performance
 
@@ -21,9 +21,9 @@ Faderpunk is an embedded Rust project that uses an RP2350B to create a feature-r
 
 ### Microcontroller
 - **RP2350B** (Raspberry Pi Pico 2)
-- Dual Cortex-M33 cores @ 150 MHz
+- Dual Cortex-M33 cores @ 150 MHz (overclocked to 250MHz)
 - 520 KB SRAM
-- USB 1.1 device and host
+- USB 1.1 device
 
 ### I/O Components
 - **MAX11300**: 20-port programmable mixed-signal I/O (ADC/DAC)
@@ -304,7 +304,6 @@ Apps implement scene save/load by serializing their state with `postcard`.
 
 ### MIDI
 - USB MIDI device (shows as MIDI interface to host)
-- USB MIDI host (connect MIDI devices to Faderpunk)
 - Configurable channel routing
 - Full MIDI message support via `midly` crate
 
