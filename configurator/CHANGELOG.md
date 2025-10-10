@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.3](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.2...configurator-v1.2.3) (2025-10-10)
+
+
+### Bug Fixes
+
+* **configurator:** fix app links to manual ([d2667ba](https://github.com/ATOVproject/faderpunk/commit/d2667ba2be17f8ad061c3a959d8a2fe4981639bc))
+* **configurator:** quick manual styling fixes ([f5064e7](https://github.com/ATOVproject/faderpunk/commit/f5064e79722c6b8c5b33f75d9a5ae550a976904d))
+
 ## [1.2.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.1...configurator-v1.2.2) (2025-10-09)
 
 
