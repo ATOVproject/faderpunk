@@ -1,24 +1,24 @@
+import { H2, H3, List } from "./Shared";
+
 export const UpdateGuide = () => (
   <>
-    <h2 className="text-yellow-fp mt-8 mb-4 text-lg font-bold uppercase">
-      Firmware Update Guide
-    </h2>
+    <H2 id="update">Firmware Update Guide</H2>
     <p>
       This guide will walk you through updating your Faderpunk's firmware. Don't
       worry—it's simpler than it sounds! You'll essentially be copying a file to
       your device while it's in a special update mode.
     </p>
 
-    <h3 className="mt-6 font-bold">What You'll Need</h3>
-    <ul className="mb-4 list-inside list-disc">
-      <li>Your Faderpunk synth controller</li>
+    <H3>What You'll Need</H3>
+    <List>
+      <li>Your Faderpunk</li>
       <li>A USB cable to connect it to your computer</li>
       <li>
         The firmware file (it will end in <code>.uf2</code>)
       </li>
-    </ul>
+    </List>
 
-    <h3 className="mt-6 font-bold">Step 1: Enter Bootloader Mode</h3>
+    <H3>Step 1: Enter Bootloader Mode</H3>
     <p className="mb-2">
       This is a special mode that allows your Faderpunk to receive new firmware.
     </p>
@@ -42,14 +42,14 @@ export const UpdateGuide = () => (
       <li>You can now release the Shift button</li>
     </ol>
 
-    <h3 className="mt-6 font-bold">Step 2: Locate the Faderpunk Drive</h3>
+    <H3>Step 2: Locate the Faderpunk Drive</H3>
     <p className="mb-2">
       Your computer will now recognize the Faderpunk as a storage device (like a
       USB flash drive) named <strong>RP2350</strong>.
     </p>
 
     <p className="mt-4 font-bold">On Windows:</p>
-    <ul className="mb-4 list-inside list-disc">
+    <List>
       <li>
         Open <strong>File Explorer</strong> (Windows key + E)
       </li>
@@ -57,10 +57,10 @@ export const UpdateGuide = () => (
       <li>
         You should see a drive labeled <strong>RP2350</strong>
       </li>
-    </ul>
+    </List>
 
     <p className="mt-4 font-bold">On Mac:</p>
-    <ul className="mb-4 list-inside list-disc">
+    <List>
       <li>
         A drive icon labeled <strong>RP2350</strong> should appear on your
         Desktop
@@ -69,10 +69,10 @@ export const UpdateGuide = () => (
         Alternatively, open <strong>Finder</strong> and look in the left sidebar
         under "Locations"
       </li>
-    </ul>
+    </List>
 
     <p className="mt-4 font-bold">On Linux:</p>
-    <ul className="mb-4 list-inside list-disc">
+    <List>
       <li>
         The drive should automatically mount and appear in your file manager
       </li>
@@ -83,9 +83,9 @@ export const UpdateGuide = () => (
         If it doesn't auto-mount, you may need to manually mount it from your
         file manager
       </li>
-    </ul>
+    </List>
 
-    <h3 className="mt-6 font-bold">Step 3: Install the Firmware</h3>
+    <H3>Step 3: Install the Firmware</H3>
     <ol className="mb-4 list-inside list-decimal space-y-2">
       <li>
         <strong>Locate your firmware file</strong> (the <code>.uf2</code> file
@@ -112,8 +112,8 @@ export const UpdateGuide = () => (
       </li>
     </ol>
 
-    <h3 className="mt-6 font-bold">Step 4: Automatic Reboot</h3>
-    <ul className="mb-4 list-inside list-disc">
+    <H3>Step 4: Automatic Reboot</H3>
+    <List>
       <li>
         Once the file finishes copying, the{" "}
         <strong>RP2350 drive will disappear</strong> from your computer
@@ -125,9 +125,9 @@ export const UpdateGuide = () => (
       <li>
         This happens within a few seconds — you don't need to do anything!
       </li>
-    </ul>
+    </List>
 
-    <h3 className="mt-6 font-bold">Step 5: Verify the Update</h3>
+    <H3>Step 5: Verify the Update</H3>
     <ol className="mb-4 list-inside list-decimal">
       <li>Connect your Faderpunk normally (without holding any buttons)</li>
       <li>
@@ -147,9 +147,9 @@ export const UpdateGuide = () => (
       </li>
     </ol>
 
-    <h3 className="mt-6 font-bold">Troubleshooting</h3>
+    <H3>Troubleshooting</H3>
     <p className="mt-4 font-bold">The RP2350 drive doesn't appear:</p>
-    <ul className="mb-4 list-inside list-disc">
+    <List>
       <li>
         Make sure you're holding the Shift button <em>before</em> and{" "}
         <em>while</em> plugging in the USB cable
@@ -159,10 +159,10 @@ export const UpdateGuide = () => (
         On Linux, you may need to check if the drive needs to be manually
         mounted
       </li>
-    </ul>
+    </List>
 
     <p className="mt-4 font-bold">The firmware doesn't seem to install:</p>
-    <ul className="mb-4 list-inside list-disc">
+    <List>
       <li>
         Make sure you're copying the correct <code>.uf2</code> file (not a
         different file type)
@@ -171,6 +171,6 @@ export const UpdateGuide = () => (
         Ensure the file finishes copying completely before the device reboots
       </li>
       <li>Try the process again from Step 1</li>
-    </ul>
+    </List>
   </>
 );
