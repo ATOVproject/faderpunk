@@ -1,7 +1,7 @@
 export const UpdateGuide = () => (
   <>
     <h2 className="text-yellow-fp mt-8 mb-4 text-lg font-bold uppercase">
-      Faderpunk Firmware Update Guide
+      Firmware Update Guide
     </h2>
     <p>
       This guide will walk you through updating your Faderpunk's firmware. Don't
