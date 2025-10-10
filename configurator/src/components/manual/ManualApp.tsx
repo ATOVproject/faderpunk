@@ -1,9 +1,9 @@
 import { type ReactNode } from "react";
 import clx from "classnames";
 
-import { COLORS_CLASSES } from "../utils/class-helpers";
-import { Icon } from "./Icon";
-import { AllColors } from "../utils/types";
+import { COLORS_CLASSES } from "../../utils/class-helpers";
+import { Icon } from "../Icon";
+import { AllColors } from "../../utils/types";
 
 interface ArrowIconProps {
   className?: string;
@@ -91,8 +91,8 @@ interface ChannelProps {
   faderPlusFnDescription?: ReactNode;
   faderPlusShiftTitle?: string;
   faderPlusShiftDescription?: ReactNode;
-  fnTitle: string;
-  fnDescription: string;
+  fnTitle?: string;
+  fnDescription?: string;
   fnPlusShiftTitle?: string;
   fnPlusShiftDescription?: ReactNode;
   ledTop: ReactNode;
@@ -190,26 +190,34 @@ const Channel = ({
     <div className="row-start-9 pt-1" style={{ gridColumn: idx + 3 }}>
       <div className="px-2 text-sm italic">{ledBottom}</div>
       {ledBottomPlusShift ? (
-        <div className="px-2 text-sm italic">
+        <div className="px-4 text-sm italic">
           <span className="font-vox font-semibold">Shift:</span>{" "}
           {ledBottomPlusShift}
         </div>
       ) : null}
       {ledBottomPlusFn ? (
-        <div className="px-2 text-sm italic">
+        <div className="px-4 text-sm italic">
           <span className="font-vox font-semibold">Fn:</span> {ledBottomPlusFn}
         </div>
       ) : null}
     </div>
-    <div className="row-start-11 px-2 pt-6" style={{ gridColumn: idx + 3 }}>
-      <FunctionField
-        color={color}
-        title={fnTitle}
-        description={fnDescription}
-      />
-    </div>
+    {fnTitle ? (
+      <div className="row-start-12 px-2" style={{ gridColumn: idx + 3 }}>
+        <FunctionField
+          color={color}
+          title={fnTitle}
+          description={fnDescription}
+        />
+      </div>
+    ) : null}
     {fnPlusShiftTitle ? (
-      <div className="row-start-12 p-2" style={{ gridColumn: idx + 3 }}>
+      <div
+        className={clx({
+          "row-start-12 px-2": !fnTitle,
+          "row-start-13 p-2": fnTitle,
+        })}
+        style={{ gridColumn: idx + 3 }}
+      >
         <FunctionField
           color={color}
           title={fnPlusShiftTitle}
@@ -225,6 +233,7 @@ interface Props {
 }
 
 export const ManualApp = ({ app }: Props) => {
+  const hasFn = app.channels.some((chan) => !!chan.fnTitle);
   const hasFaderPlusShift = app.channels.some(
     (chan) => !!chan.faderPlusShiftTitle,
   );
@@ -232,7 +241,7 @@ export const ManualApp = ({ app }: Props) => {
   const hasFnPlusShift = app.channels.some((chan) => !!chan.fnPlusShiftTitle);
 
   return (
-    <div id={`app-${app.appId}`}>
+    <div className="mb-16" id={`app-${app.appId}`}>
       <div className="mb-4 flex gap-4">
         <div
           className={clx(
@@ -297,16 +306,17 @@ export const ManualApp = ({ app }: Props) => {
           <span className="border-t-1.5 border-r-1.5 border-l-1.5 rounded-t-large h-3 w-6 border-white" />
         </div>
 
-        <div className="relative z-10 col-start-1 row-start-11 flex flex-col items-center justify-start">
+        <div className="relative z-10 col-start-1 row-start-11 flex min-h-8 flex-col items-center justify-start">
           <span className="border-b-1.5 border-r-1.5 border-l-1.5 rounded-b-large h-3 w-6 border-white" />
           <div className="relative flex-1">
             <div className="absolute top-0 left-1/2 h-full w-[1.5px] -translate-x-1/2 bg-white"></div>
           </div>
+        </div>
+        <div className="relative z-10 col-start-1 row-start-12 flex flex-col items-center justify-start">
           <Button className="h-10 w-10" label="Fn" />
         </div>
 
         <div className="z-10 col-start-2 row-start-3 flex items-start justify-center pt-4">
-          {/* <img src="/img/arrow-bidirectional.svg" /> */}
           <ArrowIcon className={COLORS_CLASSES[app.color].text} />
         </div>
         <div className="z-10 col-start-2 row-start-4 flex items-start pt-2 pr-2">
@@ -372,19 +382,29 @@ export const ManualApp = ({ app }: Props) => {
             </div>
           </div>
         </div>
-        <div className="relative z-10 col-start-2 row-start-11 px-2 pt-6">
+        {hasFn ? (
+          <div className="relative z-10 col-start-2 row-start-12 px-2">
+            <div
+              className={clx(
+                COLORS_CLASSES[app.color].border,
+                "font-vox border-b-1 px-2 py-0",
+              )}
+            >
+              &nbsp;
+            </div>
+            <div className="px-2 text-xs italic"></div>
+          </div>
+        ) : null}
+        {hasFnPlusShift ? (
           <div
             className={clx(
-              COLORS_CLASSES[app.color].border,
-              "font-vox border-b-1 px-2 py-0",
+              "relative z-10 col-start-2 flex items-start justify-center",
+              {
+                "row-start-12 pt-1": !hasFn,
+                "row-start-13 pt-4": hasFn,
+              },
             )}
           >
-            &nbsp;
-          </div>
-          <div className="px-2 text-xs italic"></div>
-        </div>
-        {hasFnPlusShift ? (
-          <div className="relative z-10 col-start-2 row-start-12 flex items-start justify-center pt-4">
             <span
               className={clx(
                 COLORS_CLASSES[app.color].text,
