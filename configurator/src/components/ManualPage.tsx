@@ -6,7 +6,9 @@ import { Preface } from "./manual/Preface";
 import { type ManualAppData } from "./manual/ManualApp";
 import { UpdateGuide } from "./manual/UpdateGuide";
 import { Apps } from "./manual/Apps";
-import { H2 } from "./manual/Headings";
+import { H2, List, Link } from "./manual/Shared";
+import { Interface } from "./manual/Interface";
+import { Configurator } from "./manual/Configurator";
 
 const apps: ManualAppData[] = [
   {
@@ -651,10 +653,39 @@ export const ManualPage = () => {
     <Layout>
       <H2>A quick note</H2>
       <p>
-        This manual is currently under heavy development. Come back in a few
-        hours and it will be much more complete :)
+        This manual is currently under heavy development. Check back regularly
+        for updates.
       </p>
+      <H2>Contents</H2>
+      <nav>
+        <List>
+          <li>
+            <Link to="#preface">Preface</Link>
+          </li>
+          <li>
+            <Link to="#interface">Interface</Link>
+          </li>
+          <li>
+            <Link to="#configurator">Configurator</Link>
+          </li>
+          <li>
+            <Link to="#apps">Apps</Link>
+            <List>
+              {apps.map((app) => (
+                <li key={app.title}>
+                  <Link to={`#app-${app.appId}`}>{app.title}</Link>
+                </li>
+              ))}
+            </List>
+          </li>
+          <li>
+            <Link to="#update">Update guide</Link>
+          </li>
+        </List>
+      </nav>
       <Preface />
+      <Interface />
+      <Configurator />
       <Apps apps={apps} />
       <UpdateGuide />
     </Layout>
