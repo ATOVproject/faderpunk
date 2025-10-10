@@ -9,7 +9,7 @@ import type {
   ResetSrc,
 } from "@atov/fp-config";
 import { FormProvider, useForm, type SubmitHandler } from "react-hook-form";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { ClockSettings } from "./settings/ClockSettings";
 import { ButtonPrimary } from "./Button";
@@ -42,7 +42,7 @@ export interface Inputs {
 }
 
 const SettingsForm = ({ config }: SettingsFormProps) => {
-  const { usbDevice } = useStore();
+  const { usbDevice, deviceVersion } = useStore();
   const methods = useForm<Inputs>({
     defaultValues: {
       auxAtom: config.aux[0].tag,
@@ -64,6 +64,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
     },
   });
   const [saved, setSaved] = useState<boolean>(false);
+  const [configuratorVersion, setConfiguratorVersion] = useState<string>("");
   const {
     handleSubmit,
     formState: { isSubmitting },
@@ -83,6 +84,14 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
     [usbDevice],
   );
 
+  useEffect(() => {
+    const getVersion = async () => {
+      const packageJson = await import("../../package.json");
+      setConfiguratorVersion(packageJson.version);
+    };
+    getVersion();
+  }, []);
+
   return (
     <FormProvider {...methods}>
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -91,7 +100,11 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
         <I2cSettings />
         <AuxSettings />
         <MiscSettings />
-        <div className="flex justify-end">
+        <div className="flex justify-between">
+          <p>
+            Your current version: Faderpunk v{deviceVersion}, Configurator v
+            {configuratorVersion}
+          </p>
           <ButtonPrimary
             color={saved ? "success" : "primary"}
             isDisabled={isSubmitting}
