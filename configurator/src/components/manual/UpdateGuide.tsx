@@ -143,7 +143,8 @@ export const UpdateGuide = () => (
       </li>
       <li>
         Check the firmware version number in the configurator to confirm the
-        update was successful
+        update was successful. You'll find the version in the Settings tab, next
+        to the "Save" button.
       </li>
     </ol>
 
