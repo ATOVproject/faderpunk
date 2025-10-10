@@ -20,6 +20,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
+import { Link } from "react-router-dom";
 
 import { SortableItem } from "./SortableItem";
 import { Item } from "./Item";
@@ -235,9 +236,9 @@ export const EditLayoutModal = ({
                   Resources
                 </h3>
                 <div className="text-base underline">
-                  <a href={`/manual#app${appToAdd.appId}`} target="fpmanual">
+                  <Link to={`/manual#app-${appToAdd.appId}`} target="fpmanual">
                     See app in manual
-                  </a>
+                  </Link>
                 </div>
               </div>
             </div>

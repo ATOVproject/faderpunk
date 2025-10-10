@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
+
 import { Layout } from "./Layout";
 import { Preface } from "./manual/Preface";
 import { type ManualAppData } from "./manual/ManualApp";
@@ -634,15 +637,26 @@ const apps: ManualAppData[] = [
   },
 ];
 
-export const ManualPage = () => (
-  <Layout>
-    <H2>A quick note</H2>
-    <p>
-      This manual is currently under heavy development. Come back in a few hours
-      and it will be much more complete :)
-    </p>
-    <Preface />
-    <Apps apps={apps} />
-    <UpdateGuide />
-  </Layout>
-);
+export const ManualPage = () => {
+  const location = useLocation();
+  useEffect(() => {
+    if (location.hash) {
+      const element = document.getElementById(location.hash.slice(1));
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+  }, [location]);
+  return (
+    <Layout>
+      <H2>A quick note</H2>
+      <p>
+        This manual is currently under heavy development. Come back in a few
+        hours and it will be much more complete :)
+      </p>
+      <Preface />
+      <Apps apps={apps} />
+      <UpdateGuide />
+    </Layout>
+  );
+};
