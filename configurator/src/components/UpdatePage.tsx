@@ -1,6 +1,6 @@
 import { Layout } from "./Layout";
 import { useStore } from "../store";
-import { UpdateGuide } from "./UpdateGuide";
+import { UpdateGuide } from "./manual/UpdateGuide";
 import { ButtonPrimary } from "./Button";
 
 export const UpdatePage = () => {
