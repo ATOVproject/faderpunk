@@ -8,6 +8,7 @@ import { AppsTab } from "./AppsTab";
 import { SettingsTab } from "./SettingsTab";
 import { Modal, ModalContent } from "@heroui/modal";
 import { EditLayoutModal } from "./EditLayoutModal";
+import { ManualTab } from "./ManualTab";
 
 export const ConfiguratorPage = () => {
   const { apps, config, setLayout, layout } = useStore();
@@ -39,6 +40,9 @@ export const ConfiguratorPage = () => {
           </Tab>
           <Tab key="settings" title="Settings">
             <SettingsTab config={config} />
+          </Tab>
+          <Tab key="manual" title="Manual">
+            <ManualTab />
           </Tab>
         </Tabs>
         {layout ? (
