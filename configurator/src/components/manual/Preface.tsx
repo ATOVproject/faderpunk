@@ -1,8 +1,8 @@
-import { H2, H3 } from "./Headings";
+import { H2, H3 } from "./Shared";
 
 export const Preface = () => (
   <>
-    <H2>Preface</H2>
+    <H2 id="preface">Preface</H2>
     <H3>Thank you for choosing Faderpunk!</H3>
     <p>
       We’re thrilled to have you on board. Faderpunk is the result of years of
