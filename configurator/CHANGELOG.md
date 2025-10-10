@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.3...configurator-v1.3.0) (2025-10-10)
+
+
+### Features
+
+* **configurator:** add mvm ([6b5da0d](https://github.com/ATOVproject/faderpunk/commit/6b5da0dda5050dd381d745d9fe097c867a5eb4cd))
+
+
+### Bug Fixes
+
+* **configurator:** integrate manual into configurator ([421e8e0](https://github.com/ATOVproject/faderpunk/commit/421e8e0a20e9b916d4a7ee06aecf4bebfee9d224))
+* **configurator:** show device version in settings tab ([f23d99a](https://github.com/ATOVproject/faderpunk/commit/f23d99ae27ab8d00903d625c0c01467e4f5bebf6))
+
 ## [1.2.3](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.2...configurator-v1.2.3) (2025-10-10)
 
 
