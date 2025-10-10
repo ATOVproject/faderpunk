@@ -1,6 +1,9 @@
 import { Layout } from "./Layout";
-import { type ManualAppData, ManualApp } from "./ManualApp";
-import { UpdateGuide } from "./UpdateGuide";
+import { Preface } from "./manual/Preface";
+import { type ManualAppData } from "./manual/ManualApp";
+import { UpdateGuide } from "./manual/UpdateGuide";
+import { Apps } from "./manual/Apps";
+import { H2 } from "./manual/Headings";
 
 const apps: ManualAppData[] = [
   {
@@ -281,8 +284,6 @@ const apps: ManualAppData[] = [
         faderPlusFnTitle: "Speed",
         faderPlusFnDescription:
           "32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th",
-        fnTitle: "",
-        fnDescription: "",
         fnPlusShiftTitle: "Sequence Length",
         fnPlusShiftDescription: "Press button x times sets length to x",
         ledTop: "Output level indicator",
@@ -306,8 +307,6 @@ const apps: ManualAppData[] = [
         faderTitle: "Probability",
         faderDescription:
           "Bottom: no bit flip, Top: constant bit flips and doubled sequence length; Middle: max randomness",
-        fnTitle: "",
-        fnDescription: "",
         fnPlusShiftTitle: "Sequence Length",
         fnPlusShiftDescription: "Press button x times sets length to x",
         ledTop: "Pre attenuation level",
@@ -319,8 +318,6 @@ const apps: ManualAppData[] = [
         jackDescription: "0 to 10V CV",
         faderTitle: "Attenuation",
         faderDescription: "Reduces the output range",
-        fnTitle: "",
-        fnDescription: "",
         ledTop: "Output level indicator",
         ledBottom: "",
       },
@@ -639,67 +636,13 @@ const apps: ManualAppData[] = [
 
 export const ManualPage = () => (
   <Layout>
-    <h2 className="text-yellow-fp mt-8 mb-4 text-lg font-bold uppercase">
-      A quick note
-    </h2>
+    <H2>A quick note</H2>
     <p>
       This manual is currently under heavy development. Come back in a few hours
       and it will be much more complete :)
     </p>
-    <h2 className="text-yellow-fp mt-8 mb-4 text-lg font-bold uppercase">
-      Preface
-    </h2>
-    <h3 className="font-bold">Thank you for choosing Faderpunk!</h3>
-    <p>
-      We’re thrilled to have you on board. Faderpunk is the result of years of
-      dedicated development, and it means a lot to us that it’s finally in your
-      hands..
-    </p>
-    <h3 className="font-bold">A Living Project</h3>
-    <p>
-      Faderpunk is designed to evolve. Updates are frequent, and it’s quite
-      possible that by the time your unit reaches you, a newer firmware version
-      is already available. The Configurator will automatically detect your
-      device’s firmware and let you know if an update is needed.
-    </p>
-    <h3 className="font-bold">What is Faderpunk?</h3>
-    <p>
-      Faderpunk is a 16-channel, fully configurable modulator/controller with a
-      hands-on interface. It runs focused apps that use one or more channels to
-      offer basic synthesiser CV functions such as LFOs, MIDI to CV, CV to MIDI,
-      sequencers, envelopes, and more. Each app is intentionally kept simple and
-      intuitive, avoiding menus. Complexity arises from creatively combining
-      apps to build your own custom setups.
-    </p>
-    <h3 className="font-bold">Your Custom Instrument</h3>
-    <p>
-      Using the online Configurator, you can design a layout—a collection of
-      apps tailored to your needs. This layout transforms Faderpunk into your
-      personal instrument, ready for performance. The Configurator is meant for
-      setup only and isn’t part of the live workflow.
-    </p>
-    <h3 className="font-bold">Always Accessible</h3>
-    <p>
-      Both the Configurator and this manual are hosted on GitHub and will remain
-      available even if the ATOV brand ever ceases to exist.
-    </p>
-    <h2 className="text-yellow-fp mt-8 mb-4 text-lg font-bold uppercase">
-      Apps
-    </h2>
-    <nav className="mb-8">
-      <ul className="list-inside list-disc">
-        {apps.map((app) => (
-          <li key={app.title}>
-            <a href={`#app-${app.appId}`} className="underline">
-              {app.title}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
-    {apps.map((app) => (
-      <ManualApp key={app.appId} app={app} />
-    ))}
+    <Preface />
+    <Apps apps={apps} />
     <UpdateGuide />
   </Layout>
 );
