@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.3.0...configurator-v1.3.1) (2025-10-14)
+
+
+### Bug Fixes
+
+* **manual:** add app parameters and storage to manual ([8d0e976](https://github.com/ATOVproject/faderpunk/commit/8d0e9764102711f85be2cd3df40cc2a23ed6e1cf))
+
 ## [1.3.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.3...configurator-v1.3.0) (2025-10-10)
 
 
