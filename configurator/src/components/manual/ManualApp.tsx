@@ -4,6 +4,7 @@ import clx from "classnames";
 import { COLORS_CLASSES } from "../../utils/class-helpers";
 import { Icon } from "../Icon";
 import { AllColors } from "../../utils/types";
+import { H3, List } from "./Shared";
 
 interface ArrowIconProps {
   className?: string;
@@ -40,6 +41,7 @@ export interface ManualAppData {
   icon: string;
   color: AllColors;
   params?: string[];
+  storage?: string[];
   text: ReactNode;
   channels: Omit<ChannelProps, "idx" | "color" | "singleChannel">[];
 }
@@ -258,16 +260,34 @@ export const ManualApp = ({ app }: Props) => {
       </div>
       {app.params ? (
         <div className="mb-4">
-          <h3 className="text-sm font-bold uppercase">
-            Available app parameters
-          </h3>
-          <ul className="list-inside list-disc">
+          <H3>
+            Available app parameters{" "}
+            <span className="text-xs">(set in the configurator)</span>
+          </H3>
+          <List>
             {app.params.map((param) => (
               <li className="text-sm" key={param}>
                 {param}
               </li>
             ))}
-          </ul>
+          </List>
+        </div>
+      ) : null}
+      {app.storage ? (
+        <div className="mb-4">
+          <H3>
+            Live app state{" "}
+            <span className="text-xs">
+              (saved across power-cycles and in scenes)
+            </span>
+          </H3>
+          <List>
+            {app.storage.map((storage) => (
+              <li className="text-sm" key={storage}>
+                {storage}
+              </li>
+            ))}
+          </List>
         </div>
       ) : null}
       <p className="mb-4">{app.text}</p>
