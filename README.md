@@ -23,7 +23,6 @@ Faderpunk is an embedded Rust project that uses an RP2350B to create a feature-r
 - **RP2350B** (Raspberry Pi Pico 2)
 - Dual Cortex-M33 cores @ 150 MHz (overclocked to 250MHz)
 - 520 KB SRAM
-- USB 1.1 device
 
 ### I/O Components
 - **MAX11300**: 20-port programmable mixed-signal I/O (ADC/DAC)
@@ -74,23 +73,17 @@ Executes user-facing apps:
 
 ### Development Environment
 
-The project includes a Nix flake for reproducible development:
-
-```bash
-nix develop
-```
-
-Alternatively, ensure you have:
-- Rust with `thumbv8m.main-none-eabihf` target
-- cargo, rustc
-- picotool
+You will need:
+- `rustup`
+- Rust (1.89 or newer) with `thumbv8m.main-none-eabihf` target (`rustup target add thumbv8m.main-none-eabihf`)
+- [picotool](https://github.com/raspberrypi/picotool)
 
 ## Building and Flashing
 
 ### Build Firmware
 
 ```bash
-cd faderpunk
+cd faderpunk # important, not in root
 cargo build --release
 ```
 
@@ -99,6 +92,7 @@ cargo build --release
 Use the provided script to build and convert to UF2 format:
 
 ```bash
+# this needs to be done in the repository root
 ./build-uf2.sh
 ```
 
@@ -121,37 +115,6 @@ cargo build
 # Use probe-rs or similar tool for flashing with RTT debug output
 ```
 
-## Available Apps
-
-Faderpunk includes a rich library of apps for various synthesis and control tasks:
-
-### Generators
-- **lfo**: Low-frequency oscillator with multiple waveforms
-- **rndcvcc**: Random CV/clock/clock divider generator
-- **ad**: Attack/decay envelope generator
-
-### Sequencers
-- **seq8**: 8-step sequencer with multiple modes
-- **euclid**: Euclidean rhythm generator
-- **turing**: Turing machine with controllable randomness
-- **clkturing**: Clock-driven Turing machine variant
-
-### MIDI Tools
-- **midi2cv**: Convert MIDI notes to CV/gate
-- **cv2midi**: Convert CV to MIDI messages
-- **cv2midinote**: CV to MIDI note converter
-- **notefader**: Fader-based MIDI note controller
-
-### Utilities
-- **control**: Manual CV control with fader
-- **offset_att**: Offset and attenuation/inversion
-- **slew**: Slew rate limiter (glide/portamento)
-- **quantizer**: Musical quantization
-- **follower**: CV follower/tracker
-- **probatrigger**: Probabilistic trigger generator
-
-Each app can be configured with parameters specific to its function, adjustable via the web configurator.
-
 ## Web Configurator
 
 The Faderpunk Configurator is a React/TypeScript web application that communicates with the device via WebUSB.
@@ -165,6 +128,20 @@ The Faderpunk Configurator is a React/TypeScript web application that communicat
 
 ### Running the Configurator
 
+
+You will need:
+- [NodeJS v22.x or higher](https://nodejs.org/en/download)
+- [pnpm](https://pnpm.io)
+
+Before building the configurator you'll need to run
+
+```bash
+# in the root
+./gen-bindings.sh
+```
+
+This will create the Postcard bindings for the configurator (from libfp). 
+
 ```bash
 cd configurator
 pnpm install
@@ -172,6 +149,8 @@ pnpm dev
 ```
 
 Access at `http://localhost:5173`
+
+**NOTE:** When changes to libfp happen, the bindings will need to be regenerated. Delete the node_modules folder in configurator and do the following steps in that case.
 
 ### Browser Requirements
 WebUSB requires:
@@ -347,7 +326,7 @@ Contributions are welcome! Please follow the [Rust Code of Conduct](https://www.
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes with clear commit messages
-4. Ensure code passes clippy and builds successfully
+4. Ensure code passes clippy and builds successfully (warnings are, for the most part ok and expected at this point)
 5. Test on hardware if applicable
 6. Submit a pull request with a clear description
 
@@ -375,17 +354,16 @@ See [LICENSE](LICENSE) for full terms.
 ### Performance
 - Dual-core async execution
 - Sub-millisecond event response
-- 16-bit CV resolution
-- Configurable sample rates per channel
+- 12-bit CV resolution
 
 ### Connectivity
 - USB 1.1 (device and host)
 - I2C (configurable speed)
-- MIDI (USB and potential hardware expansion)
+- MIDI (USB and Serial)
 
 ### Power
 - USB-powered
-- Eurorack power compatible (with appropriate hardware)
+- Eurorack power compatible
 
 ---
 
