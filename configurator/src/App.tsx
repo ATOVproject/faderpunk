@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
 import { useStore } from "./store";
@@ -6,7 +7,7 @@ import { AboutPage } from "./components/AboutPage";
 import { ConnectPage } from "./components/ConnectPage";
 import { ManualPage } from "./components/ManualPage";
 import { UpdatePage } from "./components/UpdatePage";
-import { useEffect } from "react";
+import { TroubleshootingPage } from "./components/TroubleshootingPage";
 
 const App = () => {
   const { usbDevice, deviceVersion } = useStore();
@@ -33,6 +34,7 @@ const App = () => {
       <Route path="/about" element={<AboutPage />} />
       <Route path="/manual" element={<ManualPage />} />
       <Route path="/update" element={<UpdatePage />} />
+      <Route path="/troubleshooting" element={<TroubleshootingPage />} />
     </Routes>
   );
 };

@@ -19,12 +19,20 @@ export const ConnectPage = () => {
             Connect Device
           </ButtonPrimary>
         </div>
-        <Link
-          to="/about"
-          className="text-default-400 mt-4 cursor-pointer text-center underline"
-        >
-          What is this?
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link
+            to="/troubleshooting"
+            className="text-default-400 mt-4 cursor-pointer text-center underline"
+          >
+            Trouble connecting?
+          </Link>
+          <Link
+            to="/about"
+            className="text-default-400 mt-4 cursor-pointer text-center underline"
+          >
+            What is this?
+          </Link>
+        </div>
       </div>
     </main>
   );
