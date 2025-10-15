@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.3.1...configurator-v1.3.2) (2025-10-15)
+
+
+### Bug Fixes
+
+* **configurator:** add troubleshooting link ([f8595a8](https://github.com/ATOVproject/faderpunk/commit/f8595a8c8c6eb68503c874d82b0fd2ccdcb51484))
+
 ## [1.3.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.3.0...configurator-v1.3.1) (2025-10-14)
 
 
