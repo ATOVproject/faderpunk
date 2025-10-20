@@ -138,6 +138,36 @@ export const EditLayoutModal = ({
     setDeletePopoverId(null);
   }, []);
 
+  const handleClearAll = useCallback(() => {
+    setItems((items) => {
+      const newAppItem =
+        newAppId !== null ? items.find(({ id }) => id === newAppId) : null;
+
+      if (newAppItem) {
+        // Create empty layout with the new app preserved
+        const emptyLayout: AppLayout = Array.from({ length: 16 }, (_, i) => ({
+          id: i < newAppItem.startChannel ? i : i + 100,
+          app: null,
+          startChannel: i,
+        }));
+
+        // Insert the new app at its position
+        const channels = Number(newAppItem.app?.channels) || 1;
+        emptyLayout.splice(newAppItem.startChannel, channels, newAppItem);
+
+        return emptyLayout;
+      }
+
+      // No app being added, clear everything
+      return Array.from({ length: 16 }, (_, i) => ({
+        id: i,
+        app: null,
+        startChannel: i,
+      }));
+    });
+    setDeletePopoverId(null);
+  }, [newAppId]);
+
   const handleSave = useCallback(async () => {
     if (usbDevice) {
       await setLayout(usbDevice, layout);
@@ -253,9 +283,9 @@ export const EditLayoutModal = ({
               items={layout}
               strategy={horizontalListSortingStrategy}
             >
-              <div className="relative mb-10">
+              <div className="relative">
                 <GridBackground />
-                <div className="mr-1.5 ml-1.5 grid grid-cols-16 gap-3">
+                <div className="mr-1.5 ml-1.5 grid min-h-12 grid-cols-16 gap-3">
                   {layout.map((item) => (
                     <SortableItem
                       onDeleteItem={handleDeleteItem}
@@ -283,6 +313,11 @@ export const EditLayoutModal = ({
               ) : null}
             </DragOverlay>
           </DndContext>
+          <div className="mt-18 flex justify-center">
+            <ButtonSecondary className="text-red" onPress={handleClearAll}>
+              <Icon name="trash" /> Clear All Apps
+            </ButtonSecondary>
+          </div>
         </div>
       </ModalBody>
       <ModalFooter className="flex justify-between px-10">

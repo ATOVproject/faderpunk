@@ -15,9 +15,6 @@ export const DeviceTab = ({ layout, setModalApp }: Props) => (
       </h2>
       <ChannelOverview onClick={() => setModalApp(-1)} layout={layout} />
     </div>
-    <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
-      Active Apps
-    </h2>
     <ActiveApps layout={layout} />
   </div>
 );
