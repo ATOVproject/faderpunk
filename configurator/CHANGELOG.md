@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.3.2...configurator-v1.4.0) (2025-10-21)
+
+
+### Features
+
+* **configurator:** add button to clear apps ([0c0a009](https://github.com/ATOVproject/faderpunk/commit/0c0a009cf2f81465bafa899d1dc1f46d7f170aac))
+
 ## [1.3.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.3.1...configurator-v1.3.2) (2025-10-15)
 
 
