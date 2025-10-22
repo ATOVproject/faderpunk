@@ -199,6 +199,17 @@ pub async fn run(
 
                         leds.set(0, Led::Button, color, Brightness::Lower);
                     }
+
+                    if clkn % div == 0 && storage.query(|s: &Storage| s.clocked) {
+                        if buttons.is_shift_pressed() {
+                            leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                        }
+                    }
+                    if clkn % div == (div * 50 / 100).clamp(1, div - 1)
+                        && buttons.is_shift_pressed()
+                    {
+                        leds.unset(0, Led::Bottom);
+                    }
                     clkn += 1;
                 }
                 _ => {}
@@ -216,7 +227,6 @@ pub async fn run(
                     .modify_and_save(
                         |s| {
                             s.mute_save = muted;
-                            s.mute_save
                         },
                         None,
                     )
@@ -235,7 +245,18 @@ pub async fn run(
             buttons.wait_for_any_long_press().await;
 
             if buttons.is_shift_pressed() {
+                let clocked = storage.query(|s: &Storage| s.clocked);
+
                 let muted = glob_muted.toggle();
+                storage
+                    .modify_and_save(
+                        |s| {
+                            s.clocked = !clocked;
+                            s.mute_save = muted;
+                        },
+                        None,
+                    )
+                    .await;
                 if muted {
                     leds.unset_all();
                 } else {
@@ -372,9 +393,9 @@ pub async fn run(
                     Color::Red,
                     Brightness::Custom((att / 16) as u8),
                 );
-                if storage.query(|s: &Storage| s.clocked) {
-                    leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
-                }
+                // if storage.query(|s: &Storage| s.clocked) {
+                //     leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                // }
             }
             if latch_active_layer == LatchLayer::Third {
                 leds.set(
