@@ -6,15 +6,17 @@ pub const fn bpm_to_clock_duration(bpm: f32, ppqn: u8) -> Duration {
     Duration::from_nanos((1_000_000_000.0 / (bpm as f64 / 60.0 * ppqn as f64)) as u64)
 }
 
-/// Scale from 4096 to 127
+/// Scale from 4095 u16 to 127 u7
 pub fn scale_bits_12_7(value: u16) -> u7 {
     u7::new(((value as u32 * 127) / 4095) as u8)
 }
 
+/// Scale from 127 u7 to 4095 u16
 pub fn scale_bits_7_12(value: u7) -> u16 {
     ((value.as_int() as u32 * 4095) / 127) as u16
 }
 
+/// Convert u7 into u16
 pub fn bits_7_16(value: u7) -> u16 {
     value.as_int() as u16
 }
@@ -109,5 +111,12 @@ pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f3
 
 /// Very short slew meant to avoid clicks
 pub fn clickless(prev: u16, input: u16) -> u16 {
-    roundf((prev as f32 * 15.0 + input as f32) / 16.0) as u16
+    let smoothed = ((prev as u32 * 15 + input as u32) / 16) as u16;
+
+    // Snap to target if close enough
+    if (smoothed as i32 - input as i32).abs() < 1 {
+        input
+    } else {
+        smoothed
+    }
 }
