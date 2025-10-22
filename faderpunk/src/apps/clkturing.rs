@@ -65,7 +65,7 @@ impl Default for Params {
         Self {
             midi_mode: 1,
             midi_channel: 1,
-            midi_cc: 1,
+            midi_cc: 38,
             color: Color::Pink,
         }
     }
@@ -235,7 +235,7 @@ pub async fn run(
                     midi_note.set(note);
                 }
                 if midi_mode == 2 {
-                    midi.send_cc(midi_cc as u8 - 1, att_reg).await;
+                    midi.send_cc(midi_cc as u8, att_reg).await;
                 }
 
                 leds.set(0, Led::Bottom, Color::Red, Brightness::Low);

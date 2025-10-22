@@ -80,7 +80,7 @@ impl Default for Params {
         Self {
             midi_mode: 1,
             midi_channel: 1,
-            midi_cc: 1,
+            midi_cc: 40,
             note: 36,
             gatel: 50,
             color: Color::Blue,
@@ -248,7 +248,7 @@ pub async fn run(
                             midi_note.set(note);
                         }
                         if midi_mode == 2 {
-                            midi.send_cc(midi_cc as u8 - 1, att_reg).await;
+                            midi.send_cc(midi_cc as u8, att_reg).await;
                         }
 
                         if buttons.is_button_pressed(0) && !buttons.is_shift_pressed() {
