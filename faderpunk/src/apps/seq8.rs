@@ -1,6 +1,6 @@
 use embassy_futures::{
     join::{join3, join5},
-    select::select,
+    select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -122,13 +122,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -195,7 +196,6 @@ pub async fn run(
     let clockres_glob = app.make_global([6, 6, 6, 6]);
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
-    let base_note = 48;
 
     let mut shift_old = false;
     let mut lastnote = [0; 4];
@@ -268,7 +268,7 @@ pub async fn run(
                 if chan < 8 && latched[chan] {
                     seq[chan + (page * 8)] = vals[chan];
                     seq_glob.set(seq);
-                    storage.modify_and_save(|s| s.seq.set(seq), None).await;
+                    storage.modify_and_save(|s| s.seq.set(seq));
                 }
             }
 
@@ -289,9 +289,7 @@ pub async fn run(
                         seq_length[page / 2] = (((vals[0]) / 256) + 1) as u8;
                         seq_length_glob.set(seq_length);
                         //info!("{}", seq_length[page / 2]);
-                        storage
-                            .modify_and_save(|s| s.seq_length = seq_length, None)
-                            .await;
+                        storage.modify_and_save(|s| s.seq_length = seq_length);
 
                         length_flag.set(true);
                     }
@@ -312,9 +310,7 @@ pub async fn run(
                         let mut gatelength = gatelength_glob.get();
                         let clockres = clockres_glob.get();
                         gatelength_saved[page / 2] = (vals[chan] / 16) as u8;
-                        storage
-                            .modify_and_save(|s| s.gate_length = gatelength_saved, None)
-                            .await;
+                        storage.modify_and_save(|s| s.gate_length = gatelength_saved);
 
                         // gatelength[page/2] = (vals[chan] / 16) as u8;
 
@@ -333,9 +329,7 @@ pub async fn run(
                         latched_glob.set(latched);
                     }
                     if latched[chan] {
-                        storage
-                            .modify_and_save(|s| s.oct[page / 2] = (vals[chan] / 1000) as u8, None)
-                            .await;
+                        storage.modify_and_save(|s| s.oct[page / 2] = (vals[chan] / 1000) as u8);
                     }
                 }
                 if chan == 3 {
@@ -346,11 +340,7 @@ pub async fn run(
                     }
                     if latched[chan] {
                         storage
-                            .modify_and_save(
-                                |s| s.range[page / 2] = (vals[chan] / 1000) as u8 + 1,
-                                None,
-                            )
-                            .await;
+                            .modify_and_save(|s| s.range[page / 2] = (vals[chan] / 1000) as u8 + 1);
                     }
                 }
                 if chan == 4 {
@@ -363,12 +353,7 @@ pub async fn run(
                     }
 
                     if latched[chan] {
-                        storage
-                            .modify_and_save(
-                                |s| s.seqres[page / 2] = vals[chan] as usize / 512,
-                                None,
-                            )
-                            .await;
+                        storage.modify_and_save(|s| s.seqres[page / 2] = vals[chan] as usize / 512);
 
                         let mut clockres = clockres_glob.get();
                         clockres[page / 2] = resolution[(vals[chan] / 512) as usize];
@@ -402,12 +387,10 @@ pub async fn run(
                 legato_seq[chan + (page * 8)] = false;
                 legatoseq_glob.set(legato_seq);
 
-                storage
-                    .modify_and_save(|s| s.gateseq.set(gateseq), None)
-                    .await;
-                storage
-                    .modify_and_save(|s| s.legato_seq.set(legato_seq), None)
-                    .await;
+                storage.modify_and_save(|s| {
+                    s.gateseq.set(gateseq);
+                    s.legato_seq.set(legato_seq);
+                });
 
                 // gateseq_glob.set_array(gateseq);
                 // gateseq_glob.save();
@@ -437,12 +420,8 @@ pub async fn run(
                 gateseq[chan + (page * 8)] = true;
                 gateseq_glob.set(gateseq);
 
-                storage
-                    .modify_and_save(|s| s.gateseq.set(gateseq), None)
-                    .await;
-                storage
-                    .modify_and_save(|s| s.legato_seq.set(legato_seq), None)
-                    .await;
+                storage.modify_and_save(|s| s.gateseq.set(gateseq));
+                storage.modify_and_save(|s| s.legato_seq.set(legato_seq));
 
                 // gateseq_glob.set_array(gateseq);
                 // gateseq_glob.save();
@@ -662,7 +641,7 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
 
                     let (
                         seq_saved,
@@ -711,7 +690,7 @@ pub async fn run(
                     gatelength_glob.set(gatel);
                 }
                 SceneEvent::SaveScene(scene) => {
-                    storage.save(Some(scene)).await;
+                    storage.save_to_scene(scene).await;
                 }
             }
         }

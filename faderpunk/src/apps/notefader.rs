@@ -1,6 +1,6 @@
 use embassy_futures::{
     join::join5,
-    select::{select, Either},
+    select::{select, select3, Either},
 };
 
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -140,13 +140,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -270,15 +271,10 @@ pub async fn run(
                         if storage.query(|s| (s.clocked)) {
                             let muted = glob_muted.toggle();
 
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.mute_saved = muted;
-                                        s.mute_saved
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.mute_saved = muted;
+                                s.mute_saved
+                            });
 
                             if muted {
                                 leds.unset_all();
@@ -290,7 +286,7 @@ pub async fn run(
                         }
                     } else {
                         let clocked = !storage.query(|s| (s.clocked));
-                        storage.modify_and_save(|s| s.clocked = clocked, None).await;
+                        storage.modify_and_save(|s| s.clocked = clocked);
                     }
                 }
                 Either::Second(_) => {
@@ -324,15 +320,11 @@ pub async fn run(
             if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
                 match latch_layer {
                     LatchLayer::Main => {
-                        storage
-                            .modify_and_save(|s| s.note_saved = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.note_saved = new_value);
                     }
                     LatchLayer::Alt => {
                         div_glob.set(resolution[new_value as usize / 345]);
-                        storage
-                            .modify_and_save(|s| s.fader_saved = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.fader_saved = new_value);
                     }
                     _ => unreachable!(),
                 }
@@ -341,11 +333,10 @@ pub async fn run(
     };
 
     let scene_handler = async {
-        let mut note: i32 = 62;
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                     let res = storage.query(|s| (s.fader_saved));
 
                     div_glob.set(resolution[res as usize / 345]);
@@ -360,20 +351,17 @@ pub async fn run(
                 }
 
                 SceneEvent::SaveScene(scene) => {
-                    storage.save(Some(scene)).await;
+                    storage.save_to_scene(scene).await;
                 }
             }
         }
     };
 
     let shift = async {
-        let mut note = 62;
         loop {
             // latching on pressing and depressing shift
             app.delay_millis(1).await;
-
-            let latch_active_layer =
-                glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
+            glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
 
             // if latch_active_layer == LatchLayer::Alt {
             //     let base: u8 = LED_BRIGHTNESS.into();

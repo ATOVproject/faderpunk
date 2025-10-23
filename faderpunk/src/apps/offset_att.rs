@@ -1,4 +1,7 @@
-use embassy_futures::{join::join4, select::select};
+use embassy_futures::{
+    join::join4,
+    select::{select, select3},
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
@@ -87,13 +90,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -179,14 +183,9 @@ pub async fn run(
                     LatchLayer::Main,
                     storage.query(|s| (s.offset_saved)),
                 ) {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.offset_saved = new_value;
-                            },
-                            None,
-                        )
-                        .await;
+                    storage.modify_and_save(|s| {
+                        s.offset_saved = new_value;
+                    });
                 }
             }
 
@@ -196,14 +195,9 @@ pub async fn run(
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), LatchLayer::Main, target_value)
                 {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.att_saved = new_value;
-                            },
-                            None,
-                        )
-                        .await;
+                    storage.modify_and_save(|s| {
+                        s.att_saved = new_value;
+                    });
                 }
             }
         }
@@ -214,14 +208,9 @@ pub async fn run(
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             if is_shift_pressed {
             } else {
-                storage
-                    .modify_and_save(
-                        |s| {
-                            s.offset_att_toggle[chan] = !s.offset_att_toggle[chan];
-                        },
-                        None,
-                    )
-                    .await;
+                storage.modify_and_save(|s| {
+                    s.offset_att_toggle[chan] = !s.offset_att_toggle[chan];
+                });
                 for n in 0..=1 {
                     if storage.query(|s| s.offset_att_toggle[n]) {
                         leds.set(n, Led::Button, led_color, Brightness::Lower);
@@ -237,9 +226,9 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                 }
-                SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
+                SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
         }
     };
