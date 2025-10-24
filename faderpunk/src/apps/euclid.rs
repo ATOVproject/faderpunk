@@ -1,7 +1,10 @@
 // todo :
 // recall probability
 
-use embassy_futures::{join::join5, select::select};
+use embassy_futures::{
+    join::join5,
+    select::{select, select3},
+};
 
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -133,13 +136,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -221,7 +225,7 @@ pub async fn run(
                                 num_beat_glob.get(),
                                 num_step_glob.get(),
                                 rotation_glob.get(),
-                                (clkn / div) as u32,
+                                clkn / div,
                             ) && storage.query(|s| (s.shift_fader_saved[1]))
                                 >= die.roll().clamp(100, 3900)
                             {
@@ -308,15 +312,10 @@ pub async fn run(
                 if chan == 1 {
                     let muted = glob_muted.toggle();
 
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.mute_saved = muted;
-                                s.mute_saved
-                            },
-                            None,
-                        )
-                        .await;
+                    storage.modify_and_save(|s| {
+                        s.mute_saved = muted;
+                        s.mute_saved
+                    });
 
                     if muted {
                         jack[0].set_low().await;
@@ -328,15 +327,10 @@ pub async fn run(
             } else if chan == 1 {
                 let mut mode = storage.query(|s| s.mode);
                 mode = !mode;
-                storage
-                    .modify_and_save(
-                        |s| {
-                            s.mode = mode;
-                            s.mode
-                        },
-                        None,
-                    )
-                    .await;
+                storage.modify_and_save(|s| {
+                    s.mode = mode;
+                    s.mode
+                });
                 if !mode {
                     leds.set(1, Led::Button, led_color, Brightness::Low);
                 } else {
@@ -377,32 +371,20 @@ pub async fn run(
                                     as u8,
                             );
 
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.fader_saved[chan] = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.fader_saved[chan] = new_value;
+                            });
                         }
                         LatchLayer::Alt => {
                             rotation_glob
                                 .set((new_value as u32 * num_beat_glob.get() as u32 / 4095) as u8);
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.shift_fader_saved[chan] = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.shift_fader_saved[chan] = new_value;
+                            });
                         }
                         LatchLayer::Third => {
                             div_glob.set(resolution[new_value as usize / 345]);
-                            storage
-                                .modify_and_save(|s| s.div_saved = new_value, None)
-                                .await;
+                            storage.modify_and_save(|s| s.div_saved = new_value);
                         }
                         _ => unreachable!(),
                     }
@@ -422,24 +404,14 @@ pub async fn run(
                             num_step_glob
                                 .set((new_value as u32 * num_beat_glob.get() as u32 / 4095) as u8);
 
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.fader_saved[chan] = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.fader_saved[chan] = new_value;
+                            });
                         }
                         LatchLayer::Alt => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.shift_fader_saved[chan] = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.shift_fader_saved[chan] = new_value;
+                            });
                         }
                         LatchLayer::Third => {}
                         _ => unreachable!(),
@@ -453,7 +425,7 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
 
                     num_beat_glob
                         .set((storage.query(|s| s.fader_saved[0]) as u32 * 15 / 4095) as u8 + 1);
@@ -474,7 +446,7 @@ pub async fn run(
                 }
 
                 SceneEvent::SaveScene(scene) => {
-                    storage.save(Some(scene)).await;
+                    storage.save_to_scene(scene).await;
                 }
             }
         }

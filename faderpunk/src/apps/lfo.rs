@@ -1,6 +1,6 @@
 use embassy_futures::{
     join::{join, join5},
-    select::select,
+    select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -114,13 +114,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -263,14 +264,10 @@ pub async fn run(
                     LatchLayer::Main => {
                         glob_lfo_speed.set(curve.at(new_value) as f32 * 0.015 + 0.0682);
                         glob_div.set(resolution[new_value as usize / 500]);
-                        storage
-                            .modify_and_save(|s| s.layer_speed = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.layer_speed = new_value);
                     }
                     LatchLayer::Alt => {
-                        storage
-                            .modify_and_save(|s| s.layer_attenuation = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.layer_attenuation = new_value);
                     }
                     _ => unreachable!(),
                 }
@@ -283,15 +280,10 @@ pub async fn run(
             buttons.wait_for_down(0).await;
 
             if !buttons.is_shift_pressed() {
-                let wave = storage
-                    .modify_and_save(
-                        |s| {
-                            s.wave = s.wave.cycle();
-                            s.wave
-                        },
-                        None,
-                    )
-                    .await;
+                let wave = storage.modify_and_save(|s| {
+                    s.wave = s.wave.cycle();
+                    s.wave
+                });
 
                 let color = get_color_for(wave);
                 leds.set(0, Led::Button, color, Brightness::Lower);
@@ -306,15 +298,10 @@ pub async fn run(
             buttons.wait_for_any_long_press().await;
 
             if buttons.is_shift_pressed() {
-                let clocked = storage
-                    .modify_and_save(
-                        |s| {
-                            s.clocked = !s.clocked;
-                            s.clocked
-                        },
-                        None,
-                    )
-                    .await;
+                let clocked = storage.modify_and_save(|s| {
+                    s.clocked = !s.clocked;
+                    s.clocked
+                });
                 if clocked {
                     leds.set_mode(0, Led::Button, LedMode::Flash(color, Some(4)));
                 }
@@ -339,7 +326,7 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                     let speed = storage.query(|s| s.layer_speed);
                     let wave_saved = storage.query(|s| s.wave);
 
@@ -349,7 +336,7 @@ pub async fn run(
                     let color = get_color_for(wave_saved);
                     leds.set(0, Led::Button, color, Brightness::Lower);
                 }
-                SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
+                SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
         }
     };

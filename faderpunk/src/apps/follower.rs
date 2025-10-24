@@ -1,4 +1,7 @@
-use embassy_futures::{join::join4, select::select};
+use embassy_futures::{
+    join::join4,
+    select::{select, select3},
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
@@ -91,13 +94,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -230,34 +234,19 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.fader_saved[chan] = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.fader_saved[chan] = new_value;
+                            });
                         }
                         LatchLayer::Alt => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.offset_saved = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.offset_saved = new_value;
+                            });
                         }
                         LatchLayer::Third => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.gain_saved = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.gain_saved = new_value;
+                            });
                         }
                         _ => unreachable!(),
                     }
@@ -274,24 +263,14 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.fader_saved[chan] = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.fader_saved[chan] = new_value;
+                            });
                         }
                         LatchLayer::Alt => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.att_saved = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.att_saved = new_value;
+                            });
                         }
                         LatchLayer::Third => {}
                         _ => unreachable!(),
@@ -307,26 +286,16 @@ pub async fn run(
             if !is_shift_pressed {
             } else {
                 if chan == 0 {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.offset_saved = 2047;
-                                s.offset_saved
-                            },
-                            None,
-                        )
-                        .await;
+                    storage.modify_and_save(|s| {
+                        s.offset_saved = 2047;
+                        s.offset_saved
+                    });
                 }
                 if chan == 1 {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.att_saved = 4095;
-                                s.att_saved
-                            },
-                            None,
-                        )
-                        .await;
+                    storage.modify_and_save(|s| {
+                        s.att_saved = 4095;
+                        s.att_saved
+                    });
                 }
             }
         }
@@ -336,9 +305,9 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                 }
-                SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
+                SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
         }
     };

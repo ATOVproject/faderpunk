@@ -26,7 +26,7 @@ use crate::{
         max::{
             MaxCmd, MaxSender, MAX_TRIGGERS_GPO, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
         },
-        midi::{AppMidiSender, MidiOutEvent},
+        midi::AppMidiSender,
     },
     QUANTIZER,
 };

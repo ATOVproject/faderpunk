@@ -1,5 +1,8 @@
 use core::{cell::RefCell, ops::Range};
 
+use embassy_futures::select::{select, Either};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use embassy_time::Timer;
 use heapless::Vec;
 use postcard::{from_bytes, to_slice};
 use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -404,6 +407,7 @@ pub struct ManagedStorage<S: AppStorage> {
     app_id: u8,
     inner: RefCell<S>,
     layout_id: u8,
+    save_signal: Signal<NoopRawMutex, ()>,
 }
 
 impl<S: AppStorage> ManagedStorage<S> {
@@ -412,10 +416,11 @@ impl<S: AppStorage> ManagedStorage<S> {
             app_id,
             inner: RefCell::new(S::default()),
             layout_id,
+            save_signal: Signal::new(),
         }
     }
 
-    pub async fn load(&self, scene: Option<u8>) {
+    async fn load_inner(&self, scene: Option<u8>) {
         let address = AppStorageAddress::new(self.layout_id, scene).into();
         if let Ok(guard) = read_data(address).await {
             let data = guard.data();
@@ -428,7 +433,7 @@ impl<S: AppStorage> ManagedStorage<S> {
         }
     }
 
-    pub async fn save(&self, scene: Option<u8>) {
+    async fn save_inner(&self, scene: Option<u8>) {
         let address = AppStorageAddress::new(self.layout_id, scene).into();
 
         let res = write_with(address, |buf| {
@@ -442,6 +447,22 @@ impl<S: AppStorage> ManagedStorage<S> {
         if res.is_err() {
             defmt::error!("Could not save ManagedStorage");
         }
+    }
+
+    pub async fn save(&self) {
+        self.save_inner(None).await;
+    }
+
+    pub async fn save_to_scene(&self, scene: u8) {
+        self.save_inner(Some(scene)).await;
+    }
+
+    pub async fn load(&self) {
+        self.load_inner(None).await;
+    }
+
+    pub async fn load_from_scene(&self, scene: u8) {
+        self.load_inner(Some(scene)).await;
     }
 
     pub fn reset(&self) {
@@ -465,29 +486,59 @@ impl<S: AppStorage> ManagedStorage<S> {
         modifier(&mut *guard)
     }
 
-    pub async fn modify_and_save<F, R>(&self, modifier: F, scene: Option<u8>) -> R
+    // pub async fn modify_and_save<F, R>(&self, modifier: F, scene: Option<u8>) -> R
+    // where
+    //     F: FnOnce(&mut S) -> R,
+    // {
+    //     let address = AppStorageAddress::new(self.layout_id, scene).into();
+    //
+    //     let result = {
+    //         let mut inner = self.inner.borrow_mut();
+    //         modifier(&mut *inner)
+    //     };
+    //
+    //     let res = write_with(address, |buf| {
+    //         buf[0] = self.app_id;
+    //         let inner = self.inner.borrow();
+    //         let len = to_slice(&*inner, &mut buf[1..])?.len();
+    //         Ok(len + 1)
+    //     })
+    //     .await;
+    //
+    //     if res.is_err() {
+    //         defmt::error!("Could not save ManagedStorage during modify_and_save");
+    //     }
+    //
+    //     result
+    // }
+
+    pub fn modify_and_save<F, R>(&self, modifier: F) -> R
     where
         F: FnOnce(&mut S) -> R,
     {
-        let address = AppStorageAddress::new(self.layout_id, scene).into();
-
-        let result = {
-            let mut inner = self.inner.borrow_mut();
-            modifier(&mut *inner)
-        };
-
-        let res = write_with(address, |buf| {
-            buf[0] = self.app_id;
-            let inner = self.inner.borrow();
-            let len = to_slice(&*inner, &mut buf[1..])?.len();
-            Ok(len + 1)
-        })
-        .await;
-
-        if res.is_err() {
-            defmt::error!("Could not save ManagedStorage during modify_and_save");
-        }
-
+        let result = self.modify(modifier);
+        self.save_signal.signal(());
         result
+    }
+
+    pub async fn saver_task(&self) {
+        loop {
+            self.save_signal.wait().await;
+
+            loop {
+                let timer = Timer::after_millis(500);
+                match select(self.save_signal.wait(), timer).await {
+                    // Another signal arrived before the timer finished.
+                    // Loop again to restart the timer
+                    Either::First(_) => continue,
+                    // The timer finished without being interrupted.
+                    // Break the inner loop to proceed with saving
+                    Either::Second(_) => break,
+                }
+            }
+
+            self.save_signal.reset();
+            self.save_inner(None).await;
+        }
     }
 }
