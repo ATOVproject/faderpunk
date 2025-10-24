@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.8.1...libfp-v0.8.2) (2025-10-24)
+
+
+### Bug Fixes
+
+* **control:** actually fix the bug causing CC not reaching 127 ([7cb3288](https://github.com/ATOVproject/faderpunk/commit/7cb32889f703d1b91c37b0da3318c1c559d80623))
+* **control:** fix CC output not reaching 127 ([6c9baec](https://github.com/ATOVproject/faderpunk/commit/6c9baec9d2f47028ef23e492009cbb9de720eb1a))
+
 ## [0.8.1](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.8.0...libfp-v0.8.1) (2025-10-08)
 
 

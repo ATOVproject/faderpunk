@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.4.0...configurator-v1.5.0) (2025-10-24)
+
+
+### Features
+
+* **manual:** update app manual for v1.4.0 ([aa4e1a8](https://github.com/ATOVproject/faderpunk/commit/aa4e1a8eb90faa8210cea510e0c37056666d29af))
+
+
+### Bug Fixes
+
+* **configurator:** use proper bool default value ([3655941](https://github.com/ATOVproject/faderpunk/commit/3655941bfef41835c5396c851e45e447f28b4030))
+
 ## [1.4.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.3.2...configurator-v1.4.0) (2025-10-21)
 
 

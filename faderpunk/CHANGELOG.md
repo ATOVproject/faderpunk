@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.3.0...faderpunk-v1.4.0) (2025-10-24)
+
+
+### Features
+
+* **control:** add param enabling fader value storage ([921b139](https://github.com/ATOVproject/faderpunk/commit/921b1393ee308c1630dc1994290cbba70a4dd8f0))
+* **LFO:** add range selection, add MIDI output ([d8a50f9](https://github.com/ATOVproject/faderpunk/commit/d8a50f930cacc3b3303993061adad9edd1ea0b10))
+* **offset_att:** make buttons toggles of offset and attenuverter ([5074d77](https://github.com/ATOVproject/faderpunk/commit/5074d777019765ea7c41ed24a1a410ce487f696b))
+
+
+### Bug Fixes
+
+* **apps:** use debounced save for storage ([05387a4](https://github.com/ATOVproject/faderpunk/commit/05387a423944e36a5def7be4df276739d5dd1fc8))
+* **control:** actually fix the bug causing CC not reaching 127 ([7cb3288](https://github.com/ATOVproject/faderpunk/commit/7cb32889f703d1b91c37b0da3318c1c559d80623))
+* **quantizer:** fix led feedback ([1c93c86](https://github.com/ATOVproject/faderpunk/commit/1c93c862662b39a2a18bf52194389e9ae26ab934))
+* **randomcvcc:** fix bug preventing  going into free running mode ([420ce0e](https://github.com/ATOVproject/faderpunk/commit/420ce0ea4fa52043ec0fa5e3a6d57540284aa3ca))
+* **turing & turing+:** fix MIDI CC number offset ([6783f71](https://github.com/ATOVproject/faderpunk/commit/6783f71e5cc07c299ea7845d7e64d7612604a37e))
+
 ## [1.3.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.2.2...faderpunk-v1.3.0) (2025-10-08)
 
 
