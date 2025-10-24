@@ -153,10 +153,10 @@ pub async fn run(
 
             output.set_value(outval.as_counts(range));
             let oct_led = split_unsigned_value(outval.as_counts(range));
-            leds.set(0, Led::Top, led_color, Brightness::Custom(oct_led[0]));
-            leds.set(0, Led::Bottom, led_color, Brightness::Custom(oct_led[1]));
+            leds.set(1, Led::Top, led_color, Brightness::Custom(oct_led[0]));
+            leds.set(1, Led::Bottom, led_color, Brightness::Custom(oct_led[1]));
             leds.set(
-                1,
+                0,
                 Led::Top,
                 led_color,
                 Brightness::Custom((st * 255 / 410) as u8),
