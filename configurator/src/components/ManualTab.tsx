@@ -24,9 +24,10 @@ const apps: ManualAppData[] = [
       "Mute on release",
       "Invert",
       "Color",
+      "Store state",
     ],
-    storage: ["Muted", "Attenuation"],
-    text: "This app is designed to provide a simple way to manually control any parameters using either CV or MIDI CC. The MIDI channel and CC numbers can be adjusted in the app's settings, and both MIDI and CV outputs are always active simultaneously. The range can be adjusted using Shift + Fader, which affects both CC and CV ranges. The fader controls the level of the CV or CC, and the button acts as a clickless mute. The curve can be adjusted in the settings; however, this only affects the CV output. Two voltage ranges are available in the settings: 0V to 10V or -5V to 5V. Note that this range also affects the level at which CV and CC are set when muting. In the 0V to 10V range, mute is at 0V and CC 0, making it ideal for controlling volume, send levels, or similar parameters. In the -5V to 5V range, mute is at 0V and CC 64, making it suitable for controlling panning, crossfading, or similar functions. The mute behavior can be set to trigger on press or on release, depending on your preference. Due to popular demand, the app's action can also be inverted—this means that when the fader is at the top, the output will be set to the minimum value, and when at the bottom, it will send the maximum CC and CV value. As with all apps where the LED color does not serve any specific function, you are free to configure it in the settings.",
+    storage: ["Level (if 'Store state' enabled","Muted (if 'Store state' enabled)", "Attenuation"],
+    text: "This app is designed to provide a simple way to manually control any parameters using either CV or MIDI CC. The MIDI channel and CC numbers can be adjusted in the app's settings, and both MIDI and CV outputs are always active simultaneously. The range can be adjusted using Shift + Fader, which affects both CC and CV ranges. The fader controls the level of the CV or CC, and the button acts as a clickless mute. The fader level and the mute state can be saved in scenes if the 'Store state' parameter is enabled (active by default). You can then use this app as a way to save and recall CV voltage allowing for preset in a modular system for example. The curve can be adjusted in the settings; however, this only affects the CV output. Two voltage ranges are available in the settings: 0V to 10V or -5V to 5V. Note that this range also affects the level at which CV and CC are set when muting. In the 0V to 10V range, mute is at 0V and CC 0, making it ideal for controlling volume, send levels, or similar parameters. In the -5V to 5V range, mute is at 0V and CC 64, making it suitable for controlling panning, crossfading, or similar functions. The mute behavior can be set to trigger on press or on release, depending on your preference. Due to popular demand, the app's action can also be inverted—this means that when the fader is at the top, the output will be set to the minimum value, and when at the bottom, it will send the maximum CC and CV value. As with all apps where the LED color does not serve any specific function, you are free to configure it in the settings.",
     channels: [
       {
         jackTitle: "Output",
@@ -50,9 +51,9 @@ const apps: ManualAppData[] = [
     description: "Multi shape LFO",
     color: "Yellow",
     icon: "sine",
-    params: ["Speed division"],
+    params: ["Speed division", "Range", "Send MIDI", "MIDI Channel", "MIDI CC" ],
     storage: ["Clocked", "Attenuation", "Speed", "Waveform"],
-    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (blue), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. As with all apps where the LED color has no functional role, you’re free to customize it in the settings.",
+    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (blue), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
     channels: [
       {
         jackTitle: "Output",
@@ -277,9 +278,6 @@ const apps: ManualAppData[] = [
         jackDescription: "Quantized output",
         faderTitle: "Note",
         faderDescription: "Sets the note at this step",
-        faderPlusShiftTitle: "Sequence speed",
-        faderPlusShiftDescription:
-          "Set sequence resolution  32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th",
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
@@ -294,7 +292,6 @@ const apps: ManualAppData[] = [
         jackDescription: "Quantized output",
         faderTitle: "Note",
         faderDescription: "Sets the note at this step",
-
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
@@ -489,8 +486,8 @@ const apps: ManualAppData[] = [
     color: "Rose",
     icon: "attenuate",
     params: ["Color"],
-    storage: ["Attenuation", "Offset"],
-    text: "This app provides offset and attenuverter functionality. The input and output range is ±5V, and the attenuverter has a maximum gain of 2x. Color can be set in the configurator. Jack 1 is the input, Jack 2 is the output. Main functions include Fader 1 for offset and Fader 2 for attenuvertion. Button 1 kills the offset, Button 2 kills the attenuvertion.",
+    storage: ["Attenuation", "Offset", "Offset toggle", "Attenuation toggle"],
+    text: "This app provides offset and attenuverter functionality. The input and output range is ±5V, and the attenuverter has a maximum gain of 2x. Color can be set in the configurator. Jack 1 is the input, Jack 2 is the output. Main functions include Fader 1 for offset and Fader 2 for attenuvertion. Button 1 toggles the offset on or off, Button 2 toggles the attenuvertion on or off. When both of these are off the app acts as a simple pass through.",
     channels: [
       {
         jackTitle: "Input",
