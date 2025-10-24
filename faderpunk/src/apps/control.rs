@@ -280,11 +280,11 @@ pub async fn run(
             }
             out = slew_2(out, attenuated, 3);
 
-            if last_out / 32 != out / 32 {
+            if last_out != (out as u32 * 127) / 4095 {
                 midi.send_cc(midi_cc as u8, out).await;
             }
             jack.set_value(out);
-            last_out = out;
+            last_out = (out as u32 * 127) / 4095;
 
             // Update LEDs
             match latch_active_layer {
@@ -402,5 +402,13 @@ pub async fn run(
 }
 
 pub fn slew_2(prev: u16, input: u16, slew: u16) -> u16 {
-    roundf((prev as f32 * slew as f32 + input as f32) / (slew + 1) as f32) as u16
+    // Integer-based smoothing
+    let smoothed = ((prev as u32 * slew as u32 + input as u32) / (slew as u32 + 1)) as u16;
+
+    // Snap to target if close enough
+    if (smoothed as i32 - input as i32).abs() <= slew as i32 {
+        input
+    } else {
+        smoothed
+    }
 }
