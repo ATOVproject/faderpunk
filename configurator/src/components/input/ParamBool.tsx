@@ -16,7 +16,7 @@ export const ParamBool = ({
 }: Props) => (
   <div className="flex w-40 items-start">
     <Switch
-      defaultChecked={defaultValue}
+      defaultSelected={defaultValue}
       {...register(`param-bool-${paramIndex}`)}
       color="secondary"
       classNames={{
