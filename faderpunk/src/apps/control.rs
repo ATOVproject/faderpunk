@@ -1,4 +1,7 @@
-use embassy_futures::{join::join4, select::select};
+use embassy_futures::{
+    join::join4,
+    select::{select, select3},
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
@@ -15,7 +18,7 @@ use libfp::{Config, Curve, Param, Range, Value};
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 7;
+pub const PARAMS: usize = 8;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Control",
@@ -57,6 +60,9 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
+})
+.add_param(Param::bool {
+    name: "Store state",
 });
 
 pub struct Params {
@@ -67,6 +73,7 @@ pub struct Params {
     on_release: bool,
     invert: bool,
     color: Color,
+    save_state: bool,
 }
 
 impl Default for Params {
@@ -79,6 +86,7 @@ impl Default for Params {
             on_release: false,
             invert: false,
             color: Color::Violet,
+            save_state: true,
         }
     }
 }
@@ -96,6 +104,7 @@ impl AppParams for Params {
             on_release: bool::from_value(values[4]),
             invert: bool::from_value(values[5]),
             color: Color::from_value(values[6]),
+            save_state: bool::from_value(values[7]),
         })
     }
 
@@ -108,6 +117,7 @@ impl AppParams for Params {
         vec.push(self.on_release.into()).unwrap();
         vec.push(self.invert.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.save_state.into()).unwrap();
         vec
     }
 }
@@ -117,6 +127,7 @@ impl AppParams for Params {
 pub struct Storage {
     muted: bool,
     att_saved: u16,
+    fad_val: u16,
 }
 
 impl Default for Storage {
@@ -124,6 +135,7 @@ impl Default for Storage {
         Self {
             muted: false,
             att_saved: 4095,
+            fad_val: 4095,
         }
     }
 }
@@ -136,13 +148,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -156,17 +169,19 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (curve, midi_chan, midi_cc, on_release, range, inverted, led_color) = params.query(|p| {
-        (
-            p.curve,
-            p.midi_channel,
-            p.midi_cc,
-            p.on_release,
-            p.range,
-            p.invert,
-            p.color,
-        )
-    });
+    let (curve, midi_chan, midi_cc, on_release, range, inverted, led_color, save_state) = params
+        .query(|p| {
+            (
+                p.curve,
+                p.midi_channel,
+                p.midi_cc,
+                p.on_release,
+                p.range,
+                p.invert,
+                p.color,
+                p.save_state,
+            )
+        });
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
@@ -205,6 +220,9 @@ pub async fn run(
             let latch_active_layer =
                 latch_layer_glob.set(LatchLayer::from(buttons.is_shift_pressed()));
             let att_layer_value = storage.query(|s| s.att_saved);
+            if save_state {
+                main_layer_value = storage.query(|s| s.fad_val);
+            }
 
             let latch_target_value = match latch_active_layer {
                 LatchLayer::Main => main_layer_value,
@@ -217,7 +235,11 @@ pub async fn run(
             {
                 match latch_active_layer {
                     LatchLayer::Main => {
-                        main_layer_value = new_value;
+                        if save_state {
+                            storage.modify(|s| s.fad_val = new_value);
+                        } else {
+                            main_layer_value = new_value;
+                        }
                     }
                     LatchLayer::Alt => {
                         // Update storage but don't save yet
@@ -317,15 +339,10 @@ pub async fn run(
             } else {
                 buttons.wait_for_down(0).await;
             }
-            let muted = storage
-                .modify_and_save(
-                    |s| {
-                        s.muted = !s.muted;
-                        s.muted
-                    },
-                    None,
-                )
-                .await;
+            let muted = storage.modify_and_save(|s| {
+                s.muted = !s.muted;
+                s.muted
+            });
             muted_glob.set(muted);
             if muted {
                 leds.unset(0, Led::Button);
@@ -348,7 +365,7 @@ pub async fn run(
                 }
                 LatchLayer::Alt => {
                     // Now we commit to storage
-                    storage.save(None).await;
+                    storage.save().await;
                 }
                 _ => unreachable!(),
             }
@@ -359,16 +376,18 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
-                    let muted = storage.query(|s| s.muted);
-                    muted_glob.set(muted);
-                    if muted {
-                        leds.unset(0, Led::Button);
-                    } else {
-                        leds.set(0, Led::Button, led_color, Brightness::Lower);
+                    storage.load_from_scene(scene).await;
+                    if save_state {
+                        let muted = storage.query(|s| s.muted);
+                        muted_glob.set(muted);
+                        if muted {
+                            leds.unset(0, Led::Button);
+                        } else {
+                            leds.set(0, Led::Button, led_color, Brightness::Lower);
+                        }
                     }
                 }
-                SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
+                SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
         }
     };

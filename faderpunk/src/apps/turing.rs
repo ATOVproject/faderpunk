@@ -2,7 +2,10 @@
 // Quantizer
 //clock res
 
-use embassy_futures::{join::join5, select::select};
+use embassy_futures::{
+    join::join5,
+    select::{select, select3},
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
@@ -80,7 +83,7 @@ impl Default for Params {
         Self {
             midi_mode: 1,
             midi_channel: 1,
-            midi_cc: 1,
+            midi_cc: 40,
             note: 36,
             gatel: 50,
             color: Color::Blue,
@@ -141,13 +144,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -199,8 +203,7 @@ pub async fn run(
 
     let curve = Curve::Exponential;
 
-    let (length, mut register, res) =
-        storage.query(|s| (s.length_saved, s.register_saved, s.res_saved));
+    let (mut register, res) = storage.query(|s| (s.register_saved, s.res_saved));
 
     div_glob.set(resolution[res as usize / 512]);
 
@@ -248,7 +251,7 @@ pub async fn run(
                             midi_note.set(note);
                         }
                         if midi_mode == 2 {
-                            midi.send_cc(midi_cc as u8 - 1, att_reg).await;
+                            midi.send_cc(midi_cc as u8, att_reg).await;
                         }
 
                         if buttons.is_button_pressed(0) && !buttons.is_shift_pressed() {
@@ -272,9 +275,7 @@ pub async fn run(
                         }
 
                         if register != reg_old {
-                            storage
-                                .modify_and_save(|s| s.register_saved = register, None)
-                                .await;
+                            storage.modify_and_save(|s| s.register_saved = register);
                         }
                     }
 
@@ -305,17 +306,13 @@ pub async fn run(
                         prob_glob.set(new_value);
                     }
                     LatchLayer::Alt => {
-                        storage
-                            .modify_and_save(|s| s.att_saved = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.att_saved = new_value);
                     }
                     LatchLayer::Third => {
                         div_glob.set(resolution[new_value as usize / 512]);
                         let note = midi_note.get();
                         midi.send_note_off(note).await;
-                        storage
-                            .modify_and_save(|s| s.res_saved = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.res_saved = new_value);
                     }
                     _ => unreachable!(),
                 }
@@ -374,9 +371,7 @@ pub async fn run(
                 rec_flag.set(false);
                 let length = length_rec.get();
                 if length >= 1 {
-                    storage
-                        .modify_and_save(|s| s.length_saved = length, None)
-                        .await;
+                    storage.modify_and_save(|s| s.length_saved = length);
                 }
             }
 
@@ -399,7 +394,7 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                     let res = storage.query(|s| (s.res_saved));
 
                     recall_flag.set(true);
@@ -411,7 +406,7 @@ pub async fn run(
                 }
 
                 SceneEvent::SaveScene(scene) => {
-                    storage.save(Some(scene)).await;
+                    storage.save_to_scene(scene).await;
                 }
             }
         }

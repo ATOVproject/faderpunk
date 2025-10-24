@@ -1,4 +1,7 @@
-use embassy_futures::{join::join4, select::select};
+use embassy_futures::{
+    join::join4,
+    select::{select, select3},
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
@@ -87,13 +90,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -153,10 +157,10 @@ pub async fn run(
 
             output.set_value(outval.as_counts(range));
             let oct_led = split_unsigned_value(outval.as_counts(range));
-            leds.set(0, Led::Top, led_color, Brightness::Custom(oct_led[0]));
-            leds.set(0, Led::Bottom, led_color, Brightness::Custom(oct_led[1]));
+            leds.set(1, Led::Top, led_color, Brightness::Custom(oct_led[0]));
+            leds.set(1, Led::Bottom, led_color, Brightness::Custom(oct_led[1]));
             leds.set(
-                1,
+                0,
                 Led::Top,
                 led_color,
                 Brightness::Custom((st * 255 / 410) as u8),
@@ -169,14 +173,9 @@ pub async fn run(
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             if is_shift_pressed {
             } else {
-                storage
-                    .modify_and_save(
-                        |s| {
-                            s.offset_toggles[chan] = !s.offset_toggles[chan];
-                        },
-                        None,
-                    )
-                    .await;
+                storage.modify_and_save(|s| {
+                    s.offset_toggles[chan] = !s.offset_toggles[chan];
+                });
                 if !storage.query(|s| s.offset_toggles[chan]) {
                     leds.set(chan, Led::Button, led_color, Brightness::Lower);
                 } else {
@@ -207,14 +206,9 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.st = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.st = new_value;
+                            });
                         }
                         LatchLayer::Alt => {}
                         _ => unreachable!(),
@@ -231,14 +225,9 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.oct = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.oct = new_value;
+                            });
                         }
                         LatchLayer::Alt => {}
                         _ => unreachable!(),
@@ -252,7 +241,7 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                     for chan in 0..2 {
                         if !storage.query(|s| s.offset_toggles[chan]) {
                             leds.set(chan, Led::Button, led_color, Brightness::Lower);
@@ -261,7 +250,7 @@ pub async fn run(
                         }
                     }
                 }
-                SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
+                SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
         }
     };

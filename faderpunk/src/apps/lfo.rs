@@ -1,6 +1,6 @@
 use embassy_futures::{
     join::{join, join5},
-    select::select,
+    select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate_bipolar, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, split_unsigned_value},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, Param, Range, Value, Waveform,
     APP_MAX_PARAMS,
 };
@@ -21,21 +21,47 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 1;
+pub const PARAMS: usize = 5;
 
 pub static CONFIG: Config<PARAMS> =
-    Config::new("LFO", "Multi shape LFO", Color::Yellow, AppIcon::Sine).add_param(Param::Enum {
-        name: "Speed",
-        variants: &["Normal", "Slow", "Slowest"],
-    });
+    Config::new("LFO", "Multi shape LFO", Color::Yellow, AppIcon::Sine)
+        .add_param(Param::Enum {
+            name: "Speed",
+            variants: &["Normal", "Slow", "Slowest"],
+        })
+        .add_param(Param::Range {
+            name: "Range",
+            variants: &[Range::_0_10V, Range::_Neg5_5V],
+        })
+        .add_param(Param::bool { name: "Send MIDI" })
+        .add_param(Param::i32 {
+            name: "MIDI Channel",
+            min: 1,
+            max: 16,
+        })
+        .add_param(Param::i32 {
+            name: "MIDI CC",
+            min: 1,
+            max: 128,
+        });
 
 pub struct Params {
     speed_mult: usize,
+    range: Range,
+    use_midi: bool,
+    midi_channel: i32,
+    midi_cc: i32,
 }
 
 impl Default for Params {
     fn default() -> Self {
-        Self { speed_mult: 0 }
+        Self {
+            speed_mult: 0,
+            range: Range::_Neg5_5V,
+            use_midi: false,
+            midi_channel: 1,
+            midi_cc: 32,
+        }
     }
 }
 
@@ -43,12 +69,20 @@ impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         Some(Self {
             speed_mult: usize::from_value(values[0]),
+            range: Range::from_value(values[1]),
+            use_midi: bool::from_value(values[2]),
+            midi_channel: i32::from_value(values[3]),
+            midi_cc: i32::from_value(values[4]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
         vec.push(self.speed_mult.into()).unwrap();
+        vec.push(self.range.into()).unwrap();
+        vec.push(self.use_midi.into()).unwrap();
+        vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.midi_cc.into()).unwrap();
         vec
     }
 }
@@ -80,13 +114,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -100,12 +135,17 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
+    let (range, use_midi, midi_chan, midi_cc) =
+        params.query(|p| (p.range, p.use_midi, p.midi_channel, p.midi_cc));
+
     let speed_mult = 2u32.pow(params.query(|p| p.speed_mult) as u32);
-    let output = app.make_out_jack(0, Range::_Neg5_5V).await;
+    let output = app.make_out_jack(0, range).await;
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
     let mut clk = app.use_clock();
+
+    let midi = app.use_midi_output(midi_chan as u8 - 1);
 
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);
@@ -126,6 +166,7 @@ pub async fn run(
     glob_div.set(resolution[speed as usize / 500]);
     let mut count = 0;
     let mut quant_speed: f32 = 6.;
+    let mut last_out = 0;
 
     let fut1 = async {
         loop {
@@ -155,11 +196,25 @@ pub async fn run(
             };
 
             let attenuation = storage.query(|s| s.layer_attenuation);
-
-            let val = attenuate_bipolar(wave.at(next_pos as usize), attenuation);
+            let val = if range == Range::_Neg5_5V {
+                attenuate_bipolar(wave.at(next_pos as usize), attenuation)
+            } else {
+                attenuate(wave.at(next_pos as usize), attenuation)
+            };
 
             output.set_value(val);
-            let led = split_unsigned_value(val);
+            if use_midi {
+                if last_out / 32 != val / 32 {
+                    midi.send_cc(midi_cc as u8, val).await;
+                }
+                last_out = val;
+            }
+
+            let led = if range == Range::_Neg5_5V {
+                split_unsigned_value(val)
+            } else {
+                [(val / 16) as u8, 0]
+            };
 
             let color = get_color_for(wave);
 
@@ -209,14 +264,10 @@ pub async fn run(
                     LatchLayer::Main => {
                         glob_lfo_speed.set(curve.at(new_value) as f32 * 0.015 + 0.0682);
                         glob_div.set(resolution[new_value as usize / 500]);
-                        storage
-                            .modify_and_save(|s| s.layer_speed = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.layer_speed = new_value);
                     }
                     LatchLayer::Alt => {
-                        storage
-                            .modify_and_save(|s| s.layer_attenuation = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.layer_attenuation = new_value);
                     }
                     _ => unreachable!(),
                 }
@@ -229,15 +280,10 @@ pub async fn run(
             buttons.wait_for_down(0).await;
 
             if !buttons.is_shift_pressed() {
-                let wave = storage
-                    .modify_and_save(
-                        |s| {
-                            s.wave = s.wave.cycle();
-                            s.wave
-                        },
-                        None,
-                    )
-                    .await;
+                let wave = storage.modify_and_save(|s| {
+                    s.wave = s.wave.cycle();
+                    s.wave
+                });
 
                 let color = get_color_for(wave);
                 leds.set(0, Led::Button, color, Brightness::Lower);
@@ -252,15 +298,10 @@ pub async fn run(
             buttons.wait_for_any_long_press().await;
 
             if buttons.is_shift_pressed() {
-                let clocked = storage
-                    .modify_and_save(
-                        |s| {
-                            s.clocked = !s.clocked;
-                            s.clocked
-                        },
-                        None,
-                    )
-                    .await;
+                let clocked = storage.modify_and_save(|s| {
+                    s.clocked = !s.clocked;
+                    s.clocked
+                });
                 if clocked {
                     leds.set_mode(0, Led::Button, LedMode::Flash(color, Some(4)));
                 }
@@ -285,7 +326,7 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                     let speed = storage.query(|s| s.layer_speed);
                     let wave_saved = storage.query(|s| s.wave);
 
@@ -295,7 +336,7 @@ pub async fn run(
                     let color = get_color_for(wave_saved);
                     leds.set(0, Led::Button, color, Brightness::Lower);
                 }
-                SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
+                SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
         }
     };

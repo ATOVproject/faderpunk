@@ -1,4 +1,7 @@
-use embassy_futures::{join::join4, select::select};
+use embassy_futures::{
+    join::join4,
+    select::{select, select3},
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
@@ -66,6 +69,7 @@ impl AppParams for Params {
 pub struct Storage {
     att_saved: u16,
     offset_saved: u16,
+    offset_att_toggle: [bool; 2],
 }
 
 impl Default for Storage {
@@ -73,6 +77,7 @@ impl Default for Storage {
         Self {
             att_saved: 4095,
             offset_saved: 0,
+            offset_att_toggle: [true; 2],
         }
     }
 }
@@ -85,13 +90,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -114,6 +120,14 @@ pub async fn run(
     let input = app.make_in_jack(0, Range::_Neg5_5V).await;
     let output = app.make_out_jack(1, Range::_Neg5_5V).await;
 
+    for n in 0..=1 {
+        if storage.query(|s| s.offset_att_toggle[n]) {
+            leds.set(n, Led::Button, led_color, Brightness::Lower);
+        } else {
+            leds.unset(n, Led::Button);
+        }
+    }
+
     let fut1 = async {
         let mut att = 0;
         let mut offset_fad = 0;
@@ -121,8 +135,22 @@ pub async fn run(
             app.delay_millis(1).await;
             let inval = input.get_value();
 
-            att = clickless(att, storage.query(|s| (s.att_saved)));
-            offset_fad = clickless(offset_fad, storage.query(|s| (s.offset_saved)));
+            att = clickless(
+                att,
+                if storage.query(|s| (s.offset_att_toggle[1])) {
+                    storage.query(|s| (s.att_saved))
+                } else {
+                    3071
+                },
+            );
+            offset_fad = clickless(
+                offset_fad,
+                if storage.query(|s| (s.offset_att_toggle[0])) {
+                    storage.query(|s| (s.offset_saved))
+                } else {
+                    2047
+                },
+            );
             let offset = offset_fad as i32 - 2047;
 
             let mut outval =
@@ -138,16 +166,6 @@ pub async fn run(
             let out_led = split_unsigned_value(outval);
             leds.set(1, Led::Top, led_color, Brightness::Custom(out_led[0]));
             leds.set(1, Led::Bottom, led_color, Brightness::Custom(out_led[1]));
-            if storage.query(|s| (s.offset_saved)) != 2047 {
-                leds.set(0, Led::Button, led_color, Brightness::Low);
-            } else {
-                leds.set(0, Led::Button, led_color, Brightness::Lower);
-            }
-            if storage.query(|s| (s.att_saved)) != 3071 {
-                leds.set(1, Led::Button, led_color, Brightness::Low);
-            } else {
-                leds.set(1, Led::Button, led_color, Brightness::Lower);
-            }
         }
     };
 
@@ -165,14 +183,9 @@ pub async fn run(
                     LatchLayer::Main,
                     storage.query(|s| (s.offset_saved)),
                 ) {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.offset_saved = new_value;
-                            },
-                            None,
-                        )
-                        .await;
+                    storage.modify_and_save(|s| {
+                        s.offset_saved = new_value;
+                    });
                 }
             }
 
@@ -182,14 +195,9 @@ pub async fn run(
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), LatchLayer::Main, target_value)
                 {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.att_saved = new_value;
-                            },
-                            None,
-                        )
-                        .await;
+                    storage.modify_and_save(|s| {
+                        s.att_saved = new_value;
+                    });
                 }
             }
         }
@@ -200,27 +208,15 @@ pub async fn run(
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             if is_shift_pressed {
             } else {
-                if chan == 0 {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.offset_saved = 2047;
-                                s.offset_saved
-                            },
-                            None,
-                        )
-                        .await;
-                }
-                if chan == 1 {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.att_saved = 3071;
-                                s.att_saved
-                            },
-                            None,
-                        )
-                        .await;
+                storage.modify_and_save(|s| {
+                    s.offset_att_toggle[chan] = !s.offset_att_toggle[chan];
+                });
+                for n in 0..=1 {
+                    if storage.query(|s| s.offset_att_toggle[n]) {
+                        leds.set(n, Led::Button, led_color, Brightness::Lower);
+                    } else {
+                        leds.unset(n, Led::Button);
+                    }
                 }
             }
         }
@@ -230,9 +226,9 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                 }
-                SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
+                SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
         }
     };

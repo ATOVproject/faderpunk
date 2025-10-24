@@ -4,7 +4,7 @@
 
 use embassy_futures::{
     join::{join, join5},
-    select::select,
+    select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -109,13 +109,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -199,6 +200,17 @@ pub async fn run(
 
                         leds.set(0, Led::Button, color, Brightness::Lower);
                     }
+
+                    if clkn % div == 0 && storage.query(|s: &Storage| s.clocked) {
+                        if buttons.is_shift_pressed() {
+                            leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                        }
+                    }
+                    if clkn % div == (div * 50 / 100).clamp(1, div - 1)
+                        && buttons.is_shift_pressed()
+                    {
+                        leds.unset(0, Led::Bottom);
+                    }
                     clkn += 1;
                 }
                 _ => {}
@@ -212,15 +224,9 @@ pub async fn run(
             if buttons.is_shift_pressed() {
                 let muted = glob_muted.toggle();
 
-                storage
-                    .modify_and_save(
-                        |s| {
-                            s.mute_save = muted;
-                            s.mute_save
-                        },
-                        None,
-                    )
-                    .await;
+                storage.modify_and_save(|s| {
+                    s.mute_save = muted;
+                });
 
                 if muted {
                     leds.unset_all();
@@ -235,7 +241,13 @@ pub async fn run(
             buttons.wait_for_any_long_press().await;
 
             if buttons.is_shift_pressed() {
+                let clocked = storage.query(|s: &Storage| s.clocked);
+
                 let muted = glob_muted.toggle();
+                storage.modify_and_save(|s| {
+                    s.clocked = !clocked;
+                    s.mute_save = muted;
+                });
                 if muted {
                     leds.unset_all();
                 } else {
@@ -263,19 +275,13 @@ pub async fn run(
                     LatchLayer::Main => {
                         div_glob.set(resolution[new_value as usize / 345]);
                         time_div.set((curve.at(4095 - new_value) as u32 * 5000 / 4095 + 71) as u16);
-                        storage
-                            .modify_and_save(|s| s.fader_saved = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.fader_saved = new_value);
                     }
                     LatchLayer::Alt => {
-                        storage
-                            .modify_and_save(|s| s.att_saved = new_value, None)
-                            .await;
+                        storage.modify_and_save(|s| s.att_saved = new_value);
                     }
                     LatchLayer::Third => {
-                        storage
-                            .modify_and_save(|s| s.slew_saved = new_value, None)
-                            .await
+                        storage.modify_and_save(|s| s.slew_saved = new_value);
                     }
                 }
             }
@@ -286,7 +292,7 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                     let (res, mute, _) =
                         storage.query(|s| (s.fader_saved, s.mute_save, s.att_saved));
 
@@ -301,7 +307,7 @@ pub async fn run(
                 }
 
                 SceneEvent::SaveScene(scene) => {
-                    storage.save(Some(scene)).await;
+                    storage.save_to_scene(scene).await;
                 }
             }
         }
@@ -372,9 +378,9 @@ pub async fn run(
                     Color::Red,
                     Brightness::Custom((att / 16) as u8),
                 );
-                if storage.query(|s: &Storage| s.clocked) {
-                    leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
-                }
+                // if storage.query(|s: &Storage| s.clocked) {
+                //     leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                // }
             }
             if latch_active_layer == LatchLayer::Third {
                 leds.set(

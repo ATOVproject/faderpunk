@@ -1,5 +1,7 @@
-use defmt::info;
-use embassy_futures::{join::join4, select::select};
+use embassy_futures::{
+    join::join4,
+    select::{select, select3},
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
@@ -115,13 +117,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -203,10 +206,6 @@ pub async fn run(
                         .as_counts(range) as u32
                         * 120
                         / 4095) as u8;
-                    info!(
-                        "note = {}, oct = {}, st = {}, midi out = {}",
-                        note, oct, st, midi_out
-                    );
 
                     midi.send_note_on(midi_out, 4095).await;
                     note_on = true;
@@ -248,14 +247,9 @@ pub async fn run(
         loop {
             let chan = buttons.wait_for_any_down().await;
             if chan.0 == 0 {
-                storage
-                    .modify_and_save(
-                        |s| {
-                            s.offset_toggle = !s.offset_toggle;
-                        },
-                        None,
-                    )
-                    .await;
+                storage.modify_and_save(|s| {
+                    s.offset_toggle = !s.offset_toggle;
+                });
                 if !storage.query(|s| s.offset_toggle) {
                     leds.set(0, Led::Button, led_color, Brightness::Lower);
                 } else {
@@ -263,15 +257,10 @@ pub async fn run(
                 }
             }
             if chan.0 == 1 {
-                let muted = storage
-                    .modify_and_save(
-                        |s| {
-                            s.muted = !s.muted;
-                            s.muted
-                        },
-                        None,
-                    )
-                    .await;
+                let muted = storage.modify_and_save(|s| {
+                    s.muted = !s.muted;
+                    s.muted
+                });
                 muted_glob.set(muted);
                 if muted {
                     leds.unset(1, Led::Button);
@@ -301,14 +290,9 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.fader_saved[chan] = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.fader_saved[chan] = new_value;
+                            });
                         }
                         LatchLayer::Alt => {}
                         _ => unreachable!(),
@@ -325,14 +309,9 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            storage
-                                .modify_and_save(
-                                    |s| {
-                                        s.fader_saved[chan] = new_value;
-                                    },
-                                    None,
-                                )
-                                .await;
+                            storage.modify_and_save(|s| {
+                                s.fader_saved[chan] = new_value;
+                            });
                         }
                         LatchLayer::Alt => {}
                         _ => unreachable!(),
@@ -346,7 +325,7 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                     if !storage.query(|s| s.offset_toggle) {
                         leds.set(0, Led::Button, led_color, Brightness::Lower);
                     } else {
@@ -361,7 +340,7 @@ pub async fn run(
 
                     muted_glob.set(storage.query(|s| s.muted));
                 }
-                SceneEvent::SaveScene(scene) => storage.save(Some(scene)).await,
+                SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
         }
     };

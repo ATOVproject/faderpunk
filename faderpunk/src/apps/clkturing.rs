@@ -1,7 +1,10 @@
 // Todo
 // Quantizer
 
-use embassy_futures::{join::join5, select::select};
+use embassy_futures::{
+    join::join5,
+    select::{select, select3},
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
@@ -65,7 +68,7 @@ impl Default for Params {
         Self {
             midi_mode: 1,
             midi_channel: 1,
-            midi_cc: 1,
+            midi_cc: 38,
             color: Color::Pink,
         }
     }
@@ -118,13 +121,14 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
-    storage.load(None).await;
+    storage.load().await;
 
     let app_loop = async {
         loop {
-            select(
+            select3(
                 run(&app, &param_store, &storage),
                 param_store.param_handler(),
+                storage.saver_task(),
             )
             .await;
         }
@@ -195,14 +199,9 @@ pub async fn run(
 
                 let rotation = rotate_select_bit(register, prob, rand, length);
                 register = rotation.0;
-                storage
-                    .modify_and_save(
-                        |s| {
-                            s.register_saved = register;
-                        },
-                        None,
-                    )
-                    .await;
+                storage.modify_and_save(|s| {
+                    s.register_saved = register;
+                });
 
                 //leds.set(0, Led::Button, led_color.into(), 100 * rotation.1 as u8);
 
@@ -235,7 +234,7 @@ pub async fn run(
                     midi_note.set(note);
                 }
                 if midi_mode == 2 {
-                    midi.send_cc(midi_cc as u8 - 1, att_reg).await;
+                    midi.send_cc(midi_cc as u8, att_reg).await;
                 }
 
                 leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
@@ -280,14 +279,9 @@ pub async fn run(
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), LatchLayer::Main, target_value)
                 {
-                    storage
-                        .modify_and_save(
-                            |s| {
-                                s.att_saved = new_value;
-                            },
-                            None,
-                        )
-                        .await;
+                    storage.modify_and_save(|s| {
+                        s.att_saved = new_value;
+                    });
                 }
             }
             // let val = faders.get_all_values();
@@ -350,9 +344,7 @@ pub async fn run(
                 if length > 1 {
                     length_glob.set(length - 1);
 
-                    storage
-                        .modify_and_save(|s| s.length_saved = length, None)
-                        .await;
+                    storage.modify_and_save(|s| s.length_saved = length);
                 }
             }
         }
@@ -362,7 +354,7 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
-                    storage.load(Some(scene)).await;
+                    storage.load_from_scene(scene).await;
                     let (length, register) = storage.query(|s| (s.length_saved, s.register_saved));
 
                     length_glob.set(length);
@@ -372,7 +364,7 @@ pub async fn run(
                 }
 
                 SceneEvent::SaveScene(scene) => {
-                    storage.save(Some(scene)).await;
+                    storage.save_to_scene(scene).await;
                 }
             }
         }
