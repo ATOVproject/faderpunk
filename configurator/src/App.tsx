@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import { useStore } from "./store";
 import { ConfiguratorPage } from "./components/ConfiguratorPage";
@@ -10,14 +9,7 @@ import { UpdatePage } from "./components/UpdatePage";
 import { TroubleshootingPage } from "./components/TroubleshootingPage";
 
 const App = () => {
-  const { usbDevice, deviceVersion } = useStore();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (deviceVersion && deviceVersion !== "1.3.0") {
-      navigate("/update");
-    }
-  }, [deviceVersion, navigate]);
+  const { usbDevice } = useStore();
 
   return (
     <Routes>
