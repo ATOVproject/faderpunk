@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.0...configurator-v1.5.1) (2025-10-25)
+
+
+### Bug Fixes
+
+* **configurator:** disable configurator version check ([284994f](https://github.com/ATOVproject/faderpunk/commit/284994f1b60a743d03e1ddae28b4c40121c4c95f))
+
 ## [1.5.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.4.0...configurator-v1.5.0) (2025-10-24)
 
 
