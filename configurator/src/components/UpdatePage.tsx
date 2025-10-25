@@ -21,9 +21,9 @@ export const UpdatePage = () => {
       </p>
       <ButtonPrimary
         as="a"
-        href="https://github.com/ATOVproject/faderpunk/releases/download/faderpunk-v1.3.0/faderpunk.uf2"
+        href="https://github.com/ATOVproject/faderpunk/releases/download/faderpunk-v1.4.0/faderpunk.uf2"
       >
-        Download v1.3.0
+        Download v1.4.0
       </ButtonPrimary>
       <UpdateGuide />
     </Layout>
