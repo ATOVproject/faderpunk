@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.1...configurator-v1.5.2) (2025-10-27)
+
+
+### Bug Fixes
+
+* **configurator:** add proper semver version check ([2d19880](https://github.com/ATOVproject/faderpunk/commit/2d19880aa5bc3b1ed0b55ea80fbd08fbf511c15a))
+
 ## [1.5.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.0...configurator-v1.5.1) (2025-10-25)
 
 
