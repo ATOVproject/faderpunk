@@ -16,33 +16,6 @@ export const setGlobalConfig = async (dev: USBDevice, config: GlobalConfig) => {
   });
 };
 
-// export const setGlobalConfig = async (
-//   dev: USBDevice,
-//   clock_src: ClockSrc,
-//   reset_src: ClockSrc,
-//   aux: [AuxJackMode, AuxJackMode, AuxJackMode],
-//   i2c_mode: I2cMode,
-// ) => {
-//   await sendMessage(dev, {
-//     tag: "SetGlobalConfig",
-//     value: {
-//       aux,
-//       clock: {
-//         clock_src,
-//         ext_ppqn: 24,
-//         reset_src,
-//         internal_bpm: 120,
-//       },
-//       i2c_mode,
-//       quantizer: {
-//         key: { tag: "PentatonicMaj" },
-//         tonic: { tag: "C" },
-//       },
-//       led_brightness: 150,
-//     },
-//   });
-// };
-
 export const setLayout = async (dev: USBDevice, layout: AppLayout) => {
   const sendLayout: Layout = [
     [
