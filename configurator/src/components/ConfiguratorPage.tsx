@@ -1,23 +1,75 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Modal, ModalContent } from "@heroui/modal";
 import { Tabs, Tab } from "@heroui/tabs";
+import { addToast, closeAll } from "@heroui/toast";
+import semverLt from "semver/functions/lt";
+import { useNavigate } from "react-router-dom";
 
-import { Layout } from "./Layout";
+import { FIRMWARE_MIN_SUPPORTED, FIRMWARE_LATEST_VERSION } from "../consts";
 import { useStore } from "../store";
+import { getDeviceVersion } from "../utils/usb-protocol";
+import { Layout } from "./Layout";
 import { DeviceTab } from "./DeviceTab";
 import { AppsTab } from "./AppsTab";
 import { SettingsTab } from "./SettingsTab";
-import { Modal, ModalContent } from "@heroui/modal";
 import { EditLayoutModal } from "./EditLayoutModal";
 import { ManualTab } from "./ManualTab";
+import { UpdateGuide } from "./manual/UpdateGuide";
 
 export const ConfiguratorPage = () => {
-  const { apps, config, setLayout, layout } = useStore();
+  const { apps, config, setLayout, layout, usbDevice } = useStore();
   const [modalApp, setModalApp] = useState<number | null>(null);
+  const navigate = useNavigate();
 
   const handleModalOpen = useCallback(
     (isOpen: boolean) => setModalApp(isOpen ? -1 : null),
     [],
   );
+
+  const handleToastClick = useCallback(() => {
+    closeAll();
+    navigate("/update");
+  }, [navigate]);
+
+  const version = usbDevice && getDeviceVersion(usbDevice);
+  const updateRequired =
+    version && semverLt(version, FIRMWARE_MIN_SUPPORTED);
+  const updatedAvailable =
+    version && semverLt(version, FIRMWARE_LATEST_VERSION);
+
+  useEffect(() => {
+    if (!usbDevice) {
+      navigate("/");
+      return;
+    }
+
+    if (updateRequired) {
+      navigate("/update");
+      return;
+    }
+
+    if (updatedAvailable) {
+      addToast({
+        title: (
+          <span className="cursor-pointer" onClick={handleToastClick}>
+            New firmware available
+          </span>
+        ),
+        description: (
+          <span className="cursor-pointer" onClick={handleToastClick}>
+            Firmware version {FIRMWARE_LATEST_VERSION} is available. Click here
+            to update.
+          </span>
+        ),
+        timeout: Infinity,
+        color: "danger",
+      });
+    }
+
+    return () => {
+      closeAll();
+    };
+  }, [navigate, handleToastClick, usbDevice, updatedAvailable, updateRequired]);
 
   return (
     <Layout>
@@ -44,6 +96,11 @@ export const ConfiguratorPage = () => {
           <Tab key="manual" title="Manual">
             <ManualTab />
           </Tab>
+          {updatedAvailable ? (
+            <Tab key="update" title="Update">
+              <UpdateGuide />
+            </Tab>
+          ) : null}
         </Tabs>
         {layout ? (
           <Modal
