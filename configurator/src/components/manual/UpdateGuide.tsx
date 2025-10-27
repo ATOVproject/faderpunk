@@ -1,7 +1,16 @@
+import { FIRMWARE_LATEST_VERSION } from "../../consts";
+import { ButtonPrimary } from "../Button";
 import { H2, H3, List } from "./Shared";
 
 export const UpdateGuide = () => (
   <>
+    <H2 id="download">Download firmware update</H2>
+    <ButtonPrimary
+      as="a"
+      href={`https://github.com/ATOVproject/faderpunk/releases/download/faderpunk-v${FIRMWARE_LATEST_VERSION}/faderpunk.uf2`}
+    >
+      Download v{FIRMWARE_LATEST_VERSION}
+    </ButtonPrimary>
     <H2 id="update">Firmware Update Guide</H2>
     <p>
       This guide will walk you through updating your Faderpunk's firmware. Don't
@@ -14,7 +23,7 @@ export const UpdateGuide = () => (
       <li>Your Faderpunk</li>
       <li>A USB cable to connect it to your computer</li>
       <li>
-        The firmware file (it will end in <code>.uf2</code>)
+        The firmware file from above (it will end in <code>.uf2</code>)
       </li>
     </List>
 
