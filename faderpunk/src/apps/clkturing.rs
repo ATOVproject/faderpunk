@@ -17,7 +17,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 5;
 
 // TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
@@ -54,6 +54,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
+})
+.add_param(Param::Range {
+    name: "Range",
+    variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
 });
 
 pub struct Params {
@@ -61,6 +65,7 @@ pub struct Params {
     midi_channel: i32,
     midi_cc: i32,
     color: Color,
+    range: Range,
 }
 
 impl Default for Params {
@@ -70,6 +75,7 @@ impl Default for Params {
             midi_channel: 1,
             midi_cc: 38,
             color: Color::Pink,
+            range: Range::_0_5V,
         }
     }
 }
@@ -84,6 +90,7 @@ impl AppParams for Params {
             midi_channel: i32::from_value(values[1]),
             midi_cc: i32::from_value(values[2]),
             color: Color::from_value(values[3]),
+            range: Range::from_value(values[4]),
         })
     }
 
@@ -93,6 +100,7 @@ impl AppParams for Params {
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.range.into()).unwrap();
         vec
     }
 }
@@ -142,9 +150,8 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let range = Range::_0_10V;
-    let (midi_mode, midi_cc, led_color, midi_chan) =
-        params.query(|p| (p.midi_mode, p.midi_cc, p.color, p.midi_channel));
+    let (midi_mode, midi_cc, led_color, midi_chan, range) =
+        params.query(|p| (p.midi_mode, p.midi_cc, p.color, p.midi_channel, p.range));
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
@@ -180,7 +187,7 @@ pub async fn run(
 
     length_glob.set(length);
     register_glob.set(register);
-    let curve = Curve::Exponential;
+    let curve = Curve::Linear;
 
     let fut1 = async {
         let mut att_reg = 0;
