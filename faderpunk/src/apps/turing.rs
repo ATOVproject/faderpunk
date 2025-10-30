@@ -20,7 +20,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 7;
 
 // TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
@@ -67,6 +67,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
+})
+.add_param(Param::Range {
+    name: "Range",
+    variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
 });
 
 pub struct Params {
@@ -76,6 +80,7 @@ pub struct Params {
     note: i32,
     gatel: i32,
     color: Color,
+    range: Range,
 }
 
 impl Default for Params {
@@ -87,6 +92,7 @@ impl Default for Params {
             note: 36,
             gatel: 50,
             color: Color::Blue,
+            range: Range::_0_5V,
         }
     }
 }
@@ -103,6 +109,7 @@ impl AppParams for Params {
             note: i32::from_value(values[3]),
             gatel: i32::from_value(values[4]),
             color: Color::from_value(values[5]),
+            range: Range::from_value(values[6]),
         })
     }
 
@@ -114,6 +121,7 @@ impl AppParams for Params {
         vec.push(self.note.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.range.into()).unwrap();
         vec
     }
 }
@@ -165,8 +173,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let range = Range::_0_10V;
-    let (midi_mode, midi_cc, led_color, midi_chan, base_note, gatel) = params.query(|p| {
+    let (midi_mode, midi_cc, led_color, midi_chan, base_note, gatel, range) = params.query(|p| {
         (
             p.midi_mode,
             p.midi_cc,
@@ -174,6 +181,7 @@ pub async fn run(
             p.midi_channel,
             p.note,
             p.gatel,
+            p.range,
         )
     });
 
