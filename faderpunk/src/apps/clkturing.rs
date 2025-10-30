@@ -17,7 +17,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 6;
 
 // TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
@@ -58,6 +58,11 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Range {
     name: "Range",
     variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
+})
+.add_param(Param::i32 {
+    name: "Base Note",
+    min: 1,
+    max: 128,
 });
 
 pub struct Params {
@@ -66,6 +71,7 @@ pub struct Params {
     midi_cc: i32,
     color: Color,
     range: Range,
+    note: i32,
 }
 
 impl Default for Params {
@@ -76,6 +82,7 @@ impl Default for Params {
             midi_cc: 38,
             color: Color::Pink,
             range: Range::_0_5V,
+            note: 36,
         }
     }
 }
@@ -91,6 +98,7 @@ impl AppParams for Params {
             midi_cc: i32::from_value(values[2]),
             color: Color::from_value(values[3]),
             range: Range::from_value(values[4]),
+            note: i32::from_value(values[5]),
         })
     }
 
@@ -101,6 +109,7 @@ impl AppParams for Params {
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.range.into()).unwrap();
+        vec.push(self.note.into()).unwrap();
         vec
     }
 }
@@ -150,8 +159,16 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_mode, midi_cc, led_color, midi_chan, range) =
-        params.query(|p| (p.midi_mode, p.midi_cc, p.color, p.midi_channel, p.range));
+    let (midi_mode, midi_cc, led_color, midi_chan, range, base_note) = params.query(|p| {
+        (
+            p.midi_mode,
+            p.midi_cc,
+            p.color,
+            p.midi_channel,
+            p.range,
+            p.note,
+        )
+    });
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
@@ -179,8 +196,6 @@ pub async fn run(
 
     let input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
-
-    let base_note = 48;
 
     let (att, length, mut register) =
         storage.query(|s| (s.att_saved, s.length_saved, s.register_saved));
@@ -235,7 +250,7 @@ pub async fn run(
                 );
                 // info!("{}", register_scalled);
                 if midi_mode == 1 {
-                    let note = out.as_midi();
+                    let note = out.as_midi() + base_note as u8;
                     midi.send_note_on(note, 4095).await;
 
                     midi_note.set(note);
