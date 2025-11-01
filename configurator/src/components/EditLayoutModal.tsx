@@ -22,25 +22,25 @@ import {
 } from "@dnd-kit/sortable";
 import { Link } from "react-router-dom";
 
-import { SortableItem } from "./SortableItem";
-import { Item } from "./Item";
-import type { AppLayout } from "../utils/types";
-import { ButtonPrimary, ButtonSecondary } from "./Button";
-import { Icon } from "./Icon";
-import { setLayout } from "../utils/config";
 import { useStore } from "../store";
 import { COLORS_CLASSES } from "../utils/class-helpers";
+import { setLayout } from "../utils/config";
+import { ModalMode, type AppLayout, type ModalConfig } from "../utils/types";
 import {
   addAppToLayout,
   pascalToKebab,
   recalculateStartChannels,
 } from "../utils/utils";
+import { ButtonPrimary, ButtonSecondary } from "./Button";
+import { Icon } from "./Icon";
+import { Item } from "./Item";
+import { SortableItem } from "./SortableItem";
 
 interface Props {
   initialLayout: AppLayout;
   onSave: (layout: AppLayout) => void;
   onClose: () => void;
-  modalApp: number | null;
+  modalConfig: ModalConfig;
 }
 
 const GridBackground = () => {
@@ -64,7 +64,7 @@ export const EditLayoutModal = ({
   initialLayout,
   onSave,
   onClose,
-  modalApp,
+  modalConfig,
 }: Props) => {
   const { usbDevice, apps } = useStore();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
@@ -178,10 +178,15 @@ export const EditLayoutModal = ({
   const activeItem =
     activeId !== null && layout.find(({ id }) => id == activeId);
   const appToAdd =
-    apps && modalApp && modalApp >= 0 ? apps.get(modalApp) : undefined;
+    apps &&
+    modalConfig.mode === ModalMode.AddApp &&
+    modalConfig.appToAdd &&
+    modalConfig.appToAdd >= 0
+      ? apps.get(modalConfig.appToAdd)
+      : undefined;
 
   useEffect(() => {
-    if (!appToAdd || modalApp === null || newAppId !== null) return;
+    if (!appToAdd || newAppId !== null) return;
 
     const { success, newLayout, newId } = addAppToLayout(layout, appToAdd);
 
@@ -189,7 +194,7 @@ export const EditLayoutModal = ({
       setItems(newLayout);
       setNewAppId(newId);
     }
-  }, [layout, newAppId, appToAdd, modalApp]);
+  }, [layout, newAppId, appToAdd]);
 
   const cantAddError = appToAdd && newAppId === null;
 
