@@ -5,10 +5,9 @@ import { AppSection } from "./AppSection";
 
 interface Props {
   apps: AllApps;
-  setModalApp(app: number | null): void;
 }
 
-export const GroupedApps = ({ apps, setModalApp }: Props) => {
+export const GroupedApps = ({ apps }: Props) => {
   const groupedApps = useMemo(() => groupAndSortApps(apps), [apps]);
   return (
     <div>
@@ -18,7 +17,6 @@ export const GroupedApps = ({ apps, setModalApp }: Props) => {
             key={section[0].channels}
             section={section}
             channels={Number(section[0].channels)}
-            setModalApp={setModalApp}
           />
         ) : null,
       )}
