@@ -22,3 +22,16 @@ export interface AppSlot {
 export type AppLayout = AppSlot[];
 
 export type AllColors = Color["tag"] | "Black";
+
+export enum ModalMode {
+  EditLayout,
+  AddApp,
+  RecallLayout,
+}
+
+export interface ModalConfig {
+  isOpen: boolean;
+  mode: ModalMode;
+  appToAdd?: number;
+  recallLayout?: AppLayout;
+}

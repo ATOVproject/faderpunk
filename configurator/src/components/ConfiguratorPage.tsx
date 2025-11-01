@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { Modal, ModalContent } from "@heroui/modal";
 import { Tabs, Tab } from "@heroui/tabs";
 import { addToast, closeAll } from "@heroui/toast";
 import semverLt from "semver/functions/lt";
 import { useNavigate } from "react-router-dom";
 
+import { useModalContext } from "../contexts/ModalContext";
+import { ModalProvider } from "../contexts/ModalProvider";
 import { FIRMWARE_MIN_SUPPORTED, FIRMWARE_LATEST_VERSION } from "../consts";
 import { useStore } from "../store";
 import { getDeviceVersion } from "../utils/usb-protocol";
@@ -16,14 +18,14 @@ import { EditLayoutModal } from "./EditLayoutModal";
 import { ManualTab } from "./ManualTab";
 import { UpdateGuide } from "./manual/UpdateGuide";
 
-export const ConfiguratorPage = () => {
+const ConfiguratorPageContent = () => {
   const { apps, config, setLayout, layout, usbDevice } = useStore();
-  const [modalApp, setModalApp] = useState<number | null>(null);
+  const { modalConfig, setModalConfig } = useModalContext();
   const navigate = useNavigate();
 
   const handleModalOpen = useCallback(
-    (isOpen: boolean) => setModalApp(isOpen ? -1 : null),
-    [],
+    (isOpen: boolean) => setModalConfig({ ...modalConfig, isOpen }),
+    [modalConfig, setModalConfig],
   );
 
   const handleToastClick = useCallback(() => {
@@ -32,8 +34,7 @@ export const ConfiguratorPage = () => {
   }, [navigate]);
 
   const version = usbDevice && getDeviceVersion(usbDevice);
-  const updateRequired =
-    version && semverLt(version, FIRMWARE_MIN_SUPPORTED);
+  const updateRequired = version && semverLt(version, FIRMWARE_MIN_SUPPORTED);
   const updatedAvailable =
     version && semverLt(version, FIRMWARE_LATEST_VERSION);
 
@@ -85,10 +86,10 @@ export const ConfiguratorPage = () => {
           variant="light"
         >
           <Tab key="device" title="Device">
-            <DeviceTab layout={layout} setModalApp={setModalApp} />
+            <DeviceTab layout={layout} />
           </Tab>
           <Tab key="apps" title="Apps">
-            <AppsTab apps={apps} layout={layout} setModalApp={setModalApp} />
+            <AppsTab apps={apps} layout={layout} />
           </Tab>
           <Tab key="settings" title="Settings">
             <SettingsTab config={config} />
@@ -106,7 +107,7 @@ export const ConfiguratorPage = () => {
           <Modal
             // size="5xl"
             className="max-w-6xl"
-            isOpen={!!modalApp}
+            isOpen={modalConfig.isOpen}
             backdrop="blur"
             onOpenChange={handleModalOpen}
             hideCloseButton
@@ -118,7 +119,7 @@ export const ConfiguratorPage = () => {
                   onSave={setLayout}
                   initialLayout={layout}
                   onClose={onClose}
-                  modalApp={modalApp}
+                  modalConfig={modalConfig}
                 />
               )}
             </ModalContent>
@@ -126,5 +127,13 @@ export const ConfiguratorPage = () => {
         ) : null}
       </>
     </Layout>
+  );
+};
+
+export const ConfiguratorPage = () => {
+  return (
+    <ModalProvider>
+      <ConfiguratorPageContent />
+    </ModalProvider>
   );
 };
