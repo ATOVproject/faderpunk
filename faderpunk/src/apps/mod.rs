@@ -16,4 +16,5 @@ register_apps!(
     15 => midi2cv,
     16 => cv2midi,
     17 => cv2midinote,
+    19 => panner,
 );

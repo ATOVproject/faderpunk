@@ -723,6 +723,49 @@ const apps: ManualAppData[] = [
       },
     ],
   },
+    {
+    appId: 19,
+    title: "Panner",
+    description: "Use with 2 VCA to do panning or cross fading with internal LFO for modulation",
+    color: "Blue",
+    icon: "stereo",
+    params: ["Curve", "Range", "MIDI CC 1", "MIDI CC 2", "Mute on release", "Color", "Store state"],
+    storage: [
+ "Level (if 'Store state' enabled","Muted (if 'Store state' enabled)", "Attenuation", "Pan value", "LFO speed", "LFO amount", "LFO waveform"
+    ],
+    text: "This app uses two slots and is designed to control two VCAs for panning or crossfading. Fader 1 adjusts overall volume, while Fader 2 sets the pan or crossfade position. Button 1 functions as a mute. The maximum voltage range can be set in the parameters, and the output range can be fine-tuned using the internal attenuator via Shift + Fader 1. The selected range’s bipolarity also determines the CV and CC values when muted: in the 0V to 10V range, mute corresponds to 0V and CC 0—ideal for volume or send level control—while in the -5V to 5V range, mute is at 0V and CC 64, making it better suited for panning or crossfading. An internal LFO enables autopanning or auto crossfading by modulating the pan level set by Fader 2. The modulation amount is controlled with Shift + Fader 2, LFO speed with Button 2 + Fader 2, and the waveform is selected using Shift + Button 2.",
+    channels: [
+    {
+      jackTitle: "Out 1",
+      jackDescription: "CV output for VCA 1",
+      faderTitle: "Volume",
+      faderDescription: "Controls overall output level",
+      faderPlusShiftTitle: "Attenuation level",
+      faderPlusShiftDescription: "Reduces the CV and CC range",
+      fnTitle: "Mute",
+      fnDescription: "",
+      ledTop: "Positive level indicator",
+      ledTopPlusShift: "Attenuation level in red",
+      ledBottom: "Negative level indicator",
+    },
+    {
+      jackTitle: "Out 1",
+      jackDescription: "CV output for VCA 1",
+      faderTitle: "Volume",
+      faderDescription: "Controls overall output level",
+      faderPlusShiftTitle: "LFO amount",
+      faderPlusShiftDescription: "Add LFO modulation to the pan",
+      faderPlusFnTitle: "LFO Speed",
+      fnTitle: "None",
+      fnDescription: "",
+      fnPlusShiftTitle: "LFO Waveform selection",
+      fnPlusShiftDescription: "Sine (yellow), triangle (pink), ramp down (blue), ramp up (red), and square (white)",
+      ledTop: "Positive level indicator",
+      ledTopPlusShift: "Attenuation level in red",
+      ledBottom: "Negative level indicator",
+    },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
