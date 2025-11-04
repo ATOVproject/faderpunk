@@ -596,6 +596,7 @@ pub enum AppIcon {
     SequenceSquare,
     NoteGrid,
     KnobRound,
+    Stereo,
 }
 
 #[allow(non_camel_case_types)]
