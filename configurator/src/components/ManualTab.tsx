@@ -316,6 +316,7 @@ const apps: ManualAppData[] = [
       "Base Note",
       "GATE %",
       "Color",
+      "Range",
     ],
     storage: ["Attenuation", "Length", "Register", "Resolution"],
     text: "This app is inspired by the concept of a Turing machine as used in modular synthesizers—a type of probabilistic sequencer that generates evolving patterns based on controlled randomness. It can be set to send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. The fader controls the probability of bit flips: when fully down, the sequence loops without changes; when fully up, bit flips occur constantly and the sequence length doubles; in the middle, there’s a 50/50 chance of flipping, resulting in the most randomness. Holding Shift and pressing the button a number of times sets the sequence length—for example, holding Shift and pressing three times sets a 3-step sequence, which is applied upon releasing Shift. The output is quantized for both CV and MIDI notes according to the global quantizer. Parameters include MIDI channel, base note (lowest MIDI note the Turing machine can generate), gate percentage (MIDI only), and color. Main functions include using the fader to set probability, Shift + Fader to set range, Shift + Button to set sequence length, and Button + Fader to set clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th). All app state is stored in scenes, including the sequences themselves—making this, as far as we know, the only Turing machine with preset saving.",
@@ -346,7 +347,7 @@ const apps: ManualAppData[] = [
     description: "Turing machine, with clock input",
     color: "Orange",
     icon: "euclid",
-    params: ["MIDI mode", "Midi channel", "CC number", "Color"],
+    params: ["MIDI mode", "Midi channel", "CC number", "Color", "Range"],
     storage: ["Attenuation", "Length", "Register"],
     text: "Similar to the previous one, this is a classic Turing machine but extended to use two slots. The first jack is a clock input and the second is the CV output. The physical clock input allows for non-linear timing, custom dividers, or interaction with MIDI note lengths. The app can send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. MIDI note on messages are sent on rising edges and note off messages on falling edges. Main functions: Fader 1 sets probability, Fader 2 sets output range. Shift + Button sets sequence length. The output is quantized by the global quantizer.",
     channels: [
