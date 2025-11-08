@@ -217,16 +217,18 @@ jobs:
           path: configurator-dist
       - name: Deploy to root of gh-pages
         run: |
-          # Remove everything except beta/ directory
-          find gh-pages -mindepth 1 -maxdepth 1 ! -name 'beta' -exec rm -rf {} +
+          # Remove everything except beta/ directory and .git
+          find gh-pages -mindepth 1 -maxdepth 1 ! -name 'beta' ! -name '.git' -exec rm -rf {} +
           # Copy new configurator to root
           cp -r configurator-dist/* gh-pages/
           cd gh-pages
+          # Ensure we're on gh-pages branch
+          git checkout gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -m "Deploy configurator from ${{ needs.release-please.outputs.configurator_tag_name }}" || echo "No changes to commit"
-          git push
+          git push origin gh-pages
   publish_libfp_to_crates_io:
     name: Publish libfp to crates.io
     needs: release-please
