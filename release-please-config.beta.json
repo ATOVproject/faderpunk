@@ -5,14 +5,16 @@
       "package-name": "faderpunk",
       "component": "faderpunk",
       "prerelease": true,
-      "prerelease-type": "beta"
+      "prerelease-type": "beta",
+      "versioning": "prerelease"
     },
     "configurator": {
       "release-type": "node",
       "package-name": "configurator",
       "component": "configurator",
       "prerelease": true,
-      "prerelease-type": "beta"
+      "prerelease-type": "beta",
+      "versioning": "prerelease"
     }
   },
   "plugins": [
