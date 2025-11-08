@@ -4,13 +4,15 @@
       "release-type": "rust",
       "package-name": "faderpunk",
       "component": "faderpunk",
-      "prerelease": true
+      "prerelease": true,
+      "prerelease-type": "beta"
     },
     "configurator": {
       "release-type": "node",
       "package-name": "configurator",
       "component": "configurator",
-      "prerelease": true
+      "prerelease": true,
+      "prerelease-type": "beta"
     }
   },
   "plugins": [
