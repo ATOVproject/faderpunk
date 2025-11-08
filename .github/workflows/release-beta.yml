@@ -241,6 +241,8 @@ jobs:
           mkdir -p gh-pages/beta
           rm -rf gh-pages/beta/*
           cp -r configurator-dist/* gh-pages/beta/
+          # Remove CNAME from beta subdirectory (should only be at root)
+          rm -f gh-pages/beta/CNAME
           cd gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
