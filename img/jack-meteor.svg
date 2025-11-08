@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="b" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" width="44.5392" height="37.013" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 44.5392 37.013">
+  <defs>
+    <linearGradient id="e" x1="27.5048" y1="30.2389" x2="27.5048" y2="9.6389" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#161616"/>
+      <stop offset="1" stop-color="#696969"/>
+    </linearGradient>
+    <filter id="f" data-name="drop-shadow-1" x="17.3391" y="10.3981" width="24" height="24" filterUnits="userSpaceOnUse">
+      <feOffset dx="2" dy="2"/>
+      <feGaussianBlur result="g" stdDeviation="1"/>
+      <feFlood flood-color="#000" flood-opacity=".4"/>
+      <feComposite in2="g" operator="in"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+    <linearGradient id="h" x1="21.8479" y1="14.2821" x2="33.1616" y2="25.5958" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#a6a7a7"/>
+    </linearGradient>
+    <linearGradient id="i" x1="29.8042" y1="15.009" x2="25.203" y2="24.874" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5c5c5c"/>
+      <stop offset="1" stop-color="#acacad"/>
+    </linearGradient>
+  </defs>
+  <g id="c" data-name="Main">
+    <g id="d" data-name="SetupRight">
+      <g>
+        <polygon points="27.6493 .8714 30.8733 7.4104 35.2273 6.0534 36.5843 10.4074 41.0693 11.2294 40.2473 15.7144 43.8373 18.5274 41.0253 22.1174 42.8963 26.2754 38.7383 28.1474 38.4623 32.6994 33.9103 32.4234 31.5513 36.3264 27.6493 33.9674 23.7463 36.3264 21.3873 32.4234 16.8353 32.6994 16.5593 28.1474 9.0503 26.2394 12.6993 21.9804 4.5433 17.0444 12.9753 14.7664 .3593 1.7304 17.6733 9.1534 17.2393 .3924 24.4233 6.0654 27.6493 .8714" style="fill: none; stroke: #f3bf4e; stroke-linecap: square; stroke-miterlimit: 1.5;"/>
+        <g>
+          <circle cx="27.5048" cy="19.9389" r="11" style="fill: #333;"/>
+          <circle cx="27.5048" cy="19.9389" r="10.3" style="fill: url(#e);"/>
+          <circle cx="27.5048" cy="19.9389" r="8.5" style="fill: #828282; filter: url(#f);"/>
+          <circle cx="27.5048" cy="19.9389" r="8.5" style="fill: #828282;"/>
+          <circle cx="27.5048" cy="19.9389" r="8" style="fill: url(#h);"/>
+          <circle cx="27.5048" cy="19.9389" r="7" style="fill: #c5c7c5;"/>
+          <circle cx="27.5048" cy="19.9389" r="5.5" style="fill: url(#i);"/>
+          <circle cx="27.5048" cy="19.9389" r="4.5"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>
