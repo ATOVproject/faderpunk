@@ -1,0 +1,22 @@
+{
+  "packages": {
+    "faderpunk": {
+      "release-type": "rust",
+      "package-name": "faderpunk",
+      "component": "faderpunk",
+      "prerelease": true
+    },
+    "configurator": {
+      "release-type": "node",
+      "package-name": "configurator",
+      "component": "configurator",
+      "prerelease": true
+    }
+  },
+  "plugins": [
+    {
+      "type": "cargo-workspace"
+    }
+  ],
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+}
