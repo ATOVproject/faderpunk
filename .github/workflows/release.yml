@@ -175,11 +175,10 @@ jobs:
         with:
           name: configurator-release-artifact
           path: release_files/configurator.zip
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
       - name: Upload configurator artifact for GitHub Pages
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
+          name: configurator-pages-main-artifact
           path: 'configurator/dist'
   package_and_release_configurator:
     name: Package and Release Configurator
@@ -203,13 +202,33 @@ jobs:
     needs: [release-please, build_configurator_for_release]
     if: ${{ needs.release-please.outputs.configurator_release_created == 'true' }}
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+          path: gh-pages
+      - name: Download configurator artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: configurator-pages-main-artifact
+          path: configurator-dist
+      - name: Deploy to root of gh-pages
+        run: |
+          # Remove everything except beta/ directory
+          find gh-pages -mindepth 1 -maxdepth 1 ! -name 'beta' -exec rm -rf {} +
+          # Copy new configurator to root
+          cp -r configurator-dist/* gh-pages/
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Deploy configurator from ${{ needs.release-please.outputs.configurator_tag_name }}" || echo "No changes to commit"
+          git push
   publish_libfp_to_crates_io:
     name: Publish libfp to crates.io
     needs: release-please
