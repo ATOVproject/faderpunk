@@ -3,3 +3,8 @@
 /gen-bindings/target
 /libfp/target
 /target
+
+# Beta release changelogs (not tracked)
+.changelog-beta-*.md
+faderpunk/.changelog-beta-*.md
+configurator/.changelog-beta-*.md
