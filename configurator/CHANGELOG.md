@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.4](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.3...configurator-v1.5.4) (2025-11-08)
+
+
+### Bug Fixes
+
+* **configurator:** change description for deployment testing ([de51654](https://github.com/ATOVproject/faderpunk/commit/de51654d8173a59e2045abe8515c66ce270fc26d))
+
 ## [1.5.3](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.2...configurator-v1.5.3) (2025-11-08)
 
 
