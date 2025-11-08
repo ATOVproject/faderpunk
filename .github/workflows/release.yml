@@ -18,10 +18,8 @@ jobs:
       faderpunk_release_created: ${{ steps.release.outputs['faderpunk--release_created'] }}
       libfp_release_created: ${{ steps.release.outputs['libfp--release_created'] }}
       configurator_release_created: ${{ steps.release.outputs['configurator--release_created'] }}
-      # paths_released: ${{ steps.release.outputs.paths_released }}
       faderpunk_tag_name: ${{ steps.release.outputs['faderpunk--tag_name'] }}
       configurator_tag_name: ${{ steps.release.outputs['configurator--tag_name'] }}
-      # upload_url: ${{ steps.release.outputs['faderpunk--upload_url'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
