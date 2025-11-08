@@ -1,4 +1,5 @@
 {
+  "changelog-sections": [],
   "packages": {
     "faderpunk": {
       "release-type": "rust",
@@ -6,7 +7,9 @@
       "component": "faderpunk",
       "prerelease": true,
       "prerelease-type": "beta",
-      "versioning": "prerelease"
+      "versioning": "prerelease",
+      "skip-github-release": false,
+      "changelog": false
     },
     "configurator": {
       "release-type": "node",
@@ -14,7 +17,9 @@
       "component": "configurator",
       "prerelease": true,
       "prerelease-type": "beta",
-      "versioning": "prerelease"
+      "versioning": "prerelease",
+      "skip-github-release": false,
+      "changelog": false
     }
   },
   "plugins": [
