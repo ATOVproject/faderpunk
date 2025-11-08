@@ -1,5 +1,4 @@
 {
-  "changelog-sections": [],
   "packages": {
     "faderpunk": {
       "release-type": "rust",
