@@ -203,6 +203,29 @@ jobs:
     if: ${{ needs.release-please.outputs.configurator_release_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Check if gh-pages branch exists
+        id: check_branch
+        run: |
+          if git ls-remote --heads origin gh-pages | grep gh-pages; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Create gh-pages branch if it doesn't exist
+        if: steps.check_branch.outputs.exists == 'false'
+        run: |
+          git checkout --orphan gh-pages
+          git rm -rf .
+          echo "# Faderpunk Configurator" > README.md
+          git add README.md
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Initialize gh-pages branch"
+          git push origin gh-pages
       - name: Checkout gh-pages branch
         uses: actions/checkout@v5
         with:
