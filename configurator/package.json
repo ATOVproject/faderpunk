@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.5.2",
   "license": "GPL-3.0",
+  "description": "Web configurator for Faderpunk",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
