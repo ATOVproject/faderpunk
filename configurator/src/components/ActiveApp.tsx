@@ -1,39 +1,31 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { type Value } from "@atov/fp-config";
-import { Skeleton } from "@heroui/skeleton";
 import { useForm } from "react-hook-form";
 import classNames from "classnames";
 
 import { COLORS_CLASSES } from "../utils/class-helpers";
-import { pascalToKebab, getDefaultValue, getSlots } from "../utils/utils";
+import {
+  pascalToKebab,
+  getDefaultValue,
+  getSlots,
+  transformParamFormValues,
+} from "../utils/utils";
 import { ButtonPrimary } from "./Button";
 import { Icon } from "./Icon";
 import type { App } from "../utils/types";
-import { getAppParams, setAppParams } from "../utils/config.ts";
+import { setAppParams } from "../utils/config.ts";
 import { useStore } from "../store.ts";
 import { AppParam } from "./input/AppParam.tsx";
-
-const ParamSkeleton = () => (
-  <div className="w-40">
-    <Skeleton className="mb-2 rounded-xs">
-      <div className="h-5" />
-    </Skeleton>
-    <Skeleton className="rounded-xs">
-      <div className="h-10" />
-    </Skeleton>
-  </div>
-);
 
 interface Props {
   app: App;
   layoutId: number;
   startChannel: number;
+  params: Value[];
 }
 
-export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
-  const { usbDevice } = useStore();
-  const [hasBeenOpened, setHasBeenOpened] = useState<boolean>(false);
-  const [currentParamValues, setParams] = useState<Value[]>();
+export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
+  const { usbDevice, setParams } = useStore();
   const [saved, setSaved] = useState<boolean>(false);
   const {
     register,
@@ -41,23 +33,11 @@ export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
     formState: { isSubmitting },
   } = useForm();
 
-  const handleToggle = useCallback(
-    async (e: React.SyntheticEvent<HTMLDetailsElement>) => {
-      if (e.currentTarget.open && !hasBeenOpened) {
-        setHasBeenOpened(true);
-        if (usbDevice) {
-          const params = await getAppParams(usbDevice, layoutId);
-          setParams(params);
-        }
-      }
-    },
-    [hasBeenOpened, usbDevice, layoutId],
-  );
-
   const onSubmit = async (data: Record<string, string | boolean>) => {
     if (usbDevice) {
-      const params = await setAppParams(usbDevice, layoutId, data);
-      setParams(params);
+      const values = transformParamFormValues(data);
+      const params = await setAppParams(usbDevice, layoutId, values);
+      setParams(layoutId, params);
       setSaved(true);
       setTimeout(() => {
         setSaved(false);
@@ -67,7 +47,7 @@ export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
-      <details className="group w-full bg-black" onToggle={handleToggle}>
+      <details className="group w-full bg-black">
         <summary
           className={classNames(
             "flex list-none items-center gap-4 p-4 select-none",
@@ -115,19 +95,15 @@ export const ActiveApp = ({ app, layoutId, startChannel }: Props) => {
                 Parameters
               </h2>
               <div className="grid grid-cols-4 gap-x-16 gap-y-8 px-4">
-                {!currentParamValues
-                  ? app.params.map((_, idx) => (
-                      <ParamSkeleton key={`param-${startChannel}-${idx}`} />
-                    ))
-                  : app.params.map((param, idx) => (
-                      <AppParam
-                        key={`param-${startChannel}-${idx}`}
-                        param={param}
-                        paramIndex={idx}
-                        register={register}
-                        defaultValue={getDefaultValue(currentParamValues[idx])}
-                      />
-                    ))}
+                {app.params.map((param, idx) => (
+                  <AppParam
+                    key={`param-${startChannel}-${idx}`}
+                    param={param}
+                    paramIndex={idx}
+                    register={register}
+                    defaultValue={getDefaultValue(params[idx])}
+                  />
+                ))}
               </div>
             </div>
             <div className="flex justify-end p-4">

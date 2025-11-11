@@ -98,7 +98,7 @@ const getParamValue = (
   }
 };
 
-export const transformParamValues = (
+export const transformParamFormValues = (
   values: Record<string, string | boolean>,
 ) => {
   const entries = Object.entries(values);
@@ -118,6 +118,25 @@ export const transformParamValues = (
     const paramIndex = parseInt(pIndex, 10);
     const paramValue = getParamValue(paramType as Value["tag"], value);
     result[paramIndex] = paramValue;
+  });
+
+  return result;
+};
+
+export const getFixedLengthParamArray = (values: Value[]) => {
+  const result: FixedLengthArray<Value | undefined, 8> = [
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+  ];
+
+  values.forEach((value, idx) => {
+    result[idx] = value;
   });
 
   return result;
@@ -236,4 +255,8 @@ export const addAppToLayout = (layout: AppLayout, appToAdd: App) => {
     newLayout: recalculateStartChannels(newLayoutWithApp),
     newId,
   };
+};
+
+export const delay = (ms: number): Promise<void> => {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 };
