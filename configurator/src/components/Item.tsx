@@ -33,7 +33,7 @@ interface Props extends ComponentProps<"div"> {
   deletePopoverId: number | null;
   isDragging?: boolean;
   item: AppSlot;
-  newAppId: number | null;
+  newAppId?: number;
   onDeleteItem(itemId: number): void;
   setDeletePopoverId: Dispatch<SetStateAction<number | null>>;
 }

@@ -193,7 +193,6 @@ export async function sendAndReceive(
   msg: ConfigMsgIn,
 ): Promise<ConfigMsgOut> {
   await sendMessage(usbDevice, msg);
-
   return receiveMessage(usbDevice);
 }
 

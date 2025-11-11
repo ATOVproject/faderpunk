@@ -1,4 +1,10 @@
-import type { Param, Color, AppIcon } from "@atov/fp-config";
+import type {
+  AppIcon,
+  ConfigMsgOut,
+  Color,
+  Param,
+  Value,
+} from "@atov/fp-config";
 
 export interface App {
   appId: number;
@@ -19,6 +25,18 @@ export interface AppSlot {
   startChannel: number;
 }
 
+export interface AppFile {
+  appId: number | null;
+  layoutId: number;
+  params: Value[] | null;
+  startChannel: number;
+}
+
+export interface LayoutFile {
+  version: number;
+  layout: AppFile[];
+}
+
 export type AppLayout = AppSlot[];
 
 export type AllColors = Color["tag"] | "Black";
@@ -34,4 +52,11 @@ export interface ModalConfig {
   mode: ModalMode;
   appToAdd?: number;
   recallLayout?: AppLayout;
+  recallParams?: ParamValues;
 }
+
+export type AppParams = Extract<ConfigMsgOut, { tag: "AppState" }>;
+
+export type ParamValues = Map<number, Value[]>;
+
+export type RecoveredLayout = { layout: AppLayout; params: ParamValues };

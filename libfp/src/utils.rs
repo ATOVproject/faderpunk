@@ -1,5 +1,4 @@
 use embassy_time::Duration;
-use libm::roundf;
 use midly::num::u7;
 
 pub const fn bpm_to_clock_duration(bpm: f32, ppqn: u8) -> Duration {
