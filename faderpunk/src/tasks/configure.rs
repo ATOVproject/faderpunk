@@ -113,6 +113,35 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                         .unwrap();
                 }
             }
+            ConfigMsgIn::GetAllAppParams => {
+                let layout = layout_receiver.get().await;
+                let layout_ids = layout.get_layout_ids();
+                let app_count = layout_ids.len();
+
+                proto
+                    .send_msg(ConfigMsgOut::BatchMsgStart(app_count))
+                    .await
+                    .unwrap();
+
+                if app_count > 0 {
+                    for id in layout_ids {
+                        APP_PARAM_SIGNALS[id as usize].signal(AppParamCmd::RequestParamValues);
+                    }
+                    let receiver = async {
+                        for _ in 0..app_count {
+                            let (res_layout_id, values) = APP_PARAM_CHANNEL.receive().await;
+                            proto
+                                .send_msg(ConfigMsgOut::AppState(res_layout_id, &values))
+                                .await
+                                .unwrap();
+                        }
+                    };
+
+                    with_timeout(Duration::from_secs(1), receiver).await.ok();
+                }
+
+                proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
+            }
             ConfigMsgIn::SetGlobalConfig(mut global_config) => {
                 global_config.validate();
                 let sender = GLOBAL_CONFIG_WATCH.sender();
@@ -121,6 +150,10 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             ConfigMsgIn::SetLayout(mut layout) => {
                 layout.validate(get_channels);
                 let sender = LAYOUT_WATCH.sender();
+                proto
+                    .send_msg(ConfigMsgOut::Layout(layout.clone()))
+                    .await
+                    .unwrap();
                 sender.send(layout);
             }
         }

@@ -1,64 +1,35 @@
-import type { Layout, GlobalConfig } from "@atov/fp-config";
+import type {
+  Layout,
+  GlobalConfig,
+  Value,
+  FixedLengthArray,
+  ConfigMsgOut,
+} from "@atov/fp-config";
 
-import type { AllApps, App, AppLayout } from "../utils/types";
+import type {
+  AllApps,
+  App,
+  AppLayout,
+  AppParams,
+  LayoutFile,
+  ParamValues,
+  RecoveredLayout,
+} from "../utils/types";
 
 import {
   receiveBatchMessages,
   sendAndReceive,
   sendMessage,
 } from "../utils/usb-protocol";
-import { transformParamValues } from "./utils";
+import { getFixedLengthParamArray } from "./utils";
+import { parseParamValueFromFile } from "./validators";
+
+const LAYOUT_VERSION = 1;
 
 export const setGlobalConfig = async (dev: USBDevice, config: GlobalConfig) => {
   await sendMessage(dev, {
     tag: "SetGlobalConfig",
     value: config,
-  });
-};
-
-export const setLayout = async (dev: USBDevice, layout: AppLayout) => {
-  const sendLayout: Layout = [
-    [
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-    ],
-  ];
-
-  let currentChan = 0;
-  layout.forEach((appSlot) => {
-    if (currentChan >= 16) {
-      // Safeguard if for some reason the layout is messed up
-      return;
-    }
-    if (appSlot.app) {
-      sendLayout[0][currentChan] = [
-        appSlot.app.appId,
-        appSlot.app.channels,
-        appSlot.id,
-      ];
-      currentChan += Number(appSlot.app.channels);
-    } else {
-      currentChan++;
-    }
-  });
-
-  await sendMessage(dev, {
-    tag: "SetLayout",
-    value: sendLayout,
   });
 };
 
@@ -119,9 +90,8 @@ export const getAppParams = async (dev: USBDevice, layoutId: number) => {
 export const setAppParams = async (
   dev: USBDevice,
   layoutId: number,
-  paramValues: Record<string, string | boolean>,
+  values: FixedLengthArray<Value | undefined, 8>,
 ) => {
-  const values = transformParamValues(paramValues);
   const response = await sendAndReceive(dev, {
     tag: "SetAppParams",
     value: {
@@ -139,6 +109,27 @@ export const setAppParams = async (
   return response.value[1];
 };
 
+export const getAllAppParams = async (
+  dev: USBDevice,
+): Promise<Map<number, Value[]>> => {
+  const response = await sendAndReceive(dev, {
+    tag: "GetAllAppParams",
+  });
+
+  if (response.tag !== "BatchMsgStart") {
+    throw new Error(
+      `Could not fetch apps. Unexpected repsonse tag: ${response.tag}`,
+    );
+  }
+
+  const messages = await receiveBatchMessages(dev, response.value);
+  const params = messages
+    .filter((item): item is AppParams => item.tag === "AppState")
+    .map(({ value }) => value);
+
+  return new Map(params);
+};
+
 export const getGlobalConfig = async (dev: USBDevice) => {
   const response = await sendAndReceive(dev, {
     tag: "GetGlobalConfig",
@@ -153,9 +144,60 @@ export const getGlobalConfig = async (dev: USBDevice) => {
   return response.value;
 };
 
+export const setAllAppParams = async (dev: USBDevice, params: ParamValues) => {
+  const allParams: [number, Value[]][] = Object.entries(params).map(
+    ([key, value]) => [Number(key), value],
+  );
+  for (let i = 0; i < allParams.length; i++) {
+    const [layoutId, values] = allParams[i];
+    const fixedLengthValues = getFixedLengthParamArray(values);
+    await setAppParams(dev, layoutId, fixedLengthValues);
+  }
+};
+
+const transformLayout = (
+  response: Extract<ConfigMsgOut, { tag: "Layout" }>,
+  allApps: AllApps,
+) => {
+  const layout: AppLayout = [];
+  let lastUsed = -1;
+  let nextEmptyId = 16;
+
+  response.value[0].forEach((slot, idx) => {
+    if (idx <= lastUsed) {
+      return;
+    }
+    if (!slot) {
+      lastUsed++;
+      layout.push({
+        id: nextEmptyId++,
+        app: null,
+        startChannel: idx,
+      });
+      return;
+    }
+    const [appId, channels, layoutId] = slot;
+    const app = allApps.get(appId);
+    if (!app) {
+      lastUsed++;
+      layout.push({
+        id: nextEmptyId++,
+        app: null,
+        startChannel: idx,
+      });
+      return;
+    }
+    lastUsed = idx + Number(channels) - 1;
+
+    layout.push({ id: layoutId, app, startChannel: idx });
+  });
+
+  return layout;
+};
+
 export const getLayout = async (
   dev: USBDevice,
-  apps: AllApps,
+  allApps: AllApps,
 ): Promise<AppLayout> => {
   const response = await sendAndReceive(dev, {
     tag: "GetLayout",
@@ -167,29 +209,143 @@ export const getLayout = async (
     );
   }
 
-  const layout: AppLayout = [];
-  let lastUsed = -1;
-  let nextEmptyId = 16;
+  return transformLayout(response, allApps);
+};
 
-  response.value[0].forEach((slot, idx) => {
-    if (idx <= lastUsed) {
+export const setLayout = async (
+  dev: USBDevice,
+  layout: AppLayout,
+  allApps: AllApps,
+) => {
+  const sendLayout: Layout = [
+    [
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ],
+  ];
+
+  let currentChan = 0;
+  layout.forEach((appSlot) => {
+    if (currentChan >= 16) {
+      // Safeguard if for some reason the layout is messed up
       return;
     }
-    if (!slot) {
-      lastUsed++;
-      layout.push({ id: nextEmptyId++, app: null, startChannel: idx });
-      return;
+    if (appSlot.app) {
+      sendLayout[0][currentChan] = [
+        appSlot.app.appId,
+        appSlot.app.channels,
+        appSlot.id,
+      ];
+      currentChan += Number(appSlot.app.channels);
+    } else {
+      currentChan++;
     }
-    const [appId, channels, layoutId] = slot;
-    const app = apps.get(appId);
-    if (!app) {
-      lastUsed++;
-      layout.push({ id: nextEmptyId++, app: null, startChannel: idx });
-      return;
-    }
-    lastUsed = idx + Number(channels) - 1;
-    layout.push({ id: layoutId, app, startChannel: idx });
   });
 
-  return layout;
+  const response = await sendAndReceive(dev, {
+    tag: "SetLayout",
+    value: sendLayout,
+  });
+
+  if (response.tag !== "Layout") {
+    throw new Error(
+      `Could not fetch layout. Unexpected repsonse tag: ${response.tag}`,
+    );
+  }
+
+  return transformLayout(response, allApps);
+};
+
+export const saveLayout = (
+  layout: AppLayout,
+  params: ParamValues,
+): LayoutFile => {
+  const layoutFile: LayoutFile = {
+    version: LAYOUT_VERSION,
+    layout: [],
+  };
+
+  layout.forEach(({ id, app, startChannel }) => {
+    const appParams = params.get(id);
+    layoutFile.layout.push({
+      layoutId: id,
+      appId: !appParams || !app?.appId ? null : app.appId,
+      startChannel,
+      params: params.get(id) || null,
+    });
+  });
+
+  return layoutFile;
+};
+
+export const recoverLayout = (
+  layoutFile: LayoutFile,
+  allApps: AllApps,
+): RecoveredLayout => {
+  const layout: AppLayout = [];
+  const allParams: ParamValues = new Map();
+  layoutFile.layout.forEach(({ appId, layoutId, params, startChannel }) => {
+    if (!appId) {
+      layout.push({
+        id: layoutId,
+        app: null,
+        startChannel,
+      });
+    } else {
+      const app = allApps.get(appId);
+      if (!app || !params) {
+        layout.push({
+          id: layoutId,
+          app: null,
+          startChannel,
+        });
+      } else {
+        const appParams = app.params.map((param, idx) => {
+          return parseParamValueFromFile(param, params[idx]);
+        });
+        layout.push({ id: layoutId, app, startChannel });
+
+        allParams.set(layoutId, appParams);
+      }
+    }
+  });
+  return { layout, params: allParams };
+};
+
+// Serialize with BigInt support
+export const serializeLayout = (layoutFile: LayoutFile) => {
+  return JSON.stringify(
+    layoutFile,
+    (_key, value) => {
+      if (typeof value === "bigint") {
+        return { __bigint: value.toString() };
+      }
+      return value;
+    },
+    2,
+  );
+};
+
+// Deserialize with BigInt support
+export const deserializeLayout = (json: string) => {
+  return JSON.parse(json, (_key, value) => {
+    if (value && typeof value === "object" && "__bigint" in value) {
+      return BigInt(value.__bigint);
+    }
+    return value;
+  });
 };

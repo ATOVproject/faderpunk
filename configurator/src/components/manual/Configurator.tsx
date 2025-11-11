@@ -102,6 +102,57 @@ export const Configurator = () => (
       modifications are made.
     </p>
 
+    <H4>Save & Load Layout</H4>
+    <p>
+      Below the Active Apps section, you'll find controls for saving and loading
+      complete layouts.
+    </p>
+    <p>
+      <strong>Saving a Layout</strong>
+      <br />
+      To save your current configuration:
+    </p>
+    <List>
+      <li>
+        Enter a name for your layout in the File name field (defaults to
+        "faderpunk-layout")
+      </li>
+      <li>
+        Click <strong>Save current layout</strong>
+      </li>
+    </List>
+    <p>
+      This saves both your channel layout and all app parameters as a .json
+      file, which will be downloaded to your computer. This is particularly
+      useful for:
+    </p>
+    <List>
+      <li>Creating backup configurations</li>
+      <li>Setting up different performance layouts</li>
+      <li>Sharing configurations between devices</li>
+    </List>
+    <p>
+      <strong>Loading a Layout</strong>
+      <br />
+      To load a previously saved layout:
+    </p>
+    <List>
+      <li>
+        Click <strong>Choose layout file</strong> and select a .json layout file
+        from your computer
+      </li>
+      <li>The selected filename will appear next to the button</li>
+      <li>
+        Click <strong>Load</strong> to apply the layout, or{" "}
+        <strong>Cancel</strong> to abort
+      </li>
+    </List>
+    <p>
+      Loading a layout will replace your current channel assignments and app
+      parameters with those stored in the file. Make sure to save your current
+      layout first if you want to preserve it.
+    </p>
+
     <H3>Apps Tab</H3>
 
     <img

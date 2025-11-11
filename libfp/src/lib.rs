@@ -105,6 +105,14 @@ impl Layout {
     pub fn iter(&self) -> LayoutIter<'_> {
         self.into_iter()
     }
+
+    pub fn count(&self) -> usize {
+        self.iter().count()
+    }
+
+    pub fn get_layout_ids(&self) -> Vec<u8, { GLOBAL_CHANNELS }> {
+        self.iter().map(|(_, _, _, layout_id)| layout_id).collect()
+    }
 }
 
 impl Default for Layout {
@@ -718,6 +726,7 @@ pub enum ConfigMsgIn {
     SetGlobalConfig(GlobalConfig),
     GetLayout,
     SetLayout(Layout),
+    GetAllAppParams,
     GetAppParams {
         layout_id: u8,
     },

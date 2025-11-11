@@ -9,6 +9,7 @@ import { useModalContext } from "../contexts/ModalContext";
 import { ModalProvider } from "../contexts/ModalProvider";
 import { FIRMWARE_MIN_SUPPORTED, FIRMWARE_LATEST_VERSION } from "../consts";
 import { useStore } from "../store";
+import { ModalMode } from "../utils/types";
 import { getDeviceVersion } from "../utils/usb-protocol";
 import { Layout } from "./Layout";
 import { DeviceTab } from "./DeviceTab";
@@ -24,7 +25,13 @@ const ConfiguratorPageContent = () => {
   const navigate = useNavigate();
 
   const handleModalOpen = useCallback(
-    (isOpen: boolean) => setModalConfig({ ...modalConfig, isOpen }),
+    (isOpen: boolean) => {
+      if (isOpen) {
+        setModalConfig({ ...modalConfig, isOpen });
+      } else {
+        setModalConfig({ isOpen, mode: ModalMode.EditLayout });
+      }
+    },
     [modalConfig, setModalConfig],
   );
 
@@ -72,6 +79,8 @@ const ConfiguratorPageContent = () => {
     };
   }, [navigate, handleToastClick, usbDevice, updatedAvailable, updateRequired]);
 
+  const initialLayout = modalConfig.recallLayout || layout;
+
   return (
     <Layout>
       <>
@@ -103,9 +112,8 @@ const ConfiguratorPageContent = () => {
             </Tab>
           ) : null}
         </Tabs>
-        {layout ? (
+        {initialLayout ? (
           <Modal
-            // size="5xl"
             className="max-w-6xl"
             isOpen={modalConfig.isOpen}
             backdrop="blur"
@@ -117,7 +125,7 @@ const ConfiguratorPageContent = () => {
               {(onClose) => (
                 <EditLayoutModal
                   onSave={setLayout}
-                  initialLayout={layout}
+                  initialLayout={initialLayout}
                   onClose={onClose}
                   modalConfig={modalConfig}
                 />

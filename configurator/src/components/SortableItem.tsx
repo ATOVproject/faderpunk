@@ -8,7 +8,7 @@ import type { Dispatch, SetStateAction } from "react";
 interface Props {
   deletePopoverId: number | null;
   item: AppSlot;
-  newAppId: number | null;
+  newAppId?: number;
   onDeleteItem(itemId: number): void;
   setDeletePopoverId: Dispatch<SetStateAction<number | null>>;
 }

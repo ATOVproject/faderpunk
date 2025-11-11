@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import classNames from "classnames";
 import { Button } from "@heroui/button";
 import { ModalBody, ModalFooter, ModalHeader } from "@heroui/modal";
+import { Switch } from "@heroui/switch";
 import {
   closestCenter,
   DndContext,
@@ -24,10 +25,21 @@ import { Link } from "react-router-dom";
 
 import { useStore } from "../store";
 import { COLORS_CLASSES } from "../utils/class-helpers";
-import { setLayout } from "../utils/config";
-import { ModalMode, type AppLayout, type ModalConfig } from "../utils/types";
+import {
+  getAllAppParams,
+  getAppParams,
+  setAllAppParams,
+  setLayout,
+} from "../utils/config";
+import {
+  App,
+  ModalMode,
+  type AppLayout,
+  type ModalConfig,
+} from "../utils/types";
 import {
   addAppToLayout,
+  delay,
   pascalToKebab,
   recalculateStartChannels,
 } from "../utils/utils";
@@ -35,13 +47,6 @@ import { ButtonPrimary, ButtonSecondary } from "./Button";
 import { Icon } from "./Icon";
 import { Item } from "./Item";
 import { SortableItem } from "./SortableItem";
-
-interface Props {
-  initialLayout: AppLayout;
-  onSave: (layout: AppLayout) => void;
-  onClose: () => void;
-  modalConfig: ModalConfig;
-}
 
 const GridBackground = () => {
   const gridArray = Array.from({ length: 16 }, (_, index) => index);
@@ -60,17 +65,76 @@ const GridBackground = () => {
   );
 };
 
+interface NewAppDetailsProps {
+  app: App;
+}
+
+const NewAppDetails = ({ app }: NewAppDetailsProps) => (
+  <div className="mb-12 flex items-start gap-x-4">
+    <div className={classNames("rounded-sm p-2", COLORS_CLASSES[app.color].bg)}>
+      <Icon className="h-12 w-12 text-black" name={pascalToKebab(app.icon)} />
+    </div>
+    <div className="flex-1">
+      <h3 className="text-yellow-fp text-sm font-bold uppercase">App</h3>
+      <div className="text-lg font-bold">{app.name}</div>
+      <div className="text-sm font-medium">{app.description}</div>
+    </div>
+    <div
+      className={classNames({
+        "flex-1": app.paramCount <= 4,
+        "flex-2": app.paramCount > 4,
+      })}
+    >
+      <h3 className="text-yellow-fp text-sm font-bold uppercase">Parameters</h3>
+      <ul
+        className={classNames("grid text-base/8", {
+          "grid-cols-1": app.paramCount <= 4,
+          "grid-cols-2": app.paramCount > 4,
+        })}
+      >
+        {app.params.map((param, idx) => (
+          <li key={idx}>{param.tag !== "None" && param.value.name}</li>
+        ))}
+      </ul>
+    </div>
+    <div className="flex-1">
+      <h3 className="text-yellow-fp text-sm font-bold uppercase">Channels</h3>
+      <div className="text-base">{Number(app.channels)}</div>
+    </div>
+    <div className="justify-self-end">
+      <h3 className="text-yellow-fp text-sm font-bold uppercase">Resources</h3>
+      <div className="text-base underline">
+        <Link to={`/manual#app-${app.appId}`} target="fpmanual">
+          See app in manual
+        </Link>
+      </div>
+    </div>
+  </div>
+);
+
+interface Props {
+  initialLayout: AppLayout;
+  onSave: (layout: AppLayout) => void;
+  onClose: () => void;
+  modalConfig: ModalConfig;
+}
+
 export const EditLayoutModal = ({
   initialLayout,
   onSave,
   onClose,
   modalConfig,
 }: Props) => {
-  const { usbDevice, apps } = useStore();
+  const { usbDevice, apps, setParams, setAllParams } = useStore();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [layout, setItems] = useState<AppLayout>(initialLayout);
+  const [newApp, setNewApp] = useState<App | null>(null);
   const [newAppId, setNewAppId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [recallParams, setRecallParams] = useState<boolean>(true);
   const [deletePopoverId, setDeletePopoverId] = useState<number | null>(null);
+  const [isSubmitting, setSubmitting] = useState(false);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -169,41 +233,93 @@ export const EditLayoutModal = ({
   }, [newAppId]);
 
   const handleSave = useCallback(async () => {
-    if (usbDevice) {
-      await setLayout(usbDevice, layout);
-      onSave(layout);
+    setSubmitting(true);
+    if (usbDevice && apps) {
+      const newLayout = await setLayout(usbDevice, layout, apps);
+      if (modalConfig.mode === ModalMode.RecallLayout) {
+        if (recallParams && modalConfig.recallParams) {
+          await setAllAppParams(usbDevice, modalConfig.recallParams);
+          // Wait 1s for the apps to spawn
+          await delay(1000);
+          const params = await getAllAppParams(usbDevice);
+          setAllParams(params);
+        }
+      } else if (modalConfig.mode === ModalMode.AddApp && newAppId !== null) {
+        // Wait 500ms for the new app to spawn
+        await delay(500);
+        const params = await getAppParams(usbDevice, newAppId);
+        setParams(newAppId, params);
+      }
+      onSave(newLayout);
     }
-  }, [usbDevice, layout, onSave]);
+    setSubmitting(false);
+  }, [
+    apps,
+    usbDevice,
+    layout,
+    modalConfig.recallParams,
+    modalConfig.mode,
+    newAppId,
+    onSave,
+    recallParams,
+    setParams,
+    setAllParams,
+  ]);
 
   const activeItem =
     activeId !== null && layout.find(({ id }) => id == activeId);
-  const appToAdd =
-    apps &&
-    modalConfig.mode === ModalMode.AddApp &&
-    modalConfig.appToAdd &&
-    modalConfig.appToAdd >= 0
-      ? apps.get(modalConfig.appToAdd)
-      : undefined;
 
   useEffect(() => {
-    if (!appToAdd || newAppId !== null) return;
+    if (
+      // wrong mode
+      modalConfig.mode !== ModalMode.AddApp ||
+      // app to add is missing
+      !modalConfig.appToAdd ||
+      // new app already placed
+      newAppId !== null
+    ) {
+      return;
+    }
+
+    const appToAdd =
+      apps && modalConfig.appToAdd ? apps.get(modalConfig.appToAdd) : undefined;
+    if (!appToAdd) {
+      return;
+    }
+
+    setNewApp(appToAdd);
 
     const { success, newLayout, newId } = addAppToLayout(layout, appToAdd);
 
-    if (success) {
+    if (success && newId !== null) {
       setItems(newLayout);
       setNewAppId(newId);
+      setError(null);
+    } else {
+      setError(
+        "I can't find space for the app. Try to remove apps or move them around.",
+      );
     }
-  }, [layout, newAppId, appToAdd]);
+  }, [layout, newApp, newAppId, apps, modalConfig]);
 
-  const cantAddError = appToAdd && newAppId === null;
+  const modalTitle = useMemo(() => {
+    switch (modalConfig.mode) {
+      case ModalMode.AddApp:
+        return "Add App";
+      case ModalMode.RecallLayout:
+        return "Recall Layout";
+      case ModalMode.EditLayout:
+      default:
+        return "Edit Layout";
+    }
+  }, [modalConfig.mode]);
 
   return (
     <>
       <ModalHeader className="px-10 pt-10 pb-0">
         <div className="flex w-full justify-between">
           <span className="text-yellow-fp text-lg font-bold uppercase">
-            {appToAdd ? "Add App" : "Edit Layout"}
+            {modalTitle}
           </span>
           <Button
             isIconOnly
@@ -216,67 +332,8 @@ export const EditLayoutModal = ({
       </ModalHeader>
       <ModalBody className="px-10">
         <div className="border-default-100 border-t-3 border-b-3 py-10">
-          {appToAdd ? (
-            <div className="mb-12 flex items-start gap-x-4">
-              <div
-                className={classNames(
-                  "rounded-sm p-2",
-                  COLORS_CLASSES[appToAdd.color].bg,
-                )}
-              >
-                <Icon
-                  className="h-12 w-12 text-black"
-                  name={pascalToKebab(appToAdd.icon)}
-                />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-yellow-fp text-sm font-bold uppercase">
-                  App
-                </h3>
-                <div className="text-lg font-bold">{appToAdd.name}</div>
-                <div className="text-sm font-medium">
-                  {appToAdd.description}
-                </div>
-              </div>
-              <div
-                className={classNames({
-                  "flex-1": appToAdd.paramCount <= 4,
-                  "flex-2": appToAdd.paramCount > 4,
-                })}
-              >
-                <h3 className="text-yellow-fp text-sm font-bold uppercase">
-                  Parameters
-                </h3>
-                <ul
-                  className={classNames("grid text-base/8", {
-                    "grid-cols-1": appToAdd.paramCount <= 4,
-                    "grid-cols-2": appToAdd.paramCount > 4,
-                  })}
-                >
-                  {appToAdd.params.map((param, idx) => (
-                    <li key={idx}>
-                      {param.tag !== "None" && param.value.name}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-yellow-fp text-sm font-bold uppercase">
-                  Channels
-                </h3>
-                <div className="text-base">{Number(appToAdd.channels)}</div>
-              </div>
-              <div className="justify-self-end">
-                <h3 className="text-yellow-fp text-sm font-bold uppercase">
-                  Resources
-                </h3>
-                <div className="text-base underline">
-                  <Link to={`/manual#app-${appToAdd.appId}`} target="fpmanual">
-                    See app in manual
-                  </Link>
-                </div>
-              </div>
-            </div>
+          {modalConfig.mode === ModalMode.AddApp && newApp ? (
+            <NewAppDetails app={newApp} />
           ) : null}
           <DndContext
             sensors={sensors}
@@ -296,7 +353,7 @@ export const EditLayoutModal = ({
                       onDeleteItem={handleDeleteItem}
                       deletePopoverId={deletePopoverId}
                       setDeletePopoverId={setDeletePopoverId}
-                      newAppId={newAppId}
+                      newAppId={newAppId !== null ? newAppId : undefined}
                       item={item}
                       key={item.id}
                     />
@@ -310,7 +367,7 @@ export const EditLayoutModal = ({
                   className="opacity-60 shadow-md"
                   onDeleteItem={handleDeleteItem}
                   deletePopoverId={deletePopoverId}
-                  newAppId={newAppId}
+                  newAppId={newAppId !== null ? newAppId : undefined}
                   isDragging={true}
                   setDeletePopoverId={setDeletePopoverId}
                   item={activeItem}
@@ -319,24 +376,30 @@ export const EditLayoutModal = ({
             </DragOverlay>
           </DndContext>
           <div className="mt-18 flex justify-center">
-            <ButtonSecondary className="text-red" onPress={handleClearAll}>
-              <Icon name="trash" /> Clear All Apps
-            </ButtonSecondary>
+            {modalConfig.mode === ModalMode.RecallLayout ? (
+              <Switch
+                color="secondary"
+                defaultSelected={recallParams}
+                onChange={(ev) => setRecallParams(ev.target.checked)}
+              >
+                Recall all app parameters
+              </Switch>
+            ) : (
+              <ButtonSecondary className="text-red" onPress={handleClearAll}>
+                <Icon name="trash" /> Clear All Apps
+              </ButtonSecondary>
+            )}
           </div>
         </div>
       </ModalBody>
       <ModalFooter className="flex justify-between px-10">
-        {cantAddError && (
-          <span className="text-danger">
-            I can't find space for the app. Try to remove apps or move them
-            around.
-          </span>
-        )}
+        {error && <span className="text-danger">{error}</span>}
         <span className="ml-auto">
           <ButtonPrimary
-            isDisabled={cantAddError}
-            onPress={() => {
-              handleSave();
+            isLoading={isSubmitting}
+            isDisabled={!!error}
+            onPress={async () => {
+              await handleSave();
               onClose();
             }}
           >
