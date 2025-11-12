@@ -451,11 +451,16 @@ pub async fn run(
                     let led_bright = split_unsigned_value(
                         storage.query(|s: &Storage| s.wave).at(lfo_pos as usize),
                     );
-                    leds.set(1, Led::Top, Color::Red, Brightness::Custom(led_bright[0]));
+                    leds.set(
+                        1,
+                        Led::Top,
+                        get_color_for(storage.query(|s: &Storage| s.wave)),
+                        Brightness::Custom(led_bright[0]),
+                    );
                     leds.set(
                         1,
                         Led::Bottom,
-                        Color::Red,
+                        get_color_for(storage.query(|s: &Storage| s.wave)),
                         Brightness::Custom(led_bright[1]),
                     );
                 }
