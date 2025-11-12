@@ -8,6 +8,7 @@ mod app;
 mod apps;
 mod events;
 mod layout;
+mod state;
 mod storage;
 mod tasks;
 
@@ -183,6 +184,8 @@ async fn main(spawner: Spawner) {
     // Send off global config to all tasks that need it
     let config_sender = GLOBAL_CONFIG_WATCH.sender();
     config_sender.send(global_config);
+
+    state::init_state().await;
 
     tasks::leds::start_leds(&spawner, spi1).await;
 
