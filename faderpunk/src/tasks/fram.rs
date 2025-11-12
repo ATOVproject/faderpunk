@@ -273,109 +273,47 @@ impl Storage {
             .map_err(|_| FramError::I2c)
     }
 
-    /// Reads data from FRAM. It attempts to verify a checksum and will automatically
-    /// migrate data from an old format (without checksum) to the new format.
-    /// WARNING: A genuine checksum failure on new-format data will be misinterpreted
-    /// as old-format data, which may lead to silent data corruption.
+    /// Reads length-prefixed and checksummed data from FRAM into the provided buffer.
     pub async fn read(&mut self, address: u32, data_buf: &mut [u8]) -> FramReadResult {
-        const HEADER_SIZE_NEW: u32 = 3;
-        const HEADER_SIZE_OLD: u32 = 2;
+        const HEADER_SIZE: u32 = 3;
+        let mut header: [u8; HEADER_SIZE as usize] = [0; HEADER_SIZE as usize];
 
-        let mut len_bytes: [u8; 2] = [0; 2];
+        // Read the 3-byte header first.
         self.fram
-            .read(address, &mut len_bytes)
+            .read(address, &mut header)
             .await
             .map_err(|_| FramError::I2c)?;
+        let len_bytes = [header[0], header[1]];
+        let stored_checksum = header[2];
         let data_length = u16::from_le_bytes(len_bytes) as usize;
 
         if data_length == 0 {
+            // No data to read.
             return Ok(0);
         }
         if data_length > data_buf.len() {
             return Err(FramError::BufferOverflow);
         }
 
-        // Try reading as new format with checksum
-        let mut stored_checksum_byte: [u8; 1] = [0; 1];
-        self.fram
-            .read(address + HEADER_SIZE_OLD, &mut stored_checksum_byte)
-            .await
-            .map_err(|_| FramError::I2c)?;
-        let stored_checksum = stored_checksum_byte[0];
-
+        // Read the actual data into the provided buffer.
         let read_slice = &mut data_buf[..data_length];
         self.fram
-            .read(address + HEADER_SIZE_NEW, read_slice)
+            .read(address + HEADER_SIZE, read_slice)
             .await
             .map_err(|_| FramError::I2c)?;
 
         let calculated_checksum = calculate_checksum(read_slice);
-
-        if stored_checksum == calculated_checksum {
-            // Checksum is valid, data is in new format.
-            Ok(data_length)
-        } else {
-            // Checksum mismatch. Assume old format and migrate.
-            defmt::warn!(
-                "CRC mismatch at addr {}. Assuming old data format, migrating...",
-                address
+        if stored_checksum != calculated_checksum {
+            defmt::error!(
+                "FRAM checksum mismatch! Stored: {}, calculated: {}",
+                stored_checksum,
+                calculated_checksum
             );
-
-            // Re-read data from the old offset.
-            self.fram
-                .read(address + HEADER_SIZE_OLD, read_slice)
-                .await
-                .map_err(|_| FramError::I2c)?;
-
-            // Write the data back in the new format to migrate it.
-            self.store(address, read_slice).await?;
-
-            Ok(data_length)
+            return Err(FramError::CrcMismatch);
         }
-    }
 
-    // TODO: Uncomment in next version once everyone had their data migrated
-    // /// Reads length-prefixed and checksummed data from FRAM into the provided buffer.
-    // pub async fn read(&mut self, address: u32, data_buf: &mut [u8]) -> FramReadResult {
-    //     const HEADER_SIZE: u32 = 3;
-    //     let mut header: [u8; HEADER_SIZE as usize] = [0; HEADER_SIZE as usize];
-    //
-    //     // Read the 3-byte header first.
-    //     self.fram
-    //         .read(address, &mut header)
-    //         .await
-    //         .map_err(|_| FramError::I2c)?;
-    //     let len_bytes = [header[0], header[1]];
-    //     let stored_checksum = header[2];
-    //     let data_length = u16::from_le_bytes(len_bytes) as usize;
-    //
-    //     if data_length == 0 {
-    //         // No data to read.
-    //         return Ok(0);
-    //     }
-    //     if data_length > data_buf.len() {
-    //         return Err(FramError::BufferOverflow);
-    //     }
-    //
-    //     // Read the actual data into the provided buffer.
-    //     let read_slice = &mut data_buf[..data_length];
-    //     self.fram
-    //         .read(address + HEADER_SIZE, read_slice)
-    //         .await
-    //         .map_err(|_| FramError::I2c)?;
-    //
-    //     let calculated_checksum = calculate_checksum(read_slice);
-    //     if stored_checksum != calculated_checksum {
-    //         defmt::error!(
-    //             "FRAM checksum mismatch! Stored: {}, calculated: {}",
-    //             stored_checksum,
-    //             calculated_checksum
-    //         );
-    //         return Err(FramError::CrcMismatch);
-    //     }
-    //
-    //     Ok(data_length)
-    // }
+        Ok(data_length)
+    }
 }
 
 pub async fn start_fram(spawner: &Spawner, mut fram: Fram) {

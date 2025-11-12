@@ -19,6 +19,7 @@ use portable_atomic::Ordering;
 use libfp::{utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig};
 
 use crate::{
+    state::{is_clock_running, update_state},
     tasks::{
         max::MAX_TRIGGERS_GPO,
         midi::{MidiClockTarget, MidiOutEvent, MIDI_CHANNEL},
@@ -257,6 +258,16 @@ async fn run_clock_gatekeeper() {
     }
 }
 
+#[embassy_executor::task]
+async fn store_clock_running(is_running: bool) {
+    update_state(|s| {
+        s.clock_is_running = is_running;
+        // We're already checking below whether the clock status changed
+        true
+    })
+    .await;
+}
+
 // TODO: Rework the clock to use only one tick generator with various tempo and sync sources
 #[embassy_executor::task]
 async fn run_clock_sources(aux_inputs: AuxInputs) {
@@ -264,6 +275,7 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
     let atom = Input::new(atom_pin, Pull::Up);
     let meteor = Input::new(meteor_pin, Pull::Up);
     let cube = Input::new(hexagon_pin, Pull::Up);
+    let spawner = Spawner::for_current_executor().await;
 
     let internal_fut = async {
         let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
@@ -271,9 +283,17 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
         let clock_receiver = TRANSPORT_CMD_CHANNEL.receiver();
 
         let config = config_receiver.get().await;
+        let mut is_running = is_clock_running().await;
         let mut tick_duration = bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
         let mut next_tick_at = Instant::now();
-        let mut is_running = false;
+
+        if is_running {
+            // If we're starting up and the clock should already be running,
+            // we need to inform the gatekeeper to synchronize its state.
+            clock_in_sender
+                .send(ClockInEvent::Start(ClockSrc::Internal))
+                .await;
+        }
 
         loop {
             // This future only resolves on a tick when the internal clock is active.
@@ -333,19 +353,23 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
                         TransportCmd::Toggle => !is_running,
                     };
 
-                    if !is_running && next_is_running {
-                        // Schedule the first tick immediately. The main loop will
-                        // handle publishing it and scheduling the subsequent tick.
-                        next_tick_at = Instant::now();
-                        clock_in_sender
-                            .send(ClockInEvent::Start(ClockSrc::Internal))
-                            .await;
-                    } else if is_running && !next_is_running {
-                        clock_in_sender
-                            .send(ClockInEvent::Stop(ClockSrc::Internal))
-                            .await;
+                    if is_running != next_is_running {
+                        if next_is_running {
+                            // Schedule the first tick immediately. The main loop will
+                            // handle publishing it and scheduling the subsequent tick.
+                            next_tick_at = Instant::now();
+                            clock_in_sender
+                                .send(ClockInEvent::Start(ClockSrc::Internal))
+                                .await;
+                        } else {
+                            clock_in_sender
+                                .send(ClockInEvent::Stop(ClockSrc::Internal))
+                                .await;
+                        }
+                        is_running = next_is_running;
+                        // If user hammers the clock toggle, maybe just ignore it
+                        spawner.spawn(store_clock_running(is_running)).ok();
                     }
-                    is_running = next_is_running;
                 }
             }
         }

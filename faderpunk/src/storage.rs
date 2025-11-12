@@ -14,17 +14,20 @@ use libfp::{
 
 use crate::{
     apps::get_channels,
+    state::RuntimeState,
     tasks::{
         configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
         fram::{read_data, write_with},
     },
 };
 
-const GLOBAL_CONFIG_RANGE: Range<u32> = 0..384;
-const LAYOUT_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..512;
+const GLOBAL_CONFIG_RANGE: Range<u32> = 0..320;
+const RUNTIME_STATE_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..384;
+const LAYOUT_RANGE: Range<u32> = RUNTIME_STATE_RANGE.end..512;
 const CALIBRATION_RANGE: Range<u32> = LAYOUT_RANGE.end..1024;
 const APP_STORAGE_RANGE: Range<u32> = CALIBRATION_RANGE.end..122_880;
 const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..131_072;
+
 const APP_STORAGE_MAX_BYTES: u32 = 400;
 const APP_PARAMS_MAX_BYTES: u32 = 128;
 const SCENES_PER_APP: u32 = 16;
@@ -51,6 +54,29 @@ pub async fn load_global_config() -> GlobalConfig {
         }
     }
     GlobalConfig::new()
+}
+
+pub async fn store_runtime_state(state: &RuntimeState) {
+    let res = write_with(RUNTIME_STATE_RANGE.start, |buf| {
+        Ok(to_slice(&state, &mut *buf)?.len())
+    })
+    .await;
+
+    if res.is_err() {
+        defmt::error!("Could not save runtime state");
+    }
+}
+
+pub async fn load_runtime_state() -> RuntimeState {
+    if let Ok(guard) = read_data(RUNTIME_STATE_RANGE.start).await {
+        let data = guard.data();
+        if !data.is_empty() {
+            if let Ok(state) = from_bytes::<RuntimeState>(data) {
+                return state;
+            }
+        }
+    }
+    RuntimeState::default()
 }
 
 pub async fn store_layout(layout: &Layout) {
@@ -485,32 +511,6 @@ impl<S: AppStorage> ManagedStorage<S> {
         let mut guard = self.inner.borrow_mut();
         modifier(&mut *guard)
     }
-
-    // pub async fn modify_and_save<F, R>(&self, modifier: F, scene: Option<u8>) -> R
-    // where
-    //     F: FnOnce(&mut S) -> R,
-    // {
-    //     let address = AppStorageAddress::new(self.layout_id, scene).into();
-    //
-    //     let result = {
-    //         let mut inner = self.inner.borrow_mut();
-    //         modifier(&mut *inner)
-    //     };
-    //
-    //     let res = write_with(address, |buf| {
-    //         buf[0] = self.app_id;
-    //         let inner = self.inner.borrow();
-    //         let len = to_slice(&*inner, &mut buf[1..])?.len();
-    //         Ok(len + 1)
-    //     })
-    //     .await;
-    //
-    //     if res.is_err() {
-    //         defmt::error!("Could not save ManagedStorage during modify_and_save");
-    //     }
-    //
-    //     result
-    // }
 
     pub fn modify_and_save<F, R>(&self, modifier: F) -> R
     where
