@@ -514,6 +514,7 @@ pub async fn run(
                         // Now we commit to storage
                         storage.save().await;
                     }
+                    LatchLayer::Third => {}
                     _ => unreachable!(),
                 }
             }
