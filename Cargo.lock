@@ -377,7 +377,6 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c62a3bf127e03832fb97d8b01a058775e617653bc89e2a12c256485a7fb54c1"
 dependencies = [
- "defmt 0.3.100",
  "embassy-embedded-hal 0.4.0",
  "embassy-futures",
  "embassy-sync 0.6.2",
@@ -396,6 +395,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1611b7a7ab5d1fbed84c338df26d56fd9bded58006ebb029075112ed2c5e039"
 dependencies = [
+ "defmt 1.0.1",
  "embassy-futures",
  "embassy-hal-internal",
  "embassy-sync 0.7.2",
@@ -696,7 +696,7 @@ dependencies = [
  "critical-section",
  "defmt 1.0.1",
  "defmt-rtt",
- "embassy-embedded-hal 0.3.2",
+ "embassy-embedded-hal 0.4.0",
  "embassy-executor",
  "embassy-futures",
  "embassy-rp",
