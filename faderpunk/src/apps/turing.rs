@@ -305,7 +305,6 @@ pub async fn run(
                 LatchLayer::Main => prob_glob.get(),
                 LatchLayer::Alt => storage.query(|s| s.att_saved),
                 LatchLayer::Third => storage.query(|s| s.res_saved),
-                _ => unreachable!(),
             };
 
             if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
@@ -322,7 +321,6 @@ pub async fn run(
                         midi.send_note_off(note).await;
                         storage.modify_and_save(|s| s.res_saved = new_value);
                     }
-                    _ => unreachable!(),
                 }
             }
         }

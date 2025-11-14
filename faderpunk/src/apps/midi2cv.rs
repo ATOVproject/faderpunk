@@ -302,7 +302,7 @@ pub async fn run(
             //         );
             //         leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(0));
             //     }
-            //     _ => unreachable!(),
+            //     LatchLayer::Third => {}
             // }
         }
     };
@@ -337,8 +337,7 @@ pub async fn run(
             let target_value = match latch_layer {
                 LatchLayer::Alt => storage.query(|s| s.att_saved),
                 LatchLayer::Main => 0,
-
-                _ => unreachable!(),
+                LatchLayer::Third => 0,
             };
 
             if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
@@ -347,7 +346,7 @@ pub async fn run(
                     LatchLayer::Alt => {
                         storage.modify_and_save(|s| s.att_saved = new_value);
                     }
-                    _ => unreachable!(),
+                    LatchLayer::Third => {}
                 }
             }
 

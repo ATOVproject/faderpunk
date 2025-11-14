@@ -257,7 +257,7 @@ pub async fn run(
             let target_value = match latch_layer {
                 LatchLayer::Alt => storage.query(|s| s.fader_saved),
                 LatchLayer::Main => storage.query(|s| s.prob_saved),
-                _ => unreachable!(),
+                LatchLayer::Third => 0,
             };
 
             if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
@@ -269,7 +269,7 @@ pub async fn run(
                     LatchLayer::Main => {
                         storage.modify_and_save(|s| s.prob_saved = new_value);
                     }
-                    _ => unreachable!(),
+                    LatchLayer::Third => {}
                 }
             }
 

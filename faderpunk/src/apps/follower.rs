@@ -227,7 +227,6 @@ pub async fn run(
                     LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
                     LatchLayer::Alt => storage.query(|s| s.offset_saved),
                     LatchLayer::Third => storage.query(|s| s.gain_saved),
-                    _ => unreachable!(),
                 };
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
@@ -248,7 +247,6 @@ pub async fn run(
                                 s.gain_saved = new_value;
                             });
                         }
-                        _ => unreachable!(),
                     }
                 }
             } else {
@@ -256,7 +254,6 @@ pub async fn run(
                     LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
                     LatchLayer::Alt => storage.query(|s| s.att_saved),
                     LatchLayer::Third => 0,
-                    _ => unreachable!(),
                 };
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
@@ -273,7 +270,6 @@ pub async fn run(
                             });
                         }
                         LatchLayer::Third => {}
-                        _ => unreachable!(),
                     }
                 }
             }
@@ -316,6 +312,5 @@ pub async fn run(
 }
 
 fn rectify(value: u16) -> u16 {
-    let val = value.abs_diff(2047) + 2047;
-    val
+    value.abs_diff(2047) + 2047
 }

@@ -353,7 +353,6 @@ pub async fn run(
                     LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
                     LatchLayer::Alt => storage.query(|s| s.shift_fader_saved[chan]),
                     LatchLayer::Third => storage.query(|s| s.div_saved),
-                    _ => unreachable!(),
                 };
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
@@ -386,7 +385,6 @@ pub async fn run(
                             div_glob.set(resolution[new_value as usize / 345]);
                             storage.modify_and_save(|s| s.div_saved = new_value);
                         }
-                        _ => unreachable!(),
                     }
                 }
             } else {
@@ -394,7 +392,6 @@ pub async fn run(
                     LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
                     LatchLayer::Alt => storage.query(|s| s.shift_fader_saved[chan]),
                     LatchLayer::Third => 0,
-                    _ => unreachable!(),
                 };
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
@@ -414,7 +411,6 @@ pub async fn run(
                             });
                         }
                         LatchLayer::Third => {}
-                        _ => unreachable!(),
                     }
                 }
             }
