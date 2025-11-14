@@ -291,7 +291,6 @@ pub async fn run(
             if button_old && !buttons.is_button_pressed(0) && buttons.is_shift_pressed() {
                 gate_on_glob.modify(|g| (*g - 1).max(0));
             }
-            // info!("{}", gate_on_glob.get().await);
 
             button_old = buttons.is_button_pressed(0);
         }
@@ -310,7 +309,7 @@ pub async fn run(
                 let target_value = match latch_layer {
                     LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
                     LatchLayer::Alt => storage.query(|s| s.min_gate_saved),
-                    _ => unreachable!(),
+                    LatchLayer::Third => 0,
                 };
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
@@ -330,7 +329,7 @@ pub async fn run(
                                 s.min_gate_saved = new_value;
                             });
                         }
-                        _ => unreachable!(),
+                        LatchLayer::Third => {}
                     }
                 }
             } else {

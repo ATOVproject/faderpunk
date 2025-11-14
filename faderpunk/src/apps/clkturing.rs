@@ -313,7 +313,7 @@ pub async fn run(
             // let target_value = match latch_layer {
             //     LatchLayer::Main => storage.query(|s| s.att_saved[chan]),
             //     LatchLayer::Alt => storage.query(|s| s.att_saved),
-            //     _ => unreachable!(),
+            //     LatchLayer::Third => 0,
             // };
 
             // if chan == 1 {

@@ -267,7 +267,6 @@ pub async fn run(
                 LatchLayer::Main => main_layer_value,
                 LatchLayer::Alt => att_layer_value,
                 LatchLayer::Third => 0,
-                _ => unreachable!(),
             };
 
             if let Some(new_value) = latch[0].update(
@@ -464,7 +463,6 @@ pub async fn run(
                         Brightness::Custom(led_bright[1]),
                     );
                 }
-                _ => unreachable!(),
             }
         }
     };
@@ -520,7 +518,6 @@ pub async fn run(
                         storage.save().await;
                     }
                     LatchLayer::Third => {}
-                    _ => unreachable!(),
                 }
             }
             if chan == 1 {
@@ -528,7 +525,6 @@ pub async fn run(
                     LatchLayer::Main => storage.query(|s| s.pan_val),
                     LatchLayer::Alt => storage.query(|s| s.lfo_amt),
                     LatchLayer::Third => storage.query(|s| s.lfo_speed),
-                    _ => unreachable!(),
                 };
                 if let Some(new_value) =
                     latch.update(faders.get_value_at(1), latch_layer_glob.get(), target_value)
@@ -544,7 +540,6 @@ pub async fn run(
                             glob_lfo_speed.set(curve.at(new_value) as f32 * 0.015 + 0.0682);
                             storage.modify_and_save(|s| s.lfo_speed = new_value);
                         }
-                        _ => unreachable!(),
                     }
                 }
             }
