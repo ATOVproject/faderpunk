@@ -80,7 +80,7 @@ jobs:
           cmake ..
           make
       - name: Upload picotool artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: picotool-artifact
           path: picotool/build/picotool
@@ -103,7 +103,7 @@ jobs:
       - run: cargo install flip-link
       - run: cargo build --bin faderpunk --release --target thumbv8m.main-none-eabihf
       - name: Upload firmware build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: firmware-artifact
           path: target/thumbv8m.main-none-eabihf/release/faderpunk
@@ -170,12 +170,12 @@ jobs:
           cd configurator/dist
           zip -r ../../release_files/configurator.zip .
       - name: Upload configurator release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: configurator-release-artifact
           path: release_files/configurator.zip
       - name: Upload configurator artifact for GitHub Pages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: configurator-pages-main-artifact
           path: 'configurator/dist'
