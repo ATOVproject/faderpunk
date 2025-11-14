@@ -114,12 +114,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download picotool artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: picotool-artifact
           path: picotool_executable
       - name: Download firmware artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: firmware-artifact
           path: firmware_build
@@ -189,7 +189,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download configurator release artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: configurator-release-artifact
           path: configurator_build
@@ -235,7 +235,7 @@ jobs:
           ref: gh-pages
           path: gh-pages
       - name: Download configurator artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: configurator-pages-artifact
           path: configurator-dist
