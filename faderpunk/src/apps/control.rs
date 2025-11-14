@@ -10,7 +10,6 @@ use libfp::{
     utils::{attenuate_bipolar, clickless, split_unsigned_value},
     AppIcon, Brightness, Color, APP_MAX_PARAMS,
 };
-use libm::roundf;
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Range, Value};
@@ -227,7 +226,7 @@ pub async fn run(
             let latch_target_value = match latch_active_layer {
                 LatchLayer::Main => main_layer_value,
                 LatchLayer::Alt => att_layer_value,
-                _ => unreachable!(),
+                LatchLayer::Third => 0,
             };
 
             if let Some(new_value) =
@@ -245,7 +244,7 @@ pub async fn run(
                         // Update storage but don't save yet
                         storage.modify(|s| s.att_saved = new_value);
                     }
-                    _ => unreachable!(),
+                    LatchLayer::Third => {}
                 }
             }
 
