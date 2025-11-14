@@ -27,7 +27,7 @@ const apps: ManualAppData[] = [
       "Store state",
     ],
     storage: [
-      "Level (if 'Store state' enabled",
+      "Level (if 'Store state' enabled)",
       "Muted (if 'Store state' enabled)",
       "Attenuation",
     ],
@@ -750,7 +750,7 @@ const apps: ManualAppData[] = [
         fnPlusShiftTitle: "Mute",
         ledTop: "Trigger activity indicator",
         ledTopPlusShift: "Maximum division",
-        ledBottomPlusShift: "Maximum division",
+        ledBottomPlusShift: "Minimum division",
         ledBottom: "",
       },
     ],
@@ -772,7 +772,7 @@ const apps: ManualAppData[] = [
       "Store state",
     ],
     storage: [
-      "Level (if 'Store state' enabled",
+      "Level (if 'Store state' enabled)",
       "Muted (if 'Store state' enabled)",
       "Attenuation",
       "Pan value",
