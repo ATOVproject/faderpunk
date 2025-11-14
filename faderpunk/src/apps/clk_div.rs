@@ -275,7 +275,6 @@ pub async fn run(
                 LatchLayer::Main => storage.query(|s| s.fader_saved),
                 LatchLayer::Alt => storage.query(|s| s.max_div),
                 LatchLayer::Third => storage.query(|s| s.min_div),
-                _ => unreachable!(),
             };
 
             if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
@@ -299,7 +298,6 @@ pub async fn run(
                         storage.modify_and_save(|s| s.min_div = new_value.min(max));
                         min_glob.set(resolution[new_value.min(max) as usize / 345]);
                     }
-                    _ => unreachable!(),
                 }
             }
         }
