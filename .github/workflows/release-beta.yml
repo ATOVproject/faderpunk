@@ -128,7 +128,8 @@ jobs:
           mkdir -p release_files
           cp firmware_build/faderpunk release_files/faderpunk.elf
           chmod +x picotool_executable/picotool
-          picotool_executable/picotool uf2 convert release_files/faderpunk.elf release_files/faderpunk.uf2
+          TAG_NAME="${{ needs.release-please.outputs.faderpunk_tag_name }}"
+          picotool_executable/picotool uf2 convert release_files/faderpunk.elf release_files/${TAG_NAME}.uf2
       - name: Publish GitHub Release Artifacts
         uses: softprops/action-gh-release@v2
         with:
@@ -136,7 +137,7 @@ jobs:
           prerelease: true
           files: |
             release_files/faderpunk.elf
-            release_files/faderpunk.uf2
+            release_files/${{ needs.release-please.outputs.faderpunk_tag_name }}.uf2
   build_configurator_for_release:
     name: Build Configurator for Release
     needs: release-please
