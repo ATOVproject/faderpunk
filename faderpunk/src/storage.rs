@@ -17,7 +17,7 @@ use crate::{
     state::RuntimeState,
     tasks::{
         configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
-        fram::{read_data, write_with},
+        fram::{erase_with, read_data, write_with},
     },
 };
 
@@ -152,6 +152,58 @@ pub async fn load_calibration_data() -> Option<MaxCalibration> {
         defmt::warn!("Failed to deserialize calibration data as any known format.");
     }
     None
+}
+
+async fn erase_range(range: Range<u32>) {
+    let mut addr = range.start;
+    // Limit the chunk size to 64 bytes to prevent I2C bus congestion/timeouts
+    const ERASE_CHUNK_SIZE: usize = 64;
+
+    while addr < range.end {
+        let mut bytes_written = 0;
+        let res = erase_with(addr, |buf| {
+            let remaining_bytes = range.end - addr;
+            // Use the smaller of: remaining bytes, available buffer, or our safety limit
+            let chunk_size = (remaining_bytes as usize)
+                .min(buf.len())
+                .min(ERASE_CHUNK_SIZE);
+
+            let write_buf = &mut buf[..chunk_size];
+            write_buf.fill(0);
+            bytes_written = chunk_size;
+
+            Ok(chunk_size)
+        })
+        .await;
+
+        if res.is_err() {
+            defmt::error!("Could not erase range starting at {}", addr);
+            return;
+        }
+
+        if bytes_written == 0 {
+            // Avoid infinite loop if write_with provides a zero-length buffer
+            defmt::error!("Erase stalled: 0 bytes written at address {}", addr);
+            return;
+        }
+        addr += bytes_written as u32;
+
+        // FRAM writes are instant, just give the bus a tiny breather.
+        Timer::after_micros(100).await;
+    }
+}
+
+/// Erases all data from FRAM except for the calibration data.
+pub async fn factory_reset() {
+    erase_range(GLOBAL_CONFIG_RANGE).await;
+    erase_range(RUNTIME_STATE_RANGE).await;
+    erase_range(LAYOUT_RANGE).await;
+    erase_range(APP_STORAGE_RANGE).await;
+    erase_range(APP_PARAM_RANGE).await;
+    // Wait a bit
+    Timer::after_millis(100).await;
+    // Then restart the unit
+    cortex_m::peripheral::SCB::sys_reset();
 }
 
 #[derive(Clone, Copy)]

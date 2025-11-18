@@ -48,7 +48,7 @@ const WRITES_CAPACITY: usize = 16;
 static WRITE_BUFFER: Mutex<CriticalSectionRawMutex, [u8; MAX_DATA_LEN]> =
     Mutex::new([0; MAX_DATA_LEN]);
 static WRITE_BUFFER_TOKEN: Channel<CriticalSectionRawMutex, (), 1> = Channel::new();
-static WRITE_CHANNEL: Channel<CriticalSectionRawMutex, WriteOperation, WRITES_CAPACITY> =
+static WRITE_CHANNEL: Channel<CriticalSectionRawMutex, WriteRequest, WRITES_CAPACITY> =
     Channel::new();
 
 static mut READ_BUFFERS: [MaybeUninit<[u8; MAX_DATA_LEN]>; MAX_CONCURRENT_REQUESTS] =
@@ -67,15 +67,9 @@ static RESPONSE_SIGNALS_POOL: [Signal<CriticalSectionRawMutex, FramReadResult>;
 static AVAILABLE_SIGNAL_INDICES: Channel<CriticalSectionRawMutex, usize, MAX_CONCURRENT_REQUESTS> =
     Channel::new();
 
-struct WriteOperation {
-    address: Address,
-    len: usize,
-}
-
-impl WriteOperation {
-    fn new(address: Address, len: usize) -> Self {
-        Self { address, len }
-    }
+enum WriteRequest {
+    Store { address: Address, len: usize },
+    Erase { address: Address, len: usize },
 }
 
 pub struct Request {
@@ -224,7 +218,31 @@ where
         return Err(FramError::BufferOverflow);
     }
 
-    let op = WriteOperation::new(address, len);
+    let op = WriteRequest::Store { address, len };
+    WRITE_CHANNEL.send(op).await;
+    // `run_fram` is now responsible for releasing the token.
+    Ok(())
+}
+
+/// Fills a section of FRAM with the contents of the writer.
+/// This is intended for raw writes, like erasing, where no header should be added.
+pub async fn erase_with<F>(address: u32, writer: F) -> Result<(), FramError>
+where
+    F: FnOnce(&mut [u8]) -> Result<usize, postcard::Error>,
+{
+    WRITE_BUFFER_TOKEN.receive().await;
+
+    let len = {
+        let mut buffer = WRITE_BUFFER.lock().await;
+        writer(&mut *buffer).map_err(|_| FramError::BufferOverflow)?
+    };
+
+    if len > MAX_DATA_LEN {
+        WRITE_BUFFER_TOKEN.try_send(()).unwrap();
+        return Err(FramError::BufferOverflow);
+    }
+
+    let op = WriteRequest::Erase { address, len };
     WRITE_CHANNEL.send(op).await;
     // `run_fram` is now responsible for releasing the token.
     Ok(())
@@ -269,6 +287,13 @@ impl Storage {
 
         self.fram
             .write(address, &self.write_buf)
+            .await
+            .map_err(|_| FramError::I2c)
+    }
+
+    pub async fn erase(&mut self, address: u32, data: &[u8]) -> Result<(), FramError> {
+        self.fram
+            .write(address, data)
             .await
             .map_err(|_| FramError::I2c)
     }
@@ -359,14 +384,20 @@ async fn run_fram(fram: Fram) {
                 RESPONSE_SIGNALS_POOL[req.signal_idx].signal(result);
             }
             // A write was requested
-            Either::Second(write_op) => {
+            Either::Second(request) => {
                 let data_guard = WRITE_BUFFER.lock().await;
 
-                if let Err(e) = storage
-                    .store(write_op.address, &data_guard[..write_op.len])
-                    .await
-                {
-                    defmt::error!("FRAM store failed: {:?}", e);
+                let result = match request {
+                    WriteRequest::Store { address, len } => {
+                        storage.store(address, &data_guard[..len]).await
+                    }
+                    WriteRequest::Erase { address, len } => {
+                        storage.erase(address, &data_guard[..len]).await
+                    }
+                };
+
+                if let Err(e) = result {
+                    defmt::error!("FRAM write/erase failed: {:?}", e);
                 }
 
                 drop(data_guard);

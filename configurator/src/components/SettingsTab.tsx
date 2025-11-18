@@ -20,6 +20,7 @@ import { QuantizerSettings } from "./settings/QuantizerSettings";
 import { AuxSettings } from "./settings/AuxSettings";
 import { MiscSettings } from "./settings/MiscSettings";
 import { setGlobalConfig } from "../utils/config";
+import { FactoryReset } from "./settings/FactoryReset";
 
 interface SettingsFormProps {
   config: GlobalConfig;
@@ -100,6 +101,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
         <I2cSettings />
         <AuxSettings />
         <MiscSettings />
+        <FactoryReset />
         <div className="flex justify-between">
           <p>
             Your current version: Faderpunk v{deviceVersion}, Configurator v
