@@ -14,6 +14,7 @@ interface State {
   apps: AllApps | undefined;
   connect: () => Promise<void>;
   config: GlobalConfig | undefined;
+  disconnect: () => void;
   deviceVersion: string | undefined;
   layout: AppLayout | undefined;
   params: ParamValues | undefined;
@@ -55,6 +56,16 @@ export const useStore = create<State>((set) => ({
         usbDevice: undefined,
       });
     }
+  },
+  disconnect: () => {
+    set({
+      apps: undefined,
+      config: undefined,
+      deviceVersion: undefined,
+      layout: undefined,
+      params: undefined,
+      usbDevice: undefined,
+    });
   },
   setLayout: (layout) => set({ layout }),
   setParams: (id, newParams) =>

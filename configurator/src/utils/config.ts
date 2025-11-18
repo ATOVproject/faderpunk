@@ -349,3 +349,9 @@ export const deserializeLayout = (json: string) => {
     return value;
   });
 };
+
+export const factoryReset = async (dev: USBDevice) => {
+  await sendMessage(dev, {
+    tag: "FactoryReset",
+  });
+};

@@ -734,6 +734,7 @@ pub enum ConfigMsgIn {
         layout_id: u8,
         values: [Option<Value>; APP_MAX_PARAMS],
     },
+    FactoryReset,
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]
