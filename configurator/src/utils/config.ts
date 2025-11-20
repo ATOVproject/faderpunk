@@ -90,7 +90,7 @@ export const getAppParams = async (dev: USBDevice, layoutId: number) => {
 export const setAppParams = async (
   dev: USBDevice,
   layoutId: number,
-  values: FixedLengthArray<Value | undefined, 8>,
+  values: FixedLengthArray<Value | undefined, 16>,
 ) => {
   const response = await sendAndReceive(dev, {
     tag: "SetAppParams",
