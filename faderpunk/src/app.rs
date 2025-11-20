@@ -13,7 +13,7 @@ use libfp::{
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
     utils::scale_bits_12_7,
-    Brightness, ClockDivision, Color, Range,
+    Brightness, ClockDivision, Color, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Range,
 };
 
 use crate::{
@@ -359,16 +359,23 @@ impl<const N: usize> I2cOutput<N> {
 #[derive(Clone, Copy)]
 pub struct MidiOutput {
     start_channel: usize,
-    midi_sender: AppMidiSender,
     midi_channel: u4,
+    midi_out: MidiOut,
+    midi_sender: AppMidiSender,
 }
 
 impl MidiOutput {
-    pub fn new(start_channel: usize, midi_channel: u4, midi_sender: AppMidiSender) -> Self {
+    pub fn new(
+        midi_out: MidiOut,
+        start_channel: usize,
+        midi_channel: u4,
+        midi_sender: AppMidiSender,
+    ) -> Self {
         Self {
             start_channel,
-            midi_sender,
             midi_channel,
+            midi_out,
+            midi_sender,
         }
     }
 
@@ -382,7 +389,7 @@ impl MidiOutput {
 
     /// Sends a MIDI CC message.
     /// value is normalized to a range of 0-4095
-    pub async fn send_cc(&self, cc: u8, value: u16) {
+    pub async fn send_cc(&self, cc: MidiCc, value: u16) {
         let msg = MidiMessage::Controller {
             controller: cc.into(),
             value: scale_bits_12_7(value),
@@ -392,7 +399,7 @@ impl MidiOutput {
 
     /// Sends a MIDI NoteOn message.
     /// velocity is normalized to a range of 0-4095
-    pub async fn send_note_on(&self, note_number: u8, velocity: u16) {
+    pub async fn send_note_on(&self, note_number: MidiNote, velocity: u16) {
         let msg = MidiMessage::NoteOn {
             key: note_number.into(),
 
@@ -402,7 +409,7 @@ impl MidiOutput {
     }
 
     /// Sends a MIDI NoteOff message.
-    pub async fn send_note_off(&self, note_number: u8) {
+    pub async fn send_note_off(&self, note_number: MidiNote) {
         let msg = MidiMessage::NoteOff {
             key: note_number.into(),
             vel: 0.into(),
@@ -431,16 +438,22 @@ impl MidiOutput {
 }
 
 pub struct MidiInput {
-    subscriber: EventPubSubSubscriber,
     midi_channel: u4,
+    midi_in: MidiIn,
+    subscriber: EventPubSubSubscriber,
 }
 
 impl MidiInput {
-    pub fn new(midi_channel: u4, event_pubsub: &'static EventPubSubChannel) -> Self {
+    pub fn new(
+        midi_in: MidiIn,
+        midi_channel: u4,
+        event_pubsub: &'static EventPubSubChannel,
+    ) -> Self {
         let subscriber = event_pubsub.subscriber().unwrap();
         Self {
-            subscriber,
             midi_channel,
+            midi_in,
+            subscriber,
         }
     }
 
@@ -664,12 +677,17 @@ impl<const N: usize> App<N> {
         Quantizer::new(range)
     }
 
-    pub fn use_midi_input(&self, midi_channel: u8) -> MidiInput {
-        MidiInput::new(midi_channel.into(), self.event_pubsub)
+    pub fn use_midi_input(&self, midi_in: MidiIn, midi_channel: MidiChannel) -> MidiInput {
+        MidiInput::new(midi_in, midi_channel.into(), self.event_pubsub)
     }
 
-    pub fn use_midi_output(&self, midi_channel: u8) -> MidiOutput {
-        MidiOutput::new(self.start_channel, midi_channel.into(), self.midi_sender)
+    pub fn use_midi_output(&self, midi_out: MidiOut, midi_channel: MidiChannel) -> MidiOutput {
+        MidiOutput::new(
+            midi_out,
+            self.start_channel,
+            midi_channel.into(),
+            self.midi_sender,
+        )
     }
 
     pub fn use_i2c_output(&self) -> I2cOutput<N> {
