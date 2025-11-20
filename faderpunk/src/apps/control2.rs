@@ -1,5 +1,5 @@
 use embassy_futures::{
-    join::join4,
+    join::{join4, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -10,6 +10,7 @@ use libfp::{
     utils::{attenuate_bipolar, clickless, split_unsigned_value},
     AppIcon, Brightness, Color, APP_MAX_PARAMS,
 };
+use libm::roundf;
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Range, Value};
@@ -17,11 +18,11 @@ use libfp::{Config, Curve, Param, Range, Value};
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 8;
+pub const PARAMS: usize = 7;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
-    "Control",
-    "Simple MIDI/CV controller with mute",
+    "Control 2",
+    "Simple MIDI/CV controller with CC button",
     Color::Violet,
     AppIcon::Fader,
 )
@@ -31,7 +32,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::Range {
     name: "Range",
-    variants: &[Range::_0_10V, Range::_Neg5_5V],
+    variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
 })
 .add_param(Param::i32 {
     name: "MIDI Channel",
@@ -39,14 +40,15 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     max: 16,
 })
 .add_param(Param::i32 {
-    name: "MIDI CC",
+    name: "CC Fader",
     min: 1,
     max: 128,
 })
-.add_param(Param::bool {
-    name: "Mute on release",
+.add_param(Param::i32 {
+    name: "CC Button",
+    min: 1,
+    max: 128,
 })
-.add_param(Param::bool { name: "Invert" })
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -68,9 +70,9 @@ pub struct Params {
     curve: Curve,
     range: Range,
     midi_channel: i32,
-    midi_cc: i32,
-    on_release: bool,
-    invert: bool,
+    midi_cc_fader: i32,
+    midi_cc_button: i32,
+
     color: Color,
     save_state: bool,
 }
@@ -81,9 +83,9 @@ impl Default for Params {
             curve: Curve::Linear,
             range: Range::_0_10V,
             midi_channel: 1,
-            midi_cc: 32,
-            on_release: false,
-            invert: false,
+            midi_cc_fader: 32,
+            midi_cc_button: 33,
+
             color: Color::Violet,
             save_state: true,
         }
@@ -99,11 +101,11 @@ impl AppParams for Params {
             curve: Curve::from_value(values[0]),
             range: Range::from_value(values[1]),
             midi_channel: i32::from_value(values[2]),
-            midi_cc: i32::from_value(values[3]),
-            on_release: bool::from_value(values[4]),
-            invert: bool::from_value(values[5]),
-            color: Color::from_value(values[6]),
-            save_state: bool::from_value(values[7]),
+            midi_cc_fader: i32::from_value(values[3]),
+            midi_cc_button: i32::from_value(values[4]),
+
+            color: Color::from_value(values[5]),
+            save_state: bool::from_value(values[6]),
         })
     }
 
@@ -112,9 +114,9 @@ impl AppParams for Params {
         vec.push(self.curve.into()).unwrap();
         vec.push(self.range.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
-        vec.push(self.midi_cc.into()).unwrap();
-        vec.push(self.on_release.into()).unwrap();
-        vec.push(self.invert.into()).unwrap();
+        vec.push(self.midi_cc_fader.into()).unwrap();
+        vec.push(self.midi_cc_button.into()).unwrap();
+
         vec.push(self.color.into()).unwrap();
         vec.push(self.save_state.into()).unwrap();
         vec
@@ -124,17 +126,19 @@ impl AppParams for Params {
 // TODO: Make a macro to generate this.
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
-    muted: bool,
+    button_state: bool,
     att_saved: u16,
     fad_val: u16,
+    toggle: bool,
 }
 
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            muted: false,
+            button_state: false,
             att_saved: 4095,
             fad_val: 4095,
+            toggle: false,
         }
     }
 }
@@ -168,15 +172,14 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (curve, midi_chan, midi_cc, on_release, range, inverted, led_color, save_state) = params
+    let (curve, midi_chan, midi_cc_fader, midi_cc_button, range, led_color, save_state) = params
         .query(|p| {
             (
                 p.curve,
                 p.midi_channel,
-                p.midi_cc,
-                p.on_release,
+                p.midi_cc_fader,
+                p.midi_cc_button,
                 p.range,
-                p.invert,
                 p.color,
                 p.save_state,
             )
@@ -188,23 +191,22 @@ pub async fn run(
     let midi = app.use_midi_output(midi_chan as u8 - 1);
     let i2c = app.use_i2c_output();
 
-    let muted_glob = app.make_global(storage.query(|s| s.muted));
+    midi.send_cc(
+        midi_cc_button as u8,
+        storage.query(|s| s.button_state) as u16 * 127,
+    );
     let output_glob = app.make_global(0);
     let latch_layer_glob = app.make_global(LatchLayer::Main);
 
-    if muted_glob.get() {
-        leds.unset(0, Led::Button);
+    if storage.query(|s| s.button_state) {
+        leds.unset(0, Led::Button)
     } else {
         leds.set(0, Led::Button, led_color, Brightness::Lower);
     }
 
     let bipolar = range.is_bipolar();
 
-    let jack = if !bipolar {
-        app.make_out_jack(0, Range::_0_10V).await
-    } else {
-        app.make_out_jack(0, Range::_Neg5_5V).await
-    };
+    let jack = app.make_out_jack(0, range).await;
 
     let main_loop = async {
         let mut latch = app.make_latch(fader.get_value());
@@ -226,7 +228,7 @@ pub async fn run(
             let latch_target_value = match latch_active_layer {
                 LatchLayer::Main => main_layer_value,
                 LatchLayer::Alt => att_layer_value,
-                LatchLayer::Third => 0,
+                _ => unreachable!(),
             };
 
             if let Some(new_value) =
@@ -244,20 +246,11 @@ pub async fn run(
                         // Update storage but don't save yet
                         storage.modify(|s| s.att_saved = new_value);
                     }
-                    LatchLayer::Third => {}
+                    _ => unreachable!(),
                 }
             }
 
-            // Calculate output values
-            let muted = muted_glob.get();
-
-            let val = if muted {
-                if bipolar {
-                    2047
-                } else {
-                    0
-                }
-            } else if !bipolar {
+            let val = if !bipolar {
                 fad_val = clickless(fad_val, curve.at(main_layer_value));
                 fad_val
             } else if main_layer_value > 2047 {
@@ -274,13 +267,10 @@ pub async fn run(
             } else {
                 ((val as u32 * att_layer_value as u32) / 4095) as u16
             };
-            if inverted {
-                attenuated = 4095 - attenuated;
-            }
             out = slew_2(out, attenuated, 3);
 
             if last_out != (out as u32 * 127) / 4095 {
-                midi.send_cc(midi_cc as u8, out).await;
+                midi.send_cc(midi_cc_fader as u8, out).await;
             }
             jack.set_value(out);
             last_out = (out as u32 * 127) / 4095;
@@ -331,22 +321,40 @@ pub async fn run(
         }
     };
 
-    let button_handler = async {
+    let button_down_handler = async {
         loop {
-            if on_release {
-                buttons.wait_for_up(0).await;
+            buttons.wait_for_down(0).await;
+            if !buttons.is_shift_pressed() {
+                if storage.query(|s| s.toggle) {
+                    let button_state = storage.modify_and_save(|s| {
+                        s.button_state = !s.button_state;
+                        s.button_state
+                    });
+                    midi.send_cc(midi_cc_button as u8, button_state as u16 * 4095)
+                        .await;
+                    if button_state {
+                        leds.set(0, Led::Button, led_color, Brightness::Lower);
+                    } else {
+                        leds.unset(0, Led::Button);
+                    }
+                } else {
+                    midi.send_cc(midi_cc_button as u8, 4095).await;
+                    leds.set(0, Led::Button, led_color, Brightness::Lower);
+                }
             } else {
-                buttons.wait_for_down(0).await;
+                storage.modify_and_save(|s| {
+                    s.toggle = !s.toggle;
+                });
             }
-            let muted = storage.modify_and_save(|s| {
-                s.muted = !s.muted;
-                s.muted
-            });
-            muted_glob.set(muted);
-            if muted {
+        }
+    };
+
+    let button_up_handler = async {
+        loop {
+            buttons.wait_for_up(0).await;
+            if !storage.query(|s| s.toggle) {
+                midi.send_cc(midi_cc_button as u8, 0).await;
                 leds.unset(0, Led::Button);
-            } else {
-                leds.set(0, Led::Button, led_color, Brightness::Lower);
             }
         }
     };
@@ -377,12 +385,16 @@ pub async fn run(
                 SceneEvent::LoadSscene(scene) => {
                     storage.load_from_scene(scene).await;
                     if save_state {
-                        let muted = storage.query(|s| s.muted);
-                        muted_glob.set(muted);
-                        if muted {
-                            leds.unset(0, Led::Button);
-                        } else {
-                            leds.set(0, Led::Button, led_color, Brightness::Lower);
+                        if storage.query(|s| s.toggle) {
+                            let button_state = storage.query(|s| s.button_state);
+                            if !button_state {
+                                leds.unset(0, Led::Button);
+                                midi.send_cc(midi_cc_button as u8, 0).await;
+                            } else {
+                                leds.set(0, Led::Button, led_color, Brightness::Lower);
+                                midi.send_cc(midi_cc_button as u8, button_state as u16 * 4095)
+                                    .await;
+                            }
                         }
                     }
                 }
@@ -391,9 +403,10 @@ pub async fn run(
         }
     };
 
-    join4(
+    join5(
         main_loop,
-        button_handler,
+        button_down_handler,
+        button_up_handler,
         fader_event_handler,
         scene_handler,
     )
