@@ -21,7 +21,7 @@ pub const PARAMS: usize = 9;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Control",
-    "Simple MIDI/CV controller",
+    "Simple MIDI/CV controller with mute",
     Color::Violet,
     AppIcon::Fader,
 )
