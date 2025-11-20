@@ -10,8 +10,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Curve, Param, Range,
-    Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, AppFeature, AppFeatureMidi, AppIcon, Brightness, Color,
+    Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -19,13 +19,16 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 6;
 
-// TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing+",
     "Turing machine, with clock input",
     Color::Pink,
     AppIcon::SequenceSquare,
 )
+.with_features(&[
+    AppFeature::Midi(&[AppFeatureMidi::Cc]),
+    AppFeature::Quantizer,
+])
 .add_param(Param::Enum {
     name: "MIDI mode",
     variants: &["Off", "Note", "CC"],

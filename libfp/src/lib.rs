@@ -47,7 +47,15 @@ pub const CALIBRATION_SCALE_FACTOR: i64 = 1 << 16;
 pub const CALIBRATION_VERSION_LATEST: u8 = 2;
 pub const CALIB_FILE_MAGIC: [u8; 4] = *b"FPBC";
 
-pub type ConfigMeta<'a> = (usize, &'a str, &'a str, Color, AppIcon, &'a [Param]);
+pub type ConfigMeta<'a> = (
+    usize,
+    &'a str,
+    &'a str,
+    Color,
+    AppIcon,
+    &'a [Param],
+    &'a [AppFeature],
+);
 
 /// The config layout is a layout with all the apps in the appropriate spots
 // (app_id, channels, layout_id)
@@ -748,12 +756,27 @@ pub enum ConfigMsgOut<'a> {
     AppState(u8, &'a [Value]),
 }
 
+#[derive(Clone, Serialize, PostcardBindings)]
+pub enum AppFeatureMidi {
+    In,
+    Out,
+    Cc,
+    Note,
+}
+
+#[derive(Clone, Serialize, PostcardBindings)]
+pub enum AppFeature {
+    Midi(&'static [AppFeatureMidi]),
+    Quantizer,
+}
+
 pub struct Config<const N: usize> {
+    color: Color,
+    description: &'static str,
+    features: &'static [AppFeature],
     len: usize,
     name: &'static str,
-    description: &'static str,
     params: [Param; N],
-    color: Color,
     icon: AppIcon,
 }
 
@@ -768,6 +791,7 @@ impl<const N: usize> Config<N> {
         Config {
             color,
             description,
+            features: &[],
             icon,
             len: 0,
             name,
@@ -781,11 +805,17 @@ impl<const N: usize> Config<N> {
         Config {
             color: self.color,
             description: self.description,
+            features: self.features,
             icon: self.icon,
             len: new_len,
             name: self.name,
             params: self.params,
         }
+    }
+
+    pub const fn with_features(mut self, features: &'static [AppFeature]) -> Self {
+        self.features = features;
+        self
     }
 
     pub fn get_meta(&self) -> ConfigMeta<'_> {
@@ -796,6 +826,7 @@ impl<const N: usize> Config<N> {
             self.color,
             self.icon,
             &self.params,
+            self.features,
         )
     }
 }
