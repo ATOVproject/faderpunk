@@ -7,8 +7,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, AppIcon, Brightness, ClockDivision, Color, Config, Param, Range, Value,
-    APP_MAX_PARAMS,
+    ext::FromValue, AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote,
+    MidiOut, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -17,7 +17,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 8;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 5;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Sequencer",
@@ -25,41 +25,36 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Yellow,
     AppIcon::Sequence,
 )
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel 1",
-    min: 1,
-    max: 16,
 })
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel 2",
-    min: 1,
-    max: 16,
 })
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel 3",
-    min: 1,
-    max: 16,
 })
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel 4",
-    min: 1,
-    max: 16,
-});
+})
+.add_param(Param::MidiOut);
 
 pub struct Params {
-    midi_channel1: i32,
-    midi_channel2: i32,
-    midi_channel3: i32,
-    midi_channel4: i32,
+    midi_channel1: MidiChannel,
+    midi_channel2: MidiChannel,
+    midi_channel3: MidiChannel,
+    midi_channel4: MidiChannel,
+    midi_out: MidiOut,
 }
 
 impl Default for Params {
     fn default() -> Self {
         Self {
-            midi_channel1: 1,
-            midi_channel2: 2,
-            midi_channel3: 3,
-            midi_channel4: 4,
+            midi_channel1: MidiChannel::from(1),
+            midi_channel2: MidiChannel::from(2),
+            midi_channel3: MidiChannel::from(3),
+            midi_channel4: MidiChannel::from(4),
+            midi_out: MidiOut::default(),
         }
     }
 }
@@ -70,10 +65,11 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_channel1: i32::from_value(values[0]),
-            midi_channel2: i32::from_value(values[1]),
-            midi_channel3: i32::from_value(values[2]),
-            midi_channel4: i32::from_value(values[3]),
+            midi_channel1: MidiChannel::from_value(values[0]),
+            midi_channel2: MidiChannel::from_value(values[1]),
+            midi_channel3: MidiChannel::from_value(values[2]),
+            midi_channel4: MidiChannel::from_value(values[3]),
+            midi_out: MidiOut::from_value(values[4]),
         })
     }
 
@@ -83,6 +79,7 @@ impl AppParams for Params {
         vec.push(self.midi_channel2.into()).unwrap();
         vec.push(self.midi_channel3.into()).unwrap();
         vec.push(self.midi_channel4.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec
     }
 }
@@ -144,8 +141,9 @@ pub async fn run(
     storage: &ManagedStorage<Storage>,
 ) {
     let range = Range::_0_10V;
-    let (midi_chan1, midi_chan2, midi_chan3, midi_chan4) = params.query(|p| {
+    let (midi_out, midi_chan1, midi_chan2, midi_chan3, midi_chan4) = params.query(|p| {
         (
+            p.midi_out,
             p.midi_channel1,
             p.midi_channel2,
             p.midi_channel3,
@@ -159,10 +157,10 @@ pub async fn run(
     let led = app.use_leds();
 
     let midi = [
-        app.use_midi_output(midi_chan1 as u8 - 1),
-        app.use_midi_output(midi_chan2 as u8 - 1),
-        app.use_midi_output(midi_chan3 as u8 - 1),
-        app.use_midi_output(midi_chan4 as u8 - 1),
+        app.use_midi_output(midi_out, midi_chan1),
+        app.use_midi_output(midi_out, midi_chan2),
+        app.use_midi_output(midi_out, midi_chan3),
+        app.use_midi_output(midi_out, midi_chan4),
     ];
 
     let clockn_glob = app.make_global(0);
@@ -198,7 +196,7 @@ pub async fn run(
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
     let mut shift_old = false;
-    let mut lastnote = [0; 4];
+    let mut lastnote = [MidiNote::default(); 4];
     let mut gatelength1 = gatelength_glob.get();
 
     let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel, legato_seq_saved) =

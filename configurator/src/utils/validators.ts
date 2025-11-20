@@ -76,6 +76,44 @@ export const getParamSchema = (param: Param) => {
           value: { tag: choices[0] },
         });
     }
+    case "MidiCc": {
+      return z
+        .object({
+          tag: z.literal("MidiCc"),
+          value: z.tuple([z.number().int().min(0).max(127)]),
+        })
+        .default({ tag: "MidiCc", value: [0] });
+    }
+    case "MidiChannel": {
+      return z
+        .object({
+          tag: z.literal("MidiChannel"),
+          value: z.tuple([z.number().int().min(0).max(15)]),
+        })
+        .default({ tag: "MidiChannel", value: [0] });
+    }
+    case "MidiNote": {
+      return z
+        .object({
+          tag: z.literal("MidiNote"),
+          value: z.tuple([z.number().int().min(0).max(127)]),
+        })
+        .default({ tag: "MidiNote", value: [60] });
+    }
+    case "MidiIn":
+    case "MidiOut":
+    case "MidiMode": {
+      // These are enum-like types with tag-based variants
+      return z
+        .object({
+          tag: z.literal(param.tag),
+          value: z.object({ tag: z.string() }),
+        })
+        .catch({
+          tag: param.tag,
+          value: { tag: param.tag === "MidiMode" ? "Note" : "None" },
+        });
+    }
     default: {
       return z.never();
     }

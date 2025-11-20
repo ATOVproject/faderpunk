@@ -7,8 +7,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config, Param,
-    Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
+    MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -16,7 +16,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 5;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Low;
 
@@ -26,16 +26,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Orange,
     AppIcon::NoteBox,
 )
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel",
-    min: 1,
-    max: 16,
 })
-.add_param(Param::i32 {
-    name: "MIDI Note",
-    min: 1,
-    max: 128,
-})
+.add_param(Param::MidiNote { name: "MIDI Note" })
 .add_param(Param::i32 {
     name: "GATE %",
     min: 1,
@@ -53,11 +47,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
-});
+})
+.add_param(Param::MidiOut);
 
 pub struct Params {
-    midi_channel: i32,
-    note: i32,
+    midi_channel: MidiChannel,
+    midi_out: MidiOut,
+    note: MidiNote,
     gatel: i32,
     color: Color,
 }
@@ -65,8 +61,9 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
-            midi_channel: 1,
-            note: 32,
+            midi_channel: MidiChannel::default(),
+            midi_out: MidiOut::default(),
+            note: MidiNote::from(32),
             gatel: 50,
             color: Color::Cyan,
         }
@@ -79,10 +76,11 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_channel: i32::from_value(values[0]),
-            note: i32::from_value(values[1]),
+            midi_channel: MidiChannel::from_value(values[0]),
+            note: MidiNote::from_value(values[1]),
             gatel: i32::from_value(values[2]),
             color: Color::from_value(values[3]),
+            midi_out: MidiOut::from_value(values[4]),
         })
     }
 
@@ -92,6 +90,7 @@ impl AppParams for Params {
         vec.push(self.note.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec
     }
 }
@@ -143,15 +142,15 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_chan, note, gatel, led_color) =
-        params.query(|p| (p.midi_channel, p.note, p.gatel as u32, p.color));
+    let (midi_out, midi_chan, note, gatel, led_color) =
+        params.query(|p| (p.midi_out, p.midi_channel, p.note, p.gatel as u32, p.color));
 
     let mut clock = app.use_clock();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
 
-    let midi = app.use_midi_output(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_out, midi_chan);
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
@@ -188,7 +187,7 @@ pub async fn run(
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
-                    midi.send_note_off(note as u8 - 1).await;
+                    midi.send_note_off(note).await;
                     note_on = false;
                     jack.set_low().await;
                 }
@@ -201,13 +200,13 @@ pub async fn run(
                         if glob_latch_layer.get() == LatchLayer::Main {
                             leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
                         }
-                        midi.send_note_on(note as u8 - 1, 4095).await;
+                        midi.send_note_on(note, 4095).await;
                         note_on = true;
                     }
 
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
-                            midi.send_note_off(note as u8 - 1).await;
+                            midi.send_note_off(note).await;
 
                             note_on = false;
                             jack.set_low().await;

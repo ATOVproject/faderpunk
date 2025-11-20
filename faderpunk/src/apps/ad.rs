@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, utils::attenuate, AppIcon, Brightness, Color, Config, Curve,
-    Param, Range, Value, APP_MAX_PARAMS,
+    MidiChannel, MidiIn, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -23,38 +23,28 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Yellow,
     AppIcon::AdEnv,
 )
-.add_param(Param::bool { name: "Use MIDI" })
-.add_param(Param::i32 {
+.add_param(Param::MidiIn)
+.add_param(Param::MidiChannel {
     name: "MIDI Channel",
-    min: 1,
-    max: 16,
 });
 
+#[derive(Default)]
 pub struct Params {
-    use_midi: bool,
-    midi_channel: i32,
-}
-
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            use_midi: false,
-            midi_channel: 1,
-        }
-    }
+    midi_in: MidiIn,
+    midi_channel: MidiChannel,
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         Some(Self {
-            use_midi: bool::from_value(values[0]),
-            midi_channel: i32::from_value(values[1]),
+            midi_in: MidiIn::from_value(values[0]),
+            midi_channel: MidiChannel::from_value(values[1]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
-        vec.push(self.use_midi.into()).unwrap();
+        vec.push(self.midi_in.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec
     }
@@ -110,7 +100,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (use_midi, midi_chan) = params.query(|p| (p.use_midi, p.midi_channel));
+    let (midi_in, midi_chan) = params.query(|p| (p.midi_in, p.midi_channel));
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
@@ -391,7 +381,7 @@ pub async fn run(
     };
 
     let midi_handler = async {
-        let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
+        let mut midi_in = app.use_midi_input(midi_in, midi_chan);
         loop {
             match midi_in.wait_for_message().await {
                 MidiMessage::NoteOn { key, vel } => {
@@ -442,7 +432,9 @@ pub async fn run(
         }
     };
 
-    if use_midi {
+    if midi_in.is_none() {
+        join4(main_loop, fader_handler, button_handler, scene_handler).await;
+    } else {
         join5(
             main_loop,
             fader_handler,
@@ -451,7 +443,5 @@ pub async fn run(
             scene_handler,
         )
         .await;
-    } else {
-        join4(main_loop, fader_handler, button_handler, scene_handler).await;
     }
 }

@@ -1,7 +1,7 @@
 // V/oct quantizer, based on the ideas in
 // https://github.com/pichenettes/eurorack/blob/master/braids/quantizer_scales.h
 
-use crate::{Key, Note, Range};
+use crate::{Key, MidiNote, Note, Range};
 use heapless::Vec;
 use libm::roundf;
 
@@ -29,9 +29,9 @@ impl Pitch {
         roundf(counts).clamp(0.0, 4095.0) as u16
     }
 
-    pub fn as_midi(&self) -> u8 {
+    pub fn as_midi(&self) -> MidiNote {
         let midi_note = (self.octave as i32 + 1) * 12 + self.note as u8 as i32;
-        midi_note.clamp(0, 127) as u8
+        MidiNote::from(midi_note)
     }
 }
 
@@ -396,16 +396,16 @@ mod tests {
             octave: 4,
             note: Note::C,
         };
-        assert_eq!(c4.as_midi(), 60);
+        assert_eq!(c4.as_midi(), MidiNote(60));
         let a4 = Pitch {
             octave: 4,
             note: Note::A,
         };
-        assert_eq!(a4.as_midi(), 69);
+        assert_eq!(a4.as_midi(), MidiNote(69));
         let c_minus_1 = Pitch {
             octave: -1,
             note: Note::C,
         };
-        assert_eq!(c_minus_1.as_midi(), 0);
+        assert_eq!(c_minus_1.as_midi(), MidiNote(0));
     }
 }
