@@ -31,6 +31,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "MIDI retrigger",
 });
 
+#[derive(Default)]
 pub struct Params {
     midi_in: MidiIn,
     midi_channel: MidiChannel,
