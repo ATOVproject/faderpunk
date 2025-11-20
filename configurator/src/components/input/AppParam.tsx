@@ -10,6 +10,12 @@ import { ParamEnum } from "./ParamEnum.tsx";
 import { ParamRange } from "./ParamRange.tsx";
 import { ParamWaveform } from "./ParamWaveform.tsx";
 import { ParamColor } from "./ParamColor.tsx";
+import { ParamMidiCc } from "./ParamMidiCc.tsx";
+import { ParamMidiChannel } from "./ParamMidiChannel.tsx";
+import { ParamMidiIn } from "./ParamMidiIn.tsx";
+import { ParamMidiMode } from "./ParamMidiMode.tsx";
+import { ParamMidiNote } from "./ParamMidiNote.tsx";
+import { ParamMidiOut } from "./ParamMidiOut.tsx";
 
 interface Props {
   defaultValue: string | boolean | number;
@@ -109,6 +115,66 @@ export const AppParam = ({
       return (
         <ParamNote
           {...param.value}
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiCc": {
+      return (
+        <ParamMidiCc
+          {...param.value}
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiChannel": {
+      return (
+        <ParamMidiChannel
+          {...param.value}
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiNote": {
+      return (
+        <ParamMidiNote
+          {...param.value}
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiIn": {
+      return (
+        <ParamMidiIn
+          name="MIDI In"
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiOut": {
+      return (
+        <ParamMidiOut
+          name="MIDI Out"
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiMode": {
+      return (
+        <ParamMidiMode
+          name="MIDI Mode"
           defaultValue={defaultValue as string}
           paramIndex={paramIndex}
           register={register}
