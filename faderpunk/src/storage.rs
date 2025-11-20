@@ -155,6 +155,16 @@ pub async fn load_calibration_data() -> Option<MaxCalibration> {
 }
 
 async fn erase_range(range: Range<u32>) {
+    // Prevent erasing the calibration range
+    if range.start < CALIBRATION_RANGE.end && range.end > CALIBRATION_RANGE.start {
+        defmt::error!(
+            "CRITICAL: Attempted to erase Protected Calibration Range ({:?}) with request ({:?})",
+            CALIBRATION_RANGE,
+            range
+        );
+        return;
+    }
+
     let mut addr = range.start;
     // Limit the chunk size to 64 bytes to prevent I2C bus congestion/timeouts
     const ERASE_CHUNK_SIZE: usize = 64;
