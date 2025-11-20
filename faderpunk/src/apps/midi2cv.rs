@@ -290,20 +290,6 @@ pub async fn run(
                 // //info!("outval ={}, pitch = {} out = {}", outval, pitch, out);
                 jack.set_value(out);
             }
-
-            // match latch_active_layer {
-            //     LatchLayer::Main => {}
-            //     LatchLayer::Alt => {
-            //         leds.set(
-            //             0,
-            //             Led::Top,
-            //             Color::Red,
-            //             Brightness::Custom((att / 16) as u8),
-            //         );
-            //         leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(0));
-            //     }
-            //     LatchLayer::Third => {}
-            // }
         }
     };
 
@@ -349,21 +335,6 @@ pub async fn run(
                     LatchLayer::Third => {}
                 }
             }
-
-            // let fader_val = fader.get_value();
-
-            // if buttons.is_shift_pressed() && latched_glob.get() {
-            //     att_glob.set(fader_val);
-            //     storage
-            //         .modify_and_save(
-            //             |s| {
-            //                 s.att_saved = fader_val;
-            //                 s.att_saved
-            //             },
-            //             None,
-            //         )
-            //         .await;
-            // }
         }
     };
 
@@ -398,7 +369,8 @@ pub async fn run(
                     }
                     if mode == 2 {
                         if !muted_glob.get() {
-                            jack.set_value(4095);
+                            let vel_out = (scale_bits_7_12(vel) as u32 * 3686 / 4095 + 410) as u16;
+                            jack.set_value(vel_out);
                             note_num += 1;
                             leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
                         } else {
@@ -409,7 +381,8 @@ pub async fn run(
                     }
                     if mode == 6 && bits_7_16(key) == note as u16 {
                         if !muted_glob.get() {
-                            jack.set_value(4095);
+                            let vel_out = (scale_bits_7_12(vel) as u32 * 3686 / 4095 + 410) as u16;
+                            jack.set_value(vel_out);
                             note_num += 1;
                             leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
                         } else {
