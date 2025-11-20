@@ -94,7 +94,10 @@ const NewAppDetails = ({ app }: NewAppDetailsProps) => (
         })}
       >
         {app.params.map((param, idx) => (
-          <li key={idx}>{param.tag !== "None" && param.value.name}</li>
+          <li key={idx}>
+            {param.tag !== "None" &&
+              ("value" in param ? param.value.name : param.tag)}
+          </li>
         ))}
       </ul>
     </div>
