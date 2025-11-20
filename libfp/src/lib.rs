@@ -1,8 +1,11 @@
 #![no_std]
 
+use core::ops::Add;
+
 use embassy_time::Duration;
 use heapless::Vec;
 use max11300::config::{ADCRANGE, DACRANGE};
+use midly::num::{u4, u7};
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
@@ -35,7 +38,7 @@ pub const I2C_ADDRESS: u16 = 0x56;
 pub const I2C_ADDRESS_CALIBRATION: u16 = 0x57;
 
 /// Maximum number of params per app
-pub const APP_MAX_PARAMS: usize = 8;
+pub const APP_MAX_PARAMS: usize = 16;
 
 /// Length of the startup animation
 pub const STARTUP_ANIMATION_DURATION: Duration = Duration::from_secs(2);
@@ -416,7 +419,7 @@ pub enum Curve {
 
 impl Curve {
     pub fn at(&self, value: u16) -> u16 {
-        let value = value.clamp(0, 4095);
+        let value = value.min(4095);
         match self {
             Curve::Linear => value,
             Curve::Exponential => CURVE_EXP[value as usize],
@@ -648,6 +651,18 @@ pub enum Param {
         name: &'static str,
         variants: &'static [Note],
     },
+    MidiCc {
+        name: &'static str,
+    },
+    MidiChannel {
+        name: &'static str,
+    },
+    MidiIn,
+    MidiMode,
+    MidiNote {
+        name: &'static str,
+    },
+    MidiOut,
 }
 
 #[allow(non_camel_case_types)]
@@ -662,6 +677,12 @@ pub enum Value {
     Color(Color),
     Range(Range),
     Note(Note),
+    MidiCc(MidiCc),
+    MidiChannel(MidiChannel),
+    MidiIn(MidiIn),
+    MidiMode(MidiMode),
+    MidiNote(MidiNote),
+    MidiOut(MidiOut),
 }
 
 impl From<Curve> for Value {
@@ -691,6 +712,42 @@ impl From<Range> for Value {
 impl From<Note> for Value {
     fn from(value: Note) -> Self {
         Value::Note(value)
+    }
+}
+
+impl From<MidiCc> for Value {
+    fn from(value: MidiCc) -> Self {
+        Value::MidiCc(value)
+    }
+}
+
+impl From<MidiChannel> for Value {
+    fn from(value: MidiChannel) -> Self {
+        Value::MidiChannel(value)
+    }
+}
+
+impl From<MidiIn> for Value {
+    fn from(value: MidiIn) -> Self {
+        Value::MidiIn(value)
+    }
+}
+
+impl From<MidiMode> for Value {
+    fn from(value: MidiMode) -> Self {
+        Value::MidiMode(value)
+    }
+}
+
+impl From<MidiNote> for Value {
+    fn from(value: MidiNote) -> Self {
+        Value::MidiNote(value)
+    }
+}
+
+impl From<MidiOut> for Value {
+    fn from(value: MidiOut) -> Self {
+        Value::MidiOut(value)
     }
 }
 
@@ -845,6 +902,175 @@ impl FromValue for Range {
             Value::Range(r) => r,
             _ => Self::default(),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+pub struct MidiCc(u8);
+
+impl FromValue for MidiCc {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::MidiCc(m) => m,
+            _ => Self::default(),
+        }
+    }
+}
+
+impl From<u8> for MidiCc {
+    fn from(value: u8) -> Self {
+        Self(value.min(127))
+    }
+}
+
+impl From<MidiCc> for u7 {
+    fn from(value: MidiCc) -> Self {
+        u7::from_int_lossy(value.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
+pub struct MidiChannel(u8);
+
+impl FromValue for MidiChannel {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::MidiChannel(m) => m,
+            _ => Self::default(),
+        }
+    }
+}
+
+impl Default for MidiChannel {
+    fn default() -> Self {
+        MidiChannel(1)
+    }
+}
+
+impl From<u8> for MidiChannel {
+    fn from(value: u8) -> Self {
+        Self(value.min(16))
+    }
+}
+
+impl From<MidiChannel> for u4 {
+    fn from(value: MidiChannel) -> Self {
+        u4::from_int_lossy(value.0.saturating_sub(1).min(15))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[repr(u8)]
+pub enum MidiIn {
+    None,
+    #[default]
+    All,
+    In,
+    Usb,
+}
+
+impl FromValue for MidiIn {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::MidiIn(m) => m,
+            _ => Self::default(),
+        }
+    }
+}
+
+impl MidiIn {
+    pub fn is_none(&self) -> bool {
+        if let MidiIn::None = self {
+            return true;
+        }
+        false
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+pub struct MidiNote(u8);
+
+impl FromValue for MidiNote {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::MidiNote(m) => m,
+            _ => Self::default(),
+        }
+    }
+}
+
+impl From<u8> for MidiNote {
+    fn from(value: u8) -> Self {
+        Self(value.min(127))
+    }
+}
+
+impl From<i32> for MidiNote {
+    fn from(value: i32) -> Self {
+        Self(value.clamp(0, 127) as u8)
+    }
+}
+
+impl From<MidiNote> for u7 {
+    fn from(value: MidiNote) -> Self {
+        u7::from_int_lossy(value.0)
+    }
+}
+
+impl Add<MidiNote> for MidiNote {
+    type Output = Self;
+
+    fn add(self, rhs: MidiNote) -> Self::Output {
+        Self(self.0.saturating_add(rhs.0).min(127))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[repr(u8)]
+pub enum MidiMode {
+    #[default]
+    Note,
+    Cc,
+}
+
+impl FromValue for MidiMode {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::MidiMode(m) => m,
+            _ => Self::default(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[repr(u8)]
+pub enum MidiOut {
+    None,
+    #[default]
+    All,
+    Out1,
+    Out2,
+    Usb,
+    Out1Usb,
+    Out2Usb,
+    Out1Out2,
+}
+
+impl FromValue for MidiOut {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::MidiOut(m) => m,
+            _ => Self::default(),
+        }
+    }
+}
+
+impl MidiOut {
+    pub fn is_none(&self) -> bool {
+        if let MidiOut::None = self {
+            return true;
+        }
+        false
     }
 }
 

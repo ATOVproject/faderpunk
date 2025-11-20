@@ -9,6 +9,7 @@ import {
 } from "@atov/fp-config";
 
 import type { AllApps, App, AppLayout } from "./types";
+import type { MidiInTag, MidiOutTag, MidiModeTag } from "./midiTypes";
 
 export const kebabToPascal = (str: string): string => {
   if (!str) return "";
@@ -61,6 +62,24 @@ export const getDefaultValue = (val: Value) => {
     case "Note": {
       return val.value.tag;
     }
+    case "MidiCc": {
+      return val.value[0].toString();
+    }
+    case "MidiChannel": {
+      return val.value[0].toString();
+    }
+    case "MidiNote": {
+      return val.value[0].toString();
+    }
+    case "MidiIn": {
+      return val.value.tag;
+    }
+    case "MidiOut": {
+      return val.value.tag;
+    }
+    case "MidiMode": {
+      return val.value.tag;
+    }
   }
 };
 
@@ -93,6 +112,24 @@ const getParamValue = (
       return { tag: "Range", value: { tag: value as Range["tag"] } };
     case "Note":
       return { tag: "Note", value: { tag: value as Note["tag"] } };
+    case "MidiCc":
+      return { tag: "MidiCc", value: [parseInt(value as string, 10)] };
+    case "MidiChannel":
+      return { tag: "MidiChannel", value: [parseInt(value as string, 10)] };
+    case "MidiNote":
+      return { tag: "MidiNote", value: [parseInt(value as string, 10)] };
+    case "MidiIn":
+      return {
+        tag: "MidiIn",
+        value: { tag: value as MidiInTag },
+      };
+    case "MidiOut":
+      return {
+        tag: "MidiOut",
+        value: { tag: value as MidiOutTag },
+      };
+    case "MidiMode":
+      return { tag: "MidiMode", value: { tag: value as MidiModeTag } };
     default:
       return undefined;
   }
@@ -102,7 +139,15 @@ export const transformParamFormValues = (
   values: Record<string, string | boolean>,
 ) => {
   const entries = Object.entries(values);
-  const result: FixedLengthArray<Value | undefined, 8> = [
+  const result: FixedLengthArray<Value | undefined, 16> = [
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
     undefined,
     undefined,
     undefined,
@@ -124,7 +169,15 @@ export const transformParamFormValues = (
 };
 
 export const getFixedLengthParamArray = (values: Value[]) => {
-  const result: FixedLengthArray<Value | undefined, 8> = [
+  const result: FixedLengthArray<Value | undefined, 16> = [
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
     undefined,
     undefined,
     undefined,
