@@ -5,7 +5,8 @@ use embassy_futures::{
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
-    latch::LatchLayer, utils::split_unsigned_value, AppIcon, Brightness, Color, APP_MAX_PARAMS,
+    latch::LatchLayer, utils::split_unsigned_value, AppIcon, Brightness, Color, MidiChannel,
+    MidiNote, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +15,7 @@ use libfp::{ext::FromValue, Config, Param, Range, Value};
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 5;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
 
@@ -25,10 +26,8 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     AppIcon::NoteBox,
 )
 .add_param(Param::bool { name: "Bipolar" })
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel",
-    min: 1,
-    max: 16,
 })
 .add_param(Param::i32 {
     name: "Delay (ms)",
@@ -47,11 +46,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
-});
+})
+.add_param(Param::MidiOut);
 
 pub struct Params {
     bipolar: bool,
-    midi_channel: i32,
+    midi_channel: MidiChannel,
+    midi_out: MidiOut,
     delay: i32,
     color: Color,
 }
@@ -60,7 +61,8 @@ impl Default for Params {
     fn default() -> Self {
         Self {
             bipolar: false,
-            midi_channel: 1,
+            midi_channel: MidiChannel::default(),
+            midi_out: MidiOut::default(),
             delay: 0,
             color: Color::Orange,
         }
@@ -74,9 +76,10 @@ impl AppParams for Params {
         }
         Some(Self {
             bipolar: bool::from_value(values[0]),
-            midi_channel: i32::from_value(values[1]),
+            midi_channel: MidiChannel::from_value(values[1]),
             delay: i32::from_value(values[2]),
             color: Color::from_value(values[3]),
+            midi_out: MidiOut::from_value(values[4]),
         })
     }
 
@@ -84,9 +87,9 @@ impl AppParams for Params {
         let mut vec = Vec::new();
         vec.push(self.bipolar.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
-
         vec.push(self.delay.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec
     }
 }
@@ -141,10 +144,10 @@ pub async fn run(
     let faders = app.use_faders();
     let leds = app.use_leds();
 
-    let (bipolar, midi_channel, delay, led_color) =
-        params.query(|p| (p.bipolar, p.midi_channel, p.delay, p.color));
+    let (bipolar, midi_out, midi_channel, delay, led_color) =
+        params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.delay, p.color));
 
-    let midi = app.use_midi_output(midi_channel as u8 - 1);
+    let midi = app.use_midi_output(midi_out, midi_channel);
 
     let muted_glob = app.make_global(false);
 
@@ -177,7 +180,7 @@ pub async fn run(
 
     let fut1 = async {
         let mut old_gatein = 0;
-        let mut midi_out = 0;
+        let mut midi_out = MidiNote::from(0);
         let mut note_on = false;
         let mut note = 0;
 
@@ -199,12 +202,7 @@ pub async fn run(
                     };
                     note = (note + oct + st).clamp(0, 4095);
 
-                    midi_out = (quantizer
-                        .get_quantized_note(note as u16)
-                        .await
-                        .as_counts(range) as u32
-                        * 120
-                        / 4095) as u8;
+                    midi_out = quantizer.get_quantized_note(note as u16).await.as_midi();
 
                     midi.send_note_on(midi_out, 4095).await;
                     note_on = true;
@@ -219,8 +217,6 @@ pub async fn run(
                     Brightness::Custom(note_led[1] * 2),
                 );
                 leds.set(1, Led::Top, led_color, Brightness::Lower);
-
-                // info!("note on")
             }
 
             if gatein <= 406 && old_gatein > 406 {
