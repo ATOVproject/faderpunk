@@ -138,7 +138,7 @@ pub async fn run(
     let (range, use_midi, midi_chan, midi_cc) =
         params.query(|p| (p.range, p.use_midi, p.midi_channel, p.midi_cc));
 
-    let speed_mult = 2u32.pow(params.query(|p| p.speed_mult) as u32);
+    let speed_mult = 2u32.pow(params.query(|p| p.speed_mult).min(31) as u32);
     let output = app.make_out_jack(0, range).await;
     let fader = app.use_faders();
     let buttons = app.use_buttons();
@@ -163,7 +163,7 @@ pub async fn run(
     leds.set(0, Led::Button, color, Brightness::Lower);
 
     glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
-    glob_div.set(resolution[speed as usize / 500]);
+    glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
     let mut count = 0;
     let mut quant_speed: f32 = 6.;
     let mut last_out = 0;
@@ -181,7 +181,7 @@ pub async fn run(
             if glob_tick.get() {
                 // add timeout
                 let div = glob_div.get();
-                quant_speed = 4095. / ((count * div) as f32 / 24.);
+                quant_speed = 4095. / ((count.max(1) as f32 * div as f32) / 24.);
                 count = 0;
                 glob_tick.set(false);
             }
@@ -263,7 +263,7 @@ pub async fn run(
                 match latch_layer {
                     LatchLayer::Main => {
                         glob_lfo_speed.set(curve.at(new_value) as f32 * 0.015 + 0.0682);
-                        glob_div.set(resolution[new_value as usize / 500]);
+                        glob_div.set(resolution[(new_value as usize / 500).clamp(0, 8)]);
                         storage.modify_and_save(|s| s.layer_speed = new_value);
                     }
                     LatchLayer::Alt => {
@@ -331,7 +331,7 @@ pub async fn run(
                     let wave_saved = storage.query(|s| s.wave);
 
                     glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
-                    glob_div.set(resolution[speed as usize / 500]);
+                    glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
 
                     let color = get_color_for(wave_saved);
                     leds.set(0, Led::Button, color, Brightness::Lower);
