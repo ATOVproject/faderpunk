@@ -14,8 +14,12 @@ use libm::roundf;
 use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Curve, Param, Range, Value};
+use smart_leds::colors::RED;
 
-use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
+use crate::{
+    app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent},
+    tasks::leds::LedMode,
+};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 7;
@@ -191,17 +195,19 @@ pub async fn run(
     let midi = app.use_midi_output(midi_chan as u8 - 1);
     let i2c = app.use_i2c_output();
 
-    midi.send_cc(
-        midi_cc_button as u8,
-        storage.query(|s| s.button_state) as u16 * 127,
-    );
     let output_glob = app.make_global(0);
     let latch_layer_glob = app.make_global(LatchLayer::Main);
-
-    if storage.query(|s| s.button_state) {
-        leds.unset(0, Led::Button)
-    } else {
-        leds.set(0, Led::Button, led_color, Brightness::Lower);
+    if storage.query(|s| s.toggle) {
+        if !storage.query(|s| s.button_state) {
+            leds.unset(0, Led::Button)
+        } else {
+            leds.set(0, Led::Button, led_color, Brightness::Lower);
+            midi.send_cc(
+                midi_cc_button as u8,
+                storage.query(|s| s.button_state) as u16 * 4095,
+            )
+            .await;
+        }
     }
 
     let bipolar = range.is_bipolar();
@@ -268,7 +274,6 @@ pub async fn run(
                 ((val as u32 * att_layer_value as u32) / 4095) as u16
             };
             out = slew_2(out, attenuated, 3);
-
             if last_out != (out as u32 * 127) / 4095 {
                 midi.send_cc(midi_cc_fader as u8, out).await;
             }
@@ -291,8 +296,26 @@ pub async fn run(
                         );
                         leds.unset(0, Led::Bottom);
                     }
+                    if storage.query(|s| s.toggle) {
+                        if storage.query(|s| s.button_state) {
+                            leds.set(0, Led::Button, led_color, Brightness::Lower);
+                        } else {
+                            leds.unset(0, Led::Button);
+                        }
+                    } else {
+                        if buttons.is_button_pressed(0) {
+                            leds.set(0, Led::Button, led_color, Brightness::Lower);
+                        } else {
+                            leds.unset(0, Led::Button);
+                        }
+                    }
                 }
                 LatchLayer::Alt => {
+                    if storage.query(|s| s.toggle) {
+                        leds.set(0, Led::Button, Color::Red, Brightness::Lower);
+                    } else {
+                        leds.unset(0, Led::Button);
+                    }
                     if bipolar {
                         leds.set(
                             0,
@@ -342,9 +365,16 @@ pub async fn run(
                     leds.set(0, Led::Button, led_color, Brightness::Lower);
                 }
             } else {
-                storage.modify_and_save(|s| {
+                let toggle = storage.modify_and_save(|s| {
                     s.toggle = !s.toggle;
+                    s.toggle
                 });
+
+                if toggle {
+                    let button_state = storage.query(|s| s.button_state);
+                    midi.send_cc(midi_cc_button as u8, button_state as u16 * 4095)
+                        .await;
+                }
             }
         }
     };
