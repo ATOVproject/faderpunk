@@ -5,20 +5,21 @@ use embassy_futures::{
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 
-use midly::MidiMessage;
+use midly::{num::u7, MidiMessage};
 use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
     utils::{bits_7_16, clickless, scale_bits_7_12},
-    AppIcon, Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
+    AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiNote, Param, Range,
+    Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 7;
+pub const PARAMS: usize = 8;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
@@ -36,26 +37,16 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Curve",
     variants: &[Curve::Linear, Curve::Logarithmic, Curve::Exponential],
 })
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel",
-    min: 1,
-    max: 16,
 })
-.add_param(Param::i32 {
-    name: "MIDI CC",
-    min: 1,
-    max: 128,
-})
+.add_param(Param::MidiCc { name: "MIDI CC" })
 .add_param(Param::i32 {
     name: "Bend Range",
     min: 1,
     max: 24,
 })
-.add_param(Param::i32 {
-    name: "note",
-    min: 1,
-    max: 128,
-})
+.add_param(Param::MidiNote { name: "MIDI Note" })
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -68,15 +59,17 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
-});
+})
+.add_param(Param::MidiOut);
 
 pub struct Params {
     mode: usize,
     curve: Curve,
-    midi_channel: i32,
-    midi_cc: i32,
+    midi_channel: MidiChannel,
+    midi_cc: MidiCc,
+    midi_note: MidiNote,
+    midi_in: MidiIn,
     bend_range: i32,
-    note: i32,
     color: Color,
 }
 
@@ -85,10 +78,11 @@ impl Default for Params {
         Self {
             mode: 0,
             curve: Curve::Linear,
-            midi_channel: 1,
-            midi_cc: 32,
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(32),
+            midi_note: MidiNote::from(36),
+            midi_in: MidiIn::default(),
             bend_range: 12,
-            note: 36,
             color: Color::Cyan,
         }
     }
@@ -102,11 +96,12 @@ impl AppParams for Params {
         Some(Self {
             mode: usize::from_value(values[0]),
             curve: Curve::from_value(values[1]),
-            midi_channel: i32::from_value(values[2]),
-            midi_cc: i32::from_value(values[3]),
+            midi_channel: MidiChannel::from_value(values[2]),
+            midi_cc: MidiCc::from_value(values[3]),
             bend_range: i32::from_value(values[4]),
-            note: i32::from_value(values[5]),
+            midi_note: MidiNote::from_value(values[5]),
             color: Color::from_value(values[6]),
+            midi_in: MidiIn::from_value(values[7]),
         })
     }
 
@@ -117,8 +112,9 @@ impl AppParams for Params {
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.bend_range.into()).unwrap();
-        vec.push(self.note.into()).unwrap();
+        vec.push(self.midi_note.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.midi_in.into()).unwrap();
         vec
     }
 }
@@ -167,19 +163,21 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_chan, midi_cc, curve, bend_range, led_color, note, mode) = params.query(|p| {
-        (
-            p.midi_channel,
-            p.midi_cc,
-            p.curve,
-            p.bend_range,
-            p.color,
-            p.note,
-            p.mode,
-        )
-    });
+    let (midi_in, midi_chan, midi_cc, curve, bend_range, led_color, note, mode) =
+        params.query(|p| {
+            (
+                p.midi_in,
+                p.midi_channel,
+                p.midi_cc,
+                p.curve,
+                p.bend_range,
+                p.color,
+                p.midi_note,
+                p.mode,
+            )
+        });
 
-    let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
+    let mut midi_in = app.use_midi_input(midi_in, midi_chan);
     let muted_glob = app.make_global(false);
 
     let offset_glob = app.make_global(0);
@@ -344,7 +342,7 @@ pub async fn run(
             match midi_in.wait_for_message().await {
                 MidiMessage::Controller { controller, value } => {
                     if mode == 0 {
-                        if bits_7_16(controller) == midi_cc as u16 {
+                        if controller == u7::from(midi_cc) {
                             let val = scale_bits_7_12(value);
                             offset_glob.set(val);
                         }
@@ -376,10 +374,8 @@ pub async fn run(
                         } else {
                             note_num = 0;
                         }
-
-                        //info!("note on num = {}", note_num);
                     }
-                    if mode == 6 && bits_7_16(key) == note as u16 {
+                    if mode == 6 && key == u7::from(note) {
                         if !muted_glob.get() {
                             let vel_out = (scale_bits_7_12(vel) as u32 * 3686 / 4095 + 410) as u16;
                             jack.set_value(vel_out);
@@ -403,21 +399,18 @@ pub async fn run(
                             led_color,
                             Brightness::Custom((vel_out / 16) as u8),
                         );
-                        //info!("Velocity: {} ", vel_out)
                     }
                 }
                 MidiMessage::NoteOff { key, vel } => {
                     if mode == 2 {
                         note_num = (note_num - 1).max(0);
-                        //info!("note off num = {}", note_num);
                         if note_num == 0 {
                             jack.set_value(0);
                             leds.unset(0, Led::Top);
                         }
                     }
-                    if mode == 6 && bits_7_16(key) == note as u16 {
+                    if mode == 6 && key == u7::from(note) {
                         note_num = (note_num - 1).max(0);
-                        //info!("note off num = {}", note_num);
                         if note_num == 0 {
                             jack.set_value(0);
                             leds.unset(0, Led::Top);
@@ -425,7 +418,6 @@ pub async fn run(
                     }
                 }
                 MidiMessage::PitchBend { bend } => {
-                    //info!("mode = {}", mode);
                     if mode == 5 || mode == 1 {
                         let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
                         offset_glob.set(out);
@@ -441,7 +433,6 @@ pub async fn run(
                             led_color,
                             Brightness::Custom((bend.as_f32() * -255.0) as u8),
                         );
-                        //info!("Bend! = {}, bend range = {}", bend.as_f32(), out);
                     }
                     // if mode == 1 {
                     //     let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;

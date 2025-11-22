@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config, Curve,
-    Param, Range, Value, APP_MAX_PARAMS,
+    MidiCc, MidiChannel, MidiMode, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -20,36 +20,20 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 7;
+pub const PARAMS: usize = 8;
 
-// TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing",
     "Turing machine, synched to internal clock",
     Color::Blue,
     AppIcon::SequenceSquare,
 )
-.add_param(Param::Enum {
-    name: "MIDI mode",
-    variants: &["Off", "Note", "CC"],
+.add_param(Param::MidiMode)
+.add_param(Param::MidiChannel {
+    name: "MIDI channel",
 })
-.add_param(Param::i32 {
-    //is it possible to have this apear only if CC or note are selected
-    name: "Midi channel",
-    min: 1,
-    max: 16,
-})
-.add_param(Param::i32 {
-    //is it possible to have this apear only if CC or note are selected
-    name: "CC number",
-    min: 1,
-    max: 128,
-})
-.add_param(Param::i32 {
-    name: "Base Note",
-    min: 1,
-    max: 128,
-})
+.add_param(Param::MidiCc { name: "CC number" })
+.add_param(Param::MidiNote { name: "Base Note" })
 .add_param(Param::i32 {
     name: "GATE %",
     min: 1,
@@ -71,13 +55,15 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Range {
     name: "Range",
     variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
-});
+})
+.add_param(Param::MidiOut);
 
 pub struct Params {
-    midi_mode: usize,
-    midi_channel: i32,
-    midi_cc: i32,
-    note: i32,
+    midi_mode: MidiMode,
+    midi_channel: MidiChannel,
+    midi_cc: MidiCc,
+    midi_out: MidiOut,
+    midi_note: MidiNote,
     gatel: i32,
     color: Color,
     range: Range,
@@ -86,10 +72,11 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
-            midi_mode: 1,
-            midi_channel: 1,
-            midi_cc: 40,
-            note: 36,
+            midi_mode: MidiMode::default(),
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(40),
+            midi_note: MidiNote::from(36),
+            midi_out: MidiOut::default(),
             gatel: 50,
             color: Color::Blue,
             range: Range::_0_5V,
@@ -103,13 +90,14 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_mode: usize::from_value(values[0]),
-            midi_channel: i32::from_value(values[1]),
-            midi_cc: i32::from_value(values[2]),
-            note: i32::from_value(values[3]),
+            midi_mode: MidiMode::from_value(values[0]),
+            midi_channel: MidiChannel::from_value(values[1]),
+            midi_cc: MidiCc::from_value(values[2]),
+            midi_note: MidiNote::from_value(values[3]),
             gatel: i32::from_value(values[4]),
             color: Color::from_value(values[5]),
             range: Range::from_value(values[6]),
+            midi_out: MidiOut::from_value(values[7]),
         })
     }
 
@@ -118,10 +106,11 @@ impl AppParams for Params {
         vec.push(self.midi_mode.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
-        vec.push(self.note.into()).unwrap();
+        vec.push(self.midi_note.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.range.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec
     }
 }
@@ -173,17 +162,19 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_mode, midi_cc, led_color, midi_chan, base_note, gatel, range) = params.query(|p| {
-        (
-            p.midi_mode,
-            p.midi_cc,
-            p.color,
-            p.midi_channel,
-            p.note,
-            p.gatel,
-            p.range,
-        )
-    });
+    let (midi_out, midi_mode, midi_cc, led_color, midi_chan, base_note, gatel, range) = params
+        .query(|p| {
+            (
+                p.midi_out,
+                p.midi_mode,
+                p.midi_cc,
+                p.color,
+                p.midi_channel,
+                p.midi_note,
+                p.gatel,
+                p.range,
+            )
+        });
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
@@ -192,13 +183,13 @@ pub async fn run(
     let die = app.use_die();
     let quantizer = app.use_quantizer(range);
 
-    let midi = app.use_midi_output(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_out, midi_chan);
 
     let prob_glob = app.make_global(0);
 
     let recall_flag = app.make_global(false);
     let div_glob = app.make_global(4);
-    let midi_note = app.make_global(0);
+    let midi_note = app.make_global(MidiNote::default());
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let latched_glob = app.make_global(true);
@@ -217,16 +208,17 @@ pub async fn run(
 
     let fut1 = async {
         let mut clkn = 0;
-        let mut att_reg = 0;
+        let mut att_reg: u16;
         loop {
             let length = storage.query(|s| (s.length_saved));
             let div = div_glob.get();
-            let mut note = 0;
 
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
-                    midi.send_note_off((att_reg / 32) as u8).await;
+                    if midi_mode == MidiMode::Note {
+                        midi.send_note_off(midi_note.get()).await;
+                    }
                     register = storage.query(|s| (s.register_saved));
                 }
                 ClockEvent::Tick => {
@@ -251,15 +243,16 @@ pub async fn run(
                             led_color,
                             Brightness::Custom((register_scalled / 16) as u8),
                         );
-                        // info!("{}", register_scalled);
-                        if midi_mode == 1 {
-                            let note = out.as_midi() + base_note as u8;
-                            midi.send_note_on(note, 4095).await;
+                        match midi_mode {
+                            MidiMode::Note => {
+                                let note = out.as_midi() + base_note;
+                                midi.send_note_on(note, 4095).await;
 
-                            midi_note.set(note);
-                        }
-                        if midi_mode == 2 {
-                            midi.send_cc(midi_cc as u8, att_reg).await;
+                                midi_note.set(note);
+                            }
+                            MidiMode::Cc => {
+                                midi.send_cc(midi_cc, att_reg).await;
+                            }
                         }
 
                         if buttons.is_button_pressed(0) && !buttons.is_shift_pressed() {
@@ -269,7 +262,7 @@ pub async fn run(
                     if clkn % div == (div * gatel as u16 / 100).clamp(1, div - 1) {
                         leds.unset(0, Led::Bottom);
 
-                        if midi_mode == 1 {
+                        if midi_mode == MidiMode::Note {
                             let note = midi_note.get();
                             midi.send_note_off(note).await;
                         }
@@ -279,7 +272,9 @@ pub async fn run(
                         if recall_flag.get() {
                             register = reg_old;
                             recall_flag.set(false);
-                            midi.send_note_off(note).await;
+                            if midi_mode == MidiMode::Note {
+                                midi.send_note_off(midi_note.get()).await;
+                            }
                         }
 
                         if register != reg_old {
@@ -317,8 +312,10 @@ pub async fn run(
                     }
                     LatchLayer::Third => {
                         div_glob.set(resolution[new_value as usize / 512]);
-                        let note = midi_note.get();
-                        midi.send_note_off(note).await;
+                        if midi_mode == MidiMode::Note {
+                            let note = midi_note.get();
+                            midi.send_note_off(note).await;
+                        }
                         storage.modify_and_save(|s| s.res_saved = new_value);
                     }
                 }
