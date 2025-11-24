@@ -151,6 +151,7 @@ async fn write_msg_to_usb<'a>(
 }
 
 async fn write_msg_to_uart(
+    uart0_tx: &mut UartTx<'static, Async>,
     uart1_tx: &mut BufferedUartTx,
     midi_ev: LiveEvent<'_>,
 ) -> Result<(), UartError> {
@@ -158,19 +159,28 @@ async fn write_msg_to_uart(
     let mut ser_cursor = Cursor::new(&mut ser_buf);
     midi_ev.write(&mut ser_cursor).unwrap();
     let bytes_written = ser_cursor.cursor();
-    uart1_tx.write_all(&ser_buf[..bytes_written]).await?;
+    let written_slice = &ser_buf[..bytes_written];
+
+    // Write to both UARTs concurrently
+    let (res0, res1) = join(
+        uart0_tx.write(written_slice),
+        uart1_tx.write_all(written_slice),
+    )
+    .await;
+
+    res0?;
+    res1?;
+
     uart1_tx.flush().await?;
     Ok(())
 }
 
 pub async fn start_midi_loops<'a>(
     usb_midi: MidiClass<'a, Driver<'a, USB>>,
-    _uart0: UartTx<'static, Async>,
+    mut uart0_tx: UartTx<'static, Async>,
     uart1: BufferedUart,
 ) {
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
-    // Deactivate MIDI through for now
-    // let uart0_tx: Mutex<NoopRawMutex, UartTx<'static, Async>> = Mutex::new(uart0);
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
     let clock_in_sender = CLOCK_IN_CHANNEL.sender();
     let event_publisher = EVENT_PUBSUB.publisher().unwrap();
@@ -202,13 +212,13 @@ pub async fn start_midi_loops<'a>(
                 match target {
                     MidiClockTarget::Both => {
                         let (_, _) = join(
-                            write_msg_to_uart(&mut uart1_tx, event),
+                            write_msg_to_uart(&mut uart0_tx, &mut uart1_tx, event),
                             write_msg_to_usb(&mut usb_tx, event),
                         )
                         .await;
                     }
                     MidiClockTarget::Uart => {
-                        let _ = write_msg_to_uart(&mut uart1_tx, event).await;
+                        let _ = write_msg_to_uart(&mut uart0_tx, &mut uart1_tx, event).await;
                     }
                     MidiClockTarget::Usb => {
                         let _ = write_msg_to_usb(&mut usb_tx, event).await;
@@ -229,13 +239,6 @@ pub async fn start_midi_loops<'a>(
                         }
 
                         let msg = &packet[1..1 + msg_len];
-
-                        // Deactivate MIDI through for now
-                        // // MIDI-THRU to uart0
-                        // {
-                        //     let mut tx = uart0_tx.lock().await;
-                        //     tx.write(msg).await.unwrap();
-                        // }
 
                         match LiveEvent::parse(msg) {
                             Ok(event) => match event {
