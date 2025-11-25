@@ -29,11 +29,14 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
   const [saved, setSaved] = useState<boolean>(false);
   const {
     register,
+    control,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm();
 
-  const onSubmit = async (data: Record<string, string | boolean>) => {
+  const onSubmit = async (
+    data: Record<string, string | boolean | boolean[]>,
+  ) => {
     if (usbDevice) {
       const values = transformParamFormValues(data);
       const params = await setAppParams(usbDevice, layoutId, values);
@@ -94,13 +97,14 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
               <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
                 Parameters
               </h2>
-              <div className="grid grid-cols-4 gap-x-16 gap-y-8 px-4">
+              <div className="grid grid-cols-4 gap-x-8 gap-y-8 px-4">
                 {app.params.map((param, idx) => (
                   <AppParam
                     key={`param-${startChannel}-${idx}`}
                     param={param}
                     paramIndex={idx}
                     register={register}
+                    control={control}
                     defaultValue={getDefaultValue(params[idx])}
                   />
                 ))}
