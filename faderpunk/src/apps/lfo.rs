@@ -197,7 +197,7 @@ pub async fn run(
             };
 
             output.set_value(val);
-            if !midi_out.is_none() {
+            if midi_out.is_some() {
                 if last_out / 32 != val / 32 {
                     midi.send_cc(midi_cc, val).await;
                 }

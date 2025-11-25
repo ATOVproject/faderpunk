@@ -100,18 +100,34 @@ export const getParamSchema = (param: Param) => {
         })
         .default({ tag: "MidiNote", value: [60] });
     }
-    case "MidiIn":
-    case "MidiOut":
-    case "MidiMode": {
-      // These are enum-like types with tag-based variants
+    case "MidiIn": {
+      // MidiIn is a tuple struct: [[usb, din]]
       return z
         .object({
-          tag: z.literal(param.tag),
+          tag: z.literal("MidiIn"),
+          value: z.tuple([z.tuple([z.boolean(), z.boolean()])]),
+        })
+        .default({ tag: "MidiIn", value: [[false, false]] });
+    }
+    case "MidiOut": {
+      // MidiOut is a tuple struct: [[usb, out1, out2]]
+      return z
+        .object({
+          tag: z.literal("MidiOut"),
+          value: z.tuple([z.tuple([z.boolean(), z.boolean(), z.boolean()])]),
+        })
+        .default({ tag: "MidiOut", value: [[false, false, false]] });
+    }
+    case "MidiMode": {
+      // MidiMode is still enum-like with tag-based variants
+      return z
+        .object({
+          tag: z.literal("MidiMode"),
           value: z.object({ tag: z.string() }),
         })
         .catch({
-          tag: param.tag,
-          value: { tag: param.tag === "MidiMode" ? "Note" : "None" },
+          tag: "MidiMode",
+          value: { tag: "Note" },
         });
     }
     default: {

@@ -1,40 +1,73 @@
-import { useMemo } from "react";
-import { type UseFormRegister, type FieldValues } from "react-hook-form";
-import { Select, SelectItem } from "@heroui/select";
+import { useCallback } from "react";
+import { type FieldValues, Controller, type Control } from "react-hook-form";
+import { CheckboxGroup, Checkbox } from "@heroui/checkbox";
+import { type FixedLengthArray } from "@atov/fp-config";
 
-import { selectProps } from "./defaultProps";
-import { MIDI_IN_VARIANTS } from "../../utils/midiTypes";
+import { MIDI_IN_OPTIONS } from "../../utils/midiTypes";
 
 interface Props {
-  defaultValue: string;
+  defaultValue: FixedLengthArray<boolean, 2>;
   name: string;
   paramIndex: number;
-  register: UseFormRegister<FieldValues>;
+  control: Control<FieldValues>;
 }
-
-type Item = { key: string; value: string };
 
 export const ParamMidiIn = ({
   defaultValue,
   name,
   paramIndex,
-  register,
+  control,
 }: Props) => {
-  const items = useMemo(
-    () => MIDI_IN_VARIANTS.map((variant) => ({ key: variant, value: variant })),
-    [],
-  );
+  const getSelectedKeys = (value: FixedLengthArray<boolean, 2>) => {
+    const selected: string[] = [];
+    MIDI_IN_OPTIONS.forEach((opt) => {
+      if (value[opt.index]) {
+        selected.push(opt.key);
+      }
+    });
+    return selected;
+  };
+
+  const updateValue = useCallback((selected: string[]) => {
+    const newValue: [boolean, boolean] = [false, false];
+    MIDI_IN_OPTIONS.forEach((opt) => {
+      if (selected.includes(opt.key)) {
+        newValue[opt.index] = true;
+      }
+    });
+    return newValue;
+  }, []);
 
   return (
-    <Select
-      defaultSelectedKeys={[defaultValue]}
-      {...register(`param-MidiIn-${paramIndex}`)}
-      {...selectProps}
-      label={name}
-      items={items}
-      placeholder={name}
-    >
-      {(item: Item) => <SelectItem>{item.value}</SelectItem>}
-    </Select>
+    <Controller
+      name={`param-MidiIn-${paramIndex}`}
+      control={control}
+      defaultValue={defaultValue}
+      render={({ field: { onChange, value } }) => (
+        <CheckboxGroup
+          label={name}
+          value={getSelectedKeys(value)}
+          onValueChange={(selected: string[]) =>
+            onChange(updateValue(selected))
+          }
+          classNames={{
+            label: "text-sm font-semibold text-white",
+          }}
+          orientation="horizontal"
+        >
+          {MIDI_IN_OPTIONS.map((option) => (
+            <Checkbox
+              classNames={{
+                label: "text-sm",
+              }}
+              key={option.key}
+              value={option.key}
+            >
+              {option.label}
+            </Checkbox>
+          ))}
+        </CheckboxGroup>
+      )}
+    />
   );
 };
