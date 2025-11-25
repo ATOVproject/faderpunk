@@ -11,7 +11,7 @@ macro_rules! register_apps {
 
         use libfp::ConfigMeta;
         use crate::{I2C_LEADER_CHANNEL, MAX_CHANNEL, APP_MIDI_CHANNEL};
-        use crate::{app::App, events::EVENT_PUBSUB};
+        use crate::{app::App, events::EVENT_PUBSUB, tasks::midi::{MIDI_DIN_PUBSUB, MIDI_USB_PUBSUB}};
         use embassy_executor::Spawner;
 
         const _APP_COUNT: usize = {
@@ -44,6 +44,8 @@ macro_rules! register_apps {
                             I2C_LEADER_CHANNEL.sender(),
                             MAX_CHANNEL.sender(),
                             APP_MIDI_CHANNEL.sender(),
+                            &MIDI_DIN_PUBSUB,
+                            &MIDI_USB_PUBSUB,
                         );
 
                         spawner.spawn($app_mod::wrapper(app, &exit_signals[start_channel])).unwrap();
