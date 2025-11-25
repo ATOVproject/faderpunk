@@ -11,6 +11,7 @@ use embassy_rp::{
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
     channel::{Channel, Sender},
+    pubsub::{PubSubChannel, Subscriber},
 };
 use embassy_time::{with_timeout, Duration, Ticker, TimeoutError};
 use embassy_usb::class::midi::{MidiClass, Sender as UsbSender};
@@ -23,12 +24,9 @@ use midly::{
     MidiMessage,
 };
 
-use libfp::ClockSrc;
+use libfp::{ClockSrc, GLOBAL_CHANNELS};
 
-use crate::{
-    events::{InputEvent, EVENT_PUBSUB},
-    tasks::clock::{ClockInEvent, CLOCK_IN_CHANNEL},
-};
+use crate::tasks::clock::{ClockInEvent, CLOCK_IN_CHANNEL};
 
 midly::stack_buffer! {
     struct MidiStreamBuffer([u8; 64]);
@@ -36,6 +34,11 @@ midly::stack_buffer! {
 
 const MIDI_CHANNEL_SIZE: usize = 16;
 const MIDI_APP_QUEUE_SIZE: usize = 16;
+const MIDI_PUBSUB_SIZE: usize = 64;
+// Max apps
+const MIDI_PUBSUB_SUBS: usize = GLOBAL_CHANNELS;
+// Only one, from here
+const MIDI_PUBSUB_SENDERS: usize = 1;
 
 #[derive(Clone, Copy)]
 pub enum MidiClockTarget {
@@ -62,6 +65,28 @@ pub static APP_MIDI_CHANNEL: Channel<
 
 pub type AppMidiSender =
     Sender<'static, ThreadModeRawMutex, (usize, LiveEvent<'static>), MIDI_CHANNEL_SIZE>;
+
+// Define the type once
+pub type MidiPubSubChannel = PubSubChannel<
+    CriticalSectionRawMutex,
+    LiveEvent<'static>,
+    MIDI_PUBSUB_SIZE,
+    MIDI_PUBSUB_SUBS,
+    MIDI_PUBSUB_SENDERS,
+>;
+
+pub type MidiPubSubSubscriber = Subscriber<
+    'static,
+    CriticalSectionRawMutex,
+    LiveEvent<'static>,
+    MIDI_PUBSUB_SIZE,
+    MIDI_PUBSUB_SUBS,
+    MIDI_PUBSUB_SENDERS,
+>;
+
+// Instantiate specific channels for your sources
+pub static MIDI_USB_PUBSUB: MidiPubSubChannel = PubSubChannel::new();
+pub static MIDI_DIN_PUBSUB: MidiPubSubChannel = PubSubChannel::new();
 
 #[embassy_executor::task]
 pub async fn midi_distributor() {
@@ -183,7 +208,8 @@ pub async fn start_midi_loops<'a>(
     let (mut usb_tx, mut usb_rx) = usb_midi.split();
     let (mut uart1_tx, mut uart1_rx) = uart1.split();
     let clock_in_sender = CLOCK_IN_CHANNEL.sender();
-    let event_publisher = EVENT_PUBSUB.publisher().unwrap();
+    let din_publisher = MIDI_DIN_PUBSUB.publisher().unwrap();
+    let usb_publisher = MIDI_USB_PUBSUB.publisher().unwrap();
 
     let mut usb_rx_buf = [0; 64];
     let mut uart_rx_buffer = [0u8; 64];
@@ -271,9 +297,7 @@ pub async fn start_midi_loops<'a>(
                                     _ => {}
                                 },
                                 _ => {
-                                    event_publisher
-                                        .publish(InputEvent::MidiMsg(event.to_static()))
-                                        .await;
+                                    usb_publisher.publish_immediate(event.to_static());
                                 }
                             },
                             Err(_err) => {
@@ -326,9 +350,7 @@ pub async fn start_midi_loops<'a>(
                                 _ => {}
                             },
                             _ => {
-                                event_publisher
-                                    .publish(InputEvent::MidiMsg(event.to_static()))
-                                    .await;
+                                din_publisher.publish_immediate(event.to_static());
                             }
                         }
                     }
