@@ -1,20 +1,20 @@
 use defmt::info;
 use embassy_futures::{
-    join::join,
+    join::join3,
     select::{select, select3, Either, Either3},
 };
 use embassy_rp::{
     peripherals::USB,
-    uart::{Async, BufferedUart, BufferedUartTx, Error as UartError, UartTx},
+    uart::{Async, BufferedUartRx, BufferedUartTx, Error as UartError, UartTx},
     usb::Driver,
 };
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
     channel::{Channel, Sender},
-    pubsub::{PubSubChannel, Subscriber},
+    pubsub::{PubSubChannel, Publisher, Subscriber},
 };
 use embassy_time::{with_timeout, Duration, Ticker, TimeoutError};
-use embassy_usb::class::midi::{MidiClass, Sender as UsbSender};
+use embassy_usb::class::midi::{Receiver as UsbReceiver, Sender as UsbSender};
 use embedded_io_async::{Read, Write};
 use heapless::{Deque, Vec};
 use midly::{
@@ -24,9 +24,12 @@ use midly::{
     MidiMessage,
 };
 
-use libfp::{ClockSrc, GLOBAL_CHANNELS};
+use libfp::{ClockSrc, MidiIn, MidiOut, MidiOutConfig, MidiOutMode, GLOBAL_CHANNELS};
 
-use crate::tasks::clock::{ClockInEvent, CLOCK_IN_CHANNEL};
+use crate::tasks::{
+    clock::{ClockInEvent, CLOCK_IN_CHANNEL},
+    global_config::GLOBAL_CONFIG_WATCH,
+};
 
 midly::stack_buffer! {
     struct MidiStreamBuffer([u8; 64]);
@@ -41,30 +44,54 @@ const MIDI_PUBSUB_SUBS: usize = GLOBAL_CHANNELS;
 const MIDI_PUBSUB_SENDERS: usize = 1;
 
 #[derive(Clone, Copy)]
-pub enum MidiClockTarget {
-    Usb,
-    Uart,
-    Both,
+pub enum MidiEventSource {
+    Local,
+    Passthrough,
+}
+
+#[derive(Clone, Copy)]
+pub struct MidiMsg {
+    event: LiveEvent<'static>,
+    target: MidiOut,
+    source: MidiEventSource,
+}
+
+impl MidiMsg {
+    pub fn new(event: LiveEvent<'static>, target: MidiOut, source: MidiEventSource) -> Self {
+        Self {
+            event,
+            target,
+            source,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MidiClockMsg {
+    event: SystemRealtime,
+    target: MidiOut,
+}
+
+impl MidiClockMsg {
+    pub fn new(event: SystemRealtime, target: MidiOut) -> Self {
+        Self { event, target }
+    }
 }
 
 #[derive(Clone, Copy)]
 pub enum MidiOutEvent {
-    Event(LiveEvent<'static>),
-    Clock(SystemRealtime, MidiClockTarget),
+    Event(MidiMsg),
+    Clock(MidiClockMsg),
 }
 
 pub static MIDI_CHANNEL: Channel<CriticalSectionRawMutex, MidiOutEvent, MIDI_CHANNEL_SIZE> =
     Channel::new();
 
 // Channel for apps (Core 1) to send MIDI to the distributor task (Core 1)
-pub static APP_MIDI_CHANNEL: Channel<
-    ThreadModeRawMutex,
-    (usize, LiveEvent<'static>),
-    MIDI_CHANNEL_SIZE,
-> = Channel::new();
+pub static APP_MIDI_CHANNEL: Channel<ThreadModeRawMutex, (usize, MidiMsg), MIDI_CHANNEL_SIZE> =
+    Channel::new();
 
-pub type AppMidiSender =
-    Sender<'static, ThreadModeRawMutex, (usize, LiveEvent<'static>), MIDI_CHANNEL_SIZE>;
+pub type AppMidiSender = Sender<'static, ThreadModeRawMutex, (usize, MidiMsg), MIDI_CHANNEL_SIZE>;
 
 // Define the type once
 pub type MidiPubSubChannel = PubSubChannel<
@@ -84,42 +111,18 @@ pub type MidiPubSubSubscriber = Subscriber<
     MIDI_PUBSUB_SENDERS,
 >;
 
+pub type MidiPubSubPublisher = Publisher<
+    'static,
+    CriticalSectionRawMutex,
+    LiveEvent<'static>,
+    MIDI_PUBSUB_SIZE,
+    MIDI_PUBSUB_SUBS,
+    MIDI_PUBSUB_SENDERS,
+>;
+
 // Instantiate specific channels for your sources
 pub static MIDI_USB_PUBSUB: MidiPubSubChannel = PubSubChannel::new();
 pub static MIDI_DIN_PUBSUB: MidiPubSubChannel = PubSubChannel::new();
-
-#[embassy_executor::task]
-pub async fn midi_distributor() {
-    let mut app_queues: [Deque<LiveEvent<'static>, MIDI_APP_QUEUE_SIZE>; 16] =
-        core::array::from_fn(|_| Deque::new());
-    let mut last_app_id: usize = 0;
-    let midi_out_sender = MIDI_CHANNEL.sender();
-    let app_midi_receiver = APP_MIDI_CHANNEL.receiver();
-    let mut ticker = Ticker::every(Duration::from_millis(2));
-
-    loop {
-        match select(app_midi_receiver.receive(), ticker.next()).await {
-            // A new message from an app has arrived, enqueue it.
-            Either::First((start_channel, ev)) => {
-                if !app_queues[start_channel].is_full() {
-                    app_queues[start_channel].push_back(ev).unwrap();
-                }
-            }
-            // The 1ms throttle timer has fired, send one message.
-            Either::Second(_) => {
-                // Find the next app with a message in its queue (round-robin)
-                for i in 0..16 {
-                    let app_idx = (last_app_id + 1 + i) % 16;
-                    if let Some(ev) = app_queues[app_idx].pop_front() {
-                        midi_out_sender.send(MidiOutEvent::Event(ev)).await;
-                        last_app_id = app_idx;
-                        break; // Stop after sending one message
-                    }
-                }
-            }
-        }
-    }
-}
 
 #[derive(Copy, Clone)]
 enum CodeIndexNumber {
@@ -175,8 +178,19 @@ async fn write_msg_to_usb<'a>(
     Ok(())
 }
 
-async fn write_msg_to_uart(
+async fn write_msg_to_uart0(
     uart0_tx: &mut UartTx<'static, Async>,
+    midi_ev: LiveEvent<'_>,
+) -> Result<(), UartError> {
+    let mut ser_buf = [0_u8; 3];
+    let mut ser_cursor = Cursor::new(&mut ser_buf);
+    midi_ev.write(&mut ser_cursor).unwrap();
+    let bytes_written = ser_cursor.cursor();
+    uart0_tx.write(&ser_buf[..bytes_written]).await?;
+    Ok(())
+}
+
+async fn write_msg_to_uart1(
     uart1_tx: &mut BufferedUartTx,
     midi_ev: LiveEvent<'_>,
 ) -> Result<(), UartError> {
@@ -184,30 +198,136 @@ async fn write_msg_to_uart(
     let mut ser_cursor = Cursor::new(&mut ser_buf);
     midi_ev.write(&mut ser_cursor).unwrap();
     let bytes_written = ser_cursor.cursor();
-    let written_slice = &ser_buf[..bytes_written];
-
-    // Write to both UARTs concurrently
-    let (res0, res1) = join(
-        uart0_tx.write(written_slice),
-        uart1_tx.write_all(written_slice),
-    )
-    .await;
-
-    res0?;
-    res1?;
-
+    uart1_tx.write_all(&ser_buf[..bytes_written]).await?;
     uart1_tx.flush().await?;
     Ok(())
 }
 
-pub async fn start_midi_loops<'a>(
-    usb_midi: MidiClass<'a, Driver<'a, USB>>,
+#[embassy_executor::task]
+pub async fn midi_distributor() {
+    let mut app_queues: [Deque<MidiMsg, MIDI_APP_QUEUE_SIZE>; 16] =
+        core::array::from_fn(|_| Deque::new());
+    let mut last_app_id: usize = 0;
+    let midi_out_sender = MIDI_CHANNEL.sender();
+    let app_midi_receiver = APP_MIDI_CHANNEL.receiver();
+    let mut ticker = Ticker::every(Duration::from_millis(2));
+
+    loop {
+        match select(app_midi_receiver.receive(), ticker.next()).await {
+            // A new message from an app has arrived, enqueue it.
+            Either::First((start_channel, ev)) => {
+                if !app_queues[start_channel].is_full() {
+                    let _ = app_queues[start_channel].push_back(ev);
+                }
+            }
+            // The 1ms throttle timer has fired, send one message.
+            Either::Second(_) => {
+                // Find the next app with a message in its queue (round-robin)
+                for i in 0..16 {
+                    let app_idx = (last_app_id + 1 + i) % 16;
+                    if let Some(ev) = app_queues[app_idx].pop_front() {
+                        midi_out_sender.send(MidiOutEvent::Event(ev)).await;
+                        last_app_id = app_idx;
+                        break; // Stop after sending one message
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub async fn midi_out_task<'a>(
+    mut usb_tx: UsbSender<'a, Driver<'a, USB>>,
     mut uart0_tx: UartTx<'static, Async>,
-    uart1: BufferedUart,
+    mut uart1_tx: BufferedUartTx,
 ) {
-    let (mut usb_tx, mut usb_rx) = usb_midi.split();
-    let (mut uart1_tx, mut uart1_rx) = uart1.split();
+    let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
+    let midi_receiver = MIDI_CHANNEL.receiver();
+
+    let config = config_receiver.get().await;
+    let mut disabled_outs_for_local = config.midi.outs.map(|c| {
+        matches!(
+            c,
+            MidiOutConfig {
+                mode: MidiOutMode::MidiThru { .. },
+                ..
+            } | MidiOutConfig {
+                mode: MidiOutMode::None,
+                ..
+            }
+        )
+    });
+
+    loop {
+        match select(midi_receiver.receive(), config_receiver.changed()).await {
+            Either::First(midi_out_msg) => {
+                let (event, mut target, source) = match midi_out_msg {
+                    MidiOutEvent::Event(msg) => (msg.event, msg.target, Some(msg.source)),
+                    MidiOutEvent::Clock(msg) => (LiveEvent::Realtime(msg.event), msg.target, None),
+                };
+
+                // Disable the targets where we have a strict THRU port or no midi output at all
+                // This is only for local events
+                // Passthrough and clock events are handled elsewhere
+                if let Some(MidiEventSource::Local) = source {
+                    for (i, disabled) in disabled_outs_for_local.iter().enumerate() {
+                        target.0[i] = target.0[i] && !disabled;
+                    }
+                }
+
+                // TODO: Deal with backpressure as well (do it on core b maybe?)
+                // TODO: Do not try to send midi message to USB when not connected
+                // usb_tx.wait_connection().await;
+
+                // Usb
+                let usb_fut = async {
+                    if let MidiOut([true, _, _]) = target {
+                        let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                    }
+                };
+
+                // Out1
+                let out1_fut = async {
+                    if let MidiOut([_, true, _]) = target {
+                        let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
+                    }
+                };
+
+                // Out2
+                let out2_fut = async {
+                    if let MidiOut([_, _, true]) = target {
+                        let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
+                    }
+                };
+
+                join3(usb_fut, out1_fut, out2_fut).await;
+            }
+            Either::Second(new_config) => {
+                disabled_outs_for_local = new_config.midi.outs.map(|c| {
+                    matches!(
+                        c,
+                        MidiOutConfig {
+                            mode: MidiOutMode::MidiThru { .. },
+                            ..
+                        } | MidiOutConfig {
+                            mode: MidiOutMode::None,
+                            ..
+                        }
+                    )
+                });
+            }
+        }
+    }
+}
+
+pub async fn midi_in_task<'a>(
+    mut usb_rx: UsbReceiver<'a, Driver<'a, USB>>,
+    mut uart1_rx: BufferedUartRx,
+) {
+    let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
+
     let clock_in_sender = CLOCK_IN_CHANNEL.sender();
+    let midi_sender = MIDI_CHANNEL.sender();
     let din_publisher = MIDI_DIN_PUBSUB.publisher().unwrap();
     let usb_publisher = MIDI_USB_PUBSUB.publisher().unwrap();
 
@@ -216,42 +336,58 @@ pub async fn start_midi_loops<'a>(
     let mut midi_stream = MidiStream::<MidiStreamBuffer>::default();
     let mut uart_events = Vec::<LiveEvent<'static>, 64>::new();
 
+    let config = config_receiver.get().await;
+
+    // Get outputs that forward from MIDI DIN
+    let mut midi_passthru_from_din = config.midi.outs.map(|c| {
+        matches!(
+            c,
+            MidiOutConfig {
+                mode: MidiOutMode::MidiThru {
+                    sources: MidiIn([_, true]),
+                    ..
+                },
+                ..
+            } | MidiOutConfig {
+                mode: MidiOutMode::MidiMerge {
+                    sources: MidiIn([_, true]),
+                    ..
+                },
+                ..
+            }
+        )
+    });
+
+    // Get outputs that forward from MIDI USB
+    let mut midi_passthru_from_usb = config.midi.outs.map(|c| {
+        matches!(
+            c,
+            MidiOutConfig {
+                mode: MidiOutMode::MidiThru {
+                    sources: MidiIn([true, _]),
+                    ..
+                },
+                ..
+            } | MidiOutConfig {
+                mode: MidiOutMode::MidiMerge {
+                    sources: MidiIn([_, true]),
+                    ..
+                },
+                ..
+            }
+        )
+    });
+
     loop {
-        let selected = select3(
-            MIDI_CHANNEL.receive(),
+        match select3(
             usb_rx.read_packet(&mut usb_rx_buf),
             uart1_rx.read(&mut uart_rx_buffer),
+            config_receiver.changed(),
         )
-        .await;
-
-        match selected {
-            // MIDI TX
-            Either3::First(midi_out_event) => {
-                let (event, target) = match midi_out_event {
-                    MidiOutEvent::Event(ev) => (ev, MidiClockTarget::Both),
-                    MidiOutEvent::Clock(msg, target) => (LiveEvent::Realtime(msg), target),
-                };
-
-                // TODO: Do not try to send midi message to USB when not connected
-                // usb_tx.wait_connection().await;
-                match target {
-                    MidiClockTarget::Both => {
-                        let (_, _) = join(
-                            write_msg_to_uart(&mut uart0_tx, &mut uart1_tx, event),
-                            write_msg_to_usb(&mut usb_tx, event),
-                        )
-                        .await;
-                    }
-                    MidiClockTarget::Uart => {
-                        let _ = write_msg_to_uart(&mut uart0_tx, &mut uart1_tx, event).await;
-                    }
-                    MidiClockTarget::Usb => {
-                        let _ = write_msg_to_usb(&mut usb_tx, event).await;
-                    }
-                }
-            }
+        .await
+        {
             // USB RX
-            Either3::Second(result) => {
+            Either3::First(result) => {
                 if let Ok(len) = result {
                     if len == 0 {
                         continue;
@@ -266,39 +402,17 @@ pub async fn start_midi_loops<'a>(
                         let msg = &packet[1..1 + msg_len];
 
                         match LiveEvent::parse(msg) {
-                            Ok(event) => match event {
-                                LiveEvent::Realtime(msg) => match msg {
-                                    SystemRealtime::TimingClock => {
-                                        clock_in_sender
-                                            .send(ClockInEvent::Tick(ClockSrc::MidiUsb))
-                                            .await;
-                                    }
-                                    SystemRealtime::Start => {
-                                        clock_in_sender
-                                            .send(ClockInEvent::Start(ClockSrc::MidiUsb))
-                                            .await;
-                                    }
-                                    SystemRealtime::Continue => {
-                                        clock_in_sender
-                                            .send(ClockInEvent::Continue(ClockSrc::MidiUsb))
-                                            .await;
-                                    }
-                                    SystemRealtime::Reset => {
-                                        clock_in_sender
-                                            .send(ClockInEvent::Reset(ClockSrc::MidiUsb))
-                                            .await;
-                                    }
-                                    SystemRealtime::Stop => {
-                                        clock_in_sender
-                                            .send(ClockInEvent::Stop(ClockSrc::MidiUsb))
-                                            .await;
-                                    }
-                                    _ => {}
-                                },
-                                _ => {
-                                    usb_publisher.publish_immediate(event.to_static());
-                                }
-                            },
+                            Ok(event) => {
+                                process_midi_event(
+                                    &event,
+                                    &usb_publisher,
+                                    midi_passthru_from_usb,
+                                    ClockSrc::MidiUsb,
+                                    &clock_in_sender,
+                                    &midi_sender,
+                                )
+                                .await;
+                            }
                             Err(_err) => {
                                 info!("Error parsing USB MIDI. Len: {}, Data: {}", len, msg);
                             }
@@ -307,7 +421,7 @@ pub async fn start_midi_loops<'a>(
                 }
             }
             // UART RX
-            Either3::Third(result) => {
+            Either3::Second(result) => {
                 if let Ok(bytes_read) = result {
                     if bytes_read == 0 {
                         continue;
@@ -319,42 +433,104 @@ pub async fn start_midi_loops<'a>(
                     });
 
                     for event in uart_events.iter() {
-                        match event {
-                            LiveEvent::Realtime(msg) => match msg {
-                                SystemRealtime::TimingClock => {
-                                    clock_in_sender
-                                        .send(ClockInEvent::Tick(ClockSrc::MidiIn))
-                                        .await;
-                                }
-                                SystemRealtime::Start => {
-                                    clock_in_sender
-                                        .send(ClockInEvent::Start(ClockSrc::MidiIn))
-                                        .await;
-                                }
-                                SystemRealtime::Stop => {
-                                    clock_in_sender
-                                        .send(ClockInEvent::Stop(ClockSrc::MidiIn))
-                                        .await;
-                                }
-                                SystemRealtime::Continue => {
-                                    clock_in_sender
-                                        .send(ClockInEvent::Continue(ClockSrc::MidiIn))
-                                        .await;
-                                }
-                                SystemRealtime::Reset => {
-                                    clock_in_sender
-                                        .send(ClockInEvent::Reset(ClockSrc::MidiIn))
-                                        .await;
-                                }
-                                _ => {}
-                            },
-                            _ => {
-                                din_publisher.publish_immediate(event.to_static());
-                            }
-                        }
+                        process_midi_event(
+                            event,
+                            &din_publisher,
+                            midi_passthru_from_din,
+                            ClockSrc::MidiIn,
+                            &clock_in_sender,
+                            &midi_sender,
+                        )
+                        .await;
                     }
                 }
             }
+            Either3::Third(new_config) => {
+                // Get outputs that forward from MIDI DIN
+                midi_passthru_from_din = new_config.midi.outs.map(|c| {
+                    matches!(
+                        c,
+                        MidiOutConfig {
+                            mode: MidiOutMode::MidiThru {
+                                sources: MidiIn([_, true]),
+                                ..
+                            },
+                            ..
+                        } | MidiOutConfig {
+                            mode: MidiOutMode::MidiMerge {
+                                sources: MidiIn([_, true]),
+                                ..
+                            },
+                            ..
+                        }
+                    )
+                });
+
+                // Get outputs that forward from MIDI USB
+                midi_passthru_from_usb = new_config.midi.outs.map(|c| {
+                    matches!(
+                        c,
+                        MidiOutConfig {
+                            mode: MidiOutMode::MidiThru {
+                                sources: MidiIn([true, _]),
+                                ..
+                            },
+                            ..
+                        } | MidiOutConfig {
+                            mode: MidiOutMode::MidiMerge {
+                                sources: MidiIn([_, true]),
+                                ..
+                            },
+                            ..
+                        }
+                    )
+                });
+            }
+        }
+    }
+}
+
+async fn process_midi_event(
+    event: &LiveEvent<'_>,
+    publisher: &MidiPubSubPublisher,
+    thru_targets: [bool; 3],
+    clock_src: ClockSrc,
+    clock_in_sender: &Sender<'static, ThreadModeRawMutex, ClockInEvent, 16>,
+    midi_sender: &Sender<'static, CriticalSectionRawMutex, MidiOutEvent, 16>,
+) {
+    match event {
+        LiveEvent::Realtime(msg) => match msg {
+            SystemRealtime::TimingClock => {
+                clock_in_sender.send(ClockInEvent::Tick(clock_src)).await;
+            }
+            SystemRealtime::Start => {
+                clock_in_sender.send(ClockInEvent::Start(clock_src)).await;
+            }
+            SystemRealtime::Stop => {
+                clock_in_sender.send(ClockInEvent::Stop(clock_src)).await;
+            }
+            SystemRealtime::Continue => {
+                clock_in_sender
+                    .send(ClockInEvent::Continue(clock_src))
+                    .await;
+            }
+            SystemRealtime::Reset => {
+                clock_in_sender.send(ClockInEvent::Reset(clock_src)).await;
+            }
+            _ => {}
+        },
+        _ => {
+            let ev = event.to_static();
+            // Send to apps
+            publisher.publish_immediate(ev);
+            // Pass through to relevant targets
+            midi_sender
+                .send(MidiOutEvent::Event(MidiMsg::new(
+                    ev,
+                    MidiOut(thru_targets),
+                    MidiEventSource::Passthrough,
+                )))
+                .await;
         }
     }
 }
