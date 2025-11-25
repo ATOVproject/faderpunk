@@ -27,7 +27,7 @@ use crate::{
         max::{
             MaxCmd, MaxSender, MAX_TRIGGERS_GPO, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
         },
-        midi::{AppMidiSender, MidiPubSubChannel, MidiPubSubSubscriber},
+        midi::{AppMidiSender, MidiEventSource, MidiMsg, MidiPubSubChannel, MidiPubSubSubscriber},
     },
     QUANTIZER,
 };
@@ -385,7 +385,8 @@ impl MidiOutput {
             channel: self.midi_channel,
             message: msg,
         };
-        self.midi_sender.send((self.start_channel, event)).await;
+        let msg = MidiMsg::new(event, self.midi_out, MidiEventSource::Local);
+        self.midi_sender.send((self.start_channel, msg)).await;
     }
 
     /// Sends a MIDI CC message.
@@ -403,7 +404,6 @@ impl MidiOutput {
     pub async fn send_note_on(&self, note_number: MidiNote, velocity: u16) {
         let msg = MidiMessage::NoteOn {
             key: note_number.into(),
-
             vel: scale_bits_12_7(velocity),
         };
         self.send_midi_msg(msg).await;
@@ -451,14 +451,14 @@ impl MidiInput {
         din_channel: &'static MidiPubSubChannel,
         usb_channel: &'static MidiPubSubChannel,
     ) -> Self {
-        // Only create subscribers for the requested sources
-        let din_sub = match midi_in {
-            MidiIn::Din | MidiIn::All => Some(din_channel.subscriber().unwrap()),
+        let usb_sub = match midi_in {
+            MidiIn([true, _]) => Some(usb_channel.subscriber().unwrap()),
             _ => None,
         };
 
-        let usb_sub = match midi_in {
-            MidiIn::Usb | MidiIn::All => Some(usb_channel.subscriber().unwrap()),
+        // Only create subscribers for the requested sources
+        let din_sub = match midi_in {
+            MidiIn([_, true]) => Some(din_channel.subscriber().unwrap()),
             _ => None,
         };
 

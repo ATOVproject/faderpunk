@@ -1,5 +1,9 @@
-import { type UseFormRegister, type FieldValues } from "react-hook-form";
-import { type Param } from "@atov/fp-config";
+import {
+  type UseFormRegister,
+  type FieldValues,
+  type Control,
+} from "react-hook-form";
+import { type Param, type FixedLengthArray } from "@atov/fp-config";
 
 import { ParamI32 } from "./ParamI32.tsx";
 import { ParamF32 } from "./ParamF32.tsx";
@@ -18,10 +22,16 @@ import { ParamMidiNote } from "./ParamMidiNote.tsx";
 import { ParamMidiOut } from "./ParamMidiOut.tsx";
 
 interface Props {
-  defaultValue: string | boolean | number;
+  defaultValue:
+    | string
+    | boolean
+    | number
+    | FixedLengthArray<boolean, 2>
+    | FixedLengthArray<boolean, 3>;
   param: Param;
   paramIndex: number;
   register: UseFormRegister<FieldValues>;
+  control: Control<FieldValues>;
 }
 
 export const AppParam = ({
@@ -29,6 +39,7 @@ export const AppParam = ({
   param,
   paramIndex,
   register,
+  control,
 }: Props) => {
   switch (param.tag) {
     case "i32": {
@@ -155,9 +166,9 @@ export const AppParam = ({
       return (
         <ParamMidiIn
           name="MIDI In"
-          defaultValue={defaultValue as string}
+          defaultValue={defaultValue as FixedLengthArray<boolean, 2>}
           paramIndex={paramIndex}
-          register={register}
+          control={control}
         />
       );
     }
@@ -165,9 +176,9 @@ export const AppParam = ({
       return (
         <ParamMidiOut
           name="MIDI Out"
-          defaultValue={defaultValue as string}
+          defaultValue={defaultValue as FixedLengthArray<boolean, 3>}
           paramIndex={paramIndex}
-          register={register}
+          control={control}
         />
       );
     }

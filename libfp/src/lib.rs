@@ -293,6 +293,47 @@ impl Key {
     }
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq)]
+pub enum MidiOutMode {
+    None,
+    Local,
+    MidiThru { sources: MidiIn },
+    MidiMerge { sources: MidiIn },
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq)]
+pub struct MidiOutConfig {
+    pub send_clock: bool,
+    pub send_transport: bool,
+    pub mode: MidiOutMode,
+}
+
+#[allow(clippy::new_without_default)]
+impl MidiOutConfig {
+    pub const fn new() -> Self {
+        Self {
+            send_clock: true,
+            send_transport: true,
+            mode: MidiOutMode::Local,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq)]
+pub struct MidiConfig {
+    // [usb, out1, out2]
+    pub outs: [MidiOutConfig; 3],
+}
+
+#[allow(clippy::new_without_default)]
+impl MidiConfig {
+    pub const fn new() -> Self {
+        Self {
+            outs: [MidiOutConfig::new(); 3],
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq)]
 pub struct ClockConfig {
     pub clock_src: ClockSrc,
@@ -362,6 +403,7 @@ pub struct GlobalConfig {
     pub clock: ClockConfig,
     pub i2c_mode: I2cMode,
     pub led_brightness: u8,
+    pub midi: MidiConfig,
     pub quantizer: QuantizerConfig,
 }
 
@@ -377,6 +419,7 @@ impl GlobalConfig {
             clock: ClockConfig::new(),
             i2c_mode: I2cMode::Leader,
             led_brightness: 150,
+            midi: MidiConfig::new(),
             quantizer: QuantizerConfig::new(),
         }
     }
@@ -959,14 +1002,14 @@ impl From<MidiChannel> for u4 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
-#[repr(u8)]
-pub enum MidiIn {
-    None,
-    #[default]
-    All,
-    Din,
-    Usb,
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
+// [usb, din]
+pub struct MidiIn(pub [bool; 2]);
+
+impl Default for MidiIn {
+    fn default() -> Self {
+        Self([true; 2])
+    }
 }
 
 impl FromValue for MidiIn {
@@ -979,11 +1022,12 @@ impl FromValue for MidiIn {
 }
 
 impl MidiIn {
+    pub fn is_some(&self) -> bool {
+        self.0.iter().any(|i| *i)
+    }
+
     pub fn is_none(&self) -> bool {
-        if let MidiIn::None = self {
-            return true;
-        }
-        false
+        !self.is_some()
     }
 }
 
@@ -1042,19 +1086,9 @@ impl FromValue for MidiMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
-#[repr(u8)]
-pub enum MidiOut {
-    None,
-    #[default]
-    All,
-    Out1,
-    Out2,
-    Usb,
-    Out1Usb,
-    Out2Usb,
-    Out1Out2,
-}
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
+// [usb, out1, out2]
+pub struct MidiOut(pub [bool; 3]);
 
 impl FromValue for MidiOut {
     fn from_value(value: Value) -> Self {
@@ -1065,12 +1099,19 @@ impl FromValue for MidiOut {
     }
 }
 
+impl Default for MidiOut {
+    fn default() -> Self {
+        Self([true; 3])
+    }
+}
+
 impl MidiOut {
+    pub fn is_some(&self) -> bool {
+        self.0.iter().any(|i| *i)
+    }
+
     pub fn is_none(&self) -> bool {
-        if let MidiOut::None = self {
-            return true;
-        }
-        false
+        !self.is_some()
     }
 }
 
