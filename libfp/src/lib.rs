@@ -956,7 +956,7 @@ pub enum MidiIn {
     None,
     #[default]
     All,
-    In,
+    Din,
     Usb,
 }
 
