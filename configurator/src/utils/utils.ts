@@ -9,7 +9,7 @@ import {
 } from "@atov/fp-config";
 
 import type { AllApps, App, AppLayout } from "./types";
-import type { MidiInTag, MidiOutTag, MidiModeTag } from "./midiTypes";
+import type { MidiModeTag } from "./midiTypes";
 
 export const kebabToPascal = (str: string): string => {
   if (!str) return "";
@@ -72,10 +72,12 @@ export const getDefaultValue = (val: Value) => {
       return val.value[0].toString();
     }
     case "MidiIn": {
-      return val.value.tag;
+      // MidiIn is a tuple struct [[usb, din]] - unwrap the outer array
+      return val.value[0];
     }
     case "MidiOut": {
-      return val.value.tag;
+      // MidiOut is a tuple struct [[usb, out1, out2]] - unwrap the outer array
+      return val.value[0];
     }
     case "MidiMode": {
       return val.value.tag;
@@ -85,7 +87,7 @@ export const getDefaultValue = (val: Value) => {
 
 const getParamValue = (
   paramType: Value["tag"],
-  value: string | boolean,
+  value: string | boolean | boolean[],
 ): Value | undefined => {
   switch (paramType) {
     case "i32":
@@ -119,14 +121,16 @@ const getParamValue = (
     case "MidiNote":
       return { tag: "MidiNote", value: [parseInt(value as string, 10)] };
     case "MidiIn":
+      // MidiIn is a tuple struct - wrap in outer array: [[usb, din]]
       return {
         tag: "MidiIn",
-        value: { tag: value as MidiInTag },
+        value: [value as [boolean, boolean]],
       };
     case "MidiOut":
+      // MidiOut is a tuple struct - wrap in outer array: [[usb, out1, out2]]
       return {
         tag: "MidiOut",
-        value: { tag: value as MidiOutTag },
+        value: [value as [boolean, boolean, boolean]],
       };
     case "MidiMode":
       return { tag: "MidiMode", value: { tag: value as MidiModeTag } };
@@ -136,7 +140,7 @@ const getParamValue = (
 };
 
 export const transformParamFormValues = (
-  values: Record<string, string | boolean>,
+  values: Record<string, string | boolean | boolean[]>,
 ) => {
   const entries = Object.entries(values);
   const result: FixedLengthArray<Value | undefined, 16> = [

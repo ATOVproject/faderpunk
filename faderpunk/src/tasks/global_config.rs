@@ -13,8 +13,8 @@ use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
 use crate::QUANTIZER;
 
 // Receivers: ext clock loops (3), internal clock loop (1), clock ticker loop (1)
-// global config loop (1), config storer (1)
-const GLOBAL_CONFIG_WATCH_SUBSCRIBERS: usize = 7;
+// global config loop (1), config storer (1), MIDI loops (2)
+const GLOBAL_CONFIG_WATCH_SUBSCRIBERS: usize = 9;
 
 const LED_BRIGHTNESS_FADER: usize = 0;
 const QUANTIZER_KEY_FADER: usize = 3;
