@@ -1,8 +1,7 @@
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
-    pubsub::{PubSubChannel, Publisher, Subscriber},
+    pubsub::{PubSubChannel, Publisher},
 };
-use midly::live::LiveEvent;
 
 #[derive(Clone)]
 pub enum InputEvent {
@@ -10,7 +9,6 @@ pub enum InputEvent {
     ButtonUp(usize),
     ButtonLongPress(usize),
     FaderChange(usize),
-    MidiMsg(LiveEvent<'static>),
     LoadScene(u8),
     SaveScene(u8),
 }
@@ -30,14 +28,6 @@ pub type EventPubSubChannel = PubSubChannel<
 >;
 pub static EVENT_PUBSUB: EventPubSubChannel = PubSubChannel::new();
 pub type EventPubSubPublisher = Publisher<
-    'static,
-    CriticalSectionRawMutex,
-    InputEvent,
-    EVENT_PUBSUB_SIZE,
-    EVENT_PUBSUB_SUBS,
-    EVENT_PUBSUB_SENDERS,
->;
-pub type EventPubSubSubscriber = Subscriber<
     'static,
     CriticalSectionRawMutex,
     InputEvent,
