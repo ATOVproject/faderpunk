@@ -6,7 +6,7 @@ export type MidiOutTag = MidiOut["tag"];
 export type MidiModeTag = MidiMode["tag"];
 
 // Create arrays of all possible tags
-export const MIDI_IN_VARIANTS: MidiInTag[] = ["None", "All", "In", "Usb"];
+export const MIDI_IN_VARIANTS: MidiInTag[] = ["None", "All", "Din", "Usb"];
 
 export const MIDI_OUT_VARIANTS: MidiOutTag[] = [
   "None",
