@@ -21,8 +21,8 @@ interface State {
   deviceVersion: string | undefined;
   layout: AppLayout | undefined;
   params: ParamValues | undefined;
-  setLayout: (layout: AppLayout) => void;
   setConfig: (config: GlobalConfig) => void;
+  setLayout: (layout: AppLayout) => void;
   setParams: (id: number, newParams: Value[]) => void;
   setAllParams: (newParams: ParamValues) => void;
   usbDevice: USBDevice | undefined;
@@ -81,8 +81,8 @@ export const useStore = create<State>((set) => ({
       usbDevice: undefined,
     });
   },
-  setLayout: (layout) => set({ layout }),
   setConfig: (config) => set({ config }),
+  setLayout: (layout) => set({ layout }),
   setParams: (id, newParams) =>
     set(({ params }) => ({ params: new Map(params).set(id, newParams) })),
   setAllParams: (newParams) => set({ params: newParams }),
