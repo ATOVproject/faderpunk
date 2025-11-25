@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 
+use embassy_futures::select::{select, Either};
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
@@ -17,7 +18,7 @@ use libfp::{
 };
 
 use crate::{
-    events::{EventPubSubChannel, EventPubSubSubscriber, InputEvent},
+    events::{EventPubSubChannel, InputEvent},
     tasks::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
         clock::{ClockSubscriber, CLOCK_PUBSUB},
@@ -26,7 +27,7 @@ use crate::{
         max::{
             MaxCmd, MaxSender, MAX_TRIGGERS_GPO, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
         },
-        midi::AppMidiSender,
+        midi::{AppMidiSender, MidiPubSubChannel, MidiPubSubSubscriber},
     },
     QUANTIZER,
 };
@@ -439,29 +440,55 @@ impl MidiOutput {
 
 pub struct MidiInput {
     midi_channel: u4,
-    midi_in: MidiIn,
-    subscriber: EventPubSubSubscriber,
+    din_sub: Option<MidiPubSubSubscriber>,
+    usb_sub: Option<MidiPubSubSubscriber>,
 }
 
 impl MidiInput {
     pub fn new(
         midi_in: MidiIn,
         midi_channel: u4,
-        event_pubsub: &'static EventPubSubChannel,
+        din_channel: &'static MidiPubSubChannel,
+        usb_channel: &'static MidiPubSubChannel,
     ) -> Self {
-        let subscriber = event_pubsub.subscriber().unwrap();
+        // Only create subscribers for the requested sources
+        let din_sub = match midi_in {
+            MidiIn::Din | MidiIn::All => Some(din_channel.subscriber().unwrap()),
+            _ => None,
+        };
+
+        let usb_sub = match midi_in {
+            MidiIn::Usb | MidiIn::All => Some(usb_channel.subscriber().unwrap()),
+            _ => None,
+        };
+
         Self {
             midi_channel,
-            midi_in,
-            subscriber,
+            din_sub,
+            usb_sub,
         }
     }
 
     pub async fn wait_for_message(&mut self) -> MidiMessage {
         loop {
-            if let InputEvent::MidiMsg(LiveEvent::Midi { channel, message }) =
-                self.subscriber.next_message_pure().await
-            {
+            // Determine which future to await based on active subscribers
+            let event = match (&mut self.din_sub, &mut self.usb_sub) {
+                (Some(din), None) => din.next_message_pure().await,
+                (None, Some(usb)) => usb.next_message_pure().await,
+                (Some(din), Some(usb)) => {
+                    match select(din.next_message_pure(), usb.next_message_pure()).await {
+                        Either::First(evt) => evt,
+                        Either::Second(evt) => evt,
+                    }
+                }
+                (None, None) => {
+                    core::future::pending::<()>().await;
+                    unreachable!()
+                }
+            };
+
+            // Common filtering logic
+            if let LiveEvent::Midi { channel, message } = event {
                 if channel == self.midi_channel {
                     return message;
                 }
@@ -569,6 +596,8 @@ pub struct App<const N: usize> {
     i2c_sender: I2cLeaderSender,
     max_sender: MaxSender,
     midi_sender: AppMidiSender,
+    midi_din_pubsub: &'static MidiPubSubChannel,
+    midi_usb_pubsub: &'static MidiPubSubChannel,
 }
 
 impl<const N: usize> App<N> {
@@ -580,6 +609,8 @@ impl<const N: usize> App<N> {
         i2c_sender: I2cLeaderSender,
         max_sender: MaxSender,
         midi_sender: AppMidiSender,
+        midi_din_pubsub: &'static MidiPubSubChannel,
+        midi_usb_pubsub: &'static MidiPubSubChannel,
     ) -> Self {
         Self {
             app_id,
@@ -588,6 +619,8 @@ impl<const N: usize> App<N> {
             layout_id,
             max_sender,
             midi_sender,
+            midi_din_pubsub,
+            midi_usb_pubsub,
             start_channel,
         }
     }
@@ -678,7 +711,12 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_midi_input(&self, midi_in: MidiIn, midi_channel: MidiChannel) -> MidiInput {
-        MidiInput::new(midi_in, midi_channel.into(), self.event_pubsub)
+        MidiInput::new(
+            midi_in,
+            midi_channel.into(),
+            self.midi_din_pubsub,
+            self.midi_usb_pubsub,
+        )
     }
 
     pub fn use_midi_output(&self, midi_out: MidiOut, midi_channel: MidiChannel) -> MidiOutput {
