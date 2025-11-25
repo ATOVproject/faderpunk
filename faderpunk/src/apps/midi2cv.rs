@@ -60,7 +60,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiOut);
+.add_param(Param::MidiIn);
 
 pub struct Params {
     mode: usize,
