@@ -1,5 +1,6 @@
-import { Input } from "@heroui/input";
+import { Input, Textarea } from "@heroui/input";
 
+import { GlobalConfig } from "@atov/fp-config";
 import {
   AllApps,
   LayoutFile,
@@ -24,9 +25,11 @@ import { useCallback, useState } from "react";
 const saveFile = (
   layout: AppLayout,
   params: ParamValues,
-  filename = "faderpunk-layout.json",
+  config: GlobalConfig,
+  filename = "faderpunk-setup.json",
+  description?: string,
 ) => {
-  const layoutFile = saveLayout(layout, params);
+  const layoutFile = saveLayout(layout, params, config, description);
   const jsonString = serializeLayout(layoutFile);
   const blob = new Blob([jsonString], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -60,10 +63,11 @@ const loadFile = (file: File, apps: AllApps): Promise<RecoveredLayout> => {
   });
 };
 
-export const SaveLoadLayout = () => {
+export const SaveLoadSetup = () => {
   const { setModalConfig } = useModalContext();
-  const { apps, params, layout } = useStore();
-  const [filename, setFilename] = useState<string>("faderpunk-layout");
+  const { apps, params, layout, config } = useStore();
+  const [filename, setFilename] = useState<string>("faderpunk-setup");
+  const [description, setDescription] = useState<string>("");
   const [loadedFile, setLoadedFile] = useState<File | undefined>();
   const [error, setError] = useState<string | undefined>();
 
@@ -72,7 +76,7 @@ export const SaveLoadLayout = () => {
     setLoadedFile(file);
   }, []);
 
-  if (!layout || !params || !apps) {
+  if (!layout || !params || !apps || !config) {
     return null;
   }
 
@@ -83,9 +87,9 @@ export const SaveLoadLayout = () => {
       {showSave ? (
         <>
           <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
-            Save App Layout &amp; Params
+            Save Setup (Layout, Params, Config)
           </h2>
-          <div className="mb-12">
+          <div className="mb-12 px-4">
             <Input
               {...inputProps}
               endContent={
@@ -100,30 +104,67 @@ export const SaveLoadLayout = () => {
               }}
               className="mb-4 max-w-2xs"
             />
-            <ButtonPrimary onPress={() => saveFile(layout, params, filename)}>
-              Save current layout
+            <div className="my-4 max-w-md">
+              <details className="group">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Add description
+                </summary>
+                <div className="mt-2">
+                  <Textarea
+                    classNames={{ label: "font-medium", input: "py-2" }}
+                    disableAnimation
+                    radius="sm"
+                    labelPlacement="outside-top"
+                    label="Description"
+                    placeholder="Enter Setup description"
+                    value={description}
+                    onValueChange={setDescription}
+                  />
+                </div>
+              </details>
+            </div>
+            <ButtonPrimary
+              type="button"
+              onPress={() =>
+                saveFile(layout, params, config, filename, description)
+              }
+            >
+              Save current Setup
             </ButtonPrimary>
           </div>
         </>
       ) : null}
       <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
-        Load App Layout &amp; Params
+        Load Setup
       </h2>
-      <div>
-        <FileInput file={loadedFile} onLoadFile={handleLoadFile} />
+      <div className="mb-12 px-4">
+        <FileInput
+          buttonText="Choose Setup file"
+          file={loadedFile}
+          onLoadFile={handleLoadFile}
+        />
         {loadedFile ? (
           <>
             <ButtonPrimary
+              type="button"
               className="mt-4"
               onPress={async () => {
                 setError(undefined);
                 try {
-                  const { layout, params } = await loadFile(loadedFile, apps);
+                  const {
+                    layout,
+                    params,
+                    config: loadedConfig,
+                    description: loadedDescription,
+                  } = await loadFile(loadedFile, apps);
+
                   setModalConfig({
                     isOpen: true,
                     mode: ModalMode.RecallLayout,
                     recallLayout: layout,
                     recallParams: params,
+                    recallConfig: loadedConfig,
+                    recallDescription: loadedDescription,
                   });
                   setLoadedFile(undefined);
                 } catch {
@@ -134,6 +175,7 @@ export const SaveLoadLayout = () => {
               Load
             </ButtonPrimary>
             <ButtonSecondary
+              type="button"
               onPress={() => {
                 setError(undefined);
                 setLoadedFile(undefined);
