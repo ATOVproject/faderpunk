@@ -2,7 +2,6 @@ import { ModalMode, type AppLayout } from "../utils/types";
 import { useModalContext } from "../contexts/ModalContext";
 import { ActiveApps } from "./ActiveApps";
 import { ChannelOverview } from "./ChannelOverview";
-import { SaveLoadLayout } from "./SaveLoadLayout";
 
 interface Props {
   layout?: AppLayout;
@@ -25,7 +24,6 @@ export const DeviceTab = ({ layout }: Props) => {
         />
       </div>
       <ActiveApps />
-      <SaveLoadLayout />
     </div>
   );
 };
