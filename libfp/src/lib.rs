@@ -220,7 +220,7 @@ pub enum Note {
 
 impl From<u8> for Note {
     fn from(value: u8) -> Self {
-        match value {
+        match value.min(11) {
             0 => Note::C,
             1 => Note::CSharp,
             2 => Note::D,
@@ -233,7 +233,7 @@ impl From<u8> for Note {
             9 => Note::A,
             10 => Note::ASharp,
             11 => Note::B,
-            _ => unreachable!(),
+            _ => Note::C,
         }
     }
 }

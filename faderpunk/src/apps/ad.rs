@@ -344,7 +344,7 @@ pub async fn run(
                 let target_value = match latch_layer {
                     LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
                     LatchLayer::Alt => storage.query(|s| s.att_saved),
-                    _ => unreachable!(),
+                    LatchLayer::Third => 0,
                 };
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
@@ -364,7 +364,7 @@ pub async fn run(
                                 s.att_saved = new_value;
                             });
                         }
-                        _ => unreachable!(),
+                        LatchLayer::Third => {}
                     }
                 }
             }
