@@ -21,6 +21,7 @@ import { AuxSettings } from "./settings/AuxSettings";
 import { MiscSettings } from "./settings/MiscSettings";
 import { setGlobalConfig } from "../utils/config";
 import { FactoryReset } from "./settings/FactoryReset";
+import { SaveLoadSetup } from "./SaveLoadSetup";
 
 interface SettingsFormProps {
   config: GlobalConfig;
@@ -101,6 +102,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
         <I2cSettings />
         <AuxSettings />
         <MiscSettings />
+        <SaveLoadSetup />
         <FactoryReset />
         <div className="flex justify-between">
           <p>
