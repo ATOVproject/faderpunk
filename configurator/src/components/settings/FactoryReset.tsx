@@ -59,7 +59,7 @@ export const FactoryReset = () => {
       <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">
         Factory Reset
       </h2>
-      <div className="grid grid-cols-4 gap-x-16 gap-y-8 px-4">
+      <div className="mb-12 px-4">
         <ButtonPrimary onPress={handleButtonPress}>
           Reset to factory settings
         </ButtonPrimary>

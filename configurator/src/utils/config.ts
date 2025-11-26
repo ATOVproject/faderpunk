@@ -273,10 +273,14 @@ export const setLayout = async (
 export const saveLayout = (
   layout: AppLayout,
   params: ParamValues,
+  config?: GlobalConfig,
+  description?: string,
 ): LayoutFile => {
   const layoutFile: LayoutFile = {
     version: LAYOUT_VERSION,
     layout: [],
+    config,
+    description,
   };
 
   layout.forEach(({ id, app, startChannel }) => {
@@ -323,7 +327,12 @@ export const recoverLayout = (
       }
     }
   });
-  return { layout, params: allParams };
+  return {
+    layout,
+    params: allParams,
+    config: layoutFile.config,
+    description: layoutFile.description,
+  };
 };
 
 // Serialize with BigInt support
