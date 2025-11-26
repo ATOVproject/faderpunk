@@ -4,6 +4,7 @@ import type {
   Color,
   Param,
   Value,
+  GlobalConfig,
 } from "@atov/fp-config";
 
 export interface App {
@@ -35,6 +36,8 @@ export interface AppFile {
 export interface LayoutFile {
   version: number;
   layout: AppFile[];
+  config?: GlobalConfig;
+  description?: string;
 }
 
 export type AppLayout = AppSlot[];
@@ -53,10 +56,17 @@ export interface ModalConfig {
   appToAdd?: number;
   recallLayout?: AppLayout;
   recallParams?: ParamValues;
+  recallConfig?: GlobalConfig;
+  recallDescription?: string;
 }
 
 export type AppParams = Extract<ConfigMsgOut, { tag: "AppState" }>;
 
 export type ParamValues = Map<number, Value[]>;
 
-export type RecoveredLayout = { layout: AppLayout; params: ParamValues };
+export type RecoveredLayout = {
+  layout: AppLayout;
+  params: ParamValues;
+  config?: GlobalConfig;
+  description?: string;
+};
