@@ -29,6 +29,7 @@ import {
   getAllAppParams,
   getAppParams,
   setAllAppParams,
+  setGlobalConfig,
   setLayout,
 } from "../utils/config";
 import {
@@ -125,13 +126,14 @@ export const EditLayoutModal = ({
   onClose,
   modalConfig,
 }: Props) => {
-  const { usbDevice, apps, setParams, setAllParams } = useStore();
+  const { usbDevice, apps, setParams, setAllParams, setConfig } = useStore();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [layout, setItems] = useState<AppLayout>(initialLayout);
   const [newApp, setNewApp] = useState<App | null>(null);
   const [newAppId, setNewAppId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recallParams, setRecallParams] = useState<boolean>(true);
+  const [recallConfig, setRecallConfig] = useState<boolean>(true);
   const [deletePopoverId, setDeletePopoverId] = useState<number | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
@@ -244,6 +246,10 @@ export const EditLayoutModal = ({
           const params = await getAllAppParams(usbDevice);
           setAllParams(params);
         }
+        if (recallConfig && modalConfig.recallConfig) {
+          await setGlobalConfig(usbDevice, modalConfig.recallConfig);
+          setConfig(modalConfig.recallConfig);
+        }
       } else if (modalConfig.mode === ModalMode.AddApp && newAppId !== null) {
         // Wait 500ms for the new app to spawn
         await delay(500);
@@ -259,11 +265,14 @@ export const EditLayoutModal = ({
     layout,
     modalConfig.recallParams,
     modalConfig.mode,
+    modalConfig.recallConfig,
     newAppId,
     onSave,
     recallParams,
+    recallConfig,
     setParams,
     setAllParams,
+    setConfig,
   ]);
 
   const activeItem =
@@ -335,6 +344,12 @@ export const EditLayoutModal = ({
           {modalConfig.mode === ModalMode.AddApp && newApp ? (
             <NewAppDetails app={newApp} />
           ) : null}
+          {modalConfig.mode === ModalMode.RecallLayout &&
+          modalConfig.recallDescription ? (
+            <div className="mb-12 whitespace-pre-line text-white">
+              {modalConfig.recallDescription}
+            </div>
+          ) : null}
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -377,13 +392,24 @@ export const EditLayoutModal = ({
           </DndContext>
           <div className="mt-18 flex justify-center">
             {modalConfig.mode === ModalMode.RecallLayout ? (
-              <Switch
-                color="secondary"
-                defaultSelected={recallParams}
-                onChange={(ev) => setRecallParams(ev.target.checked)}
-              >
-                Recall all app parameters
-              </Switch>
+              <div className="flex gap-4">
+                <Switch
+                  color="secondary"
+                  defaultSelected={recallParams}
+                  onChange={(ev) => setRecallParams(ev.target.checked)}
+                >
+                  Recall all app parameters
+                </Switch>
+                {modalConfig.recallConfig ? (
+                  <Switch
+                    color="secondary"
+                    defaultSelected={recallConfig}
+                    onChange={(ev) => setRecallConfig(ev.target.checked)}
+                  >
+                    Recall global configuration
+                  </Switch>
+                ) : null}
+              </div>
             ) : (
               <ButtonSecondary className="text-red" onPress={handleClearAll}>
                 <Icon name="trash" /> Clear All Apps
