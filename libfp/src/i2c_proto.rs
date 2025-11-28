@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{types::RegressionValuesOutput, Range};
+use crate::{
+    types::{RegressionValuesInput, RegressionValuesOutput},
+    Range,
+};
 
 /// Maximum size of a serialized message in bytes.
 /// This must be large enough for the largest possible message.
@@ -10,8 +13,8 @@ pub const MAX_MESSAGE_SIZE: usize = 384;
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum WriteReadCommand {
-    /// Ask for the current calibration port
-    CalibPollPort,
+    /// (channel, range)
+    AdcGetVoltage(usize, Range),
     /// Get the device's current status.
     GetStatus,
     /// Reset the device
@@ -24,10 +27,8 @@ pub enum WriteReadCommand {
 pub enum WriteCommand {
     /// Start automatic calibration
     CalibStart,
-    /// Calibration: plug in this port
-    CalibPlugInPort(usize),
-    /// Set the calculated regression values for output voltages
-    CalibSetRegOutValues(RegressionValuesOutput),
+    /// Set the calculated regression values
+    CalibSetRegValues(RegressionValuesInput, RegressionValuesOutput),
     /// (channel, range, value)
     DacSetVoltage(usize, Range, u16),
     /// Reset the device
@@ -38,16 +39,14 @@ pub enum WriteCommand {
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Response {
-    /// The current calibration port
-    CalibPort(usize),
-    /// Respond with the current calibration porr
-    CalibCurrentPort(usize),
     /// The current status of the device.
     Status(DeviceStatus),
     /// Acknowledgment of a command that doesn't return data.
     Ack,
     /// An error occurred.
     Error(ErrorCode),
+    /// ADC Value of an ADC channel (channel, range, value)
+    AdcValue(usize, Range, u16),
 }
 
 /// Represents the status of the device.

@@ -10,7 +10,7 @@ use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMu
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::Timer;
 use embedded_hal_async::i2c::I2c;
-use max11300::config::{ConfigMode5, Mode};
+use max11300::config::{ConfigMode5, ConfigMode7, Mode, AVR, NSAMPLES};
 use mii::{
     devices::{ansible, er301, telexo},
     Command as MiiCommand,
@@ -21,14 +21,14 @@ use libfp::{
     i2c_proto::{
         DeviceStatus, ErrorCode, Response, WriteCommand, WriteReadCommand, MAX_MESSAGE_SIZE,
     },
-    types::RegressionValuesOutput,
+    types::{RegressionValuesInput, RegressionValuesOutput},
     I2cMode, I2C_ADDRESS_CALIBRATION,
 };
 use postcard::{from_bytes, to_slice};
 
-use crate::tasks::calibration::{run_calibration, CALIBRATION_PORT};
+use crate::tasks::calibration::run_calibration;
 use crate::tasks::global_config::get_global_config;
-use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
+use crate::tasks::max::{MaxCmd, MAX_CHANNEL, MAX_VALUES_ADC};
 use crate::Irqs;
 
 use super::max::MAX_VALUES_DAC;
@@ -37,8 +37,7 @@ pub type I2cDevice = I2cSlave<'static, I2C0>;
 
 pub enum I2cFollowerMessage {
     CalibStart,
-    CalibPlugInPort(usize),
-    CalibSetRegressionValues(RegressionValuesOutput),
+    CalibSetRegressionValues(RegressionValuesInput, RegressionValuesOutput),
 }
 
 pub enum I2cLeaderMessage {
@@ -210,9 +209,23 @@ impl<'a> Compat16N<'a> {
 
 async fn process_write_read(command: WriteReadCommand) -> Response {
     match command {
-        WriteReadCommand::CalibPollPort => {
-            let port = CALIBRATION_PORT.load(Ordering::Relaxed);
-            Response::CalibCurrentPort(port)
+        WriteReadCommand::AdcGetVoltage(channel, range) => {
+            MAX_CHANNEL
+                .send((
+                    channel,
+                    MaxCmd::ConfigurePort(
+                        Mode::Mode7(ConfigMode7(
+                            AVR::InternalRef,
+                            range.into(),
+                            NSAMPLES::Samples1,
+                        )),
+                        None,
+                    ),
+                ))
+                .await;
+            Timer::after_millis(100).await;
+            let value = MAX_VALUES_ADC[channel].load(Ordering::Relaxed);
+            Response::AdcValue(channel, range, value)
         }
         WriteReadCommand::SysReset => {
             cortex_m::peripheral::SCB::sys_reset();
@@ -227,14 +240,15 @@ async fn process_write_read(command: WriteReadCommand) -> Response {
 async fn process_write(command: WriteCommand, sender: &mut I2cFollowerSender) {
     match command {
         WriteCommand::CalibStart => {
+            // Send command to i2c follower channel
             sender.send(I2cFollowerMessage::CalibStart).await;
         }
-        WriteCommand::CalibPlugInPort(port) => {
-            sender.send(I2cFollowerMessage::CalibPlugInPort(port)).await;
-        }
-        WriteCommand::CalibSetRegOutValues(values) => {
+        WriteCommand::CalibSetRegValues(input_values, output_values) => {
             sender
-                .send(I2cFollowerMessage::CalibSetRegressionValues(values))
+                .send(I2cFollowerMessage::CalibSetRegressionValues(
+                    input_values,
+                    output_values,
+                ))
                 .await;
         }
         WriteCommand::DacSetVoltage(channel, range, value) => {

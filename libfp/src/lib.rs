@@ -2,7 +2,7 @@
 
 use embassy_time::Duration;
 use heapless::Vec;
-use max11300::config::DACRANGE;
+use max11300::config::{ADCRANGE, DACRANGE};
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
@@ -826,6 +826,15 @@ impl From<Range> for DACRANGE {
             Range::_0_10V => DACRANGE::Rg0_10v,
             Range::_0_5V => DACRANGE::Rg0_10v,
             Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
+        }
+    }
+}
+impl From<Range> for ADCRANGE {
+    fn from(value: Range) -> Self {
+        match value {
+            Range::_0_10V => ADCRANGE::Rg0_10v,
+            Range::_0_5V => ADCRANGE::Rg0_10v,
+            Range::_Neg5_5V => ADCRANGE::RgNeg5_5v,
         }
     }
 }
