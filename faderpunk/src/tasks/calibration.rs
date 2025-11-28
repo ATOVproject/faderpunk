@@ -2,7 +2,7 @@ use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_time::Timer;
 use linreg::linear_regression;
 use max11300::config::{ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES};
-use portable_atomic::{AtomicUsize, Ordering};
+use portable_atomic::Ordering;
 
 use libfp::{
     types::{MaxCalibration, RegressionValuesInput, RegressionValuesOutput},
@@ -18,8 +18,6 @@ use crate::tasks::leds::{set_led_mode, LedMode, LedMsg};
 use crate::tasks::max::{MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_FADER};
 
 use super::max::MAX_VALUES_DAC;
-
-pub static CALIBRATION_PORT: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 const CHANNELS: usize = 16;
 const VALUES_OUT_0_10V: [u16; 3] = [819, 1638, 3276];
@@ -72,7 +70,7 @@ async fn configure_jack(ch: usize, mode: Mode) {
         .await;
 }
 
-async fn run_input_calibration() -> RegressionValuesInput {
+async fn run_manual_input_calibration() -> RegressionValuesInput {
     let mut input_results = RegressionValuesInput::default();
     let adc_ranges = [ADCRANGE::Rg0_10v, ADCRANGE::RgNeg5_5v];
     let voltages_arrays = [VOLTAGES_IN_0_10V, VOLTAGES_NEG5_5V];
@@ -292,13 +290,11 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
     output_results
 }
 
-async fn run_automatic_output_calibration(
+async fn run_automatic_calibration(
     receiver: &mut I2cFollowerReceiver,
-) -> RegressionValuesOutput {
-    CALIBRATION_PORT.store(usize::MAX, Ordering::Relaxed);
-
+) -> (RegressionValuesInput, RegressionValuesOutput) {
     for i in 0..CHANNELS {
-        set_led_color(i, Led::Button, Color::Red);
+        set_led_color(i, Led::Button, Color::Yellow);
     }
 
     reset_led(0, Led::Button);
@@ -306,31 +302,10 @@ async fn run_automatic_output_calibration(
     reset_led(0, Led::Top);
 
     loop {
-        match receiver.receive().await {
-            I2cFollowerMessage::CalibPlugInPort(chan) => {
-                let ui_no = chan % 17;
-                let prev_ui_no = if chan == 0 {
-                    0
-                } else {
-                    (ui_no + CHANNELS - 1) % CHANNELS
-                };
-                for led_no in 0..=prev_ui_no {
-                    set_led_color(led_no, Led::Button, Color::Green);
-                }
-                flash_led(ui_no, Led::Button, Color::Yellow, None);
-                defmt::info!(
-                    "Plug multimeter into jack {} now, then press button {}",
-                    chan,
-                    ui_no,
-                );
-                wait_for_button_press(ui_no).await;
-                flash_led(ui_no, Led::Button, Color::Green, None);
-                CALIBRATION_PORT.store(chan, Ordering::Relaxed);
-            }
-            I2cFollowerMessage::CalibSetRegressionValues(output_values) => {
-                return output_values;
-            }
-            _ => {}
+        if let I2cFollowerMessage::CalibSetRegressionValues(input_values, output_values) =
+            receiver.receive().await
+        {
+            return (input_values, output_values);
         }
     }
 }
@@ -350,15 +325,14 @@ pub async fn run_calibration(mut msg_receiver: I2cFollowerReceiver) {
     {
         Either::First(_) => {
             // Manual calibration
-            let inputs = run_input_calibration().await;
+            let inputs = run_manual_input_calibration().await;
             let outputs = run_manual_output_calibration().await;
 
             MaxCalibration { inputs, outputs }
         }
         Either::Second(_) => {
             // Automatic calibration
-            let inputs = run_input_calibration().await;
-            let outputs = run_automatic_output_calibration(&mut msg_receiver).await;
+            let (inputs, outputs) = run_automatic_calibration(&mut msg_receiver).await;
 
             MaxCalibration { inputs, outputs }
         }
