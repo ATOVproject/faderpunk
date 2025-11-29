@@ -4,6 +4,11 @@ import { Select, SelectItem } from "@heroui/select";
 import { selectProps } from "../input/defaultProps";
 import type { Inputs } from "../SettingsTab";
 import { useFormContext } from "react-hook-form";
+import classNames from "classnames";
+import {
+  QUANTIZER_KEY_COLORS,
+  QUANTIZER_TONIC_COLORS,
+} from "../../utils/class-helpers";
 
 interface QuantizerKeyItem {
   key: Key["tag"];
@@ -68,7 +73,22 @@ export const QuantizerSettings = () => {
           items={keyItems}
           placeholder="Scale"
         >
-          {(item) => <SelectItem>{item.value}</SelectItem>}
+          {(item) => (
+            <SelectItem
+              startContent={
+                <span
+                  className={classNames(
+                    "h-5",
+                    "w-5",
+                    QUANTIZER_KEY_COLORS[item.key],
+                    item.key === "Chromatic" && "border border-gray-300",
+                  )}
+                />
+              }
+            >
+              {item.value}
+            </SelectItem>
+          )}
         </Select>
         <Select
           {...register("quantizerTonic")}
@@ -77,7 +97,22 @@ export const QuantizerSettings = () => {
           items={tonicItems}
           placeholder="Tonic"
         >
-          {(item) => <SelectItem>{item.value}</SelectItem>}
+          {(item) => (
+            <SelectItem
+              startContent={
+                <span
+                  className={classNames(
+                    "h-5",
+                    "w-5",
+                    QUANTIZER_TONIC_COLORS[item.key],
+                    item.key === "C" && "border border-gray-300",
+                  )}
+                />
+              }
+            >
+              {item.value}
+            </SelectItem>
+          )}
         </Select>
       </div>
     </div>
