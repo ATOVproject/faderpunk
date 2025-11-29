@@ -219,6 +219,23 @@
   --color-violet: #8a48d6;
   --color-pink: #b23d9c;
   --color-yellow: #c1aa29;
+
+  --color-palette-white: #ffffff;
+  --color-palette-pink: #ff0096;
+  --color-palette-yellow: #ffae00;
+  --color-palette-cyan: #00ffba;
+  --color-palette-salmon: #ff8383;
+  --color-palette-lime: #fff000;
+  --color-palette-orange: #ff8400;
+  --color-palette-green: #84ff00;
+  --color-palette-sky-blue: #00c6ff;
+  --color-palette-red: #ff0000;
+  --color-palette-pale-green: #65ff9c;
+  --color-palette-blue: #0600ff;
+  --color-palette-sand: #ffd878;
+  --color-palette-violet: #f600ff;
+  --color-palette-light-blue: #7381ff;
+  --color-palette-rose: #ff7878;
 }
 
 @config "../tailwind.config.mjs"
