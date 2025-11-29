@@ -4,7 +4,7 @@ import { type SelectProps } from "@heroui/select";
 import { Icon } from "../Icon";
 
 export const selectProps = {
-  className: "max-w-40",
+  className: "max-w-48",
   labelPlacement: "outside-left",
   disallowEmptySelection: true,
   radius: "sm",
@@ -21,7 +21,7 @@ export const selectProps = {
 } as SelectProps;
 
 export const inputProps = {
-  className: "max-w-40",
+  className: "max-w-48",
   labelPlacement: "outside-top",
   disableAnimation: true,
   classNames: {

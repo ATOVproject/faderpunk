@@ -46,3 +46,38 @@ export const COLORS_CLASSES: Record<
   },
   Black: { bg: "bg-black", text: "text-black", border: "border-black" },
 };
+
+// Quantizer color palette mappings
+export const QUANTIZER_KEY_COLORS: Record<string, string> = {
+  Chromatic: "bg-palette-white",
+  Ionian: "bg-palette-pink",
+  Dorian: "bg-palette-yellow",
+  Phrygian: "bg-palette-cyan",
+  Lydian: "bg-palette-salmon",
+  Mixolydian: "bg-palette-lime",
+  Aeolian: "bg-palette-orange",
+  Locrian: "bg-palette-green",
+  BluesMaj: "bg-palette-sky-blue",
+  BluesMin: "bg-palette-red",
+  PentatonicMaj: "bg-palette-pale-green",
+  PentatonicMin: "bg-palette-blue",
+  Folk: "bg-palette-sand",
+  Japanese: "bg-palette-violet",
+  Gamelan: "bg-palette-light-blue",
+  HungarianMin: "bg-palette-rose",
+};
+
+export const QUANTIZER_TONIC_COLORS: Record<string, string> = {
+  C: "bg-palette-white",
+  CSharp: "bg-palette-pink",
+  D: "bg-palette-yellow",
+  DSharp: "bg-palette-cyan",
+  E: "bg-palette-salmon",
+  F: "bg-palette-lime",
+  FSharp: "bg-palette-orange",
+  G: "bg-palette-green",
+  GSharp: "bg-palette-sky-blue",
+  A: "bg-palette-red",
+  ASharp: "bg-palette-pale-green",
+  B: "bg-palette-blue",
+};

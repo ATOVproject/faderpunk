@@ -24,6 +24,7 @@
     "@heroui/slider": "^2.4.23",
     "@heroui/switch": "^2.2.23",
     "@heroui/system": "^2.4.20",
+    "@heroui/table": "^2.2.27",
     "@heroui/tabs": "^2.2.23",
     "@heroui/theme": "^2.4.20",
     "@heroui/toast": "^2.0.17",

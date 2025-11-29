@@ -1,3 +1,11 @@
+import {
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+} from "@heroui/table";
 import { Icon } from "../Icon";
 import { H2, H3, List } from "./Shared";
 
@@ -137,6 +145,190 @@ export const Interface = () => (
       These shortcuts allow quick access to essential performance parameters
       without needing the configurator, maintaining hands-on control.
     </p>
+
+    <p className="mt-4">
+      When adjusting the <strong>quantizer scale</strong> (Fader 4) or{" "}
+      <strong>quantizer root note</strong> (Fader 5), the LED below the
+      respective fader displays a color indicating the current selection. This
+      provides immediate visual feedback for the active scale or tonic.
+    </p>
+
+    <Table
+      aria-label="Quantizer color mapping"
+      className="my-4"
+      isStriped
+      classNames={{
+        wrapper: "bg-transparent shadow-none",
+      }}
+    >
+      <TableHeader>
+        <TableColumn>COLOR</TableColumn>
+        <TableColumn>KEY</TableColumn>
+        <TableColumn>TONIC</TableColumn>
+      </TableHeader>
+      <TableBody>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-white h-5 w-5 border border-gray-300" />
+              White
+            </div>
+          </TableCell>
+          <TableCell>Chromatic</TableCell>
+          <TableCell>C</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-pink h-5 w-5" />
+              Pink
+            </div>
+          </TableCell>
+          <TableCell>Ionian</TableCell>
+          <TableCell>C#</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-yellow h-5 w-5" />
+              Yellow
+            </div>
+          </TableCell>
+          <TableCell>Dorian</TableCell>
+          <TableCell>D</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-cyan h-5 w-5" />
+              Cyan
+            </div>
+          </TableCell>
+          <TableCell>Phrygian</TableCell>
+          <TableCell>D#</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-salmon h-5 w-5" />
+              Salmon
+            </div>
+          </TableCell>
+          <TableCell>Lydian</TableCell>
+          <TableCell>E</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-lime h-5 w-5" />
+              Lime
+            </div>
+          </TableCell>
+          <TableCell>Mixolydian</TableCell>
+          <TableCell>F</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-orange h-5 w-5" />
+              Orange
+            </div>
+          </TableCell>
+          <TableCell>Aeolian</TableCell>
+          <TableCell>F#</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-green h-5 w-5" />
+              Green
+            </div>
+          </TableCell>
+          <TableCell>Locrian</TableCell>
+          <TableCell>G</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-sky-blue h-5 w-5" />
+              Sky Blue
+            </div>
+          </TableCell>
+          <TableCell>Blues Major</TableCell>
+          <TableCell>G#</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-red h-5 w-5" />
+              Red
+            </div>
+          </TableCell>
+          <TableCell>Blues Minor</TableCell>
+          <TableCell>A</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-pale-green h-5 w-5" />
+              Pale Green
+            </div>
+          </TableCell>
+          <TableCell>Pentatonic Major</TableCell>
+          <TableCell>A#</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-blue h-5 w-5" />
+              Blue
+            </div>
+          </TableCell>
+          <TableCell>Pentatonic Minor</TableCell>
+          <TableCell>B</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-sand h-5 w-5" />
+              Sand
+            </div>
+          </TableCell>
+          <TableCell>Folk</TableCell>
+          <TableCell>—</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-violet h-5 w-5" />
+              Violet
+            </div>
+          </TableCell>
+          <TableCell>Japanese</TableCell>
+          <TableCell>—</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-light-blue h-5 w-5" />
+              Light Blue
+            </div>
+          </TableCell>
+          <TableCell>Gamelan</TableCell>
+          <TableCell>—</TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <div className="bg-palette-rose h-5 w-5" />
+              Rose
+            </div>
+          </TableCell>
+          <TableCell>Hungarian Minor</TableCell>
+          <TableCell>—</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
 
     <H3>Back Connectors</H3>
     <p>
