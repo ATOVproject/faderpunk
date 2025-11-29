@@ -1,5 +1,5 @@
 use embassy_futures::{
-    join::{join3, join5},
+    join::{join, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -7,8 +7,9 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, AppIcon, Brightness, ClockDivision, Color, Config, Param, Range, Value,
-    APP_MAX_PARAMS,
+    ext::FromValue,
+    latch::{AnalogLatch, LatchLayer},
+    AppIcon, Brightness, ClockDivision, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -185,7 +186,6 @@ pub async fn run(
     let page_glob: Global<usize> = app.make_global(0);
     let led_flag_glob: Global<bool> = app.make_global(true);
     let length_flag: Global<bool> = app.make_global(false);
-    let latched_glob: Global<[bool; 8]> = app.make_global([false; 8]);
     let seq_glob: Global<[u16; 64]> = app.make_global([0; 64]);
     let gateseq_glob: Global<[bool; 64]> = app.make_global([true; 64]);
     let legatoseq_glob: Global<[bool; 64]> = app.make_global([false; 64]);
@@ -197,7 +197,6 @@ pub async fn run(
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
-    let mut shift_old = false;
     let mut lastnote = [0; 4];
     let mut gatelength1 = gatelength_glob.get();
 
@@ -226,143 +225,143 @@ pub async fn run(
     clockres_glob.set(clockres);
     gatelength_glob.set(gatel);
 
-    let fut1 = async {
-        loop {
-            // latching on pressing and depressing shift
-
-            app.delay_millis(1).await;
-            if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set([false; 8]);
-                shift_old = true;
-            }
-            if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set([false; 8]);
-                shift_old = false;
-            }
+    let fader_fut = async {
+        let mut fader_values = faders.get_all_values();
+        let mut latches = [AnalogLatch::new(0); 8];
+        for (i, latch) in latches.iter_mut().enumerate() {
+            *latch = AnalogLatch::new(fader_values[i]);
         }
-    };
-
-    let fut2 = async {
-        //Fader handling - Should be latching false when shift is pressed
 
         loop {
             let chan = faders.wait_for_any_change().await;
-            let vals = faders.get_all_values();
+            // Update local cache of values
+            fader_values = faders.get_all_values();
+            let val = fader_values[chan];
+
             let page = page_glob.get();
+            let shift = buttons.is_shift_pressed();
+            let layer = LatchLayer::from(shift);
 
-            let mut seq = seq_glob.get();
-            let mut seq_length = seq_length_glob.get();
-
-            // let mut seq_length = seq_length_glob.get_array();
-            // let mut seq = seq_glob.get_array();
-
-            let _shift = buttons.is_shift_pressed();
-            let mut latched = latched_glob.get();
-
-            if !_shift {
-                if is_close(vals[chan], seq[chan + (page * 8)]) && !_shift {
-                    latched[chan] = true;
-                    latched_glob.set(latched);
+            // Calculate target and perform update
+            let target = if !shift {
+                // Main Layer: Sequence Steps
+                // Target is the stored value
+                seq_glob.get()[chan + (page * 8)]
+            } else {
+                // Alt Layer: Parameters
+                // We calculate a "virtual" target. If the fader is currently in the zone
+                // of the parameter we set the target to the fader's value (latch immediately).
+                // Otherwise, we set it to the start of the zone (pick up).
+                match chan {
+                    0 => {
+                        // Seq Length (1..16 mapped to 0..4095)
+                        let current_param = seq_length_glob.get()[page / 2];
+                        let fader_param = (val / 256 + 1) as u8;
+                        if fader_param == current_param {
+                            val
+                        } else {
+                            (current_param as u16).saturating_sub(1) * 256
+                        }
+                    }
+                    1 => {
+                        // Gate Length
+                        let current_param = storage.query(|s| s.gate_length[page / 2]);
+                        let fader_param = (val / 16) as u8;
+                        // Use tolerance check from original code logic (approx)
+                        if (fader_param as i16 - current_param as i16).abs() < 6 {
+                            val
+                        } else {
+                            current_param as u16 * 16
+                        }
+                    }
+                    2 => {
+                        // Octave
+                        let current_param = storage.query(|s| s.oct[page / 2]);
+                        let fader_param = (val / 1000) as u8;
+                        if fader_param == current_param {
+                            val
+                        } else {
+                            current_param as u16 * 1000
+                        }
+                    }
+                    3 => {
+                        // Range
+                        let current_param = storage.query(|s| s.range[page / 2]);
+                        let fader_param = (val / 1000 + 1) as u8;
+                        if fader_param == current_param {
+                            val
+                        } else {
+                            (current_param as u16).saturating_sub(1) * 1000
+                        }
+                    }
+                    4 => {
+                        // Resolution
+                        let current_param = storage.query(|s| s.seqres[page / 2]) as u16;
+                        let fader_param = val / 512;
+                        if fader_param == current_param {
+                            val
+                        } else {
+                            current_param * 512
+                        }
+                    }
+                    _ => 0,
                 }
+            };
 
-                if chan < 8 && latched[chan] {
-                    seq[chan + (page * 8)] = vals[chan];
+            if let Some(new_val) = latches[chan].update(val, layer, target) {
+                if !shift {
+                    let mut seq = seq_glob.get();
+                    seq[chan + (page * 8)] = new_val;
                     seq_glob.set(seq);
                     storage.modify_and_save(|s| s.seq.set(seq));
-                }
-            }
+                } else {
+                    // Apply parameter changes
+                    match chan {
+                        0 => {
+                            let mut seq_length = seq_length_glob.get();
+                            let new_len = (new_val / 256 + 1) as u8;
+                            if seq_length[page / 2] != new_len {
+                                seq_length[page / 2] = new_len;
+                                seq_length_glob.set(seq_length);
+                                storage.modify_and_save(|s| s.seq_length = seq_length);
+                                length_flag.set(true);
+                            }
+                        }
+                        1 => {
+                            let new_len = (new_val / 16) as u8;
+                            storage.modify_and_save(|s| s.gate_length[page / 2] = new_len);
 
-            if _shift {
-                // if (vals[0] / 256 + 1) as u8 == seq_length[page / 2] && _shift {
-                //     latched[0] = true;
-                //     latched_glob.set(latched);
-                //     //info!("latching!");
-                // }
-                // add check for latching
-                if chan == 0 {
-                    if (vals[chan] / 256 + 1) as u8 == seq_length[page / 2] {
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-                    //fader 1 + shift
-                    if latched[chan] {
-                        seq_length[page / 2] = (((vals[0]) / 256) + 1) as u8;
-                        seq_length_glob.set(seq_length);
-                        //info!("{}", seq_length[page / 2]);
-                        storage.modify_and_save(|s| s.seq_length = seq_length);
+                            let mut gatelength = gatelength_glob.get();
+                            let clockres = clockres_glob.get();
+                            let mut calc = (clockres[page / 2] * (new_val as usize) / 4096) as u8;
+                            calc = calc.clamp(1, clockres[page / 2] as u8 - 1);
+                            gatelength[page / 2] = calc;
+                            gatelength_glob.set(gatelength);
+                        }
+                        2 => {
+                            let new_oct = (new_val / 1000) as u8;
+                            storage.modify_and_save(|s| s.oct[page / 2] = new_oct);
+                        }
+                        3 => {
+                            let new_range = (new_val / 1000 + 1) as u8;
+                            storage.modify_and_save(|s| s.range[page / 2] = new_range);
+                        }
+                        4 => {
+                            let new_res_idx = (new_val / 512) as usize;
+                            if new_res_idx < resolution.len() {
+                                storage.modify_and_save(|s| s.seqres[page / 2] = new_res_idx);
 
-                        length_flag.set(true);
-                    }
-                }
+                                let mut clockres = clockres_glob.get();
+                                clockres[page / 2] = resolution[new_res_idx];
+                                clockres_glob.set(clockres);
 
-                if chan == 1 {
-                    // add latching to this
-
-                    let mut gatelength_saved = storage.query(|s| s.gate_length); // get saved fader value
-
-                    if (vals[chan] / 16).abs_diff(gatelength_saved[page / 2] as u16) < 10 {
-                        // do the latching
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-
-                    if latched[chan] {
-                        let mut gatelength = gatelength_glob.get();
-                        let clockres = clockres_glob.get();
-                        gatelength_saved[page / 2] = (vals[chan] / 16) as u8;
-                        storage.modify_and_save(|s| s.gate_length = gatelength_saved);
-
-                        // gatelength[page/2] = (vals[chan] / 16) as u8;
-
-                        gatelength[page / 2] =
-                            (clockres[page / 2] * (vals[chan] as usize) / 4096) as u8; // calculate when to stop then note
-                        gatelength[page / 2] =
-                            gatelength[page / 2].clamp(1, clockres[page / 2] as u8 - 1);
-
-                        gatelength_glob.set(gatelength);
-                    }
-                }
-                if chan == 2 {
-                    if (vals[chan] / 1000) as u8 == storage.query(|s| s.oct[page / 2]) {
-                        // do the latching
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-                    if latched[chan] {
-                        storage.modify_and_save(|s| s.oct[page / 2] = (vals[chan] / 1000) as u8);
-                    }
-                }
-                if chan == 3 {
-                    if (vals[chan] / 1000 + 1) as u8 == storage.query(|s| s.range[page / 2]) {
-                        // do the latching
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-                    if latched[chan] {
-                        storage
-                            .modify_and_save(|s| s.range[page / 2] = (vals[chan] / 1000) as u8 + 1);
-                    }
-                }
-                if chan == 4 {
-                    // add latching to this
-                    let res_saved = storage.query(|s| s.seqres);
-
-                    if (vals[chan] / 512) == res_saved[page / 2] as u16 {
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-
-                    if latched[chan] {
-                        storage.modify_and_save(|s| s.seqres[page / 2] = vals[chan] as usize / 512);
-
-                        let mut clockres = clockres_glob.get();
-                        clockres[page / 2] = resolution[(vals[chan] / 512) as usize];
-                        clockres_glob.set(clockres);
-
-                        let mut gatelength = gatelength_glob.get();
-                        gatelength[page / 2] =
-                            gatelength[page / 2].clamp(1, clockres[page / 2] as u8);
-                        gatelength_glob.set(gatelength);
+                                let mut gatelength = gatelength_glob.get();
+                                gatelength[page / 2] =
+                                    gatelength[page / 2].clamp(1, clockres[page / 2] as u8);
+                                gatelength_glob.set(gatelength);
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -370,9 +369,7 @@ pub async fn run(
         }
     };
 
-    let fut3 = async {
-        //button handling
-
+    let button_fut = async {
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             let mut gateseq = gateseq_glob.get();
@@ -392,19 +389,14 @@ pub async fn run(
                     s.legato_seq.set(legato_seq);
                 });
 
-                // gateseq_glob.set_array(gateseq);
-                // gateseq_glob.save();
                 led_flag_glob.set(true);
             } else {
                 page_glob.set(chan);
-                latched_glob.set([false; 8]);
             }
         }
     };
 
-    let fut6 = async {
-        //long press
-
+    let long_press_fut = async {
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_long_press().await;
 
@@ -422,16 +414,11 @@ pub async fn run(
 
                 storage.modify_and_save(|s| s.gateseq.set(gateseq));
                 storage.modify_and_save(|s| s.legato_seq.set(legato_seq));
-
-                // gateseq_glob.set_array(gateseq);
-                // gateseq_glob.save();
             }
         }
     };
 
-    let fut4 = async {
-        //LED update
-
+    let led_fut = async {
         loop {
             let intensities = [
                 Brightness::Lowest,
@@ -443,11 +430,8 @@ pub async fn run(
             app.delay_millis(16).await;
             let clockres = clockres_glob.get();
 
-            //if buttons.is_shift_pressed();
             if buttons.is_shift_pressed() {
                 let clockn = clockn_glob.get();
-
-                //let seq_length = seq_length_glob.get_array();
 
                 let seq_length = seq_length_glob.get();
 
@@ -480,16 +464,11 @@ pub async fn run(
             }
 
             if !buttons.is_shift_pressed() {
-                // LED stuff
                 let page = page_glob.get();
 
                 let seq = seq_glob.get();
                 let gateseq = gateseq_glob.get();
                 let seq_length = seq_length_glob.get();
-
-                // let gateseq = gateseq_glob.get_array();
-                // let seq_length = seq_length_glob.get_array(); //use this to highlight active notes
-                // let seq = seq_glob.get_array();
 
                 let mut color = colors[0];
                 let clockn = clockn_glob.get(); // this should go
@@ -536,13 +515,13 @@ pub async fn run(
                     if (clockn / clockres[n / 2] % seq_length[n / 2] as usize) % 16 - (n % 2) * 8
                         < 8
                     {
-                        //this needs changing
+                        // TODO: this needs changing
                         led.set(n, Led::Bottom, Color::Red, Brightness::Lower)
                     } else {
                         led.unset(n, Led::Bottom);
                     }
                 }
-                //runing light on buttons
+                // runing light on buttons
                 if ((clockn / clockres[page / 2]) % seq_length[page / 2] as usize) % 16
                     - (page % 2) * 8
                     < 8
@@ -564,20 +543,14 @@ pub async fn run(
         }
     };
 
-    let fut5 = async {
-        //sequencer functions
-
+    let seq_fut = async {
         loop {
-            //let stor = storage.lock();
-
             let gateseq = gateseq_glob.get();
             let seq_length = seq_length_glob.get();
             let clockres = clockres_glob.get();
             let legato_seq = legatoseq_glob.get();
 
             let mut clockn = clockn_glob.get();
-
-            // let gateseq = gateseq_glob.get_array();
 
             match clk.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
@@ -606,9 +579,6 @@ pub async fn run(
                                             + storage.query(|s| s.oct[n]) as u16 * 410,
                                     )
                                     .await;
-                                // if n == 0 {
-                                //     info!("{}", storage.query(|s| s.range[n]));
-                                // }
                                 lastnote[n] = out.as_midi();
 
                                 midi[n].send_note_on(lastnote[n], 4095).await;
@@ -661,21 +631,6 @@ pub async fn run(
                         )
                     });
 
-                    // storage
-                    //     .modify_and_save(
-                    //         |s| {
-                    //             (
-                    //                 s.seq.set(seq_saved.get()),
-                    //                 s.gateseq.set(gateseq_saved.get()),
-                    //                 s.seq_length = seq_length_saved,
-                    //                 s.seqres = clockres,
-                    //                 s.gate_length = gatel,
-                    //             )
-                    //         },
-                    //         None,
-                    //     )
-                    //     .await;
-
                     seq_glob.set(seq_saved.get());
                     gateseq_glob.set(gateseq_saved.get());
                     seq_length_glob.set(seq_length_saved);
@@ -696,9 +651,9 @@ pub async fn run(
         }
     };
 
-    join3(join5(fut1, fut2, fut3, fut4, fut5), fut6, scene_handler).await;
-}
-
-fn is_close(a: u16, b: u16) -> bool {
-    a.abs_diff(b) < 100
+    join(
+        join5(fader_fut, button_fut, long_press_fut, led_fut, seq_fut),
+        scene_handler,
+    )
+    .await;
 }
