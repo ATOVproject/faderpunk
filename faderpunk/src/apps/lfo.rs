@@ -10,8 +10,8 @@ use libfp::{
     ext::FromValue,
     latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, split_unsigned_value},
-    AppIcon, Brightness, ClockDivision, Color, Config, Curve, Param, Range, Value, Waveform,
-    APP_MAX_PARAMS,
+    AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
+    Range, Value, Waveform, APP_MAX_PARAMS,
 };
 
 use crate::{
@@ -33,24 +33,18 @@ pub static CONFIG: Config<PARAMS> =
             name: "Range",
             variants: &[Range::_0_10V, Range::_Neg5_5V],
         })
-        .add_param(Param::bool { name: "Send MIDI" })
-        .add_param(Param::i32 {
+        .add_param(Param::MidiOut)
+        .add_param(Param::MidiChannel {
             name: "MIDI Channel",
-            min: 1,
-            max: 16,
         })
-        .add_param(Param::i32 {
-            name: "MIDI CC",
-            min: 1,
-            max: 128,
-        });
+        .add_param(Param::MidiCc { name: "MIDI CC" });
 
 pub struct Params {
     speed_mult: usize,
     range: Range,
-    use_midi: bool,
-    midi_channel: i32,
-    midi_cc: i32,
+    midi_out: MidiOut,
+    midi_channel: MidiChannel,
+    midi_cc: MidiCc,
 }
 
 impl Default for Params {
@@ -58,9 +52,9 @@ impl Default for Params {
         Self {
             speed_mult: 0,
             range: Range::_Neg5_5V,
-            use_midi: false,
-            midi_channel: 1,
-            midi_cc: 32,
+            midi_out: MidiOut::default(),
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(32),
         }
     }
 }
@@ -70,9 +64,9 @@ impl AppParams for Params {
         Some(Self {
             speed_mult: usize::from_value(values[0]),
             range: Range::from_value(values[1]),
-            use_midi: bool::from_value(values[2]),
-            midi_channel: i32::from_value(values[3]),
-            midi_cc: i32::from_value(values[4]),
+            midi_out: MidiOut::from_value(values[2]),
+            midi_channel: MidiChannel::from_value(values[3]),
+            midi_cc: MidiCc::from_value(values[4]),
         })
     }
 
@@ -80,7 +74,7 @@ impl AppParams for Params {
         let mut vec = Vec::new();
         vec.push(self.speed_mult.into()).unwrap();
         vec.push(self.range.into()).unwrap();
-        vec.push(self.use_midi.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec
@@ -135,8 +129,8 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (range, use_midi, midi_chan, midi_cc) =
-        params.query(|p| (p.range, p.use_midi, p.midi_channel, p.midi_cc));
+    let (range, midi_out, midi_chan, midi_cc) =
+        params.query(|p| (p.range, p.midi_out, p.midi_channel, p.midi_cc));
 
     let speed_mult = 2u32.pow(params.query(|p| p.speed_mult).min(31) as u32);
     let output = app.make_out_jack(0, range).await;
@@ -145,7 +139,7 @@ pub async fn run(
     let leds = app.use_leds();
     let mut clk = app.use_clock();
 
-    let midi = app.use_midi_output(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_out, midi_chan);
 
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);
@@ -203,9 +197,9 @@ pub async fn run(
             };
 
             output.set_value(val);
-            if use_midi {
+            if !midi_out.is_none() {
                 if last_out / 32 != val / 32 {
-                    midi.send_cc(midi_cc as u8, val).await;
+                    midi.send_cc(midi_cc, val).await;
                 }
                 last_out = val;
             }

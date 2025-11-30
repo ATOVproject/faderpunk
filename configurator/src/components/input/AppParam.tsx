@@ -1,5 +1,9 @@
-import { type UseFormRegister, type FieldValues } from "react-hook-form";
-import { type Param } from "@atov/fp-config";
+import {
+  type UseFormRegister,
+  type FieldValues,
+  type Control,
+} from "react-hook-form";
+import { type Param, type FixedLengthArray } from "@atov/fp-config";
 
 import { ParamI32 } from "./ParamI32.tsx";
 import { ParamF32 } from "./ParamF32.tsx";
@@ -10,12 +14,24 @@ import { ParamEnum } from "./ParamEnum.tsx";
 import { ParamRange } from "./ParamRange.tsx";
 import { ParamWaveform } from "./ParamWaveform.tsx";
 import { ParamColor } from "./ParamColor.tsx";
+import { ParamMidiCc } from "./ParamMidiCc.tsx";
+import { ParamMidiChannel } from "./ParamMidiChannel.tsx";
+import { ParamMidiIn } from "./ParamMidiIn.tsx";
+import { ParamMidiMode } from "./ParamMidiMode.tsx";
+import { ParamMidiNote } from "./ParamMidiNote.tsx";
+import { ParamMidiOut } from "./ParamMidiOut.tsx";
 
 interface Props {
-  defaultValue: string | boolean | number;
+  defaultValue:
+    | string
+    | boolean
+    | number
+    | FixedLengthArray<boolean, 2>
+    | FixedLengthArray<boolean, 3>;
   param: Param;
   paramIndex: number;
   register: UseFormRegister<FieldValues>;
+  control: Control<FieldValues>;
 }
 
 export const AppParam = ({
@@ -23,6 +39,7 @@ export const AppParam = ({
   param,
   paramIndex,
   register,
+  control,
 }: Props) => {
   switch (param.tag) {
     case "i32": {
@@ -109,6 +126,66 @@ export const AppParam = ({
       return (
         <ParamNote
           {...param.value}
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiCc": {
+      return (
+        <ParamMidiCc
+          {...param.value}
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiChannel": {
+      return (
+        <ParamMidiChannel
+          {...param.value}
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiNote": {
+      return (
+        <ParamMidiNote
+          {...param.value}
+          defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiIn": {
+      return (
+        <ParamMidiIn
+          name="MIDI In"
+          defaultValue={defaultValue as FixedLengthArray<boolean, 2>}
+          paramIndex={paramIndex}
+          control={control}
+        />
+      );
+    }
+    case "MidiOut": {
+      return (
+        <ParamMidiOut
+          name="MIDI Out"
+          defaultValue={defaultValue as FixedLengthArray<boolean, 3>}
+          paramIndex={paramIndex}
+          control={control}
+        />
+      );
+    }
+    case "MidiMode": {
+      return (
+        <ParamMidiMode
+          name="MIDI Mode"
           defaultValue={defaultValue as string}
           paramIndex={paramIndex}
           register={register}
