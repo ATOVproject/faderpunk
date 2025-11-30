@@ -238,7 +238,7 @@ export const EditLayoutModal = ({
     setSubmitting(true);
     if (usbDevice && apps) {
       const newLayout = await setLayout(usbDevice, layout, apps);
-      if (modalConfig.mode === ModalMode.RecallLayout) {
+      if (modalConfig.mode === ModalMode.RecallSetup) {
         if (recallParams && modalConfig.recallParams) {
           await setAllAppParams(usbDevice, modalConfig.recallParams);
           // Wait 1s for the apps to spawn
@@ -315,8 +315,8 @@ export const EditLayoutModal = ({
     switch (modalConfig.mode) {
       case ModalMode.AddApp:
         return "Add App";
-      case ModalMode.RecallLayout:
-        return "Recall Layout";
+      case ModalMode.RecallSetup:
+        return "Recall Setup";
       case ModalMode.EditLayout:
       default:
         return "Edit Layout";
@@ -344,7 +344,7 @@ export const EditLayoutModal = ({
           {modalConfig.mode === ModalMode.AddApp && newApp ? (
             <NewAppDetails app={newApp} />
           ) : null}
-          {modalConfig.mode === ModalMode.RecallLayout &&
+          {modalConfig.mode === ModalMode.RecallSetup &&
           modalConfig.recallDescription ? (
             <div className="mb-12 whitespace-pre-line text-white">
               {modalConfig.recallDescription}
@@ -391,7 +391,7 @@ export const EditLayoutModal = ({
             </DragOverlay>
           </DndContext>
           <div className="mt-18 flex justify-center">
-            {modalConfig.mode === ModalMode.RecallLayout ? (
+            {modalConfig.mode === ModalMode.RecallSetup ? (
               <div className="flex gap-4">
                 <Switch
                   color="secondary"
@@ -429,7 +429,7 @@ export const EditLayoutModal = ({
               onClose();
             }}
           >
-            Save
+            {modalConfig.mode === ModalMode.RecallSetup ? "Load" : "Save"}
           </ButtonPrimary>
           <ButtonSecondary onPress={onClose}>Cancel</ButtonSecondary>
         </span>

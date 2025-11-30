@@ -262,13 +262,11 @@ export const ManualApp = ({ app }: Props) => {
         <div className="mb-4">
           <H3>
             Available app parameters{" "}
-            <span className="text-xs">(set in the configurator)</span>
+            <span className="text-sm">(set in the configurator)</span>
           </H3>
           <List>
             {app.params.map((param) => (
-              <li className="text-sm" key={param}>
-                {param}
-              </li>
+              <li key={param}>{param}</li>
             ))}
           </List>
         </div>
@@ -277,15 +275,13 @@ export const ManualApp = ({ app }: Props) => {
         <div className="mb-4">
           <H3>
             Live app state{" "}
-            <span className="text-xs">
+            <span className="text-sm">
               (saved across power-cycles and in scenes)
             </span>
           </H3>
           <List>
             {app.storage.map((storage) => (
-              <li className="text-sm" key={storage}>
-                {storage}
-              </li>
+              <li key={storage}>{storage}</li>
             ))}
           </List>
         </div>
@@ -361,7 +357,7 @@ export const ManualApp = ({ app }: Props) => {
           >
             &nbsp;
           </div>
-          <div className="px-2 text-xs italic"></div>
+          <div className="px-2 text-sm italic"></div>
         </div>
         {hasFaderPlusFn ? (
           <div className="relative z-10 col-start-2 row-start-7 flex items-start justify-center pt-4">
@@ -412,7 +408,7 @@ export const ManualApp = ({ app }: Props) => {
             >
               &nbsp;
             </div>
-            <div className="px-2 text-xs italic"></div>
+            <div className="px-2 text-sm italic"></div>
           </div>
         ) : null}
         {hasFnPlusShift ? (
