@@ -47,7 +47,7 @@ export type AllColors = Color["tag"] | "Black";
 export enum ModalMode {
   EditLayout,
   AddApp,
-  RecallLayout,
+  RecallSetup,
 }
 
 export interface ModalConfig {

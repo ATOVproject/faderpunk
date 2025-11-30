@@ -1,4 +1,4 @@
-import { H2, H3, H4, List } from "./Shared";
+import { H2, H3, H4, H5, List } from "./Shared";
 
 export const Configurator = () => (
   <>
@@ -100,57 +100,6 @@ export const Configurator = () => (
       Just like with the layout, you must click <strong>Save</strong> to apply
       changes to each individual app. This safeguard ensures that no unintended
       modifications are made.
-    </p>
-
-    <H4>Save & Load Layout</H4>
-    <p>
-      Below the Active Apps section, you'll find controls for saving and loading
-      complete layouts.
-    </p>
-    <p>
-      <strong>Saving a Layout</strong>
-      <br />
-      To save your current configuration:
-    </p>
-    <List>
-      <li>
-        Enter a name for your layout in the File name field (defaults to
-        "faderpunk-layout")
-      </li>
-      <li>
-        Click <strong>Save current layout</strong>
-      </li>
-    </List>
-    <p>
-      This saves both your channel layout and all app parameters as a .json
-      file, which will be downloaded to your computer. This is particularly
-      useful for:
-    </p>
-    <List>
-      <li>Creating backup configurations</li>
-      <li>Setting up different performance layouts</li>
-      <li>Sharing configurations between devices</li>
-    </List>
-    <p>
-      <strong>Loading a Layout</strong>
-      <br />
-      To load a previously saved layout:
-    </p>
-    <List>
-      <li>
-        Click <strong>Choose layout file</strong> and select a .json layout file
-        from your computer
-      </li>
-      <li>The selected filename will appear next to the button</li>
-      <li>
-        Click <strong>Load</strong> to apply the layout, or{" "}
-        <strong>Cancel</strong> to abort
-      </li>
-    </List>
-    <p>
-      Loading a layout will replace your current channel assignments and app
-      parameters with those stored in the file. Make sure to save your current
-      layout first if you want to preserve it.
     </p>
 
     <H3>Apps Tab</H3>
@@ -343,5 +292,90 @@ export const Configurator = () => (
         .
       </li>
     </List>
+
+    <H4>Save & Recall Setup</H4>
+    <p>
+      At the bottom of the Settings tab, you'll find controls for saving and
+      recalling your Faderpunk setup. Keep in mind that scenes are currently{" "}
+      <strong>not</strong> saved with the setup.
+    </p>
+    <p>
+      <H5>Saving a Setup</H5>
+      To save your current configuration:
+    </p>
+    <List>
+      <li>
+        Enter a name for your setup in the File name field (defaults to
+        "faderpunk-setup")
+      </li>
+      <li>
+        Optionally, expand <strong>Add description</strong> to include notes
+        about your setup
+      </li>
+      <li>
+        Click <strong>Save current Setup</strong>
+      </li>
+    </List>
+    <p>
+      This saves your complete Faderpunk configuration as a .json file, which
+      will be downloaded to your computer. The setup file includes:
+    </p>
+    <List>
+      <li>
+        <strong>Channel layout</strong> – Which apps are assigned to which
+        channels
+      </li>
+      <li>
+        <strong>App parameters</strong> – All parameter values for each loaded
+        app
+      </li>
+      <li>
+        <strong>Global configuration</strong> – Clock settings, quantizer
+        settings, I²C mode, AUX jack configuration, and LED brightness
+      </li>
+    </List>
+    <p>Saving setups is useful for:</p>
+    <List>
+      <li>Creating backup configurations</li>
+      <li>Setting up different performance layouts</li>
+      <li>Sharing complete configurations between devices</li>
+      <li>Switching between different creative workflows</li>
+    </List>
+    <p>
+      <H5>Recalling a Setup</H5>
+      To recall a previously saved setup:
+    </p>
+    <List>
+      <li>
+        Click <strong>Choose Setup file</strong> and select a .json setup file
+        from your computer
+      </li>
+      <li>The selected filename will appear next to the button</li>
+      <li>
+        Click <strong>Load</strong> to open the recall interface
+      </li>
+    </List>
+    <p>
+      In the recall interface, you can choose which parts of the setup to apply:
+    </p>
+    <List>
+      <li>
+        <strong>Recall all app parameters</strong> – If enabled, all app
+        parameter values from the setup file will be applied to your device
+      </li>
+      <li>
+        <strong>Recall global configuration</strong> – If enabled, all device
+        settings will be restored
+      </li>
+    </List>
+    <p>
+      The channel layout is always applied when recalling a setup. You can
+      preview the layout in the visual editor before confirming.
+    </p>
+    <p>
+      Click <strong>Load</strong> to apply the setup, or <strong>Cancel</strong>{" "}
+      to abort. Make sure to save your current setup first if you want to
+      preserve it.
+    </p>
   </>
 );
