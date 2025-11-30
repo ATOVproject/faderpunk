@@ -160,7 +160,7 @@ export const SaveLoadSetup = () => {
 
                   setModalConfig({
                     isOpen: true,
-                    mode: ModalMode.RecallLayout,
+                    mode: ModalMode.RecallSetup,
                     recallLayout: layout,
                     recallParams: params,
                     recallConfig: loadedConfig,
