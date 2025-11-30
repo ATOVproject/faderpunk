@@ -196,7 +196,7 @@ async fn read_fader(
         let target_value = match active_layer {
             LatchLayer::Main => main_fader_values[channel],
             LatchLayer::Alt => global_settings_fader_values[channel],
-            _ => unreachable!(),
+            LatchLayer::Third => 0,
         };
 
         if let Some(new_value) = latch.update(val, active_layer, target_value) {
@@ -217,7 +217,7 @@ async fn read_fader(
                         global_settings_fader_values[channel] = new_value;
                     }
                 }
-                _ => unreachable!(),
+                LatchLayer::Third => {}
             }
         }
 
