@@ -236,29 +236,37 @@ export const EditLayoutModal = ({
 
   const handleSave = useCallback(async () => {
     setSubmitting(true);
-    if (usbDevice && apps) {
-      const newLayout = await setLayout(usbDevice, layout, apps);
-      if (modalConfig.mode === ModalMode.RecallSetup) {
-        if (recallParams && modalConfig.recallParams) {
-          await setAllAppParams(usbDevice, modalConfig.recallParams);
-          // Wait 1s for the apps to spawn
-          await delay(1000);
-          const params = await getAllAppParams(usbDevice);
-          setAllParams(params);
+    try {
+      if (usbDevice && apps) {
+        const newLayout = await setLayout(usbDevice, layout, apps);
+        if (modalConfig.mode === ModalMode.RecallSetup) {
+          if (recallParams && modalConfig.recallParams) {
+            // Wait 1s for the apps to spawn before setting params
+            await delay(1000);
+            await setAllAppParams(usbDevice, modalConfig.recallParams);
+            const params = await getAllAppParams(usbDevice);
+            setAllParams(params);
+          }
+          if (recallConfig && modalConfig.recallConfig) {
+            await setGlobalConfig(usbDevice, modalConfig.recallConfig);
+            setConfig(modalConfig.recallConfig);
+          }
+        } else if (modalConfig.mode === ModalMode.AddApp && newAppId !== null) {
+          // Wait 500ms for the new app to spawn
+          await delay(500);
+          const params = await getAppParams(usbDevice, newAppId);
+          setParams(newAppId, params);
         }
-        if (recallConfig && modalConfig.recallConfig) {
-          await setGlobalConfig(usbDevice, modalConfig.recallConfig);
-          setConfig(modalConfig.recallConfig);
-        }
-      } else if (modalConfig.mode === ModalMode.AddApp && newAppId !== null) {
-        // Wait 500ms for the new app to spawn
-        await delay(500);
-        const params = await getAppParams(usbDevice, newAppId);
-        setParams(newAppId, params);
+        onSave(newLayout);
       }
-      onSave(newLayout);
+    } catch (error) {
+      console.error("Error saving layout:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to save layout",
+      );
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }, [
     apps,
     usbDevice,
