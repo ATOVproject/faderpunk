@@ -200,13 +200,12 @@ export async function receiveBatchMessages(
   usbDevice: USBDevice,
   count: bigint,
 ): Promise<ConfigMsgOut[]> {
-  const messagePromises: Promise<ConfigMsgOut>[] = [];
+  const results: ConfigMsgOut[] = [];
 
-  for (let i = 0; i < count; i++) {
-    messagePromises.push(receiveMessage(usbDevice));
+  for (let i = 0n; i < count; i++) {
+    results.push(await receiveMessage(usbDevice));
   }
 
-  const results = await Promise.all(messagePromises);
   const endMessage = await receiveMessage(usbDevice);
 
   if (endMessage.tag !== "BatchMsgEnd") {
