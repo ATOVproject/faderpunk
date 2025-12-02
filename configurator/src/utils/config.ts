@@ -145,9 +145,7 @@ export const getGlobalConfig = async (dev: USBDevice) => {
 };
 
 export const setAllAppParams = async (dev: USBDevice, params: ParamValues) => {
-  const allParams: [number, Value[]][] = Object.entries(params).map(
-    ([key, value]) => [Number(key), value],
-  );
+  const allParams: [number, Value[]][] = Array.from(params.entries());
   for (let i = 0; i < allParams.length; i++) {
     const [layoutId, values] = allParams[i];
     const fixedLengthValues = getFixedLengthParamArray(values);

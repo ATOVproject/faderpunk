@@ -29,7 +29,7 @@ export const FactoryReset = () => {
     try {
       await factoryReset(usbDevice);
       // 3 seconds should be plenty enough
-      await delay(3000);
+      await delay(5000);
       setSure(false);
       setOpen(false);
       disconnect();
