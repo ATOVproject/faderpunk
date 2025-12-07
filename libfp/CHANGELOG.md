@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.8.2...libfp-v0.9.0) (2025-12-07)
+
+
+### Features
+
+* add possibility to save and recall app layouts & params ([e724ac0](https://github.com/ATOVproject/faderpunk/commit/e724ac087893a3beb53ea4e4f39449dbb238ea68))
+* **calibration:** switch to fully automatic calibration ([f88604d](https://github.com/ATOVproject/faderpunk/commit/f88604d641a5aa1b2d2998f12faee275d71950f2))
+* **configurator:** add factory reset function ([85dc047](https://github.com/ATOVproject/faderpunk/commit/85dc047d3a8b463a746925df9de9c8778841c739))
+* **configurator:** add Key and Tonic mapping to the manual ([feeecf0](https://github.com/ATOVproject/faderpunk/commit/feeecf0016221613179044eb81c7932c2f2e023a))
+* **panner:** add panner app ([d990c75](https://github.com/ATOVproject/faderpunk/commit/d990c752e5bdd51704a1323dfc798c50b7ba33e6))
+
 ## [0.8.2](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.8.1...libfp-v0.8.2) (2025-10-24)
 
 
