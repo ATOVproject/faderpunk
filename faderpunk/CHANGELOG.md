@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.5.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.4.0...faderpunk-v1.5.0) (2025-12-07)
+
+
+### Features
+
+* add possibility to save and recall app layouts & params ([e724ac0](https://github.com/ATOVproject/faderpunk/commit/e724ac087893a3beb53ea4e4f39449dbb238ea68))
+* **calibration:** switch to fully automatic calibration ([f88604d](https://github.com/ATOVproject/faderpunk/commit/f88604d641a5aa1b2d2998f12faee275d71950f2))
+* **clock_div:** add clock divider app ([8214a38](https://github.com/ATOVproject/faderpunk/commit/8214a381734eb4eae5093b052888349c3a432995))
+* **clock:** start with running clock & save clock state ([bcbf044](https://github.com/ATOVproject/faderpunk/commit/bcbf044a754e9903d7a8b45fdaa2a9061b8f4b69))
+* **configurator:** add factory reset function ([85dc047](https://github.com/ATOVproject/faderpunk/commit/85dc047d3a8b463a746925df9de9c8778841c739))
+* **midi2cv:** add velocity to `Gate` and `Note Gate` mode ([0d1af52](https://github.com/ATOVproject/faderpunk/commit/0d1af527f043444cdca86e41e00f9963fcdd0339))
+* **midi:** send Out1 copy to MIDI Out2 ([275ba63](https://github.com/ATOVproject/faderpunk/commit/275ba632b151fb26a0b371142d97b9a5363e2d71))
+* **panner:** add panner app ([d990c75](https://github.com/ATOVproject/faderpunk/commit/d990c752e5bdd51704a1323dfc798c50b7ba33e6))
+* **turing & turing+:** add range param ([cb1602f](https://github.com/ATOVproject/faderpunk/commit/cb1602fdd701edf2459ac3dc074684d72b4865e8))
+* **turing+:** add base note param ([3189ff9](https://github.com/ATOVproject/faderpunk/commit/3189ff95067b43a4ee659a6de979a5efd973d8ae))
+
+
+### Bug Fixes
+
+* **apps:** clean up latch layer antipattern ([e2afe6a](https://github.com/ATOVproject/faderpunk/commit/e2afe6a297565231ddafcdd67e5bd070a26a2875))
+* **lfo:** add some variable safety ([beba31e](https://github.com/ATOVproject/faderpunk/commit/beba31ecf9884aa9817a40b5b60f12c6d9778a2f))
+* never erase calibration range ([5280e94](https://github.com/ATOVproject/faderpunk/commit/5280e94d0c970063dce257e39c0c660459da8946))
+* **panner:** fix crash when pressing button 2 and moving fader 1 ([e674d84](https://github.com/ATOVproject/faderpunk/commit/e674d84861ccd9e850a4322b4de8f7b782b2504b))
+* **panner:** make LED color more consistent ([be56867](https://github.com/ATOVproject/faderpunk/commit/be56867e8ed34846f2e3b082e3ba3334c7fbcbcd))
+
 ## [1.4.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.3.0...faderpunk-v1.4.0) (2025-10-24)
 
 
