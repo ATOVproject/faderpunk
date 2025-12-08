@@ -7,7 +7,7 @@ export const UpdateGuide = () => (
     <H2 id="download">Download firmware update</H2>
     <ButtonPrimary
       as="a"
-      href={`https://github.com/ATOVproject/faderpunk/releases/download/faderpunk-v${FIRMWARE_LATEST_VERSION}/faderpunk.uf2`}
+      href={`https://github.com/ATOVproject/faderpunk/releases/download/faderpunk-v${FIRMWARE_LATEST_VERSION}/faderpunk-v${FIRMWARE_LATEST_VERSION}.uf2`}
     >
       Download v{FIRMWARE_LATEST_VERSION}
     </ButtonPrimary>

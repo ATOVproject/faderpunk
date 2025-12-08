@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 
 import { useModalContext } from "../contexts/ModalContext";
 import { ModalProvider } from "../contexts/ModalProvider";
-import { FIRMWARE_MIN_SUPPORTED, FIRMWARE_LATEST_VERSION } from "../consts";
+import { FIRMWARE_LATEST_VERSION } from "../consts";
 import { useStore } from "../store";
 import { ModalMode } from "../utils/types";
 import { getDeviceVersion } from "../utils/usb-protocol";
@@ -41,18 +41,12 @@ const ConfiguratorPageContent = () => {
   }, [navigate]);
 
   const version = usbDevice && getDeviceVersion(usbDevice);
-  const updateRequired = version && semverLt(version, FIRMWARE_MIN_SUPPORTED);
   const updatedAvailable =
     version && semverLt(version, FIRMWARE_LATEST_VERSION);
 
   useEffect(() => {
     if (!usbDevice) {
       navigate("/");
-      return;
-    }
-
-    if (updateRequired) {
-      navigate("/update");
       return;
     }
 
@@ -77,7 +71,7 @@ const ConfiguratorPageContent = () => {
     return () => {
       closeAll();
     };
-  }, [navigate, handleToastClick, usbDevice, updatedAvailable, updateRequired]);
+  }, [navigate, handleToastClick, usbDevice, updatedAvailable]);
 
   const initialLayout = modalConfig.recallLayout || layout;
 
