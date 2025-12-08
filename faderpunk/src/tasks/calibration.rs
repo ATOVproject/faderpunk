@@ -1,3 +1,4 @@
+use defmt::info;
 use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_time::Timer;
 use linreg::linear_regression;
@@ -76,7 +77,7 @@ async fn run_manual_input_calibration() -> RegressionValuesInput {
     let voltages_arrays = [VOLTAGES_IN_0_10V, VOLTAGES_NEG5_5V];
     let values_arrays = [VALUES_IN_0_10V, VALUES_NEG5_5V];
     set_led_color(0, Led::Button, Color::Cyan);
-    defmt::info!("Plug a good voltage source into channel 0, then press button");
+    info!("Plug a good voltage source into channel 0, then press button");
     wait_for_button_press(0).await;
     for (range_index, &adc_range) in adc_ranges.iter().enumerate() {
         let mut measured_values: [u16; 3] = Default::default();
@@ -99,16 +100,16 @@ async fn run_manual_input_calibration() -> RegressionValuesInput {
             .await;
             let pos = LED_POS[j];
             flash_led(0, pos, Color::Cyan, None);
-            defmt::info!("Set voltage source to {}V, then press button", voltage);
+            info!("Set voltage source to {}V, then press button", voltage);
             wait_for_button_press(0).await;
             let value = MAX_VALUES_ADC[0].load(Ordering::Relaxed);
             measured_values[j] = value;
             set_led_color(0, pos, Color::Cyan);
             let error = target_value as i16 - value as i16;
-            defmt::info!("Target value: {}", target_value);
-            defmt::info!("Value read: {}", value);
-            defmt::info!("Error: {}", error);
-            defmt::info!("------------------");
+            info!("Target value: {}", target_value);
+            info!("Value read: {}", value);
+            info!("Error: {}", error);
+            info!("------------------");
         }
 
         if let Ok(results) = linear_regression::<f32, f32, f32>(
@@ -119,7 +120,7 @@ async fn run_manual_input_calibration() -> RegressionValuesInput {
             let slope = (results.0 * CALIBRATION_SCALE_FACTOR as f32) as i64;
             let intercept = (results.1 * CALIBRATION_SCALE_FACTOR as f32) as i64;
             input_results[range_index] = (slope, intercept);
-            defmt::info!(
+            info!(
                 "Linear regression results for range {}: {}",
                 range_index,
                 (slope, intercept)
@@ -147,7 +148,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
     reset_led(0, Led::Bottom);
     reset_led(0, Led::Top);
 
-    defmt::info!("Remove voltage source NOW, then press button");
+    info!("Remove voltage source NOW, then press button");
     wait_for_button_press(0).await;
 
     let dac_ranges = [DACRANGE::Rg0_10v, DACRANGE::RgNeg5_5v];
@@ -178,7 +179,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                 ))
                 .await;
 
-            defmt::info!("Calibrating DAC range index: {}", range_idx);
+            info!("Calibrating DAC range index: {}", range_idx);
 
             for (j, (&voltage, &target_value)) in voltages_arrays[range_idx]
                 .iter()
@@ -187,10 +188,9 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
             {
                 let pos = LED_POS[j];
                 flash_led(ui_no, pos, Color::Green, None);
-                defmt::info!(
+                info!(
                     "Move fader {} until you read the closest value to {}V, then press button",
-                    ui_no,
-                    voltage
+                    ui_no, voltage
                 );
                 let mut value = 0;
 
@@ -244,10 +244,10 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                 set_led_color(ui_no, pos, Color::Green);
                 set_values[j] = value;
                 let error = target_value as i16 - value as i16;
-                defmt::info!("Target value: {}", target_value);
-                defmt::info!("Read value: {}", value);
-                defmt::info!("Error: {} counts", error);
-                defmt::info!("------------------");
+                info!("Target value: {}", target_value);
+                info!("Read value: {}", value);
+                info!("Error: {} counts", error);
+                info!("------------------");
             }
 
             if let Ok(results) = linear_regression::<f32, f32, f32>(
@@ -258,12 +258,9 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                 let slope = (results.0 * CALIBRATION_SCALE_FACTOR as f32) as i64;
                 let intercept = (results.1 * CALIBRATION_SCALE_FACTOR as f32) as i64;
                 output_results[chan][range_idx] = (slope, intercept);
-                defmt::info!(
+                info!(
                     "Linear regression results for outputs channel {} range {}: ({}, {})",
-                    chan,
-                    range_idx,
-                    slope,
-                    intercept
+                    chan, range_idx, slope, intercept
                 );
             } else {
                 // Blink LED red if calibration didn't succeeed
@@ -301,10 +298,13 @@ async fn run_automatic_calibration(
     reset_led(0, Led::Bottom);
     reset_led(0, Led::Top);
 
+    info!("Waiting for calibration data...");
+
     loop {
         if let I2cFollowerMessage::CalibSetRegressionValues(input_values, output_values) =
             receiver.receive().await
         {
+            info!("Received calibration data.");
             return (input_values, output_values);
         }
     }
@@ -315,7 +315,7 @@ pub async fn run_calibration(mut msg_receiver: I2cFollowerReceiver) {
 
     set_led_color(0, Led::Button, Color::Yellow);
 
-    defmt::info!("Press button or send i2c signal to start calibration");
+    info!("Press button or send i2c signal to start calibration");
 
     let calibration_data = match select(
         wait_for_button_press(0),
@@ -325,6 +325,7 @@ pub async fn run_calibration(mut msg_receiver: I2cFollowerReceiver) {
     {
         Either::First(_) => {
             // Manual calibration
+            info!("Starting manual calibration...");
             let inputs = run_manual_input_calibration().await;
             let outputs = run_manual_output_calibration().await;
 
@@ -332,6 +333,7 @@ pub async fn run_calibration(mut msg_receiver: I2cFollowerReceiver) {
         }
         Either::Second(_) => {
             // Automatic calibration
+            info!("Starting automatic calibration...");
             let (inputs, outputs) = run_automatic_calibration(&mut msg_receiver).await;
 
             MaxCalibration { inputs, outputs }
@@ -347,6 +349,8 @@ pub async fn run_calibration(mut msg_receiver: I2cFollowerReceiver) {
             flash_led(chan, p, Color::Green, Some(5));
         }
     }
+
+    info!("Calibration done. Restarting...");
 
     // Wait for 2 seconds, then restart the device
     Timer::after_secs(2).await;
