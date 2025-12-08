@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.0...configurator-v1.6.1) (2025-12-08)
+
+
+### Bug Fixes
+
+* **configurator:** properly redirect for firmware update ([87e3dca](https://github.com/ATOVproject/faderpunk/commit/87e3dca452617e5296701fc86dab27eac9ff1003))
+
 ## [1.6.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.4...configurator-v1.6.0) (2025-12-07)
 
 
