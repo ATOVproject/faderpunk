@@ -52,7 +52,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     max: 24,
 })
 .add_param(Param::i32 {
-    name: "note",
+    name: "Note",
     min: 1,
     max: 128,
 })
@@ -214,9 +214,6 @@ pub async fn run(
         jack.set_value(0);
     }
 
-    // let jack = app.make_out_jack(0, Range::_0_10V).await;
-    // jack.set_value(0);
-
     let fut1 = async {
         let mut outval = 0;
         let mut val = fader.get_value();
@@ -234,10 +231,7 @@ pub async fn run(
                     fadval = fader.get_value();
                 }
                 let att = storage.query(|s| (s.att_saved));
-                // info!("{}", att);
                 let offset = offset_glob.get();
-
-                // if buttons.is_shift_pressed() {
 
                 if muted {
                     val = 0;
@@ -287,7 +281,6 @@ pub async fn run(
                 let pitch = pitch_glob.get();
                 outval = clickless(outval, offset);
                 let out = (pitch as i32 + outval as i32 - 2047).clamp(0, 4095) as u16;
-                // //info!("outval ={}, pitch = {} out = {}", outval, pitch, out);
                 jack.set_value(out);
             }
         }
@@ -343,81 +336,93 @@ pub async fn run(
         loop {
             match midi_in.wait_for_message().await {
                 MidiMessage::Controller { controller, value } => {
-                    if mode == 0 {
-                        if bits_7_16(controller) == midi_cc as u16 {
-                            let val = scale_bits_7_12(value);
-                            offset_glob.set(val);
-                        }
+                    if mode == 0 && bits_7_16(controller) == midi_cc as u16 {
+                        let val = scale_bits_7_12(value);
+                        offset_glob.set(val);
                     }
                 }
                 MidiMessage::NoteOn { key, vel } => {
-                    if mode == 1 {
-                        if !muted_glob.get() {
-                            let mut note_in = bits_7_16(key);
-                            note_in = (note_in as u32 * 410 / 12) as u16;
-                            let oct = (fader.get_value() as i32 * 10 / 4095) - 5;
-                            let note_out = (note_in as i32 + oct * 410).clamp(0, 4095) as u16;
-                            // jack.set_value(note_out);
-                            pitch_glob.set(note_out);
-                            leds.set(
-                                0,
-                                Led::Top,
-                                led_color,
-                                Brightness::Custom((note_out / 16) as u8),
-                            );
-                        }
-                    }
-                    if mode == 2 {
-                        if !muted_glob.get() {
-                            let vel_out = (scale_bits_7_12(vel) as u32 * 3686 / 4095 + 410) as u16;
-                            jack.set_value(vel_out);
-                            note_num += 1;
-                            leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
-                        } else {
-                            note_num = 0;
-                        }
+                    // Sometimes note-off will be a NoteOn with velocity 0
+                    if vel == 0 {
+                        let is_mode_2 = mode == 2;
+                        let is_target_mode_6 = mode == 6 && bits_7_16(key) == note as u16;
 
-                        //info!("note on num = {}", note_num);
-                    }
-                    if mode == 6 && bits_7_16(key) == note as u16 {
-                        if !muted_glob.get() {
-                            let vel_out = (scale_bits_7_12(vel) as u32 * 3686 / 4095 + 410) as u16;
-                            jack.set_value(vel_out);
-                            note_num += 1;
-                            leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
-                        } else {
-                            note_num = 0;
+                        if is_mode_2 || is_target_mode_6 {
+                            note_num = (note_num - 1).max(0);
+                            if note_num == 0 {
+                                jack.set_value(0);
+                                leds.unset(0, Led::Top);
+                            }
                         }
-                    }
-                    if mode == 3 {
-                        let vel_out = if !muted_glob.get() {
-                            scale_bits_7_12(vel)
-                        } else {
-                            0
-                        };
-                        jack.set_value(vel_out);
+                    } else {
+                        match mode {
+                            1 => {
+                                if !muted_glob.get() {
+                                    let mut note_in = bits_7_16(key);
+                                    note_in = (note_in as u32 * 410 / 12) as u16;
+                                    let oct = (fader.get_value() as i32 * 10 / 4095) - 5;
+                                    let note_out =
+                                        (note_in as i32 + oct * 410).clamp(0, 4095) as u16;
+                                    // jack.set_value(note_out);
+                                    pitch_glob.set(note_out);
+                                    leds.set(
+                                        0,
+                                        Led::Top,
+                                        led_color,
+                                        Brightness::Custom((note_out / 16) as u8),
+                                    );
+                                }
+                            }
+                            2 => {
+                                if !muted_glob.get() {
+                                    let vel_out =
+                                        (scale_bits_7_12(vel) as u32 * 3686 / 4095 + 410) as u16;
+                                    jack.set_value(vel_out);
+                                    note_num += 1;
+                                    leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
+                                } else {
+                                    note_num = 0;
+                                }
+                            }
+                            3 => {
+                                let vel_out = if !muted_glob.get() {
+                                    scale_bits_7_12(vel)
+                                } else {
+                                    0
+                                };
+                                jack.set_value(vel_out);
 
-                        leds.set(
-                            0,
-                            Led::Top,
-                            led_color,
-                            Brightness::Custom((vel_out / 16) as u8),
-                        );
-                        //info!("Velocity: {} ", vel_out)
+                                leds.set(
+                                    0,
+                                    Led::Top,
+                                    led_color,
+                                    Brightness::Custom((vel_out / 16) as u8),
+                                );
+                            }
+                            6 => {
+                                if bits_7_16(key) == note as u16 {
+                                    if !muted_glob.get() {
+                                        let vel_out = (scale_bits_7_12(vel) as u32 * 3686 / 4095
+                                            + 410)
+                                            as u16;
+                                        jack.set_value(vel_out);
+                                        note_num += 1;
+                                        leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
+                                    } else {
+                                        note_num = 0;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
-                MidiMessage::NoteOff { key, vel } => {
-                    if mode == 2 {
+                MidiMessage::NoteOff { key, .. } => {
+                    let is_mode_2 = mode == 2;
+                    let is_target_mode_6 = mode == 6 && bits_7_16(key) == note as u16;
+
+                    if is_mode_2 || is_target_mode_6 {
                         note_num = (note_num - 1).max(0);
-                        //info!("note off num = {}", note_num);
-                        if note_num == 0 {
-                            jack.set_value(0);
-                            leds.unset(0, Led::Top);
-                        }
-                    }
-                    if mode == 6 && bits_7_16(key) == note as u16 {
-                        note_num = (note_num - 1).max(0);
-                        //info!("note off num = {}", note_num);
                         if note_num == 0 {
                             jack.set_value(0);
                             leds.unset(0, Led::Top);
@@ -425,7 +430,6 @@ pub async fn run(
                     }
                 }
                 MidiMessage::PitchBend { bend } => {
-                    //info!("mode = {}", mode);
                     if mode == 5 || mode == 1 {
                         let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
                         offset_glob.set(out);
@@ -441,13 +445,7 @@ pub async fn run(
                             led_color,
                             Brightness::Custom((bend.as_f32() * -255.0) as u8),
                         );
-                        //info!("Bend! = {}, bend range = {}", bend.as_f32(), out);
                     }
-                    // if mode == 1 {
-                    //     let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
-                    //     offset_glob.set(out);
-                    //     //info!("Bend! = {}, bend range = {}", bend.as_f32(), out);
-                    // }
                 }
                 MidiMessage::ChannelAftertouch { vel } => {
                     if mode == 4 {
