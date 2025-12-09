@@ -352,6 +352,7 @@ pub async fn run(
                             if note_num == 0 {
                                 jack.set_value(0);
                                 leds.unset(0, Led::Top);
+                                app.delay_millis(1).await;
                             }
                         }
                     } else {
@@ -426,6 +427,7 @@ pub async fn run(
                         if note_num == 0 {
                             jack.set_value(0);
                             leds.unset(0, Led::Top);
+                            app.delay_millis(1).await;
                         }
                     }
                 }
