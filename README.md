@@ -330,6 +330,119 @@ Contributions are welcome! Please follow the [Rust Code of Conduct](https://www.
 5. Test on hardware if applicable
 6. Submit a pull request with a clear description
 
+## Release Process
+
+Faderpunk uses a dual-track release system managed by release-please:
+- **Beta releases**: Published from the `develop` branch (e.g., `1.6.0-beta.5`)
+- **Stable releases**: Published from the `main` branch (e.g., `1.5.0`)
+
+Both workflows are automated via GitHub Actions, but version management requires manual steps to keep the tracks synchronized.
+
+### Making a Beta Release
+
+Beta releases happen automatically when commits are merged to the `develop` branch:
+
+1. **Merge changes to `develop`**:
+   ```bash
+   git checkout develop
+   git merge feature-branch
+   git push origin develop
+   ```
+
+2. **Release-please creates a PR**:
+   - Workflow runs automatically on push
+   - Creates/updates a release PR with changelog
+   - Review the PR to verify version bumps and changelog
+
+3. **Merge the release PR**:
+   - Merge the release-please PR on GitHub
+   - This triggers the build and publish workflow
+   - Beta releases are published with `prerelease: true` flag
+   - Configurator deploys to GitHub Pages at `/beta` path
+
+### Making a Stable Release
+
+Stable releases happen when `develop` is ready for production:
+
+1. **Create PR from `develop` to `main`**:
+   ```bash
+   git checkout develop
+   git push origin develop  # Ensure develop is up to date
+   ```
+   Then create a PR on GitHub from `develop` → `main`
+
+2. **Review and merge to `main`**:
+   - Review the PR carefully
+   - Merge to `main` when ready for stable release
+
+3. **Release-please creates a release PR on `main`**:
+   - Workflow runs automatically
+   - Creates/updates a release PR with changelog
+   - Version numbers will match what was in develop
+
+4. **Merge the release PR**:
+   - Merge the release-please PR on GitHub
+   - This triggers the build and publish workflow
+   - Stable releases are published as full releases (not prereleases)
+   - Configurator deploys to GitHub Pages root path
+   - `libfp` is published to crates.io (if version changed)
+
+### Critical: Sync Branches After Stable Release
+
+**IMPORTANT**: After a stable release is published, you must sync the release history back to `develop` and bump beta versions ahead of stable.
+
+5. **Merge `main` back into `develop`**:
+   ```bash
+   git checkout develop
+   git pull origin develop
+   git merge main --no-edit
+   git push origin develop
+   ```
+
+   This ensures release-please on `develop` sees the stable release commits and doesn't get confused about what's been released.
+
+6. **Bump beta versions ahead of stable**:
+
+   Edit `.release-please-manifest.beta.json` to increment the minor version and reset to `-beta.0`:
+
+   ```json
+   {
+     "faderpunk": "1.6.0-beta.0",
+     "configurator": "1.7.0-beta.0"
+   }
+   ```
+
+   For example, if stable just released `faderpunk-1.5.0`, beta should jump to `1.6.0-beta.0`.
+
+7. **Commit and push the version bump**:
+   ```bash
+   git add .release-please-manifest.beta.json
+   git commit -m "chore: bump beta versions ahead of stable"
+   git push origin develop
+   ```
+
+### Version Management Rules
+
+- Beta versions must always be ahead of the latest stable release
+- Use semantic versioning: `MAJOR.MINOR.PATCH` for stable, `MAJOR.MINOR.PATCH-beta.N` for beta
+- When stable releases `X.Y.0`, beta should jump to `X.(Y+1).0-beta.0`
+- The merge from `main` to `develop` is required for release-please to track what's been released
+
+### Release Artifacts
+
+Each release produces:
+
+**Firmware** (`faderpunk/`):
+- `faderpunk.elf` - ELF binary for debugging
+- `faderpunk-vX.Y.Z.uf2` - UF2 file for flashing to device
+
+**Configurator** (`configurator/`):
+- `configurator.zip` - Downloadable web app bundle
+- GitHub Pages deployment (root for stable, `/beta` for beta)
+
+**Library** (`libfp/` - stable only):
+- Published to crates.io when version changes
+
 ## License
 
 This project is licensed under **GNU General Public License v3.0** (GPL-3.0).
