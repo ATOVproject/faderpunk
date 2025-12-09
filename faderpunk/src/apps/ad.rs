@@ -394,8 +394,12 @@ pub async fn run(
         let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
         loop {
             match midi_in.wait_for_message().await {
-                MidiMessage::NoteOn { .. } => {
-                    gate_on_glob.modify(|g| *g + 1);
+                MidiMessage::NoteOn { key, vel } => {
+                    if vel > 0 {
+                        gate_on_glob.modify(|g| *g + 1);
+                    } else {
+                        gate_on_glob.modify(|g| (*g - 1).max(0));
+                    }
                 }
                 MidiMessage::NoteOff { .. } => {
                     gate_on_glob.modify(|g| (*g - 1).max(0));
