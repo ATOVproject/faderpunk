@@ -387,6 +387,49 @@ Stable releases happen when `develop` is ready for production:
    - Configurator deploys to GitHub Pages root path
    - `libfp` is published to crates.io (if version changed)
 
+### Making a Patch Release (Hotfix)
+
+Patch releases allow you to fix critical bugs in stable releases without pulling in new features from `develop`.
+
+For example, to release `1.5.1` while `develop` is working on `1.6.0-beta.x`:
+
+1. **Create a hotfix branch from `main`**:
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b hotfix/critical-bug
+   ```
+
+2. **Make your fix and push**:
+   ```bash
+   # Make your changes
+   git add .
+   git commit -m "fix: critical bug in X"
+   git push origin hotfix/critical-bug
+   ```
+
+3. **Create PR to `main` and merge**:
+   - Create a PR from your hotfix branch → `main`
+   - Review and merge the PR
+
+4. **Release-please creates a patch release PR**:
+   - Workflow runs automatically
+   - Creates/updates a release PR (e.g., `1.5.0` → `1.5.1`)
+   - Review and merge the release PR
+   - This triggers the build and publish workflow
+
+5. **Sync the fix back to `develop`**:
+   ```bash
+   git checkout develop
+   git pull origin develop
+   git merge main --no-edit
+   git push origin develop
+   ```
+
+   This ensures the fix is included in future beta and stable releases.
+
+**Important**: You don't need to bump beta versions after a patch release, since beta is already ahead on the minor version (e.g., `1.6.0-beta.x` is ahead of `1.5.1`).
+
 ### Critical: Sync Branches After Stable Release
 
 **IMPORTANT**: After a stable release is published, you must sync the release history back to `develop` and bump beta versions ahead of stable.
