@@ -13,7 +13,7 @@ const apps: ManualAppData[] = [
   {
     appId: 1,
     title: "Control",
-    description: "Simple MIDI/CV controller",
+    description: "Simple MIDI/CV controller with mute button",
     color: "Violet",
     icon: "fader",
     params: [
@@ -814,6 +814,48 @@ const apps: ManualAppData[] = [
       },
     ],
   },
+    {
+    appId: 20,
+    title: "Control X2",
+    description: "Simple MIDI/CV controller with CC button",
+    color: "Green",
+    icon: "fader",
+    params: [
+      "Curve",
+      "Range",
+      "MIDI Channel Fader",
+      "CC Fader",
+      "MIDI Channel Button",
+      "CC Button",
+      "Color",
+      "Store state",
+    ],
+    storage: [
+      "Level (if 'Store state' enabled)",
+      "Muted (if 'Store state' enabled)",
+      "Attenuation",
+      "Button mode (toggle or not), toggle by default"
+    ],
+    text: "This app is very similar to the standard control app but here the button is a CC control instead of a mute. The MIDI channels and CC of the fader and button can be set independently in the parameters. The range of the fader output can be adjusted using Shift + Fader, which affects both CC and CV ranges. The fader sends CC and CV while the button act as an additional MIDI control. The button can be set to either be toggle or direct (send 127 on press and 0 on release). Changing the button mode can is done with shift+button, the LED button lights red if in toggle mode and is off in direct mode. The fader level and the button state (if in toggle mode) can be saved in scenes if the 'Store state' parameter is enabled (active by default). You can then use this app as a way to save and recall CV voltage allowing for preset in a modular system for example. The curve can be adjusted in the settings; however, this only affects the CV output. Two voltage ranges are available in the settings: 0V to 10V or -5V to 5V. This affect the center point of attenuation of the fader of the CC value. In the 0V to 10V range, the center of the attenuation CC 0, making it ideal for controlling volume, send levels, or similar parameters. In the -5V to 5V range, the center is CC 64, making it suitable for controlling panning, crossfading, or similar functions. As with all apps where the LED color does not serve any specific function, you are free to configure it in the settings.",
+    channels: [
+      {
+        jackTitle: "Output",
+        jackDescription: "CV Output",
+        faderTitle: "Sets CV and MIDI CC value",
+        faderDescription: "",
+        faderPlusShiftTitle: "Attenuation level",
+        faderPlusShiftDescription: "Reduces the CV and CC range",
+        fnTitle: "Button",
+        fnDescription: "pressing the button sends MIDI CC",
+        fnPlusShiftDescription: "Switch the button mode from toggle (LED red) to direct (LED off)",
+        fnPlusShiftTitle: "Button mode",
+        ledTop: "Positive level indicator",
+        ledTopPlusShift: "Attenuation level in red",
+        ledBottom: "Negative level indicator",
+
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
@@ -874,3 +916,5 @@ export const ManualTab = () => {
     </>
   );
 };
+
+
