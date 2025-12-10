@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0-beta.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.0...faderpunk-v1.6.0-beta.0) (2025-12-10)
+
+
+### Miscellaneous Chores
+
+* **faderpunk:** bump to next beta version ([3933b44](https://github.com/ATOVproject/faderpunk/commit/3933b44328a1ac28e2f038ee86d21d04f72aa17b))
+
 ## [1.5.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.4.0...faderpunk-v1.5.0) (2025-12-07)
 
 

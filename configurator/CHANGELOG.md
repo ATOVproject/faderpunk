@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0-beta.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.1...configurator-v1.7.0-beta.0) (2025-12-10)
+
+
+### Miscellaneous Chores
+
+* **configurator:** bump to next beta version ([fed58ce](https://github.com/ATOVproject/faderpunk/commit/fed58ce1bda55d2f53a4e03e98220dccdba1f9ef))
+
 ## [1.6.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.0...configurator-v1.6.1) (2025-12-08)
 
 
