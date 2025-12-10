@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.0...faderpunk-v1.5.1) (2025-12-10)
+
+
+### Bug Fixes
+
+* **ad:** support zero-velocity note-offs ([c8efc0b](https://github.com/ATOVproject/faderpunk/commit/c8efc0beb4e9956504a3cb010eb5f2d56eaa96db))
+* **midi2cv:** re-trigger gate on legato ([8bf3697](https://github.com/ATOVproject/faderpunk/commit/8bf3697f00c1bf14c1a967719258727eed0b1499))
+* **midi2cv:** support zero-velocity note-offs ([95ed381](https://github.com/ATOVproject/faderpunk/commit/95ed38114a1850a341d11b2068fe553fb61709d3))
+
 ## [1.5.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.4.0...faderpunk-v1.5.0) (2025-12-07)
 
 
