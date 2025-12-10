@@ -15,7 +15,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 2;
+pub const PARAMS: usize = 3;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "AD Envelope",
@@ -28,11 +28,15 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "MIDI Channel",
     min: 1,
     max: 16,
+})
+.add_param(Param::bool {
+    name: "MIDI retrigger",
 });
 
 pub struct Params {
     use_midi: bool,
     midi_channel: i32,
+    retrigger: bool,
 }
 
 impl Default for Params {
@@ -40,15 +44,20 @@ impl Default for Params {
         Self {
             use_midi: false,
             midi_channel: 1,
+            retrigger: false,
         }
     }
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
         Some(Self {
             use_midi: bool::from_value(values[0]),
             midi_channel: i32::from_value(values[1]),
+            retrigger: bool::from_value(values[2]),
         })
     }
 
@@ -56,6 +65,7 @@ impl AppParams for Params {
         let mut vec = Vec::new();
         vec.push(self.use_midi.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.retrigger.into()).unwrap();
         vec
     }
 }
@@ -110,7 +120,8 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (use_midi, midi_chan) = params.query(|p| (p.use_midi, p.midi_channel));
+    let (use_midi, midi_chan, retrigger) =
+        params.query(|p| (p.use_midi, p.midi_channel, p.retrigger));
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
@@ -157,7 +168,7 @@ pub async fn run(
     let mut button_old = false;
     let mut timer: u32 = 5000;
     let mut start_time = 0;
-    let mut t2g = false;
+    let mut trigger_to_gate = false;
 
     let main_loop = async {
         loop {
@@ -173,10 +184,10 @@ pub async fn run(
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
                 // catching rising edge
-                gate_on_glob.modify(|g| *g + 1);
+                gate_on_glob.modify(|note_num| *note_num + 1);
             }
             if inputval <= 406 && oldinputval > 406 {
-                gate_on_glob.modify(|g| (*g - 1).max(0));
+                gate_on_glob.modify(|note_num| (*note_num - 1).max(0));
             }
             oldinputval = inputval;
 
@@ -189,7 +200,7 @@ pub async fn run(
             if timer == start_time {
                 gate_on_glob.set(gate_on_glob.get() + 1);
 
-                t2g = true;
+                trigger_to_gate = true;
             }
 
             if gate_on_glob.get() == 0 && old_gate {
@@ -199,12 +210,12 @@ pub async fn run(
                 old_gate = false;
             }
             if timer - start_time > storage.query(|s: &Storage| s.min_gate_saved) as u32 + 10
-                && t2g
+                && trigger_to_gate
                 && storage.query(|s: &Storage| s.min_gate_saved) != 4095
             {
-                gate_on_glob.modify(|g| (*g - 1).max(0));
+                gate_on_glob.modify(|note_num| (*note_num - 1).max(0));
 
-                t2g = false;
+                trigger_to_gate = false;
             }
 
             if env_state == 1 {
@@ -218,6 +229,9 @@ pub async fn run(
                         env_state = 2;
                     }
                     vals = 4094.0;
+                    if mode == 0 && retrigger {
+                        gate_on_glob.set(0);
+                    }
                 }
                 outval = curve_setting[0].at(vals as u16);
 
@@ -289,7 +303,7 @@ pub async fn run(
             }
 
             if button_old && !buttons.is_button_pressed(0) && buttons.is_shift_pressed() {
-                gate_on_glob.modify(|g| (*g - 1).max(0));
+                gate_on_glob.modify(|note_num| (*note_num - 1).max(0));
             }
 
             button_old = buttons.is_button_pressed(0);
@@ -384,7 +398,7 @@ pub async fn run(
                     s.mode_saved
                 });
             } else if chan == 0 {
-                gate_on_glob.modify(|g| *g + 1);
+                gate_on_glob.modify(|note_num| *note_num + 1);
                 // info!("here 2, gate count = {}", gate_on_glob.get().await)
             }
         }
@@ -394,11 +408,15 @@ pub async fn run(
         let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
         loop {
             match midi_in.wait_for_message().await {
-                MidiMessage::NoteOn { .. } => {
-                    gate_on_glob.modify(|g| *g + 1);
+                MidiMessage::NoteOn { key, vel } => {
+                    if vel > 0 {
+                        gate_on_glob.modify(|note_num| *note_num + 1);
+                    } else {
+                        gate_on_glob.modify(|note_num| (*note_num - 1).max(0));
+                    }
                 }
                 MidiMessage::NoteOff { .. } => {
-                    gate_on_glob.modify(|g| (*g - 1).max(0));
+                    gate_on_glob.modify(|note_num| (*note_num - 1).max(0));
                 }
                 _ => {}
             }
