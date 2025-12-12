@@ -18,4 +18,5 @@ register_apps!(
     17 => cv2midinote,
     18 => clk_div,
     19 => panner,
+    21 => genseq,
 );
