@@ -174,7 +174,7 @@ pub async fn run(
 
             let input_val = if !muted_glob.get() {
                 if !bipolar {
-                    (attenuate(input.get_value(), storage.query(|s| s.att_saved))
+                    (attenuate(input.get_value() * 2, storage.query(|s| s.att_saved))
                         + storage.query(|s| s.offset_saved))
                     .clamp(0, 4095)
                 } else {
