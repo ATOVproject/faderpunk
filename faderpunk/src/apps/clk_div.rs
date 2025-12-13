@@ -256,6 +256,7 @@ pub async fn run(
 
                 if muted {
                     jack.set_low().await;
+                    leds.unset(0, Led::Button);
                 } else {
                     leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
                 }
