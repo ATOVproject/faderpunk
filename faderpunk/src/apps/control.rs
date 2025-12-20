@@ -326,7 +326,7 @@ pub async fn run(
                         leds.unset(0, Led::Bottom);
                     }
                 }
-                _ => unreachable!(),
+                LatchLayer::Third => {}
             }
         }
     };
@@ -366,7 +366,7 @@ pub async fn run(
                     // Now we commit to storage
                     storage.save().await;
                 }
-                _ => unreachable!(),
+                LatchLayer::Third => {}
             }
         }
     };
