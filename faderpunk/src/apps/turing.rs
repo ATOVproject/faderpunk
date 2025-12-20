@@ -191,8 +191,7 @@ pub async fn run(
     let div_glob = app.make_global(4);
     let midi_note = app.make_global(MidiNote::default());
     let glob_latch_layer = app.make_global(LatchLayer::Main);
-
-    let latched_glob = app.make_global(true);
+    let length_glob = app.make_global(8);
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
@@ -202,7 +201,8 @@ pub async fn run(
 
     let curve = Curve::Exponential;
 
-    let (mut register, res) = storage.query(|s| (s.register_saved, s.res_saved));
+    let (mut register, res, mut length) =
+        storage.query(|s| (s.register_saved, s.res_saved, s.length_saved));
 
     div_glob.set(resolution[res as usize / 512]);
 
@@ -210,8 +210,8 @@ pub async fn run(
         let mut clkn = 0;
         let mut att_reg: u16;
         loop {
-            let length = storage.query(|s| (s.length_saved));
             let div = div_glob.get();
+            length = length_glob.get();
 
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
@@ -223,6 +223,23 @@ pub async fn run(
                 }
                 ClockEvent::Tick => {
                     if clkn % div == 0 {
+                        if (clkn / div) % length == 0 {
+                            let reg_old = storage.query(|s| (s.register_saved));
+                            if recall_flag.get() {
+                                register = reg_old;
+                                recall_flag.set(false);
+
+                                let res = storage.query(|s| (s.res_saved));
+                                length = storage.query(|s| (s.length_saved));
+                                length_glob.set(length);
+                                div_glob.set(resolution[res as usize / 512]);
+                                midi.send_note_off(midi_note.get()).await;
+                            }
+
+                            if register != reg_old {
+                                storage.modify_and_save(|s| s.register_saved = register);
+                            }
+                        }
                         let prob = prob_glob.get();
                         let rand = die.roll().clamp(100, 3900);
 
@@ -245,10 +262,8 @@ pub async fn run(
                         );
                         match midi_mode {
                             MidiMode::Note => {
-                                let note = out.as_midi() + base_note;
+                                let note = midi_note.set(out.as_midi() + base_note);
                                 midi.send_note_on(note, 4095).await;
-
-                                midi_note.set(note);
                             }
                             MidiMode::Cc => {
                                 midi.send_cc(midi_cc, att_reg).await;
@@ -263,26 +278,14 @@ pub async fn run(
                         leds.unset(0, Led::Bottom);
 
                         if midi_mode == MidiMode::Note {
-                            let note = midi_note.get();
-                            midi.send_note_off(note).await;
-                        }
-                    }
-                    if (clkn / div) % length == 0 {
-                        let reg_old = storage.query(|s| (s.register_saved));
-                        if recall_flag.get() {
-                            register = reg_old;
-                            recall_flag.set(false);
-                            if midi_mode == MidiMode::Note {
-                                midi.send_note_off(midi_note.get()).await;
-                            }
-                        }
-
-                        if register != reg_old {
-                            storage.modify_and_save(|s| s.register_saved = register);
+                            midi.send_note_off(midi_note.get()).await;
                         }
                     }
 
                     clkn += 1;
+                }
+                ClockEvent::Stop => {
+                    midi.send_note_off(midi_note.get()).await;
                 }
                 _ => {}
             }
@@ -329,7 +332,6 @@ pub async fn run(
     let fut3 = async {
         loop {
             let shift = buttons.wait_for_down(0).await;
-            // latched_glob.set(false);
             let mut length = length_rec.get();
             if shift && rec_flag.get() {
                 length += 1;
@@ -356,7 +358,6 @@ pub async fn run(
 
             if buttons.is_shift_pressed() {
                 if !shift_old {
-                    // latched_glob.set(false);
                     shift_old = true;
                     rec_flag.set(true);
                     length_rec.set(0);
@@ -369,24 +370,21 @@ pub async fn run(
                 );
             }
             if !buttons.is_shift_pressed() && shift_old {
-                // latched_glob.set(false);
                 shift_old = false;
                 rec_flag.set(false);
                 let length = length_rec.get();
                 if length >= 1 {
+                    length_glob.set(length);
                     storage.modify_and_save(|s| s.length_saved = length);
                 }
             }
 
             if buttons.is_button_pressed(0) {
-                //button going down
                 if !button_old {
-                    // latched_glob.set(false);
                     button_old = true;
                 }
             }
             if !buttons.is_button_pressed(0) && button_old {
-                // latched_glob.set(false);
                 button_old = false;
                 leds.unset(0, Led::Bottom);
             }
@@ -398,14 +396,8 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let res = storage.query(|s| (s.res_saved));
-
                     recall_flag.set(true);
                     prob_glob.set(0);
-                    div_glob.set(resolution[res as usize / 512]);
-
-                    //Add recall routine
-                    latched_glob.set(false);
                 }
 
                 SceneEvent::SaveScene(scene) => {
