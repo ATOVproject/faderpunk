@@ -19,7 +19,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 7;
+pub const PARAMS: usize = 8;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
@@ -69,6 +69,9 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
+})
+.add_param(Param::bool {
+    name: "Velocity on Gate",
 });
 
 pub struct Params {
@@ -79,6 +82,7 @@ pub struct Params {
     bend_range: i32,
     note: i32,
     color: Color,
+    gate_vel: bool,
 }
 
 impl Default for Params {
@@ -91,6 +95,7 @@ impl Default for Params {
             bend_range: 12,
             note: 36,
             color: Color::Cyan,
+            gate_vel: false,
         }
     }
 }
@@ -108,6 +113,7 @@ impl AppParams for Params {
             bend_range: i32::from_value(values[4]),
             note: i32::from_value(values[5]),
             color: Color::from_value(values[6]),
+            gate_vel: bool::from_value(values[7]),
         })
     }
 
@@ -120,6 +126,7 @@ impl AppParams for Params {
         vec.push(self.bend_range.into()).unwrap();
         vec.push(self.note.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.gate_vel.into()).unwrap();
         vec
     }
 }
@@ -190,17 +197,19 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_chan, midi_cc, curve, bend_range, led_color, note, mode) = params.query(|p| {
-        (
-            p.midi_channel,
-            p.midi_cc,
-            p.curve,
-            p.bend_range,
-            p.color,
-            p.note,
-            p.mode,
-        )
-    });
+    let (midi_chan, midi_cc, curve, bend_range, led_color, note, mode, gate_vel) =
+        params.query(|p| {
+            (
+                p.midi_channel,
+                p.midi_cc,
+                p.curve,
+                p.bend_range,
+                p.color,
+                p.note,
+                p.mode,
+                p.gate_vel,
+            )
+        });
 
     let mut midi_in = app.use_midi_input(midi_chan as u8 - 1);
     let muted_glob = app.make_global(false);
@@ -454,8 +463,11 @@ pub async fn run(
                             }
                             2 => {
                                 if !muted_glob.get() {
-                                    let vel_out =
-                                        (scale_bits_7_12(vel) as u32 * 3686 / 4095 + 410) as u16;
+                                    let vel_out = if !gate_vel {
+                                        4095
+                                    } else {
+                                        (scale_bits_7_12(vel) as u32 * 3686 / 4095 + 410) as u16
+                                    };
                                     jack.set_value(vel_out);
                                     note_num += 1;
                                     leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
