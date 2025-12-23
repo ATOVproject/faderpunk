@@ -14,5 +14,10 @@
         buildInputs = [nodejs pnpm zsh];
         shellHook = "exec zsh";
       };
+    devShell.aarch64-darwin = with nixpkgs.legacyPackages.aarch64-darwin;
+      mkShell {
+        buildInputs = [nodejs pnpm zsh];
+        shellHook = "exec zsh";
+      };
   };
 }
