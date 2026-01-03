@@ -47,9 +47,10 @@ pub async fn start_transports(
     usb_driver: usb::Driver<'static, USB>,
     uart0: UartTx<'static, Async>,
     uart1: BufferedUart,
+    serial_number: &'static str,
 ) {
     spawner
-        .spawn(run_transports(usb_driver, uart0, uart1))
+        .spawn(run_transports(usb_driver, uart0, uart1, serial_number))
         .unwrap();
 }
 
@@ -58,10 +59,12 @@ async fn run_transports(
     usb_driver: usb::Driver<'static, USB>,
     uart0_tx: UartTx<'static, Async>,
     uart1: BufferedUart,
+    serial_number: &'static str,
 ) {
     let mut usb_config = UsbConfig::new(USB_VENDOR_ID, USB_PRODUCT_ID);
     usb_config.manufacturer = Some(USB_VENDOR_NAME);
     usb_config.product = Some(USB_PRODUCT_NAME);
+    usb_config.serial_number = Some(serial_number);
     usb_config.device_release = USB_RELEASE_VERSION;
     usb_config.max_power = 500;
     usb_config.max_packet_size_0 = USB_MAX_PACKET_SIZE as u8;
