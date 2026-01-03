@@ -77,23 +77,11 @@ static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
 static BUF_UART1_TX: StaticCell<[u8; 64]> = StaticCell::new();
 
-/// USB serial number buffer (16 hex chars for 8-byte chip ID)
-static USB_SERIAL: StaticCell<[u8; 16]> = StaticCell::new();
-
 /// FRAM write buffer
 static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 
 pub static QUANTIZER: LazyLock<Mutex<CriticalSectionRawMutex, Quantizer>> =
     LazyLock::new(|| Mutex::new(Quantizer::default()));
-
-/// Converts 8-byte chip ID to 16-char hex string (no-alloc)
-fn chip_id_to_hex(chip_id: &[u8; 8], buffer: &mut [u8; 16]) {
-    const HEX: &[u8; 16] = b"0123456789ABCDEF";
-    for (i, &byte) in chip_id.iter().enumerate() {
-        buffer[i * 2] = HEX[(byte >> 4) as usize];
-        buffer[i * 2 + 1] = HEX[(byte & 0x0F) as usize];
-    }
-}
 
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
@@ -164,15 +152,7 @@ async fn main(spawner: Spawner) {
     let usb_driver = usb::Driver::new(p.USB, Irqs);
 
     // Read chip ID for USB serial number
-    let usb_serial = {
-        let chip_id = embassy_rp::otp::get_chipid().unwrap_or(0).to_be_bytes();
-
-        let serial_buf = USB_SERIAL.init([0u8; 16]);
-        chip_id_to_hex(&chip_id, serial_buf);
-
-        // Safety: We just filled the buffer with valid ASCII hex chars
-        unsafe { core::str::from_utf8_unchecked(serial_buf) }
-    };
+    let chip_id = embassy_rp::otp::get_chipid().unwrap_or(0);
 
     // Buttons
     let buttons = (
@@ -216,7 +196,7 @@ async fn main(spawner: Spawner) {
 
     tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20).await;
 
-    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1, usb_serial).await;
+    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1, chip_id).await;
 
     tasks::clock::start_clock(&spawner, aux_inputs).await;
 
