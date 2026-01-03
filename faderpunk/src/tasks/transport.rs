@@ -47,10 +47,10 @@ pub async fn start_transports(
     usb_driver: usb::Driver<'static, USB>,
     uart0: UartTx<'static, Async>,
     uart1: BufferedUart,
-    serial_number: &'static str,
+    chip_id: u64,
 ) {
     spawner
-        .spawn(run_transports(usb_driver, uart0, uart1, serial_number))
+        .spawn(run_transports(usb_driver, uart0, uart1, chip_id))
         .unwrap();
 }
 
@@ -59,8 +59,19 @@ async fn run_transports(
     usb_driver: usb::Driver<'static, USB>,
     uart0_tx: UartTx<'static, Async>,
     uart1: BufferedUart,
-    serial_number: &'static str,
+    chip_id: u64,
 ) {
+    // Convert chip ID to hex string for USB serial number
+    let mut serial_buf = [0u8; 16];
+    let chip_id_bytes = chip_id.to_be_bytes();
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    for (i, &byte) in chip_id_bytes.iter().enumerate() {
+        serial_buf[i * 2] = HEX[(byte >> 4) as usize];
+        serial_buf[i * 2 + 1] = HEX[(byte & 0x0F) as usize];
+    }
+    // Safety: We just filled the buffer with valid ASCII hex chars
+    let serial_number = unsafe { core::str::from_utf8_unchecked(&serial_buf) };
+
     let mut usb_config = UsbConfig::new(USB_VENDOR_ID, USB_PRODUCT_ID);
     usb_config.manufacturer = Some(USB_VENDOR_NAME);
     usb_config.product = Some(USB_PRODUCT_NAME);
