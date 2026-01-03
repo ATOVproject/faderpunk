@@ -151,6 +151,9 @@ async fn main(spawner: Spawner) {
     // USB
     let usb_driver = usb::Driver::new(p.USB, Irqs);
 
+    // Read chip ID for USB serial number
+    let chip_id = embassy_rp::otp::get_chipid().unwrap_or(0);
+
     // Buttons
     let buttons = (
         p.PIN_6, p.PIN_7, p.PIN_38, p.PIN_32, p.PIN_33, p.PIN_34, p.PIN_35, p.PIN_36, p.PIN_23,
@@ -193,7 +196,7 @@ async fn main(spawner: Spawner) {
 
     tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20).await;
 
-    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1).await;
+    tasks::transport::start_transports(&spawner, usb_driver, uart0, uart1, chip_id).await;
 
     tasks::clock::start_clock(&spawner, aux_inputs).await;
 
