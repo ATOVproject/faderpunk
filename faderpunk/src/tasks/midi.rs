@@ -205,7 +205,7 @@ async fn write_msg_to_uart1(
 
 #[embassy_executor::task]
 pub async fn midi_distributor() {
-    let mut app_queues: [Deque<MidiMsg, MIDI_APP_QUEUE_SIZE>; 16] =
+    let mut app_queues: [Deque<MidiMsg, MIDI_APP_QUEUE_SIZE>; GLOBAL_CHANNELS] =
         core::array::from_fn(|_| Deque::new());
     let mut last_app_id: usize = 0;
     let midi_out_sender = MIDI_CHANNEL.sender();
@@ -223,8 +223,8 @@ pub async fn midi_distributor() {
             // The 1ms throttle timer has fired, send one message.
             Either::Second(_) => {
                 // Find the next app with a message in its queue (round-robin)
-                for i in 0..16 {
-                    let app_idx = (last_app_id + 1 + i) % 16;
+                for i in 0..GLOBAL_CHANNELS {
+                    let app_idx = (last_app_id + 1 + i) % GLOBAL_CHANNELS;
                     if let Some(ev) = app_queues[app_idx].pop_front() {
                         midi_out_sender.send(MidiOutEvent::Event(ev)).await;
                         last_app_id = app_idx;

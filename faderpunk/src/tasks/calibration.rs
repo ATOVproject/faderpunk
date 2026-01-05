@@ -2,7 +2,7 @@ use defmt::info;
 use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_time::Timer;
 use linreg::linear_regression;
-use max11300::config::{ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES};
+use max113xx::config::{ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use portable_atomic::Ordering;
 
 use libfp::{

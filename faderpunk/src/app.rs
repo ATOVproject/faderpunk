@@ -4,7 +4,7 @@ use embassy_futures::select::{select, Either};
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
-use max11300::config::{
+use max113xx::config::{
     ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES,
 };
 use midly::{live::LiveEvent, num::u4, MidiMessage, PitchBend};

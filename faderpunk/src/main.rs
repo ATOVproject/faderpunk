@@ -36,6 +36,7 @@ use libfp::I2cMode;
 use static_cell::StaticCell;
 
 use crate::storage::store_layout;
+use crate::tasks::buttons::SCENE_BUTTON_NO;
 use crate::tasks::global_config::GLOBAL_CONFIG_WATCH;
 use crate::tasks::midi::midi_distributor;
 
@@ -153,8 +154,8 @@ async fn main(spawner: Spawner) {
 
     // Buttons
     let buttons = (
-        p.PIN_6, p.PIN_7, p.PIN_38, p.PIN_32, p.PIN_33, p.PIN_34, p.PIN_35, p.PIN_36, p.PIN_23,
-        p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4, p.PIN_5,
+        p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.PIN_30, p.PIN_31, p.PIN_37, p.PIN_28, p.PIN_4,
+        p.PIN_5,
     );
 
     // FRAM

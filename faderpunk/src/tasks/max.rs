@@ -18,14 +18,14 @@ use embassy_time::Timer;
 use libfp::{
     latch::{AnalogLatch, LatchLayer},
     types::MaxCalibration,
-    CALIBRATION_SCALE_FACTOR,
+    CALIBRATION_SCALE_FACTOR, GLOBAL_CHANNELS,
 };
-use max11300::{
+use max113xx::{
     config::{
-        ConfigMode0, ConfigMode7, DeviceConfig, Mode, Port, ADCCTL, ADCRANGE, AVR, DACREF,
-        NSAMPLES, THSHDN,
+        ConfigMode0, ConfigMode5, ConfigMode7, DeviceConfig, Mode, Port, ADCCTL, ADCRANGE, AVR,
+        DACRANGE, DACREF, NSAMPLES, THSHDN,
     },
-    ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
+    ConfigurePort, IntoConfiguredPort, Max113xx, Mode0Port, Ports,
 };
 use portable_atomic::{AtomicBool, AtomicU16, Ordering};
 use static_cell::StaticCell;
@@ -42,8 +42,10 @@ use crate::{
 };
 
 const MAX_CHANNEL_SIZE: usize = 16;
+const MAX_NUM_PORTS: usize = GLOBAL_CHANNELS + 4;
+const FADER_CHANNEL_NO: usize = GLOBAL_CHANNELS;
 
-type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
+type SharedMax = Mutex<NoopRawMutex, Max113xx<Spi<'static, SPI0, Async>, Output<'static>>>;
 type MuxPins = (
     Peri<'static, PIN_12>,
     Peri<'static, PIN_13>,
@@ -56,10 +58,14 @@ pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, (usize, MaxCmd), MAX_CH
     Channel::new();
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
-pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-pub static MAX_TRIGGERS_GPO: [AtomicU8; 20] = [const { AtomicU8::new(0) }; 20];
-pub static MAX_VALUES_DAC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
-pub static MAX_VALUES_ADC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
+pub static MAX_VALUES_FADER: [AtomicU16; GLOBAL_CHANNELS] =
+    [const { AtomicU16::new(0) }; GLOBAL_CHANNELS];
+pub static MAX_TRIGGERS_GPO: [AtomicU8; MAX_NUM_PORTS] =
+    [const { AtomicU8::new(0) }; MAX_NUM_PORTS];
+pub static MAX_VALUES_DAC: [AtomicU16; MAX_NUM_PORTS] =
+    [const { AtomicU16::new(0) }; MAX_NUM_PORTS];
+pub static MAX_VALUES_ADC: [AtomicU16; MAX_NUM_PORTS] =
+    [const { AtomicU16::new(0) }; MAX_NUM_PORTS];
 pub static CALIBRATING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy)]
@@ -85,7 +91,7 @@ pub async fn start_max(
         ..Default::default()
     };
 
-    let max_driver = Max11300::try_new(spi0, Output::new(cs, Level::High), device_config)
+    let max_driver = Max113xx::try_new(spi0, Output::new(cs, Level::High), device_config)
         .await
         .unwrap();
 
@@ -94,9 +100,29 @@ pub async fn start_max(
     // TODO: Create an abstraction to be able to create just one port
     let ports = Ports::new(max);
 
+    // let p0 = ports
+    //     .port0
+    //     .into_configured_port(ConfigMode5(DACRANGE::Rg0_10v))
+    //     .await
+    //     .unwrap();
+    //
+    // p0.set_value(2000).await.unwrap();
+    //
+    // loop {
+    //     p0.set_value(0).await.unwrap();
+    //     Timer::after_secs(1).await;
+    //     p0.set_value(1000).await.unwrap();
+    //     Timer::after_secs(1).await;
+    //     p0.set_value(2000).await.unwrap();
+    //     Timer::after_secs(1).await;
+    //     p0.set_value(3000).await.unwrap();
+    //     Timer::after_secs(1).await;
+    //     p0.set_value(4000).await.unwrap();
+    // }
+
     // TODO: Make individual port
     spawner
-        .spawn(read_fader(pio0, mux_pins, ports.port16))
+        .spawn(read_fader(pio0, mux_pins, ports.port8))
         .unwrap();
 
     spawner
@@ -106,7 +132,6 @@ pub async fn start_max(
     spawner.spawn(message_loop(max)).unwrap();
 }
 
-// TODO: I think we can combine all these tasks into one
 #[embassy_executor::task]
 async fn read_fader(
     pio0: Peri<'static, PIO0>,
@@ -150,9 +175,9 @@ async fn read_fader(
     let global_config = get_global_config();
 
     // Initialize first layer values (main function)
-    let mut main_fader_values: [u16; 16] = [0; 16];
-    for chan in 0..16 {
-        let channel = 15 - chan;
+    let mut main_fader_values: [u16; GLOBAL_CHANNELS] = [0; GLOBAL_CHANNELS];
+    for chan in 0..GLOBAL_CHANNELS {
+        let channel = (GLOBAL_CHANNELS - 1) - chan;
         sm0.tx().wait_push(chan as u32).await;
         Timer::after_millis(1).await;
         let value = fader_port.get_value().await.unwrap();
@@ -162,10 +187,10 @@ async fn read_fader(
     }
 
     // Initialize second layer values (global settings)
-    let mut global_settings_fader_values: [u16; 16] =
+    let mut global_settings_fader_values: [u16; GLOBAL_CHANNELS] =
         core::array::from_fn(|channel| get_fader_value_from_config(channel, &global_config));
 
-    let mut fader_latches: [AnalogLatch; 16] =
+    let mut fader_latches: [AnalogLatch; GLOBAL_CHANNELS] =
         core::array::from_fn(|channel| AnalogLatch::new(main_fader_values[channel]));
 
     let mut chan: usize = 0;
@@ -179,11 +204,11 @@ async fn read_fader(
         };
 
         // Channels are in reverse
-        let channel = 15 - chan;
+        let channel = (GLOBAL_CHANNELS - 1) - chan;
         // send the channel value to the PIO state machine to trigger the program
         sm0.tx().wait_push(chan as u32).await;
 
-        // this translates to ~60Hz refresh rate for the faders (1000 / (1 * 16) = 62.5)
+        // this translates to ~60Hz refresh rate for the faders (1000 / (1 * GLOBAL_CHANNELS) = 62.5 for 16ch, 125 for 8ch)
         Timer::after_millis(1).await;
 
         let val = fader_port.get_value().await.unwrap();
@@ -221,7 +246,7 @@ async fn read_fader(
             }
         }
 
-        chan = (chan + 1) % 16;
+        chan = (chan + 1) % GLOBAL_CHANNELS;
     }
 }
 
@@ -234,8 +259,8 @@ async fn process_channel_values(
         // Hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
 
-        // Do not process channel 16 (faders)
-        for i in (0..16).chain(17..20) {
+        // Do not process fader channel
+        for i in (0..FADER_CHANNEL_NO).chain(FADER_CHANNEL_NO + 1..MAX_NUM_PORTS) {
             let port = Port::try_from(i).unwrap();
             let mut max = max_driver.lock().await;
             match max.get_mode(port) {
@@ -260,8 +285,8 @@ async fn process_channel_values(
                     } else if let Some(data) = calibration_data {
                         // Determine which DAC range is configured and use appropriate calibration data
                         let range_idx = match config.0 {
-                            max11300::config::DACRANGE::Rg0_10v => 0,
-                            max11300::config::DACRANGE::RgNeg5_5v => 1,
+                            DACRANGE::Rg0_10v => 0,
+                            DACRANGE::RgNeg5_5v => 1,
                             _ => 0, // Default to 0-10V range for other ranges
                         };
                         let (slope, intercept) = data.outputs[i][range_idx];
@@ -283,8 +308,8 @@ async fn process_channel_values(
                         value
                     } else if let Some(data) = calibration_data {
                         let range_idx = match config.1 {
-                            max11300::config::ADCRANGE::Rg0_10v => 0,
-                            max11300::config::ADCRANGE::RgNeg5_5v => 1,
+                            ADCRANGE::Rg0_10v => 0,
+                            ADCRANGE::RgNeg5_5v => 1,
                             _ => 0, // Default to 0-10V range for other ranges
                         };
                         let (slope, intercept) = data.inputs[range_idx];
@@ -311,8 +336,8 @@ async fn process_channel_values(
 async fn message_loop(max_driver: &'static SharedMax) {
     loop {
         let (chan, msg) = MAX_CHANNEL.receive().await;
-        if chan == 16 {
-            // Do not process channel 16 (faders)
+        if chan == FADER_CHANNEL_NO {
+            // Do not process fader channel
             continue;
         }
         let port = Port::try_from(chan).unwrap();
