@@ -9,7 +9,7 @@ macro_rules! register_apps {
             signal::Signal,
         };
 
-        use libfp::ConfigMeta;
+        use libfp::{ConfigMeta, GLOBAL_CHANNELS};
         use crate::{I2C_LEADER_CHANNEL, MAX_CHANNEL, APP_MIDI_CHANNEL};
         use crate::{app::App, events::EVENT_PUBSUB, tasks::midi::{MIDI_DIN_PUBSUB, MIDI_USB_PUBSUB}};
         use embassy_executor::Spawner;
@@ -31,7 +31,7 @@ macro_rules! register_apps {
             start_channel: usize,
             layout_id: u8,
             spawner: Spawner,
-            exit_signals: &'static [Signal<NoopRawMutex, bool>; 16]
+            exit_signals: &'static [Signal<NoopRawMutex, bool>; GLOBAL_CHANNELS]
         ) {
             match app_id {
                 $(

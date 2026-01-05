@@ -8,7 +8,7 @@ use embassy_rp::peripherals::{
 };
 use embassy_rp::Peri;
 use embassy_time::Timer;
-use libfp::Color;
+use libfp::{Color, GLOBAL_CHANNELS};
 use portable_atomic::{AtomicBool, Ordering};
 
 use crate::app::Led;
@@ -19,15 +19,10 @@ use super::leds::{set_led_overlay_mode, LedMode};
 
 const LONG_PRESS_DURATION_MS: u64 = 500;
 
+pub const SCENE_BUTTON_NO: usize = GLOBAL_CHANNELS;
+const SHIFT_BUTTON_NO: usize = GLOBAL_CHANNELS + 1;
+
 type Buttons = (
-    Peri<'static, PIN_6>,
-    Peri<'static, PIN_7>,
-    Peri<'static, PIN_38>,
-    Peri<'static, PIN_32>,
-    Peri<'static, PIN_33>,
-    Peri<'static, PIN_34>,
-    Peri<'static, PIN_35>,
-    Peri<'static, PIN_36>,
     Peri<'static, PIN_23>,
     Peri<'static, PIN_24>,
     Peri<'static, PIN_25>,
@@ -40,7 +35,8 @@ type Buttons = (
     Peri<'static, PIN_5>,
 );
 
-pub static BUTTON_PRESSED: [AtomicBool; 18] = [const { AtomicBool::new(false) }; 18];
+pub static BUTTON_PRESSED: [AtomicBool; GLOBAL_CHANNELS + 2] =
+    [const { AtomicBool::new(false) }; GLOBAL_CHANNELS + 2];
 
 pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
     spawner.spawn(run_buttons(buttons)).unwrap();
@@ -48,17 +44,17 @@ pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
 
 #[inline(always)]
 pub fn is_channel_button_pressed(channel: usize) -> bool {
-    BUTTON_PRESSED[channel.clamp(0, 15)].load(Ordering::Relaxed)
+    BUTTON_PRESSED[channel.clamp(0, GLOBAL_CHANNELS - 1)].load(Ordering::Relaxed)
 }
 
 #[inline(always)]
 pub fn is_shift_button_pressed() -> bool {
-    BUTTON_PRESSED[17].load(Ordering::Relaxed)
+    BUTTON_PRESSED[SHIFT_BUTTON_NO].load(Ordering::Relaxed)
 }
 
 #[inline(always)]
 pub fn is_scene_button_pressed() -> bool {
-    BUTTON_PRESSED[16].load(Ordering::Relaxed)
+    BUTTON_PRESSED[SCENE_BUTTON_NO].load(Ordering::Relaxed)
 }
 
 // Process button using debounce and state synchronization logic
@@ -80,8 +76,8 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
             continue;
         }
 
-        if BUTTON_PRESSED[16].load(Ordering::Relaxed) {
-            // Special mode when button 16 is pressed - handle scene load/save
+        if BUTTON_PRESSED[SCENE_BUTTON_NO].load(Ordering::Relaxed) {
+            // Special mode when scene button is pressed - handle scene load/save
             match select(
                 button.wait_for_rising_edge(),
                 Timer::after_millis(LONG_PRESS_DURATION_MS),
@@ -164,7 +160,7 @@ async fn process_modifier_button(i: usize, mut button: Input<'_>) {
         }
 
         // Start clock if shift is pressed while scene is held
-        if i == 17 && BUTTON_PRESSED[16].load(Ordering::Relaxed) {
+        if i == SHIFT_BUTTON_NO && BUTTON_PRESSED[SCENE_BUTTON_NO].load(Ordering::Relaxed) {
             TRANSPORT_CMD_CHANNEL.send(TransportCmd::Toggle).await;
         } else {
             // Do not register the button press
@@ -196,20 +192,12 @@ async fn run_buttons(buttons: Buttons) {
         process_button(5, Input::new(buttons.5, Pull::Up), &event_publisher),
         process_button(6, Input::new(buttons.6, Pull::Up), &event_publisher),
         process_button(7, Input::new(buttons.7, Pull::Up), &event_publisher),
-        process_button(8, Input::new(buttons.8, Pull::Up), &event_publisher),
-        process_button(9, Input::new(buttons.9, Pull::Up), &event_publisher),
-        process_button(10, Input::new(buttons.10, Pull::Up), &event_publisher),
-        process_button(11, Input::new(buttons.11, Pull::Up), &event_publisher),
-        process_button(12, Input::new(buttons.12, Pull::Up), &event_publisher),
-        process_button(13, Input::new(buttons.13, Pull::Up), &event_publisher),
-        process_button(14, Input::new(buttons.14, Pull::Up), &event_publisher),
-        process_button(15, Input::new(buttons.15, Pull::Up), &event_publisher),
     ];
 
     let modifier_futs = [
-        process_modifier_button(16, Input::new(buttons.16, Pull::Up)),
-        // Button 17 is pulled up in hardware
-        process_modifier_button(17, Input::new(buttons.17, Pull::None)),
+        process_modifier_button(SCENE_BUTTON_NO, Input::new(buttons.8, Pull::Up)),
+        // Shift button is pulled up in hardware
+        process_modifier_button(SHIFT_BUTTON_NO, Input::new(buttons.9, Pull::None)),
     ];
 
     join(join_array(button_futs), join_array(modifier_futs)).await;

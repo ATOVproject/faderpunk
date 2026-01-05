@@ -10,7 +10,7 @@ use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMu
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::Timer;
 use embedded_hal_async::i2c::I2c;
-use max11300::config::{ConfigMode5, ConfigMode7, Mode, AVR, NSAMPLES};
+use max113xx::config::{ConfigMode5, ConfigMode7, Mode, AVR, NSAMPLES};
 use mii::{
     devices::{ansible, er301, telexo},
     Command as MiiCommand,

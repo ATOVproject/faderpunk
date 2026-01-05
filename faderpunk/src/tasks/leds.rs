@@ -6,8 +6,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
-use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
-use libfp::{Brightness, Color, LED_BRIGHTNESS_RANGE};
+use libfp::{constants::CHAN_LED_MAP_MINI, ext::BrightnessExt};
+use libfp::{Brightness, Color, GLOBAL_CHANNELS, LED_BRIGHTNESS_RANGE};
 use portable_atomic::{AtomicU8, Ordering};
 use smart_leds::colors::BLACK;
 use smart_leds::{brightness, gamma, SmartLedsWriteAsync, RGB8};
@@ -15,19 +15,15 @@ use ws2812_async::{Grb, Ws2812};
 
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
-const NUM_LEDS: usize = 50;
-const LED_OVERLAY_CHANNEL_SIZE: usize = 16;
+const NUM_LEDS: usize = GLOBAL_CHANNELS * 3 + 2;
 
 pub static LED_BRIGHTNESS: AtomicU8 = AtomicU8::new(LED_BRIGHTNESS_RANGE.end);
 
 static LED_SIGNALS: [Signal<CriticalSectionRawMutex, LedMsg>; NUM_LEDS] =
     [const { Signal::new() }; NUM_LEDS];
 
-static LED_OVERLAY_CHANNEL: Channel<
-    CriticalSectionRawMutex,
-    (usize, LedMode),
-    LED_OVERLAY_CHANNEL_SIZE,
-> = Channel::new();
+static LED_OVERLAY_CHANNEL: Channel<CriticalSectionRawMutex, (usize, LedMode), GLOBAL_CHANNELS> =
+    Channel::new();
 
 pub async fn start_leds(spawner: &Spawner, spi1: Spi<'static, SPI1, Async>) {
     spawner.spawn(run_leds(spi1)).unwrap();
@@ -182,8 +178,8 @@ impl LedEffect {
 }
 
 struct LedProcessor {
-    base_layer: [LedEffect; 50],
-    overlay_layer: [LedEffect; 50],
+    base_layer: [LedEffect; NUM_LEDS],
+    overlay_layer: [LedEffect; NUM_LEDS],
     buffer: [RGB8; NUM_LEDS],
     ws: Ws2812<Spi<'static, SPI1, Async>, Grb, { 12 * NUM_LEDS }>,
 }
@@ -229,9 +225,9 @@ impl LedProcessor {
 
 fn get_no(channel: usize, position: Led) -> usize {
     match position {
-        Led::Top => CHAN_LED_MAP[0][channel],
-        Led::Bottom => CHAN_LED_MAP[1][channel],
-        Led::Button => CHAN_LED_MAP[2][channel],
+        Led::Top => CHAN_LED_MAP_MINI[0][channel],
+        Led::Bottom => CHAN_LED_MAP_MINI[1][channel],
+        Led::Button => CHAN_LED_MAP_MINI[2][channel],
     }
 }
 

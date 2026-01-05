@@ -2,8 +2,8 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, watch::Watch};
 use embassy_time::Timer;
-use libfp::{AuxJackMode, Color, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
-use max11300::config::{ConfigMode0, ConfigMode3, Mode};
+use libfp::{AuxJackMode, Color, GlobalConfig, Key, Note, GLOBAL_CHANNELS, LED_BRIGHTNESS_RANGE};
+use max113xx::config::{ConfigMode0, ConfigMode3, Mode};
 use portable_atomic::Ordering;
 
 use crate::app::Led;
@@ -124,7 +124,7 @@ async fn set_aux_config(aux_port: usize, aux_jack_mode: &AuxJackMode) {
         AuxJackMode::ClockOut(_) | AuxJackMode::ResetOut => {
             MAX_CHANNEL
                 .send((
-                    17 + aux_port,
+                    GLOBAL_CHANNELS + 1 + aux_port,
                     MaxCmd::ConfigurePort(Mode::Mode3(ConfigMode3), Some(2048)),
                 ))
                 .await;
@@ -132,7 +132,7 @@ async fn set_aux_config(aux_port: usize, aux_jack_mode: &AuxJackMode) {
         AuxJackMode::None => {
             MAX_CHANNEL
                 .send((
-                    17 + aux_port,
+                    GLOBAL_CHANNELS + 1 + aux_port,
                     MaxCmd::ConfigurePort(Mode::Mode0(ConfigMode0), None),
                 ))
                 .await;
