@@ -79,6 +79,26 @@ pub struct Params {
 }
 
 impl Default for Params {
+    /// Constructs the default parameter set for the MIDI-to-CV app.
+    ///
+    /// Defaults:
+    /// - `mode = 0`
+    /// - `curve = Curve::Linear`
+    /// - `midi_channel = MidiChannel::default()`
+    /// - `midi_cc = 32`
+    /// - `midi_note = 36`
+    /// - `midi_in = MidiIn::default()`
+    /// - `bend_range = 12`
+    /// - `color = Color::Cyan`
+    /// - `gate_vel = false`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let params = Params::default();
+    /// assert_eq!(params.bend_range, 12);
+    /// assert_eq!(params.gate_vel, false);
+    /// ```
     fn default() -> Self {
         Self {
             mode: 0,
@@ -95,6 +115,21 @@ impl Default for Params {
 }
 
 impl AppParams for Params {
+    /// Construct a `Params` instance from a slice of `Value`s.
+    ///
+    /// Returns `Some(Params)` when `values` contains at least `PARAMS` entries and each
+    /// element is interpreted to populate the corresponding `Params` field, or `None` if
+    /// the slice is too short.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Build a values slice with at least `PARAMS` entries and convert it to Params.
+    /// // The exact construction of `Value` depends on the surrounding codebase.
+    /// let vals = vec![Value::from(0); PARAMS];
+    /// let params = Params::from_values(&vals);
+    /// assert!(params.is_some());
+    /// ```
     fn from_values(values: &[Value]) -> Option<Self> {
         if values.len() < PARAMS {
             return None;
@@ -112,6 +147,18 @@ impl AppParams for Params {
         })
     }
 
+    /// Serialize the params into a fixed-capacity vector of `Value`s in parameter order.
+    ///
+    /// The returned vector contains the parameter values in this exact order:
+    /// `mode`, `curve`, `midi_channel`, `midi_cc`, `bend_range`, `midi_note`, `color`, `midi_in`, `gate_vel`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let params = Params::default();
+    /// let vals = params.to_values();
+    /// assert_eq!(vals.len(), PARAMS);
+    /// ```
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
         vec.push(self.mode.into()).unwrap();
@@ -188,6 +235,23 @@ fn apply_glide(current: f32, target: f32, coeff: f32) -> f32 {
     current + (target - current) * coeff
 }
 
+/// Runs the MIDI-to-CV application runtime, wiring MIDI input, controls, LEDs, storage, and the CV output.
+///
+/// This function starts the app's real-time tasks (output update, button/fader handling, MIDI processing,
+/// and scene persistence) and coordinates parameter and storage state to map incoming MIDI (CC, NoteOn/Off,
+/// PitchBend, Aftertouch) to the configured CV output modes (CC->CV, Pitch with optional glide, Gate/Velocity,
+/// Aftertouch, Bend, Note-gated outputs), plus LED feedback and layer-based fader latching. State changes are
+/// persisted via the provided ManagedStorage and parameter values are read from the ParamStore.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use faderpunk::prelude::*;
+/// # async fn example(app: &App<CHANNELS>, params: &ParamStore<Params>, storage: &ManagedStorage<Storage>) {
+/// // Start the MIDI-to-CV runtime; this will run until the app shuts down.
+/// run(app, params, storage).await;
+/// # }
+/// ```
 pub async fn run(
     app: &App<CHANNELS>,
     params: &ParamStore<Params>,
