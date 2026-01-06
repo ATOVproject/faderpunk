@@ -642,9 +642,10 @@ const apps: ManualAppData[] = [
       "Bend Range",
       "Note",
       "Color",
+      "Velocity on Gate"
     ],
     storage: ["Attenuation", "Muted"],
-    text: "This app converts MIDI messages into CV signals. It supports multiple modes, each with different output behaviors. The output range is typically 0–10V, except for Pitch Bend mode which uses ±5V. When set to MIDI to Gate conversion (Gate and Note Gate modes) the gate voltage is directly related to the velocity of the MIDI note with the minimum velocity being 1V and maximum 10V. Parameters include MIDI channel, curve shaping (for CC and Aftertouch), pitch bend range. The Note Gate mode is especially useful for triggering drum modules, as it allows individual gate outputs to be assigned to specific MIDI notes—ideal for drum sequencing setups.",
+    text: "This app converts MIDI messages into CV signals. It supports multiple modes, each with different output behaviors. The output range is typically 0–10V, except for Pitch Bend mode which uses ±5V. When the `Velocity on Gate` toggle is activated the gate voltage in `Gate` and `Note Gate` modes is directly related to the velocity of the MIDI note with the minimum velocity being 1V and maximum 10V. Parameters include MIDI channel, curve shaping (for CC and Aftertouch), pitch bend range. The Note Gate mode is especially useful for triggering drum modules, as it allows individual gate outputs to be assigned to specific MIDI notes—ideal for drum sequencing setups.",
     channels: [
       {
         jackTitle: "Output",
