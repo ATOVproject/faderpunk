@@ -306,7 +306,6 @@ pub async fn run(
                 fad_val = clickless(fad_val, 2047 - curve.at((2047 - main_layer_value) * 2) / 2);
                 fad_val
             };
-
             let mut attenuated = if bipolar {
                 attenuate_bipolar(val, att_layer_value)
             } else {
