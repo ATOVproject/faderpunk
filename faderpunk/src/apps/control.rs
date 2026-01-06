@@ -307,7 +307,6 @@ pub async fn run(
                 fad_val = clickless(fad_val, 2047 - curve.at((2047 - main_layer_value) * 2) / 2);
                 fad_val
             };
-
             let mut attenuated = if bipolar {
                 attenuate_bipolar(val, att_layer_value)
             } else {
@@ -331,7 +330,7 @@ pub async fn run(
                 attenuate_bipolar(main_layer_value, att_layer_value)
             };
             if last_out != (midi_out as u32 * 127) / 4095 {
-                midi.send_cc(midi_cc, out).await;
+                midi.send_cc(midi_cc, midi_out).await;
             }
             last_out = (midi_out as u32 * 127) / 4095;
 
