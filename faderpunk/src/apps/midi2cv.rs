@@ -20,7 +20,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 8;
+pub const PARAMS: usize = 9;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Lower;
 
@@ -61,7 +61,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiIn);
+.add_param(Param::MidiIn)
+.add_param(Param::bool {
+    name: "Velocity on Gate",
+});
 
 pub struct Params {
     mode: usize,
@@ -72,6 +75,7 @@ pub struct Params {
     midi_in: MidiIn,
     bend_range: i32,
     color: Color,
+    gate_vel: bool,
 }
 
 impl Default for Params {
@@ -85,6 +89,7 @@ impl Default for Params {
             midi_in: MidiIn::default(),
             bend_range: 12,
             color: Color::Cyan,
+            gate_vel: false,
         }
     }
 }
@@ -103,6 +108,7 @@ impl AppParams for Params {
             midi_note: MidiNote::from_value(values[5]),
             color: Color::from_value(values[6]),
             midi_in: MidiIn::from_value(values[7]),
+            gate_vel: bool::from_value(values[8]),
         })
     }
 
@@ -116,6 +122,7 @@ impl AppParams for Params {
         vec.push(self.midi_note.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.midi_in.into()).unwrap();
+        vec.push(self.gate_vel.into()).unwrap();
         vec
     }
 }
@@ -186,8 +193,8 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_in, midi_chan, midi_cc, curve, bend_range, led_color, note, mode) =
-        params.query(|p| {
+    let (midi_in, midi_chan, midi_cc, curve, bend_range, led_color, note, mode, gate_vel) = params
+        .query(|p| {
             (
                 p.midi_in,
                 p.midi_channel,
@@ -197,6 +204,7 @@ pub async fn run(
                 p.color,
                 p.midi_note,
                 p.mode,
+                p.gate_vel,
             )
         });
 
@@ -452,8 +460,11 @@ pub async fn run(
                             }
                             2 => {
                                 if !muted_glob.get() {
-                                    let vel_out =
-                                        (scale_bits_7_12(vel) as u32 * 3686 / 4095 + 410) as u16;
+                                    let vel_out = if gate_vel {
+                                        (scale_bits_7_12(vel) as u32 * 3685 / 4095 + 410) as u16
+                                    } else {
+                                        4095
+                                    };
                                     jack.set_value(vel_out);
                                     note_num += 1;
                                     leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
@@ -479,9 +490,11 @@ pub async fn run(
                             6 => {
                                 if key == u7::from(note) {
                                     if !muted_glob.get() {
-                                        let vel_out = (scale_bits_7_12(vel) as u32 * 3686 / 4095
-                                            + 410)
-                                            as u16;
+                                        let vel_out = if gate_vel {
+                                            (scale_bits_7_12(vel) as u32 * 3685 / 4095 + 410) as u16
+                                        } else {
+                                            4095
+                                        };
                                         jack.set_value(vel_out);
                                         note_num += 1;
                                         leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
