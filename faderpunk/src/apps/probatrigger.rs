@@ -18,7 +18,7 @@ use crate::app::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 5;
 
-const LED_BRIGHTNESS: Brightness = Brightness::Low;
+const LED_BRIGHTNESS: Brightness = Brightness::High;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Random Triggers",
@@ -211,14 +211,14 @@ pub async fn run(
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note).await;
-                            leds.set(0, Led::Top, led_color, Brightness::Custom(0));
+                            leds.set(0, Led::Top, led_color, Brightness::Off);
                             // leds.unset(0, Led::Top);
                             note_on = false;
                             jack.set_low().await;
                         }
 
                         // leds.unset(0, Led::Bottom);
-                        leds.set(0, Led::Bottom, led_color, Brightness::Custom(0));
+                        leds.set(0, Led::Bottom, led_color, Brightness::Off);
                     }
                     clkn += 1;
                 }

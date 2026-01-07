@@ -18,7 +18,7 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 2;
 
-const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Envelope Follower",
