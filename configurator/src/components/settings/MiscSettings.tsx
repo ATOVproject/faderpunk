@@ -27,7 +27,7 @@ export const MiscSettings = () => {
       <div className="grid grid-cols-4 gap-x-16 gap-y-8 px-4">
         <Slider
           defaultValue={getValues("ledBrightness")}
-          minValue={185}
+          minValue={100}
           maxValue={255}
           onBlur={onBlur}
           name={name}

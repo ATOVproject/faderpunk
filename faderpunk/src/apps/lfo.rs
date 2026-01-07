@@ -154,7 +154,7 @@ pub async fn run(
 
     let color = get_color_for(wave);
 
-    leds.set(0, Led::Button, color, Brightness::Lower);
+    leds.set(0, Led::Button, color, Brightness::Mid);
 
     glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
     glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
@@ -213,9 +213,9 @@ pub async fn run(
             let color = get_color_for(wave);
 
             if sync && next_pos as u16 > 2048 {
-                leds.set(0, Led::Button, color, Brightness::Lowest);
+                leds.set(0, Led::Button, color, Brightness::Low);
             } else {
-                leds.set(0, Led::Button, color, Brightness::Lower);
+                leds.set(0, Led::Button, color, Brightness::Mid);
             }
 
             match latch_active_layer {
@@ -280,7 +280,7 @@ pub async fn run(
                 });
 
                 let color = get_color_for(wave);
-                leds.set(0, Led::Button, color, Brightness::Lower);
+                leds.set(0, Led::Button, color, Brightness::Mid);
             } else {
                 glob_lfo_pos.set(0.0);
             }
@@ -328,7 +328,7 @@ pub async fn run(
                     glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
 
                     let color = get_color_for(wave_saved);
-                    leds.set(0, Led::Button, color, Brightness::Lower);
+                    leds.set(0, Led::Button, color, Brightness::Mid);
                 }
                 SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }

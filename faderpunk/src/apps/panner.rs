@@ -214,7 +214,7 @@ pub async fn run(
     if muted_glob.get() {
         leds.unset(0, Led::Button);
     } else {
-        leds.set(0, Led::Button, led_color, Brightness::Lower);
+        leds.set(0, Led::Button, led_color, Brightness::Mid);
     }
 
     let bipolar = range.is_bipolar();
@@ -230,7 +230,7 @@ pub async fn run(
     glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
 
     let color = get_color_for(wave_saved);
-    leds.set(1, Led::Button, color, Brightness::Lower);
+    leds.set(1, Led::Button, color, Brightness::Mid);
 
     let main_loop = async {
         let mut latch = [
@@ -406,7 +406,7 @@ pub async fn run(
                         );
                         leds.unset(0, Led::Bottom);
                     }
-                    leds.set(1, Led::Button, led_color, Brightness::Lower);
+                    leds.set(1, Led::Button, led_color, Brightness::Mid);
                 }
                 LatchLayer::Alt => {
                     if bipolar {
@@ -448,7 +448,7 @@ pub async fn run(
                         1,
                         Led::Button,
                         get_color_for(storage.query(|s: &Storage| s.wave)),
-                        Brightness::Lower,
+                        Brightness::Mid,
                     );
                 }
                 LatchLayer::Third => {
@@ -487,7 +487,7 @@ pub async fn run(
             if muted {
                 leds.unset(0, Led::Button);
             } else {
-                leds.set(0, Led::Button, led_color, Brightness::Lower);
+                leds.set(0, Led::Button, led_color, Brightness::Mid);
             }
         }
     };
@@ -503,7 +503,7 @@ pub async fn run(
                 });
 
                 let color = get_color_for(wave);
-                leds.set(1, Led::Button, color, Brightness::Lower);
+                leds.set(1, Led::Button, color, Brightness::Mid);
             }
         }
     };
@@ -562,7 +562,7 @@ pub async fn run(
                         if muted {
                             leds.unset(0, Led::Button);
                         } else {
-                            leds.set(0, Led::Button, led_color, Brightness::Lower);
+                            leds.set(0, Led::Button, led_color, Brightness::Mid);
                         }
                     }
 
@@ -572,7 +572,7 @@ pub async fn run(
                     glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
 
                     let color = get_color_for(wave_saved);
-                    leds.set(1, Led::Button, color, Brightness::Lower);
+                    leds.set(1, Led::Button, color, Brightness::Mid);
                 }
                 SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }

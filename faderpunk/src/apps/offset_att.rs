@@ -122,7 +122,7 @@ pub async fn run(
 
     for n in 0..=1 {
         if storage.query(|s| s.offset_att_toggle[n]) {
-            leds.set(n, Led::Button, led_color, Brightness::Lower);
+            leds.set(n, Led::Button, led_color, Brightness::Mid);
         } else {
             leds.unset(n, Led::Button);
         }
@@ -213,7 +213,7 @@ pub async fn run(
                 });
                 for n in 0..=1 {
                     if storage.query(|s| s.offset_att_toggle[n]) {
-                        leds.set(n, Led::Button, led_color, Brightness::Lower);
+                        leds.set(n, Led::Button, led_color, Brightness::Mid);
                     } else {
                         leds.unset(n, Led::Button);
                     }

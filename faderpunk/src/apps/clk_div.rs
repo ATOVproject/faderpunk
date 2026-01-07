@@ -18,7 +18,7 @@ use crate::app::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 5;
 
-const LED_BRIGHTNESS: Brightness = Brightness::Low;
+const LED_BRIGHTNESS: Brightness = Brightness::High;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Clock Divider",
@@ -212,19 +212,19 @@ pub async fn run(
                             jack.set_low().await;
                         }
                         if glob_latch_layer.get() == LatchLayer::Main {
-                            leds.set(0, Led::Top, led_color, Brightness::Custom(0));
-                            leds.set(0, Led::Bottom, led_color, Brightness::Custom(0));
+                            leds.set(0, Led::Top, led_color, Brightness::Off);
+                            leds.set(0, Led::Bottom, led_color, Brightness::Off);
                         }
                     }
 
                     if glob_latch_layer.get() != LatchLayer::Main {
                         if clkn % max_glob.get() == (max_glob.get() * gatel / 100).clamp(1, div - 1)
                         {
-                            leds.set(0, Led::Top, led_color, Brightness::Custom(0));
+                            leds.set(0, Led::Top, led_color, Brightness::Off);
                         }
                         if clkn % min_glob.get() == (min_glob.get() * gatel / 100).clamp(1, div - 1)
                         {
-                            leds.set(0, Led::Bottom, led_color, Brightness::Custom(0));
+                            leds.set(0, Led::Bottom, led_color, Brightness::Off);
                         }
 
                         if clkn % max_glob.get() == 0 {

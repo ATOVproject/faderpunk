@@ -182,8 +182,8 @@ pub async fn run(
 
     // let latched_glob = app.make_global(true);
 
-    leds.set(0, Led::Button, led_color, Brightness::Lower);
-    leds.set(1, Led::Button, led_color, Brightness::Lower);
+    leds.set(0, Led::Button, led_color, Brightness::Mid);
+    leds.set(1, Led::Button, led_color, Brightness::Mid);
 
     let input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
@@ -248,11 +248,11 @@ pub async fn run(
                     midi.send_cc(midi_cc, att_reg).await;
                 }
 
-                leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                leds.set(0, Led::Bottom, Color::Red, Brightness::High);
             }
 
             if inputval <= 406 && oldinputval > 406 {
-                leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(0));
+                leds.set(0, Led::Bottom, Color::Red, Brightness::Off);
 
                 if let MidiMode::Note = midi_mode {
                     let note = midi_note.get();
