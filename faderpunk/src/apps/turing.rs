@@ -195,7 +195,7 @@ pub async fn run(
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
-    leds.set(0, Led::Button, led_color, Brightness::Lower);
+    leds.set(0, Led::Button, led_color, Brightness::Mid);
 
     let jack = app.make_out_jack(0, Range::_0_10V).await;
 
@@ -271,7 +271,7 @@ pub async fn run(
                         }
 
                         if buttons.is_button_pressed(0) && !buttons.is_shift_pressed() {
-                            leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                            leds.set(0, Led::Bottom, Color::Red, Brightness::High);
                         }
                     }
                     if clkn % div == (div * gatel as u16 / 100).clamp(1, div - 1) {
