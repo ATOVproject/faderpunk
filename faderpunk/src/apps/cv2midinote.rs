@@ -17,7 +17,7 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 5;
 
-const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "CV/OCT to MIDI",
@@ -173,7 +173,7 @@ pub async fn run(
     let gate_in = app.make_in_jack(1, Range::_0_10V).await;
 
     if !storage.query(|s| s.offset_toggle) {
-        leds.set(0, Led::Button, led_color, Brightness::Lower);
+        leds.set(0, Led::Button, led_color, Brightness::Mid);
     } else {
         leds.unset(0, Led::Button);
     }
@@ -206,7 +206,7 @@ pub async fn run(
 
                     midi.send_note_on(midi_out, 4095).await;
                     note_on = true;
-                    leds.set(1, Led::Button, led_color, Brightness::Low);
+                    leds.set(1, Led::Button, led_color, Brightness::High);
                 }
                 let note_led = split_unsigned_value((note as u32 * 4095 / 120) as u16);
                 leds.set(0, Led::Top, led_color, Brightness::Custom(note_led[0] * 2));
@@ -216,7 +216,7 @@ pub async fn run(
                     led_color,
                     Brightness::Custom(note_led[1] * 2),
                 );
-                leds.set(1, Led::Top, led_color, Brightness::Lower);
+                leds.set(1, Led::Top, led_color, Brightness::Mid);
             }
 
             if gatein <= 406 && old_gatein > 406 {
@@ -228,7 +228,7 @@ pub async fn run(
                     if muted_glob.get() {
                         leds.unset(1, Led::Button);
                     } else {
-                        leds.set(1, Led::Button, led_color, Brightness::Low);
+                        leds.set(1, Led::Button, led_color, Brightness::High);
                     }
                 }
                 leds.unset(1, Led::Top);
@@ -246,7 +246,7 @@ pub async fn run(
                     s.offset_toggle = !s.offset_toggle;
                 });
                 if !storage.query(|s| s.offset_toggle) {
-                    leds.set(0, Led::Button, led_color, Brightness::Lower);
+                    leds.set(0, Led::Button, led_color, Brightness::Mid);
                 } else {
                     leds.unset(0, Led::Button);
                 }
@@ -260,7 +260,7 @@ pub async fn run(
                 if muted {
                     leds.unset(1, Led::Button);
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Low);
+                    leds.set(1, Led::Button, led_color, Brightness::High);
                 }
             }
         }
@@ -322,7 +322,7 @@ pub async fn run(
                 SceneEvent::LoadSscene(scene) => {
                     storage.load_from_scene(scene).await;
                     if !storage.query(|s| s.offset_toggle) {
-                        leds.set(0, Led::Button, led_color, Brightness::Lower);
+                        leds.set(0, Led::Button, led_color, Brightness::Mid);
                     } else {
                         leds.unset(0, Led::Button);
                     }
@@ -330,7 +330,7 @@ pub async fn run(
                     if storage.query(|s| s.muted) {
                         leds.unset(1, Led::Button);
                     } else {
-                        leds.set(1, Led::Button, led_color, Brightness::Low);
+                        leds.set(1, Led::Button, led_color, Brightness::High);
                     }
 
                     muted_glob.set(storage.query(|s| s.muted));

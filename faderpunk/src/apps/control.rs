@@ -194,7 +194,7 @@ pub async fn run(
     if muted_glob.get() {
         leds.unset(0, Led::Button);
     } else {
-        leds.set(0, Led::Button, led_color, Brightness::Lower);
+        leds.set(0, Led::Button, led_color, Brightness::Mid);
     }
 
     let bipolar = range.is_bipolar();
@@ -359,7 +359,7 @@ pub async fn run(
             if muted {
                 leds.unset(0, Led::Button);
             } else {
-                leds.set(0, Led::Button, led_color, Brightness::Lower);
+                leds.set(0, Led::Button, led_color, Brightness::Mid);
             }
         }
     };
@@ -395,7 +395,7 @@ pub async fn run(
                         if muted {
                             leds.unset(0, Led::Button);
                         } else {
-                            leds.set(0, Led::Button, led_color, Brightness::Lower);
+                            leds.set(0, Led::Button, led_color, Brightness::Mid);
                         }
                     }
                 }
