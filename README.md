@@ -226,7 +226,7 @@ pub async fn run(app: &App<CHANNELS>) {
     let buttons = app.use_buttons();
     let leds = app.use_leds();
 
-    leds.set(0, Led::Button, Color::Blue, Brightness::Lower);
+    leds.set(0, Led::Button, Color::Blue, Brightness::Mid);
 
     loop {
         buttons.wait_for_down(0).await;

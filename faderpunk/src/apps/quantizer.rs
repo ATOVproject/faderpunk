@@ -115,8 +115,8 @@ pub async fn run(
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    leds.set(0, Led::Button, led_color, Brightness::Lower);
-    leds.set(1, Led::Button, led_color, Brightness::Lower);
+    leds.set(0, Led::Button, led_color, Brightness::Mid);
+    leds.set(1, Led::Button, led_color, Brightness::Mid);
 
     let range = Range::_Neg5_5V;
     let quantizer = app.use_quantizer(range);
@@ -124,7 +124,7 @@ pub async fn run(
     let output = app.make_out_jack(1, range).await;
     for chan in 0..2 {
         if !storage.query(|s| s.offset_toggles[chan]) {
-            leds.set(chan, Led::Button, led_color, Brightness::Lower);
+            leds.set(chan, Led::Button, led_color, Brightness::Mid);
         } else {
             leds.unset(chan, Led::Button);
         }
@@ -177,7 +177,7 @@ pub async fn run(
                     s.offset_toggles[chan] = !s.offset_toggles[chan];
                 });
                 if !storage.query(|s| s.offset_toggles[chan]) {
-                    leds.set(chan, Led::Button, led_color, Brightness::Lower);
+                    leds.set(chan, Led::Button, led_color, Brightness::Mid);
                 } else {
                     leds.unset(chan, Led::Button);
                 }
@@ -244,7 +244,7 @@ pub async fn run(
                     storage.load_from_scene(scene).await;
                     for chan in 0..2 {
                         if !storage.query(|s| s.offset_toggles[chan]) {
-                            leds.set(chan, Led::Button, led_color, Brightness::Lower);
+                            leds.set(chan, Led::Button, led_color, Brightness::Mid);
                         } else {
                             leds.unset(chan, Led::Button);
                         }

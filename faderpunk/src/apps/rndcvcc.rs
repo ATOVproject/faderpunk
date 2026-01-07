@@ -172,7 +172,7 @@ pub async fn run(
         leds.unset(0, Led::Top);
         leds.unset(0, Led::Bottom);
     } else {
-        leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
+        leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
     }
 
     let fut1 = async {
@@ -199,12 +199,12 @@ pub async fn run(
                         };
                         glob_button_color.set(color);
 
-                        leds.set(0, Led::Button, color, Brightness::Lower);
+                        leds.set(0, Led::Button, color, Brightness::Mid);
                     }
 
                     if clkn % div == 0 && storage.query(|s: &Storage| s.clocked) {
                         if buttons.is_shift_pressed() {
-                            leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                            leds.set(0, Led::Bottom, Color::Red, Brightness::High);
                         }
                     }
                     if clkn % div == (div * 50 / 100).clamp(1, div - 1)
@@ -232,7 +232,7 @@ pub async fn run(
                 if muted {
                     leds.unset_all();
                 } else {
-                    leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
+                    leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
                 }
             }
         }
@@ -252,7 +252,7 @@ pub async fn run(
                 if muted {
                     leds.unset_all();
                 } else {
-                    leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
+                    leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
                 }
             }
         }
@@ -300,7 +300,7 @@ pub async fn run(
                     glob_muted.set(mute);
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
-                        leds.set(0, Led::Button, LED_COLOR, Brightness::Lower);
+                        leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
                         leds.unset(0, Led::Top);
                         leds.unset(0, Led::Bottom);
                     }
@@ -380,7 +380,7 @@ pub async fn run(
                     Brightness::Custom((att / 16) as u8),
                 );
                 // if storage.query(|s: &Storage| s.clocked) {
-                //     leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                //     leds.set(0, Led::Bottom, Color::Red, Brightness::High);
                 // }
             }
             if latch_active_layer == LatchLayer::Third {
@@ -407,7 +407,7 @@ pub async fn run(
                     };
                     glob_button_color.set(color);
 
-                    leds.set(0, Led::Button, color, Brightness::Lower);
+                    leds.set(0, Led::Button, color, Brightness::Mid);
                 }
             }
         }

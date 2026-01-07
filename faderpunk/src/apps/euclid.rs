@@ -21,7 +21,7 @@ use crate::app::{
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 6;
 
-const LED_BRIGHTNESS: Brightness = Brightness::Lower;
+const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Euclid",
@@ -256,7 +256,7 @@ pub async fn run(
                         }
 
                         if glob_latch_layer.get() == LatchLayer::Third {
-                            leds.set(0, Led::Bottom, Color::Red, Brightness::Lower);
+                            leds.set(0, Led::Bottom, Color::Red, Brightness::Mid);
                         }
                     }
 
@@ -273,18 +273,18 @@ pub async fn run(
                             jack[1].set_low().await;
                         }
 
-                        leds.set(0, Led::Bottom, led_color, Brightness::Custom(0))
+                        leds.set(0, Led::Bottom, led_color, Brightness::Off)
                     }
                     if glob_latch_layer.get() == LatchLayer::Main {
                         if note_on {
-                            leds.set(0, Led::Top, led_color, Brightness::Default);
+                            leds.set(0, Led::Top, led_color, Brightness::High);
                         } else {
-                            leds.set(0, Led::Top, led_color, Brightness::Custom(0))
+                            leds.set(0, Led::Top, led_color, Brightness::Off)
                         }
                         if aux_on {
-                            leds.set(1, Led::Top, led_color, Brightness::Default);
+                            leds.set(1, Led::Top, led_color, Brightness::High);
                         } else {
-                            leds.set(1, Led::Top, led_color, Brightness::Custom(0))
+                            leds.set(1, Led::Top, led_color, Brightness::Off)
                         }
                     }
                     if glob_latch_layer.get() == LatchLayer::Alt {
@@ -339,9 +339,9 @@ pub async fn run(
                     s.mode
                 });
                 if !mode {
-                    leds.set(1, Led::Button, led_color, Brightness::Low);
+                    leds.set(1, Led::Button, led_color, Brightness::High);
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Lowest);
+                    leds.set(1, Led::Button, led_color, Brightness::Low);
                 }
             }
         }
@@ -475,14 +475,14 @@ pub async fn run(
                 if glob_muted.get() {
                     leds.unset(1, Led::Button);
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Lower);
+                    leds.set(1, Led::Button, led_color, Brightness::Mid);
                 }
             }
             if latch_active_layer == LatchLayer::Alt {
                 if !storage.query(|s| s.mode) {
-                    leds.set(1, Led::Button, led_color, Brightness::Low);
+                    leds.set(1, Led::Button, led_color, Brightness::High);
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Lowest);
+                    leds.set(1, Led::Button, led_color, Brightness::Low);
                 }
             }
             if latch_active_layer == LatchLayer::Third {}

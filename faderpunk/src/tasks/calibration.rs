@@ -33,7 +33,7 @@ fn set_led_color(ch: usize, pos: Led, color: Color) {
     set_led_mode(
         ch,
         pos,
-        LedMsg::Set(LedMode::Static(color, Brightness::Low)),
+        LedMsg::Set(LedMode::Static(color, Brightness::High)),
     );
 }
 

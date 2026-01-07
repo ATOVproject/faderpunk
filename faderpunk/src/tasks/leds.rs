@@ -260,11 +260,11 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
 
     leds.base_layer[16] = LedEffect::Static {
         color: Color::Pink.into(),
-        brightness: Brightness::Lower.into(),
+        brightness: Brightness::Mid.into(),
     };
     leds.base_layer[17] = LedEffect::Static {
         color: Color::Yellow.into(),
-        brightness: Brightness::Lower.into(),
+        brightness: Brightness::Mid.into(),
     };
 
     loop {
