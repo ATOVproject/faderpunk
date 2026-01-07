@@ -432,10 +432,10 @@ pub async fn run(
 
         loop {
             let intensities = [
-                Brightness::Lowest,
-                Brightness::Lower,
                 Brightness::Low,
-                Brightness::Default,
+                Brightness::Mid,
+                Brightness::High,
+                Brightness::High,
             ];
             let colors = [Color::Yellow, Color::Pink, Color::Cyan, Color::White];
             app.delay_millis(16).await;
@@ -450,7 +450,7 @@ pub async fn run(
                 let seq_length = seq_length_glob.get();
 
                 let page = page_glob.get();
-                let mut bright = Brightness::Lower;
+                let mut bright = Brightness::Mid;
                 for n in 0..=7 {
                     if n == page {
                         bright = intensities[3];
@@ -461,13 +461,13 @@ pub async fn run(
                 }
                 for n in 0..=15 {
                     if n < seq_length[page / 2] {
-                        bright = Brightness::Lower;
+                        bright = Brightness::Mid;
                     }
                     if n == (clockn / clockres[page / 2]) as u8 % seq_length[page / 2] {
-                        bright = Brightness::Default;
+                        bright = Brightness::High;
                     }
                     if n >= seq_length[page / 2] {
-                        bright = Brightness::Custom(0);
+                        bright = Brightness::Off;
                     }
                     if n < 8 {
                         led.set(n as usize, Led::Top, Color::Red, bright)
@@ -535,7 +535,7 @@ pub async fn run(
                         < 8
                     {
                         //this needs changing
-                        led.set(n, Led::Bottom, Color::Red, Brightness::Lower)
+                        led.set(n, Led::Bottom, Color::Red, Brightness::Mid)
                     } else {
                         led.unset(n, Led::Bottom);
                     }
@@ -551,11 +551,11 @@ pub async fn run(
                             - (page % 2) * 8,
                         Led::Button,
                         Color::Red,
-                        Brightness::Lower,
+                        Brightness::Mid,
                     );
                 }
 
-                led.set(page, Led::Bottom, color, Brightness::Default);
+                led.set(page, Led::Bottom, color, Brightness::High);
             }
 
             led_flag_glob.set(false);
