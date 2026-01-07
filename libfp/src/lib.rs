@@ -43,8 +43,8 @@ pub const APP_MAX_PARAMS: usize = 16;
 /// Length of the startup animation
 pub const STARTUP_ANIMATION_DURATION: Duration = Duration::from_secs(2);
 
-/// Rang in which the LED brightness is scaled
-pub const LED_BRIGHTNESS_RANGE: core::ops::Range<u8> = 185..255;
+/// Range in which the LED brightness is scaled
+pub const LED_BRIGHTNESS_RANGE: core::ops::Range<u8> = 100..255;
 
 pub const CALIBRATION_SCALE_FACTOR: i64 = 1 << 16;
 pub const CALIBRATION_VERSION_LATEST: u8 = 2;
@@ -612,20 +612,20 @@ impl FromValue for Color {
 
 #[derive(Clone, Copy)]
 pub enum Brightness {
-    Lowest,
-    Lower,
+    Off,
     Low,
-    Default,
+    Mid,
+    High,
     Custom(u8),
 }
 
 impl From<Brightness> for u8 {
     fn from(value: Brightness) -> Self {
         match value {
-            Brightness::Lowest => 80,
-            Brightness::Lower => 125,
-            Brightness::Low => 190,
-            Brightness::Default => 255,
+            Brightness::Off => 0,
+            Brightness::Low => 110,
+            Brightness::Mid => 180,
+            Brightness::High => 255,
             Brightness::Custom(value) => value,
         }
     }

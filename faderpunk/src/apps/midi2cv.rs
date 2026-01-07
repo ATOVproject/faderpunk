@@ -22,7 +22,7 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 8;
 
-const LED_BRIGHTNESS: Brightness = Brightness::Lower;
+const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "MIDI to CV",
