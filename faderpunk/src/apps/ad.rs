@@ -146,13 +146,13 @@ pub async fn run(
         0,
         Led::Button,
         color[curve_setting[0] as usize],
-        Brightness::Lower,
+        Brightness::Mid,
     );
     leds.set(
         1,
         Led::Button,
         color[curve_setting[1] as usize],
-        Brightness::Lower,
+        Brightness::Mid,
     );
 
     let mut times: [f32; 2] = [0.0682, 0.0682];
@@ -265,7 +265,7 @@ pub async fn run(
             outval = attenuate(outval, storage.query(|s| s.att_saved));
             output.set_value(outval);
             if latch_active_layer == LatchLayer::Alt {
-                leds.set(1, Led::Button, color[mode as usize], Brightness::Lower);
+                leds.set(1, Led::Button, color[mode as usize], Brightness::Mid);
 
                 let att = storage.query(|s| s.att_saved);
                 leds.set(
@@ -277,7 +277,7 @@ pub async fn run(
                 if timer % (storage.query(|s: &Storage| s.min_gate_saved) as u32 + 10) + 200
                     < (storage.query(|s: &Storage| s.min_gate_saved) as u32 + 10)
                 {
-                    leds.set(0, Led::Top, Color::Red, Brightness::Low);
+                    leds.set(0, Led::Top, Color::Red, Brightness::High);
                 } else {
                     leds.unset(0, Led::Top);
                 }
@@ -287,7 +287,7 @@ pub async fn run(
                         n,
                         Led::Button,
                         color[curve_setting[n] as usize],
-                        Brightness::Lower,
+                        Brightness::Mid,
                     );
                     if outval == 0 {
                         leds.unset(n, Led::Top);
@@ -295,9 +295,9 @@ pub async fn run(
                 }
             }
             if gate_on_glob.get() > 0 {
-                leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                leds.set(0, Led::Bottom, Color::Red, Brightness::High);
             } else {
-                leds.set(0, Led::Bottom, Color::Red, Brightness::Lower);
+                leds.set(0, Led::Bottom, Color::Red, Brightness::Mid);
             }
 
             if button_old && !buttons.is_button_pressed(0) && buttons.is_shift_pressed() {
@@ -434,13 +434,13 @@ pub async fn run(
                         0,
                         Led::Button,
                         color[curve_setting[0] as usize],
-                        Brightness::Lower,
+                        Brightness::Mid,
                     );
                     leds.set(
                         1,
                         Led::Button,
                         color[curve_setting[1] as usize],
-                        Brightness::Lower,
+                        Brightness::Mid,
                     );
 
                     let mut times: [f32; 2] = [0.0682, 0.0682];

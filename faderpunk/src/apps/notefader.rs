@@ -19,7 +19,7 @@ use crate::app::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 7;
 
-const LED_BRIGHTNESS: Brightness = Brightness::Lower;
+const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Note Fader",
@@ -254,14 +254,14 @@ pub async fn run(
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note).await;
-                            leds.set(0, Led::Top, led_color, Brightness::Custom(0));
+                            leds.set(0, Led::Top, led_color, Brightness::Off);
                             note_on = false;
                             if outmode == 1 {
                                 jack.set_value(0)
                             }
                         }
 
-                        leds.set(0, Led::Bottom, led_color, Brightness::Custom(0));
+                        leds.set(0, Led::Bottom, led_color, Brightness::Off);
                     }
                     clkn += 1;
                 }
@@ -303,8 +303,8 @@ pub async fn run(
                         if outmode == 1 {
                             jack.set_value(0)
                         }
-                        leds.set(0, Led::Top, led_color, Brightness::Custom(0));
-                        leds.set(0, Led::Button, led_color, Brightness::Lowest);
+                        leds.set(0, Led::Top, led_color, Brightness::Off);
+                        leds.set(0, Led::Button, led_color, Brightness::Low);
                     }
                 }
             }
@@ -349,7 +349,7 @@ pub async fn run(
 
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
-                        leds.set(0, Led::Button, led_color, Brightness::Lowest);
+                        leds.set(0, Led::Button, led_color, Brightness::Low);
 
                         leds.unset(0, Led::Top);
                         leds.unset(0, Led::Bottom);

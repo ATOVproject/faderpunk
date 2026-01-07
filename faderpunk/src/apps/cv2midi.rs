@@ -18,7 +18,7 @@ use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, Sc
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 5;
 
-const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "CV to MIDI",
@@ -229,7 +229,7 @@ pub async fn run(
             if muted {
                 leds.unset(0, Led::Button);
             } else {
-                leds.set(0, Led::Button, led_color, Brightness::Lower);
+                leds.set(0, Led::Button, led_color, Brightness::Mid);
             }
         }
     };
@@ -269,7 +269,7 @@ pub async fn run(
                     if storage.query(|s| s.muted) {
                         leds.unset(0, Led::Button);
                     } else {
-                        leds.set(0, Led::Button, led_color, Brightness::Lower);
+                        leds.set(0, Led::Button, led_color, Brightness::Mid);
                     }
 
                     muted_glob.set(storage.query(|s| s.muted));
