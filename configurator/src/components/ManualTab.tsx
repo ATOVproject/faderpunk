@@ -58,7 +58,7 @@ const apps: ManualAppData[] = [
     icon: "sine",
     params: ["Speed division", "Range", "Send MIDI", "MIDI Channel", "MIDI CC"],
     storage: ["Clocked", "Attenuation", "Speed", "Waveform"],
-    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (blue), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
+    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
     channels: [
       {
         jackTitle: "Output",
@@ -70,7 +70,7 @@ const apps: ManualAppData[] = [
         faderPlusShiftDescription: "Reduces the output range",
         fnTitle: "Waveform selection",
         fnDescription:
-          "Sine (yellow), triangle (pink), ramp down (blue), ramp up (red), and square (white)",
+          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
         fnPlusShiftTitle: "Reset - Clocked mode",
         fnPlusShiftDescription: "Short reset - Long clock mode",
         ledTop: "Positive level indicator",
@@ -809,7 +809,53 @@ const apps: ManualAppData[] = [
         fnDescription: "",
         fnPlusShiftTitle: "LFO Waveform selection",
         fnPlusShiftDescription:
-          "Sine (yellow), triangle (pink), ramp down (blue), ramp up (red), and square (white)",
+          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
+        ledTop: "Positive level indicator",
+        ledTopPlusShift: "Attenuation level in red",
+        ledBottom: "Negative level indicator",
+      },
+    ],
+  },
+  {
+    appId: 22,
+    title: "LFO+",
+    description: "Multi shape LFO",
+    color: "Yellow",
+    icon: "sine",
+    params: ["Speed division", "Range", "Send MIDI", "MIDI Channel", "MIDI CC"],
+    storage: ["CV attenuation", "CV mute", "CV destination", "Clocked", "Attenuation", "Speed", "Waveform"],
+    text: "This app is a variation of the simple LFO, adding an assignable CV input. The first channel processes the CV input, with the fader controlling its attenuation and the button acting as a mute. Use Shift + Button 1 to set the CV destination, indicated by the button color: speed (yellow), phase (pink), or amplitude (cyan). Note that the speed CV is through 0, meaning that the waveform will invert and speed up again when the CV input is negative. As in the standard LFO, you can select the waveform by pressing the second button, with LED colors showing the shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). Adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Free-running speed ranges from 14 Hz to one cycle per minute; clocked mode offers resolutions like 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. App parameters let you set overall speed—Normal, Slow (÷2), or Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. Output can be bipolar (-5V to +5V) or unipolar (0V to 10V), affecting the attenuator's center when sending MIDI CC (0 for unipolar, 64 for bipolar). The app can also output MIDI CC, with freely configurable channel and CC number.",
+    channels: [
+       {
+        jackTitle: "Input",
+        jackDescription: "-5V to 5V CV in",
+        faderTitle: "CV attenuation",
+        faderDescription:
+          "Attenuates the incoming CV",
+        faderPlusShiftTitle: "",
+        faderPlusShiftDescription: "",
+        fnTitle: "CV input Mute",
+        fnDescription:
+          "",
+        fnPlusShiftTitle: "CV destination",
+        fnPlusShiftDescription: "Speed (yellow), phase (pink), amplitude (cyan)",
+        ledTop: "Positive level indicator",
+        ledTopPlusShift: "",
+        ledBottom: "Negative level indicator",
+      },
+      {
+        jackTitle: "Output",
+        jackDescription: "-5V to 5V LFO out",
+        faderTitle: "LFO speed",
+        faderDescription:
+          "Sets the LFO speed, top is maximum and bottom slowest",
+        faderPlusShiftTitle: "Attenuation",
+        faderPlusShiftDescription: "Reduces the output range",
+        fnTitle: "Waveform selection",
+        fnDescription:
+          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
+        fnPlusShiftTitle: "Reset - Clocked mode",
+        fnPlusShiftDescription: "Short reset - Long clock mode",
         ledTop: "Positive level indicator",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "Negative level indicator",
