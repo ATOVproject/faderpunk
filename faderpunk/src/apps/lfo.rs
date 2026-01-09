@@ -145,22 +145,29 @@ pub async fn run(
     let glob_lfo_pos = app.make_global(0.0);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
     let glob_tick = app.make_global(false);
-    let glob_div = app.make_global(24);
+    let glob_quant_speed = app.make_global(0.07);
+    let glob_count = app.make_global(500);
 
     let curve = Curve::Exponential;
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6];
 
-    let (speed, wave) = storage.query(|s| (s.layer_speed, s.wave));
+    let wave = storage.query(|s| (s.wave));
 
     let color = get_color_for(wave);
 
     leds.set(0, Led::Button, color, Brightness::Mid);
 
-    glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
-    glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
     let mut count = 0;
-    let mut quant_speed: f32 = 6.;
     let mut last_out = 0;
+
+    let update_speed = async || {
+        glob_lfo_speed.set((curve.at(storage.query(|s| s.layer_speed)) as f32) * 0.015 + 0.0682);
+
+        let div = resolution[((storage.query(|s| s.layer_speed)) as usize / 500).clamp(0, 8)];
+        glob_quant_speed.set(4095. / ((glob_count.get().max(1) as f32 * div as f32) / 24.));
+    };
+
+    update_speed().await;
 
     let fut1 = async {
         loop {
@@ -174,13 +181,17 @@ pub async fn run(
             count += 1;
             if glob_tick.get() {
                 // add timeout
-                let div = glob_div.get();
-                quant_speed = 4095. / ((count.max(1) as f32 * div as f32) / 24.);
+
+                if count < 2000 {
+                    glob_count.set(count);
+                    update_speed().await
+                }
                 count = 0;
                 glob_tick.set(false);
             }
 
             let lfo_speed = glob_lfo_speed.get();
+            let quant_speed = glob_quant_speed.get();
             let lfo_pos = glob_lfo_pos.get();
 
             let next_pos = if sync {
@@ -256,9 +267,8 @@ pub async fn run(
             if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
                 match latch_layer {
                     LatchLayer::Main => {
-                        glob_lfo_speed.set(curve.at(new_value) as f32 * 0.015 + 0.0682);
-                        glob_div.set(resolution[(new_value as usize / 500).clamp(0, 8)]);
                         storage.modify_and_save(|s| s.layer_speed = new_value);
+                        update_speed().await;
                     }
                     LatchLayer::Alt => {
                         storage.modify_and_save(|s| s.layer_attenuation = new_value);
@@ -321,12 +331,8 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let speed = storage.query(|s| s.layer_speed);
                     let wave_saved = storage.query(|s| s.wave);
-
-                    glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
-                    glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
-
+                    update_speed().await;
                     let color = get_color_for(wave_saved);
                     leds.set(0, Led::Button, color, Brightness::Mid);
                 }
