@@ -300,9 +300,11 @@ pub async fn run(
                     glob_muted.set(mute);
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
-                        leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
+                        leds.unset(0, Led::Button);
                         leds.unset(0, Led::Top);
                         leds.unset(0, Led::Bottom);
+                    } else {
+                        leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
                     }
                     latched_glob.set(false);
                 }
