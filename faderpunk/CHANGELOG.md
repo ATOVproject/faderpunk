@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.1...faderpunk-v1.5.2) (2026-01-07)
+
+
+### Bug Fixes
+
+* **control:** remove filtering on MIDI CC ([fb71d00](https://github.com/ATOVproject/faderpunk/commit/fb71d004ab19ab57df2464ef979a65335d73fe19))
+
 ## [1.5.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.0...faderpunk-v1.5.1) (2025-12-10)
 
 
