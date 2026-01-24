@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.3](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.2...faderpunk-v1.5.3) (2026-01-24)
+
+
+### Bug Fixes
+
+* add hardware factory reset ([e3fef02](https://github.com/ATOVproject/faderpunk/commit/e3fef022b1dbe497aed6c3875c32e3c481ca1297))
+
 ## [1.5.2](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.1...faderpunk-v1.5.2) (2026-01-07)
 
 
