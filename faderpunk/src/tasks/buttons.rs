@@ -65,12 +65,14 @@ pub fn is_scene_button_pressed() -> bool {
 async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &EventPubSubPublisher) {
     loop {
         if button.is_low() {
+            BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
             button.wait_for_rising_edge().await;
             Timer::after_millis(10).await;
 
             if button.is_low() {
                 continue;
             }
+            BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
         }
 
         button.wait_for_falling_edge().await;

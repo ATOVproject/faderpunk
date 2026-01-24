@@ -32,20 +32,21 @@ use embassy_sync::lazy_lock::LazyLock;
 use embassy_sync::mutex::Mutex;
 use fm24v10::{Address, Fm24v10};
 use libfp::quantizer::Quantizer;
-use libfp::I2cMode;
+use libfp::{I2cMode, GLOBAL_CHANNELS};
 use static_cell::StaticCell;
-
-use crate::storage::store_layout;
-use crate::tasks::global_config::GLOBAL_CONFIG_WATCH;
-use crate::tasks::midi::midi_distributor;
-
 use {defmt_rtt as _, panic_probe as _};
+
+use crate::storage::{factory_reset, store_layout};
 
 use layout::{LayoutManager, LAYOUT_MANAGER, LAYOUT_WATCH};
 use storage::{load_calibration_data, load_global_config, load_layout};
 use tasks::{
-    buttons::BUTTON_PRESSED, fram::MAX_DATA_LEN, i2c::I2C_LEADER_CHANNEL, max::MAX_CHANNEL,
-    midi::APP_MIDI_CHANNEL,
+    buttons::{is_channel_button_pressed, is_scene_button_pressed, is_shift_button_pressed},
+    fram::MAX_DATA_LEN,
+    global_config::GLOBAL_CONFIG_WATCH,
+    i2c::I2C_LEADER_CHANNEL,
+    max::MAX_CHANNEL,
+    midi::{midi_distributor, APP_MIDI_CHANNEL},
 };
 
 // Program metadata for `picotool info`.
@@ -173,9 +174,13 @@ async fn main(spawner: Spawner) {
     let calibration_data = load_calibration_data().await;
     let mut global_config = load_global_config().await;
 
+    if is_channel_button_pressed(0) && is_channel_button_pressed(1) {
+        return factory_reset().await;
+    }
+
     // Load calibration if there is no calibration data or
     // when scene is pressed during startup
-    if calibration_data.is_none() || BUTTON_PRESSED[16].load(Ordering::Relaxed) {
+    if calibration_data.is_none() || is_scene_button_pressed() {
         global_config.i2c_mode = I2cMode::Calibration;
     } else {
         global_config.i2c_mode = I2cMode::Follower;
