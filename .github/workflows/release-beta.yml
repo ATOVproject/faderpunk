@@ -167,6 +167,7 @@ jobs:
         working-directory: ./configurator
         env:
           BASE_URL: /beta/
+          RELEASE_CHANNEL: beta
       - name: Create configurator release package
         run: |
           mkdir -p release_files
