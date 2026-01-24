@@ -869,6 +869,9 @@ export const ManualTab = () => {
             <Link to="#troubleshooting">Troubleshooting</Link>
             <List>
               <li>
+                <Link to="#connection-issues">Connection Issues</Link>
+              </li>
+              <li>
                 <Link to="#factory-reset">Factory Reset</Link>
               </li>
             </List>
