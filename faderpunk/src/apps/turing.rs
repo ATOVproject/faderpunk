@@ -285,7 +285,9 @@ pub async fn run(
                     clkn += 1;
                 }
                 ClockEvent::Stop => {
-                    midi.send_note_off(midi_note.get()).await;
+                    if midi_mode == MidiMode::Note {
+                        midi.send_note_off(midi_note.get()).await;
+                    }
                 }
                 _ => {}
             }
