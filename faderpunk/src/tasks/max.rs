@@ -1,6 +1,5 @@
 use core::sync::atomic::AtomicU8;
 
-use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
@@ -63,6 +62,7 @@ pub static MAX_VALUES_ADC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static CALIBRATING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum MaxCmd {
     // Mode, GPO level (for mode 3)
     ConfigurePort(Mode, Option<u16>),
@@ -338,12 +338,12 @@ async fn message_loop(max_driver: &'static SharedMax) {
                 }
                 _ => {}
             },
-            _ => {} // MaxCmd::GpoSetHigh => {
-                    //     max.gpo_set_high(port).await.unwrap();
-                    // }
-                    // MaxCmd::GpoSetLow => {
-                    //     max.gpo_set_low(port).await.unwrap();
-                    // }
+            MaxCmd::GpoSetHigh => {
+                max.gpo_set_high(port).await.unwrap();
+            }
+            MaxCmd::GpoSetLow => {
+                max.gpo_set_low(port).await.unwrap();
+            }
         }
     }
 }

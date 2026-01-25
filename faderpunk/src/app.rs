@@ -212,6 +212,7 @@ impl<const N: usize> Buttons<N> {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn wait_for_long_press(&self, chan: usize) -> bool {
         let chan = chan.clamp(0, N - 1);
         loop {
@@ -420,6 +421,7 @@ impl MidiOutput {
 
     /// Sends a MIDI Aftertouch message.
     /// velocity is normalized to a range of 0-4095
+    #[allow(dead_code)]
     pub async fn send_aftertouch(&self, note_number: u8, velocity: u16) {
         let msg = MidiMessage::Aftertouch {
             key: note_number.into(),
@@ -430,6 +432,7 @@ impl MidiOutput {
 
     /// Sends a MIDI PitchBend message.
     /// bend is a value between 0 and 16,383
+    #[allow(dead_code)]
     pub async fn send_pitch_bend(&self, bend: u16) {
         let msg = MidiMessage::PitchBend {
             bend: PitchBend(bend.into()),
@@ -583,6 +586,7 @@ impl Quantizer {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum AppError {
     DeserializeFailed,
 }
@@ -601,6 +605,7 @@ pub struct App<const N: usize> {
 }
 
 impl<const N: usize> App<N> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         app_id: u8,
         start_channel: usize,
@@ -682,6 +687,7 @@ impl<const N: usize> App<N> {
         Timer::after_millis(millis).await
     }
 
+    #[allow(dead_code)]
     pub async fn delay_secs(&self, secs: u64) {
         Timer::after_secs(secs).await
     }

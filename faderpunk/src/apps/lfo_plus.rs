@@ -194,7 +194,7 @@ pub async fn run(
 
     let mut last_out = 0;
 
-    if storage.query(|s| (s.in_mute)) {
+    if storage.query(|s| s.in_mute) {
         leds.unset(0, Led::Button);
     } else {
         leds.set(0, Led::Button, color_in, Brightness::Mid);
@@ -205,10 +205,8 @@ pub async fn run(
         let offset_u32 = offset as u32;
         let sum = layer_speed.saturating_add(offset_u32);
 
-        glob_lfo_speed.set(
-            (curve.at(layer_speed as u16) as f32 + offset as f32 - 2047.0) * 0.015
-                + 0.0682,
-        );
+        glob_lfo_speed
+            .set((curve.at(layer_speed as u16) as f32 + offset as f32 - 2047.0) * 0.015 + 0.0682);
 
         let index_val = sum.saturating_sub(2047).min(4095) as usize / 500;
         let div = resolution[index_val.clamp(0, 8)];
@@ -218,11 +216,11 @@ pub async fn run(
     let fut1 = async {
         loop {
             app.delay_millis(1).await;
-            let in_mute = storage.query(|s| (s.in_mute));
+            let in_mute = storage.query(|s| s.in_mute);
             let in_val = if in_mute {
                 2047
             } else {
-                attenuate_bipolar(input.get_value(), storage.query(|s| (s.in_att)))
+                attenuate_bipolar(input.get_value(), storage.query(|s| s.in_att))
             };
             let destination = storage.query(|s| s.dest);
 
@@ -432,17 +430,15 @@ pub async fn run(
     let long_press_handler = async {
         loop {
             let (chan, shift) = buttons.wait_for_any_long_press().await;
-            if chan == 1 {
-                if shift {
-                    let clocked = storage.modify_and_save(|s| {
-                        s.clocked = !s.clocked;
-                        s.clocked
-                    });
-                    if clocked {
-                        let current_wave = storage.query(|s| s.wave);
-                        let current_color = get_color_for(current_wave);
-                        leds.set_mode(1, Led::Button, LedMode::Flash(current_color, Some(4)));
-                    }
+            if chan == 1 && shift {
+                let clocked = storage.modify_and_save(|s| {
+                    s.clocked = !s.clocked;
+                    s.clocked
+                });
+                if clocked {
+                    let current_wave = storage.query(|s| s.wave);
+                    let current_color = get_color_for(current_wave);
+                    leds.set_mode(1, Led::Button, LedMode::Flash(current_color, Some(4)));
                 }
             }
         }
@@ -464,7 +460,7 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                     let speed = storage.query(|s| s.layer_speed);
                     let wave_saved = storage.query(|s| s.wave);

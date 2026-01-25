@@ -226,23 +226,22 @@ pub async fn run(
                     let muted = glob_muted.get();
                     let div = div_glob.get();
 
-                    if clkn % div == 0 {
+                    if clkn.is_multiple_of(div) {
                         if !muted {
                             if euclidean_filter(
                                 num_beat_glob.get(),
                                 num_step_glob.get(),
                                 rotation_glob.get(),
                                 clkn / div,
-                            ) && storage.query(|s| (s.shift_fader_saved[1]))
+                            ) && storage.query(|s| s.shift_fader_saved[1])
                                 >= die.roll().clamp(100, 3900)
                             {
                                 midi.send_note_on(note, 4095).await;
-                                // info!("proba {}", storage.query(|s| (s.shift_fader_saved[1])));
                                 jack[0].set_high().await;
                                 note_on = true;
                             }
                             if storage.query(|s| s.mode) {
-                                if clkn / div % num_beat_glob.get() as u32 == 0 {
+                                if (clkn / div).is_multiple_of(num_beat_glob.get() as u32) {
                                     jack[1].set_high().await;
                                     midi.send_note_on(note2, 4095).await;
 
@@ -293,7 +292,7 @@ pub async fn run(
                             Led::Top,
                             Color::Red,
                             Brightness::Custom(
-                                (storage.query(|s| (s.shift_fader_saved[0])) / 16) as u8,
+                                (storage.query(|s| s.shift_fader_saved[0]) / 16) as u8,
                             ),
                         );
                         leds.set(
@@ -301,7 +300,7 @@ pub async fn run(
                             Led::Top,
                             Color::Red,
                             Brightness::Custom(
-                                (storage.query(|s| (s.shift_fader_saved[1])) / 16) as u8,
+                                (storage.query(|s| s.shift_fader_saved[1]) / 16) as u8,
                             ),
                         );
                     }
