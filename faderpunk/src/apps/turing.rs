@@ -207,7 +207,7 @@ pub async fn run(
     div_glob.set(resolution[res as usize / 512]);
 
     let fut1 = async {
-        let mut clkn = 0;
+        let mut clkn: usize = 0;
         let mut att_reg: u16;
         loop {
             let div = div_glob.get();
@@ -219,18 +219,18 @@ pub async fn run(
                     if midi_mode == MidiMode::Note {
                         midi.send_note_off(midi_note.get()).await;
                     }
-                    register = storage.query(|s| (s.register_saved));
+                    register = storage.query(|s| s.register_saved);
                 }
                 ClockEvent::Tick => {
-                    if clkn % div == 0 {
-                        if (clkn / div) % length == 0 {
-                            let reg_old = storage.query(|s| (s.register_saved));
+                    if clkn.is_multiple_of(div) {
+                        if (clkn / div).is_multiple_of(length as usize) {
+                            let reg_old = storage.query(|s| s.register_saved);
                             if recall_flag.get() {
                                 register = reg_old;
                                 recall_flag.set(false);
 
-                                let res = storage.query(|s| (s.res_saved));
-                                length = storage.query(|s| (s.length_saved));
+                                let res = storage.query(|s| s.res_saved);
+                                length = storage.query(|s| s.length_saved);
                                 length_glob.set(length);
                                 div_glob.set(resolution[res as usize / 512]);
                                 midi.send_note_off(midi_note.get()).await;
@@ -248,7 +248,7 @@ pub async fn run(
 
                         let register_scalled = scale_to_12bit(register, length as u8);
                         att_reg = ((register_scalled as u32
-                            * curve.at(storage.query(|s| (s.att_saved))) as u32)
+                            * curve.at(storage.query(|s| s.att_saved)) as u32)
                             / 4095) as u16;
 
                         let out = quantizer.get_quantized_note(att_reg).await;
@@ -274,7 +274,7 @@ pub async fn run(
                             leds.set(0, Led::Bottom, Color::Red, Brightness::High);
                         }
                     }
-                    if clkn % div == (div * gatel as u16 / 100).clamp(1, div - 1) {
+                    if clkn % div == (div * gatel as usize / 100).clamp(1, div - 1) {
                         leds.unset(0, Led::Bottom);
 
                         if midi_mode == MidiMode::Note {
@@ -366,7 +366,7 @@ pub async fn run(
                     0,
                     Led::Top,
                     Color::Red,
-                    Brightness::Custom((storage.query(|s| (s.att_saved)) / 16) as u8),
+                    Brightness::Custom((storage.query(|s| s.att_saved) / 16) as u8),
                 );
             }
             if !buttons.is_shift_pressed() && shift_old {
@@ -379,10 +379,8 @@ pub async fn run(
                 }
             }
 
-            if buttons.is_button_pressed(0) {
-                if !button_old {
-                    button_old = true;
-                }
+            if buttons.is_button_pressed(0) && !button_old {
+                button_old = true;
             }
             if !buttons.is_button_pressed(0) && button_old {
                 button_old = false;
