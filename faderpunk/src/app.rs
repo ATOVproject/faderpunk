@@ -276,6 +276,7 @@ impl<const N: usize> Faders<N> {
         MAX_VALUES_FADER[self.start_channel + chan].load(Ordering::Relaxed)
     }
 
+    #[allow(dead_code)]
     pub fn get_all_values(&self) -> [u16; N] {
         let mut buf = [0_u16; N];
         for i in 0..N {
