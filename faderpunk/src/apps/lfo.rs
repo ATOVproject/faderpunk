@@ -151,7 +151,7 @@ pub async fn run(
     let curve = Curve::Exponential;
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6];
 
-    let wave = storage.query(|s| (s.wave));
+    let wave = storage.query(|s| s.wave);
 
     let color = get_color_for(wave);
 

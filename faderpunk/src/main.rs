@@ -12,8 +12,6 @@ mod state;
 mod storage;
 mod tasks;
 
-use core::sync::atomic::Ordering;
-
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::{ClockConfig, CoreVoltage};
 use embassy_rp::config::Config;
@@ -32,7 +30,7 @@ use embassy_sync::lazy_lock::LazyLock;
 use embassy_sync::mutex::Mutex;
 use fm24v10::{Address, Fm24v10};
 use libfp::quantizer::Quantizer;
-use libfp::{I2cMode, GLOBAL_CHANNELS};
+use libfp::I2cMode;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -41,7 +39,7 @@ use crate::storage::{factory_reset, store_layout};
 use layout::{LayoutManager, LAYOUT_MANAGER, LAYOUT_WATCH};
 use storage::{load_calibration_data, load_global_config, load_layout};
 use tasks::{
-    buttons::{is_channel_button_pressed, is_scene_button_pressed, is_shift_button_pressed},
+    buttons::{is_channel_button_pressed, is_scene_button_pressed},
     fram::MAX_DATA_LEN,
     global_config::GLOBAL_CONFIG_WATCH,
     i2c::I2C_LEADER_CHANNEL,

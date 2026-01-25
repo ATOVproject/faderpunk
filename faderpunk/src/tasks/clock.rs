@@ -76,12 +76,14 @@ impl ClockInEvent {
         }
         false
     }
+    #[allow(dead_code)]
     pub fn is_transport(&self) -> bool {
         !self.is_clock()
     }
 }
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum TransportCmd {
     Start,
     Stop,
@@ -192,7 +194,7 @@ async fn run_clock_gatekeeper() {
     loop {
         match select(clock_in_receiver.receive(), config_receiver.changed()).await {
             Either::First(event) => {
-                let (is_active, source) = match event {
+                let (is_active, _source) = match event {
                     ClockInEvent::Tick(s)
                     | ClockInEvent::Start(s)
                     | ClockInEvent::Stop(s)
@@ -244,13 +246,13 @@ async fn run_clock_gatekeeper() {
                         }
                     }
                     // Start the clock without resetting the phase
-                    ClockInEvent::Continue(source) => {
+                    ClockInEvent::Continue(_) => {
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Start).await;
                         midi_rt_event = Some(SystemRealtime::Continue);
                     }
                     // (Re-)start the clock. Full phase reset
-                    ClockInEvent::Start(source) => {
+                    ClockInEvent::Start(_) => {
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
@@ -259,13 +261,13 @@ async fn run_clock_gatekeeper() {
                         midi_rt_event = Some(SystemRealtime::Start);
                     }
                     // Stop the clock. No phase reset
-                    ClockInEvent::Stop(source) => {
+                    ClockInEvent::Stop(_) => {
                         is_running = false;
                         clock_publisher.publish(ClockEvent::Stop).await;
                         midi_rt_event = Some(SystemRealtime::Stop);
                     }
                     // Reset the phase without affecting the run state
-                    ClockInEvent::Reset(source) => {
+                    ClockInEvent::Reset(_) => {
                         clock_publisher.publish(ClockEvent::Reset).await;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;

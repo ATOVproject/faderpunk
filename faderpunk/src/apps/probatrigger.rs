@@ -164,7 +164,7 @@ pub async fn run(
 
     let mut rndval = die.roll();
 
-    let (res, mute, att) = storage.query(|s| (s.fader_saved, s.mute_saved, s.prob_saved));
+    let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_saved));
 
     glob_muted.set(mute);
     div_glob.set(resolution[res as usize / 345]);
@@ -189,7 +189,7 @@ pub async fn run(
                 }
                 ClockEvent::Tick => {
                     let muted = glob_muted.get();
-                    let val = storage.query(|s| (s.prob_saved));
+                    let val = storage.query(|s| s.prob_saved);
                     let div = div_glob.get();
 
                     if clkn % div == 0 {
@@ -212,12 +212,10 @@ pub async fn run(
                         if note_on {
                             midi.send_note_off(note).await;
                             leds.set(0, Led::Top, led_color, Brightness::Off);
-                            // leds.unset(0, Led::Top);
                             note_on = false;
                             jack.set_low().await;
                         }
 
-                        // leds.unset(0, Led::Bottom);
                         leds.set(0, Led::Bottom, led_color, Brightness::Off);
                     }
                     clkn += 1;
@@ -271,29 +269,6 @@ pub async fn run(
                     LatchLayer::Third => {}
                 }
             }
-
-            // storage.load(None).await;
-            // let fad = fader.get_value();
-
-            // if buttons.is_shift_pressed() {
-            //     let fad_saved = storage.query(|s| s.fader_saved);
-            //     if is_close(fad, fad_saved) {
-            //         latched_glob.set(true);
-            //     }
-            //     if latched_glob.get() {
-            //         div_glob.set(resolution[fad as usize / 345]);
-            //         storage.modify_and_save(|s| s.fader_saved = fad, None).await;
-            //     }
-            // } else {
-            //     let prob = storage.query(|s| (s.prob_saved));
-            //     if is_close(fad, prob) {
-            //         latched_glob.set(true);
-            //     }
-            //     if latched_glob.get() {
-            //         prob_glob.set(fad);
-            //         storage.modify_and_save(|s| s.prob_saved = fad, None).await;
-            //     }
-            // }
         }
     };
 
@@ -302,7 +277,7 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let (res, mute, att) =
+                    let (res, mute, _att) =
                         storage.query(|s| (s.fader_saved, s.mute_saved, s.prob_saved));
 
                     glob_muted.set(mute);

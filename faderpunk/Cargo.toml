@@ -63,4 +63,6 @@ libfp = { path = "../libfp" }
 
 [lints.clippy]
 large_futures = "warn"
+
+[lints.rust]
 unused_must_use = "deny"
