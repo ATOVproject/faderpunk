@@ -22,7 +22,10 @@ import {
   sendMessage,
 } from "../utils/usb-protocol";
 import { getFixedLengthParamArray } from "./utils";
-import { parseParamValueFromFile } from "./validators";
+import {
+  parseParamValueFromFile,
+  parseGlobalConfigFromFile,
+} from "./validators";
 
 const LAYOUT_VERSION = 1;
 
@@ -328,7 +331,7 @@ export const recoverLayout = (
   return {
     layout,
     params: allParams,
-    config: layoutFile.config,
+    config: parseGlobalConfigFromFile(layoutFile.config),
     description: layoutFile.description,
   };
 };

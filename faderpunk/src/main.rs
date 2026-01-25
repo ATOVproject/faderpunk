@@ -36,7 +36,7 @@ use {defmt_rtt as _, panic_probe as _};
 
 use crate::storage::{factory_reset, store_layout};
 
-use layout::{LayoutManager, LAYOUT_MANAGER, LAYOUT_WATCH};
+use layout::{LayoutManager, FORCE_RESPAWN_SIGNAL, LAYOUT_MANAGER, LAYOUT_WATCH};
 use storage::{load_calibration_data, load_global_config, load_layout};
 use tasks::{
     buttons::{is_channel_button_pressed, is_scene_button_pressed},
@@ -84,14 +84,25 @@ pub static QUANTIZER: LazyLock<Mutex<CriticalSectionRawMutex, Quantizer>> =
 
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
+    use embassy_futures::select::{select, Either};
+
     spawner.spawn(midi_distributor()).unwrap();
     let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
     let mut receiver = LAYOUT_WATCH.receiver().unwrap();
     loop {
-        let layout = receiver.changed().await;
-        if lm.spawn_layout(&layout).await {
-            // Store new layout if it changed
-            store_layout(&layout).await;
+        match select(receiver.changed(), FORCE_RESPAWN_SIGNAL.wait()).await {
+            Either::First(layout) => {
+                // Normal layout change
+                if lm.spawn_layout(&layout).await {
+                    // Store new layout if it changed
+                    store_layout(&layout).await;
+                }
+            }
+            Either::Second(_) => {
+                // Force respawn requested
+                let layout = receiver.get().await;
+                lm.respawn_all(&layout).await;
+            }
         }
     }
 }

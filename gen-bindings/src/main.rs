@@ -41,6 +41,7 @@ fn main() {
             libfp::QuantizerConfig,
             libfp::Range,
             libfp::ResetSrc,
+            libfp::TakeoverMode,
             libfp::Value,
             libfp::Waveform
         ),

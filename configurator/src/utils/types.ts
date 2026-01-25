@@ -67,6 +67,6 @@ export type ParamValues = Map<number, Value[]>;
 export type RecoveredLayout = {
   layout: AppLayout;
   params: ParamValues;
-  config?: GlobalConfig;
+  config: GlobalConfig;
   description?: string;
 };

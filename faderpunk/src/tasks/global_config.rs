@@ -7,6 +7,7 @@ use max11300::config::{ConfigMode0, ConfigMode3, Mode};
 use portable_atomic::Ordering;
 
 use crate::app::Led;
+use crate::layout::FORCE_RESPAWN_SIGNAL;
 use crate::storage::store_global_config;
 use crate::tasks::leds::{set_led_overlay_mode, LedMode, LED_BRIGHTNESS};
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
@@ -216,6 +217,13 @@ async fn global_config_change() {
                 set_aux_config(i, new_aux).await;
             }
         }
+
+        // Re-spawn all apps if takeover_mode changed
+        if config.takeover_mode != old.takeover_mode {
+            // Signal the layout manager to force respawn all apps
+            FORCE_RESPAWN_SIGNAL.signal(());
+        }
+
         old = config;
     }
 }
