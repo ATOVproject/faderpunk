@@ -195,7 +195,7 @@ pub async fn run(
                     let muted = glob_muted.get();
                     let div = div_glob.get();
 
-                    if clkn % div == 0 && !muted {
+                    if clkn.is_multiple_of(div) && !muted {
                         jack.set_high().await;
                         if glob_latch_layer.get() == LatchLayer::Main {
                             leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
@@ -227,11 +227,11 @@ pub async fn run(
                             leds.set(0, Led::Bottom, led_color, Brightness::Off);
                         }
 
-                        if clkn % max_glob.get() == 0 {
+                        if clkn.is_multiple_of(max_glob.get()) {
                             leds.set(0, Led::Top, Color::Red, LED_BRIGHTNESS);
                         }
 
-                        if clkn % min_glob.get() == 0 {
+                        if clkn.is_multiple_of(min_glob.get()) {
                             leds.set(0, Led::Bottom, Color::Red, LED_BRIGHTNESS);
                         }
                     }

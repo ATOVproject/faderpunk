@@ -138,7 +138,6 @@ pub async fn run(
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let mut oldval = 0.;
-    let mut shift_old = false;
 
     leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
     leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
@@ -167,13 +166,13 @@ pub async fn run(
             oldval = slew_limiter(
                 oldval,
                 inval,
-                storage.query(|s| (s.fader_saved[0])),
-                storage.query(|s| (s.fader_saved[1])),
+                storage.query(|s| s.fader_saved[0]),
+                storage.query(|s| s.fader_saved[1]),
             )
             .clamp(0., 4095.);
 
-            let att = storage.query(|s| (s.att_saved));
-            let offset = storage.query(|s| (s.offset_saved)) as i32 - 2047;
+            let att = storage.query(|s| s.att_saved);
+            let offset = storage.query(|s| s.offset_saved) as i32 - 2047;
 
             let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
 
@@ -212,12 +211,12 @@ pub async fn run(
                 let att_led = split_unsigned_value(att);
                 leds.set(1, Led::Top, Color::Red, Brightness::Custom(att_led[0]));
                 leds.set(1, Led::Bottom, Color::Red, Brightness::Custom(att_led[1]));
-                if storage.query(|s| (s.offset_saved)) == 2047 {
+                if storage.query(|s| s.offset_saved) == 2047 {
                     leds.unset(0, Led::Button);
                 } else {
                     leds.set(0, Led::Button, Color::Red, BUTTON_BRIGHTNESS);
                 }
-                if storage.query(|s| (s.att_saved)) == 4095 {
+                if storage.query(|s| s.att_saved) == 4095 {
                     leds.unset(1, Led::Button);
                 } else {
                     leds.set(1, Led::Button, Color::Red, BUTTON_BRIGHTNESS);

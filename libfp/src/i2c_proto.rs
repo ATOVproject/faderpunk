@@ -24,6 +24,7 @@ pub enum WriteReadCommand {
 /// WriteCommands sent from the leader to the device
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum WriteCommand {
     /// Start automatic calibration
     CalibStart,

@@ -231,11 +231,13 @@ impl<T: Sized + Copy + Default, const N: usize> Arr<T, N> {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub fn at(&self, idx: usize) -> T {
         self.0[idx]
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub fn set_at(&mut self, idx: usize, value: T) {
         self.0[idx] = value;
     }
@@ -553,6 +555,7 @@ impl<S: AppStorage> ManagedStorage<S> {
         self.load_inner(Some(scene)).await;
     }
 
+    #[allow(dead_code)]
     pub fn reset(&self) {
         let mut guard = self.inner.borrow_mut();
         *guard = S::default();

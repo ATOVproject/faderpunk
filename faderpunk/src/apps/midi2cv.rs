@@ -215,7 +215,7 @@ pub async fn run(
     let pitch_glob = app.make_global(0);
     let glide_active_glob = app.make_global(false);
     let glide_coeff_glob = app.make_global(calc_glide_coeff(
-        (storage.query(|s| s.alt_layer_val) as i32 * 100 / 4095) as i32,
+        storage.query(|s| s.alt_layer_val) as i32 * 100 / 4095,
     ));
     let buttons = app.use_buttons();
     let fader = app.use_faders();
@@ -223,7 +223,7 @@ pub async fn run(
 
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
-    let muted = storage.query(|s| (s.muted));
+    let muted = storage.query(|s| s.muted);
     muted_glob.set(muted);
 
     if muted {
@@ -263,9 +263,9 @@ pub async fn run(
 
     let output_handler = async {
         let mut outval = 0;
-        let mut val = fader.get_value();
+        let mut val;
+        let mut attval;
         let mut fadval = fader.get_value();
-        let mut attval = 0;
         let mut glide_current: f32 = 0.0;
 
         loop {
@@ -279,7 +279,7 @@ pub async fn run(
                     if !buttons.is_shift_pressed() {
                         fadval = fader.get_value();
                     }
-                    let att = storage.query(|s| (s.alt_layer_val));
+                    let att = storage.query(|s| s.alt_layer_val);
                     let offset = offset_glob.get();
 
                     if muted {
@@ -410,7 +410,7 @@ pub async fn run(
                     LatchLayer::Alt => {
                         storage.modify_and_save(|s| s.alt_layer_val = new_value);
                         if mode == 1 {
-                            let glide = (new_value as i32 * 100 / 4095) as i32;
+                            let glide = new_value as i32 * 100 / 4095;
                             glide_coeff_glob.set(calc_glide_coeff(glide));
                         }
                     }

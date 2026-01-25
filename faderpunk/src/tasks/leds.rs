@@ -47,6 +47,7 @@ pub enum Led {
 }
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum LedMode {
     Static(Color, Brightness),
     FadeOut(Color),

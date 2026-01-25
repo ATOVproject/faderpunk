@@ -125,6 +125,7 @@ pub static MIDI_USB_PUBSUB: MidiPubSubChannel = PubSubChannel::new();
 pub static MIDI_DIN_PUBSUB: MidiPubSubChannel = PubSubChannel::new();
 
 #[derive(Copy, Clone)]
+#[allow(dead_code)]
 enum CodeIndexNumber {
     /// Miscellaneous function codes. Reserved for future extensions.
     MiscFunction = 0x0,

@@ -59,6 +59,7 @@ pub struct Config<'d> {
     /// - low speed: 8
     /// - full speed: 8, 16, 32, or 64
     /// - high speed: 64
+    #[allow(dead_code)]
     pub max_packet_size: u16,
     /// URL to navigate to when the device is connected.
     ///

@@ -190,7 +190,7 @@ pub async fn run(
             };
             if latch_active_layer == LatchLayer::Main {
                 if bipolar {
-                    let led1 = split_unsigned_value(input_val as u16);
+                    let led1 = split_unsigned_value(input_val);
                     leds.set(0, Led::Top, led_color, Brightness::Custom(led1[0]));
                     leds.set(0, Led::Bottom, led_color, Brightness::Custom(led1[1]));
                 } else {
@@ -210,9 +210,9 @@ pub async fn run(
                 );
             }
 
-            if old_midi != input_val as u16 / 32 {
-                midi.send_cc(midi_cc, input_val as u16).await;
-                old_midi = input_val as u16 / 32;
+            if old_midi != input_val / 32 {
+                midi.send_cc(midi_cc, input_val).await;
+                old_midi = input_val / 32;
             }
         }
     };

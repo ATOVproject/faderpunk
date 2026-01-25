@@ -35,6 +35,7 @@ use super::max::MAX_VALUES_DAC;
 
 pub type I2cDevice = I2cSlave<'static, I2C0>;
 
+#[allow(clippy::large_enum_variant)]
 pub enum I2cFollowerMessage {
     CalibStart,
     CalibSetRegressionValues(RegressionValuesInput, RegressionValuesOutput),

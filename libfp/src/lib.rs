@@ -838,6 +838,7 @@ pub enum ConfigMsgIn {
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]
+#[allow(clippy::large_enum_variant)]
 pub enum ConfigMsgOut<'a> {
     Pong,
     BatchMsgStart(usize),
