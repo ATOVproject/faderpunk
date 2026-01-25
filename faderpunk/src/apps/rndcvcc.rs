@@ -290,7 +290,7 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                     let (res, mute, _) =
                         storage.query(|s| (s.fader_saved, s.mute_save, s.att_saved));
