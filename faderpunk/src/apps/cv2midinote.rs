@@ -320,7 +320,7 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                     if !storage.query(|s| s.offset_toggle) {
                         leds.set(0, Led::Button, led_color, Brightness::Mid);

@@ -331,7 +331,7 @@ impl Clock {
 }
 
 pub enum SceneEvent {
-    LoadSscene(u8),
+    LoadScene(u8),
     SaveScene(u8),
 }
 
@@ -744,7 +744,7 @@ impl<const N: usize> App<N> {
         loop {
             match subscriber.next_message_pure().await {
                 InputEvent::LoadScene(scene) => {
-                    return SceneEvent::LoadSscene(scene);
+                    return SceneEvent::LoadScene(scene);
                 }
                 InputEvent::SaveScene(scene) => {
                     return SceneEvent::SaveScene(scene);
