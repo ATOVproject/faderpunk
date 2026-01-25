@@ -321,8 +321,7 @@ pub async fn run(
                 rec_flag.set(false);
                 let length = length_rec.get();
                 if length > 1 {
-                    length_glob.set(length - 1);
-
+                    length_glob.set(length);
                     storage.modify_and_save(|s| s.length_saved = length);
                 }
             }
