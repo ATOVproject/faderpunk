@@ -180,16 +180,13 @@ pub async fn run(
 
     let quantizer = app.use_quantizer(range);
 
-    // let latched_glob = app.make_global(true);
-
     leds.set(0, Led::Button, led_color, Brightness::Mid);
     leds.set(1, Led::Button, led_color, Brightness::Mid);
 
     let input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
 
-    let (att, length, mut register) =
-        storage.query(|s| (s.att_saved, s.length_saved, s.register_saved));
+    let (length, mut register) = storage.query(|s| (s.length_saved, s.register_saved));
 
     length_glob.set(length);
     register_glob.set(register);
@@ -215,11 +212,9 @@ pub async fn run(
                     s.register_saved = register;
                 });
 
-                //leds.set(0, Led::Button, led_color.into(), 100 * rotation.1 as u8);
-
                 let register_scalled = scale_to_12bit(register, length as u8);
                 att_reg = (register_scalled as u32
-                    * curve.at(storage.query(|s| (s.att_saved))) as u32
+                    * curve.at(storage.query(|s| s.att_saved)) as u32
                     / 4095) as u16;
 
                 let out = quantizer.get_quantized_note(att_reg).await;
@@ -274,9 +269,6 @@ pub async fn run(
         loop {
             let chan = faders.wait_for_any_change().await;
 
-            let chan = faders.wait_for_any_change().await;
-            let vals = faders.get_all_values();
-
             if chan == 0 {
                 if let Some(new_value) =
                     latch[chan].update(faders.get_value_at(chan), LatchLayer::Main, prob_glob.get())
@@ -296,30 +288,6 @@ pub async fn run(
                     });
                 }
             }
-            // let val = faders.get_all_values();
-            // let att = storage.query(|s| (s.att_saved));
-            // let prob = prob_glob.get();
-
-            // let target_value = match latch_layer {
-            //     LatchLayer::Main => storage.query(|s| s.att_saved[chan]),
-            //     LatchLayer::Alt => storage.query(|s| s.att_saved),
-            //     LatchLayer::Third => 0,
-            // };
-
-            // if chan == 1 {
-            //     if is_close(att as u16, val[chan]) {
-            //         latched_glob.set(true);
-            //     }
-
-            //     if latched_glob.get() {
-            //         storage
-            //             .modify_and_save(|s| s.att_saved = val[chan], None)
-            //             .await;
-            //     }
-            // }
-            // if chan == 0 {
-            //     prob_glob.set(val[chan]);
-            // }
         }
     };
 
@@ -329,7 +297,6 @@ pub async fn run(
     let fut3 = async {
         loop {
             let shift = buttons.wait_for_down(0).await;
-            // latched_glob.set(false);
             let mut length = length_rec.get();
             if shift && rec_flag.get() {
                 length += 1;

@@ -202,10 +202,8 @@ pub async fn run(
                         leds.set(0, Led::Button, color, Brightness::Mid);
                     }
 
-                    if clkn % div == 0 && storage.query(|s: &Storage| s.clocked) {
-                        if buttons.is_shift_pressed() {
-                            leds.set(0, Led::Bottom, Color::Red, Brightness::High);
-                        }
+                    if clkn % div == 0 && storage.query(|s: &Storage| s.clocked) && buttons.is_shift_pressed() {
+                        leds.set(0, Led::Bottom, Color::Red, Brightness::High);
                     }
                     if clkn % div == (div * 50 / 100).clamp(1, div - 1)
                         && buttons.is_shift_pressed()
@@ -332,7 +330,7 @@ pub async fn run(
             };
             glob_latch_layer.set(latch_active_layer);
 
-            let att = storage.query(|s| (s.att_saved));
+            let att = storage.query(|s| s.att_saved);
 
             let jackval = if bipolar {
                 attenuate_bipolar(val_glob.get(), att)
@@ -395,7 +393,7 @@ pub async fn run(
             }
             if !storage.query(|s: &Storage| s.clocked) {
                 count += 1;
-                if count % time_div.get() as u32 == 0 {
+                if count.is_multiple_of(time_div.get() as u32) {
                     val_glob.set(rnd.roll());
 
                     let color = if !glob_muted.get() {

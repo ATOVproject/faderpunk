@@ -206,7 +206,7 @@ pub async fn run(
     }
 
     let trigger_note = async |_| {
-        let fadval = (storage.query(|s| (s.note_saved)) as i32 * (span + 3) / 120) as u16;
+        let fadval = (storage.query(|s| s.note_saved) as i32 * (span + 3) / 120) as u16;
 
         leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
 
@@ -239,7 +239,7 @@ pub async fn run(
 
                     let div = div_glob.get();
 
-                    if clkn % div == 0 && storage.query(|s| (s.clocked)) {
+                    if clkn % div == 0 && storage.query(|s| s.clocked) {
                         if !muted {
                             if note_on {
                                 midi.send_note_off(note).await;
@@ -276,7 +276,7 @@ pub async fn run(
             match select(buttons.wait_for_down(0), buttons.wait_for_up(0)).await {
                 Either::First(_) => {
                     if !buttons.is_shift_pressed() {
-                        if storage.query(|s| (s.clocked)) {
+                        if storage.query(|s| s.clocked) {
                             let muted = glob_muted.toggle();
 
                             storage.modify_and_save(|s| {
@@ -293,12 +293,12 @@ pub async fn run(
                             note = trigger_note(note).await;
                         }
                     } else {
-                        let clocked = !storage.query(|s| (s.clocked));
+                        let clocked = !storage.query(|s| s.clocked);
                         storage.modify_and_save(|s| s.clocked = clocked);
                     }
                 }
                 Either::Second(_) => {
-                    if !storage.query(|s| (s.clocked)) && !buttons.is_shift_pressed() {
+                    if !storage.query(|s| s.clocked) && !buttons.is_shift_pressed() {
                         midi.send_note_off(note).await;
                         if outmode == 1 {
                             jack.set_value(0)
@@ -345,7 +345,7 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadSscene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let res = storage.query(|s| (s.fader_saved));
+                    let res = storage.query(|s| s.fader_saved);
 
                     div_glob.set(resolution[res as usize / 345]);
                     if mute {
@@ -370,16 +370,6 @@ pub async fn run(
             // latching on pressing and depressing shift
             app.delay_millis(1).await;
             glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
-
-            // if latch_active_layer == LatchLayer::Alt {
-            //     let base: u8 = LED_BRIGHTNESS.into();
-            //     leds.set(
-            //         0,
-            //         Led::Bottom,
-            //         Color::Red,
-            //         Brightness::Custom(base * storage.query(|s| (s.clocked)) as u8),
-            //     );
-            // };
         }
     };
 

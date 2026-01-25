@@ -31,20 +31,11 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "MIDI retrigger",
 });
 
+#[derive(Default)]
 pub struct Params {
     midi_in: MidiIn,
     midi_channel: MidiChannel,
     retrigger: bool,
-}
-
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            midi_in: MidiIn::default(),
-            midi_channel: MidiChannel::default(),
-            retrigger: false,
-        }
-    }
 }
 
 impl AppParams for Params {
@@ -406,7 +397,7 @@ pub async fn run(
         let mut midi_in = app.use_midi_input(midi_in, midi_chan);
         loop {
             match midi_in.wait_for_message().await {
-                MidiMessage::NoteOn { key, vel } => {
+                MidiMessage::NoteOn { key: _, vel } => {
                     if vel > 0 {
                         gate_on_glob.modify(|note_num| *note_num + 1);
                     } else {
