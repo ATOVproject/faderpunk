@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Preface } from "./manual/Preface";
 import { type ManualAppData } from "./manual/ManualApp";
 import { UpdateGuide } from "./manual/UpdateGuide";
+import { Troubleshooting } from "./manual/Troubleshooting";
 import { Apps } from "./manual/Apps";
 import { H2, List, Link } from "./manual/Shared";
 import { Interface } from "./manual/Interface";
@@ -865,6 +866,17 @@ export const ManualTab = () => {
           <li>
             <Link to="#update">Update guide</Link>
           </li>
+          <li>
+            <Link to="#troubleshooting">Troubleshooting</Link>
+            <List>
+              <li>
+                <Link to="#connection-issues">Connection Issues</Link>
+              </li>
+              <li>
+                <Link to="#factory-reset">Factory Reset</Link>
+              </li>
+            </List>
+          </li>
         </List>
       </nav>
       <Preface />
@@ -872,6 +884,7 @@ export const ManualTab = () => {
       <Configurator />
       <Apps apps={apps} />
       <UpdateGuide />
+      <Troubleshooting />
     </>
   );
 };
