@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate_bipolar, clickless, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, clickless, split_unsigned_value},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
@@ -249,8 +249,8 @@ pub async fn run(
             }
 
             // Calculate output values
+            let att_layer_value = storage.query(|s| s.att_saved);
             let muted = muted_glob.get();
-
             let val = if muted {
                 if bipolar {
                     2047
@@ -268,7 +268,6 @@ pub async fn run(
                 fad_val
             };
 
-            let att_layer_value = storage.query(|s| s.att_saved);
             let mut attenuated = if bipolar {
                 attenuate_bipolar(val, att_layer_value)
             } else {
@@ -278,12 +277,23 @@ pub async fn run(
                 attenuated = 4095 - attenuated;
             }
             out = slew_2(out, attenuated, 3);
+            jack.set_value(out);
 
-            if last_out != (out as u32 * 127) / 4095 {
+            let midi_out = if muted {
+                if bipolar {
+                    2047
+                } else {
+                    0
+                }
+            } else if !bipolar {
+                attenuate(main_layer_value, att_layer_value)
+            } else {
+                attenuate_bipolar(main_layer_value, att_layer_value)
+            };
+            if last_out != (midi_out as u32 * 127) / 4095 {
                 midi.send_cc(midi_cc, out).await;
             }
-            jack.set_value(out);
-            last_out = (out as u32 * 127) / 4095;
+            last_out = (midi_out as u32 * 127) / 4095;
 
             // Update LEDs
             match latch_active_layer {

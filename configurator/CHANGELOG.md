@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.1...configurator-v1.6.2) (2026-01-25)
+
+
+### Bug Fixes
+
+* add hardware factory reset ([e3fef02](https://github.com/ATOVproject/faderpunk/commit/e3fef022b1dbe497aed6c3875c32e3c481ca1297))
+* **configurator:** add browser connection troubleshooting ([58ebc41](https://github.com/ATOVproject/faderpunk/commit/58ebc4159a38061d8460988dea654dcf277dabbb))
+* **configurator:** auto-inject firmware version from release-please manifest ([a1adab9](https://github.com/ATOVproject/faderpunk/commit/a1adab94a3a345d6ee35c38055bf28099ec521d9))
+
 ## [1.6.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.0...configurator-v1.6.1) (2025-12-08)
 
 
