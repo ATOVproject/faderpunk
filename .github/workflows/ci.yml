@@ -55,6 +55,9 @@ jobs:
         working-directory: ./configurator
       - name: Generate postcard bindings (for configurator)
         run: ./gen-bindings.sh
+      - name: Lint configurator
+        run: pnpm run lint
+        working-directory: ./configurator
       - name: Build configurator
         run: pnpm run build
         working-directory: ./configurator

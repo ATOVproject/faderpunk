@@ -18,7 +18,7 @@ function getFirmwareVersion() {
     const manifestPath = resolve(__dirname, "..", manifestFile);
     const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
     return manifest.faderpunk;
-  } catch (error) {
+  } catch {
     console.warn(`Could not read ${manifestFile}, using fallback version`);
     return "0.0.0"; // Fallback for local dev without manifest
   }

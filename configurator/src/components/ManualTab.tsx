@@ -642,7 +642,7 @@ const apps: ManualAppData[] = [
       "Bend Range",
       "Note",
       "Color",
-      "Velocity on Gate"
+      "Velocity on Gate",
     ],
     storage: ["Attenuation", "Muted"],
     text: "This app converts MIDI messages into CV signals. It supports multiple modes, each with different output behaviors. The output range is typically 0–10V, except for Pitch Bend mode which uses ±5V. When the `Velocity on Gate` toggle is activated the gate voltage in `Gate` and `Note Gate` modes is directly related to the velocity of the MIDI note with the minimum velocity being 1V and maximum 10V. Parameters include MIDI channel, curve shaping (for CC and Aftertouch), pitch bend range. The Note Gate mode is especially useful for triggering drum modules, as it allows individual gate outputs to be assigned to specific MIDI notes—ideal for drum sequencing setups.",
@@ -823,22 +823,29 @@ const apps: ManualAppData[] = [
     color: "Yellow",
     icon: "sine",
     params: ["Speed division", "Range", "Send MIDI", "MIDI Channel", "MIDI CC"],
-    storage: ["CV attenuation", "CV mute", "CV destination", "Clocked", "Attenuation", "Speed", "Waveform"],
+    storage: [
+      "CV attenuation",
+      "CV mute",
+      "CV destination",
+      "Clocked",
+      "Attenuation",
+      "Speed",
+      "Waveform",
+    ],
     text: "This app is a variation of the simple LFO, adding an assignable CV input. The first channel processes the CV input, with the fader controlling its attenuation and the button acting as a mute. Use Shift + Button 1 to set the CV destination, indicated by the button color: speed (yellow), phase (pink), or amplitude (cyan). Note that the speed CV is through 0, meaning that the waveform will invert and speed up again when the CV input is negative. As in the standard LFO, you can select the waveform by pressing the second button, with LED colors showing the shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). Adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Free-running speed ranges from 14 Hz to one cycle per minute; clocked mode offers resolutions like 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. App parameters let you set overall speed—Normal, Slow (÷2), or Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. Output can be bipolar (-5V to +5V) or unipolar (0V to 10V), affecting the attenuator's center when sending MIDI CC (0 for unipolar, 64 for bipolar). The app can also output MIDI CC, with freely configurable channel and CC number.",
     channels: [
-       {
+      {
         jackTitle: "Input",
         jackDescription: "-5V to 5V CV in",
         faderTitle: "CV attenuation",
-        faderDescription:
-          "Attenuates the incoming CV",
+        faderDescription: "Attenuates the incoming CV",
         faderPlusShiftTitle: "",
         faderPlusShiftDescription: "",
         fnTitle: "CV input Mute",
-        fnDescription:
-          "",
+        fnDescription: "",
         fnPlusShiftTitle: "CV destination",
-        fnPlusShiftDescription: "Speed (yellow), phase (pink), amplitude (cyan)",
+        fnPlusShiftDescription:
+          "Speed (yellow), phase (pink), amplitude (cyan)",
         ledTop: "Positive level indicator",
         ledTopPlusShift: "",
         ledBottom: "Negative level indicator",
