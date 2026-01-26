@@ -247,7 +247,7 @@ impl FromValue for Note {
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
 #[repr(u8)]
 pub enum Key {
     #[default]
