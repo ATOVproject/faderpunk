@@ -14,7 +14,8 @@ use libfp::{
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
     utils::scale_bits_12_7,
-    Brightness, ClockDivision, Color, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Range,
+    Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
+    Range,
 };
 
 use crate::{
@@ -582,6 +583,12 @@ impl Quantizer {
         let quantizer = QUANTIZER.get().lock().await;
         let mut state = self.state.borrow_mut();
         quantizer.get_quantized_note(&mut state, value, self.range)
+    }
+    /// Get Quantizer scale
+    #[allow(dead_code)]
+    pub async fn get_scale(&self) -> (Key, Note) {
+        let quantizer = QUANTIZER.get().lock().await;
+        (quantizer.get_key(), quantizer.get_tonic())
     }
 }
 
