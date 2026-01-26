@@ -67,10 +67,16 @@ impl Default for QuantizerState {
 pub struct Quantizer {
     codebook: [i16; CODEBOOK_SIZE],
     version: u64,
+    key: Key,
+    tonic: Note,
 }
 
 impl Quantizer {
     pub fn set_scale(&mut self, key: Key, tonic: Note) {
+        // Store the key and tonic
+        self.key = key;
+        self.tonic = tonic;
+
         let mask = key.as_u16_key();
         let notes: Vec<i16, 12> = (0..12)
             .filter(|i| (mask >> (11 - i)) & 1 != 0) // Read from MSB (C) to LSB (B)
@@ -120,6 +126,14 @@ impl Quantizer {
         self.codebook.sort_unstable();
 
         self.version = self.version.wrapping_add(1);
+    }
+
+    pub fn get_key(&self) -> Key {
+        self.key
+    }
+
+    pub fn get_tonic(&self) -> Note {
+        self.tonic
     }
 
     pub fn get_quantized_note(
@@ -192,9 +206,11 @@ impl Default for Quantizer {
         let mut q = Self {
             codebook: [0; CODEBOOK_SIZE],
             version: 0,
+            // Default to C Chromatic
+            key: Key::Chromatic,
+            tonic: Note::C,
         };
-        // Default to C Chromatic
-        q.set_scale(Key::Chromatic, Note::C);
+        q.set_scale(q.get_key(), q.get_tonic());
         q
     }
 }
@@ -407,5 +423,63 @@ mod tests {
             note: Note::C,
         };
         assert_eq!(c_minus_1.as_midi(), MidiNote(0));
+    }
+
+    #[test]
+    fn test_get_key_and_tonic() {
+        let mut q = Quantizer::default();
+
+        // Check default values
+        assert_eq!(q.get_key(), Key::Chromatic);
+        assert_eq!(q.get_tonic(), Note::C);
+
+        // Set a new scale and verify getters return correct values
+        q.set_scale(Key::Ionian, Note::D);
+        assert_eq!(q.get_key(), Key::Ionian);
+        assert_eq!(q.get_tonic(), Note::D);
+
+        // Try another scale
+        q.set_scale(Key::Aeolian, Note::A);
+        assert_eq!(q.get_key(), Key::Aeolian);
+        assert_eq!(q.get_tonic(), Note::A);
+
+        // Try all 12 tonics
+        for tonic_val in 0..12 {
+            let tonic: Note = unsafe { core::mem::transmute(tonic_val as u8) };
+            q.set_scale(Key::Dorian, tonic);
+            assert_eq!(q.get_tonic(), tonic);
+            assert_eq!(q.get_key(), Key::Dorian);
+        }
+    }
+
+    #[test]
+    fn test_get_key_tonic_after_empty_scale_fallback() {
+        let mut q = Quantizer::default();
+
+        // Create an empty scale (all bits zero)
+        let empty_key: Key = unsafe { core::mem::transmute(0u8) };
+
+        // Set scale with empty key, should fallback to Chromatic
+        q.set_scale(empty_key, Note::E);
+
+        // After fallback, key should be Chromatic and tonic should be preserved
+        assert_eq!(q.get_key(), Key::Chromatic);
+        assert_eq!(q.get_tonic(), Note::E);
+    }
+
+    #[test]
+    fn test_key_tonic_preserved_during_quantization() {
+        let mut q = Quantizer::default();
+        q.set_scale(Key::Mixolydian, Note::G);
+        let mut state = QuantizerState::default();
+
+        // Perform some quantization operations
+        q.get_quantized_note(&mut state, 410, Range::_0_10V);
+        q.get_quantized_note(&mut state, 820, Range::_0_10V);
+        q.get_quantized_note(&mut state, 1230, Range::_0_10V);
+
+        // Key and tonic should remain unchanged
+        assert_eq!(q.get_key(), Key::Mixolydian);
+        assert_eq!(q.get_tonic(), Note::G);
     }
 }
