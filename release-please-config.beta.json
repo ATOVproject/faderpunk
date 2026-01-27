@@ -1,30 +1,31 @@
 {
-  "packages": {
-    "faderpunk": {
-      "release-type": "rust",
-      "package-name": "faderpunk",
-      "component": "faderpunk",
-      "prerelease": true,
-      "prerelease-type": "beta",
-      "versioning": "prerelease",
-      "skip-github-release": false,
-      "changelog-path": ".changelog-beta-faderpunk.md"
-    },
-    "configurator": {
-      "release-type": "node",
-      "package-name": "configurator",
-      "component": "configurator",
-      "prerelease": true,
-      "prerelease-type": "beta",
-      "versioning": "prerelease",
-      "skip-github-release": false,
-      "changelog-path": ".changelog-beta-configurator.md"
-    }
-  },
-  "plugins": [
-    {
-      "type": "cargo-workspace"
-    }
-  ],
-  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+	"packages": {
+		"faderpunk": {
+			"release-type": "rust",
+			"package-name": "faderpunk",
+			"component": "faderpunk",
+			"prerelease": true,
+			"prerelease-type": "beta",
+			"versioning": "prerelease",
+			"skip-github-release": false,
+			"changelog-path": ".changelog-beta-faderpunk.md",
+			"release-as": "1.7.0-beta.0"
+		},
+		"configurator": {
+			"release-type": "node",
+			"package-name": "configurator",
+			"component": "configurator",
+			"prerelease": true,
+			"prerelease-type": "beta",
+			"versioning": "prerelease",
+			"skip-github-release": false,
+			"changelog-path": ".changelog-beta-configurator.md"
+		}
+	},
+	"plugins": [
+		{
+			"type": "cargo-workspace"
+		}
+	],
+	"$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
 }
