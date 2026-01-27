@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.3...faderpunk-v1.6.0) (2026-01-27)
+
+
+### Features
+
+* **faderpunk:** bump version to align with configurator ([50cdb88](https://github.com/ATOVproject/faderpunk/commit/50cdb88e26dff2a567411c84605adeeed557d504))
+
 ## [1.5.3](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.2...faderpunk-v1.5.3) (2026-01-25)
 
 
