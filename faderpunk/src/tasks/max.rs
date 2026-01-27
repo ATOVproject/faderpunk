@@ -106,7 +106,6 @@ pub async fn start_max(
     spawner.spawn(message_loop(max)).unwrap();
 }
 
-// TODO: I think we can combine all these tasks into one
 #[embassy_executor::task]
 async fn read_fader(
     pio0: Peri<'static, PIO0>,

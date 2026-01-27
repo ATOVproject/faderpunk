@@ -206,7 +206,6 @@ pub async fn start_midi_loops<'a>(
                     MidiOutEvent::Clock(msg, target) => (LiveEvent::Realtime(msg), target),
                 };
 
-                // TODO: Deal with backpressure as well (do it on core b maybe?)
                 // TODO: Do not try to send midi message to USB when not connected
                 // usb_tx.wait_connection().await;
                 match target {
