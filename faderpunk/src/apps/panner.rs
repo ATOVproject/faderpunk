@@ -80,7 +80,7 @@ impl Default for Params {
             midi_channel: MidiChannel::default(),
             midi_cc_l: MidiCc::from(32),
             midi_cc_r: MidiCc::from(33),
-            midi_out: MidiOut::default(),
+            midi_out: MidiOut([false, false, false]),
             on_release: false,
             color: Color::Blue,
             save_state: true,
