@@ -31,18 +31,23 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "MIDI retrigger",
 });
 
-#[derive(Default)]
 pub struct Params {
     midi_in: MidiIn,
     midi_channel: MidiChannel,
     retrigger: bool,
 }
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            midi_in: MidiIn([false, false]),
+            midi_channel: MidiChannel::default(),
+            retrigger: false,
+        }
+    }
+}
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        if values.len() < PARAMS {
-            return None;
-        }
         Some(Self {
             midi_in: MidiIn::from_value(values[0]),
             midi_channel: MidiChannel::from_value(values[1]),

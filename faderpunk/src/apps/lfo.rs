@@ -52,7 +52,7 @@ impl Default for Params {
         Self {
             speed_mult: 0,
             range: Range::_Neg5_5V,
-            midi_out: MidiOut::default(),
+            midi_out: MidiOut([false, false, false]),
             midi_channel: MidiChannel::default(),
             midi_cc: MidiCc::from(32),
         }
