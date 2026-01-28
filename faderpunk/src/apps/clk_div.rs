@@ -62,7 +62,7 @@ impl Default for Params {
     fn default() -> Self {
         Self {
             midi_channel: MidiChannel::default(),
-            midi_out: MidiOut::default(),
+            midi_out: MidiOut([false, false, false]),
             note: MidiNote::from(32),
             gatel: 50,
             color: Color::Cyan,
