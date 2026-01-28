@@ -659,21 +659,6 @@ pub async fn run(
                         )
                     });
 
-                    // storage
-                    //     .modify_and_save(
-                    //         |s| {
-                    //             (
-                    //                 s.seq.set(seq_saved.get()),
-                    //                 s.gateseq.set(gateseq_saved.get()),
-                    //                 s.seq_length = seq_length_saved,
-                    //                 s.seqres = clockres,
-                    //                 s.gate_length = gatel,
-                    //             )
-                    //         },
-                    //         None,
-                    //     )
-                    //     .await;
-
                     seq_glob.set(seq_saved.get());
                     gateseq_glob.set(gateseq_saved.get());
                     seq_length_glob.set(seq_length_saved);
