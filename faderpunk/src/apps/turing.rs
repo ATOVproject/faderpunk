@@ -253,7 +253,7 @@ pub async fn run(
 
                         let out = quantizer.get_quantized_note(att_reg).await;
 
-                        jack.set_value(out.as_counts(Range::_0_10V));
+                        jack.set_value(out.as_counts(range));
                         leds.set(
                             0,
                             Led::Top,
