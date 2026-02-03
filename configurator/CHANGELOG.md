@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.3](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.2...configurator-v1.6.3) (2026-02-03)
+
+
+### Bug Fixes
+
+* **configurator:** deploy configurator to versioned folders ([437f5df](https://github.com/ATOVproject/faderpunk/commit/437f5df7909c895f7e41b0318b20dc0b6eedc2a1))
+
 ## [1.6.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.1...configurator-v1.6.2) (2026-01-25)
 
 
