@@ -294,7 +294,6 @@ impl<T: Sized + Copy + PartialEq + Default, const N: usize> PartialEq for Arr<T,
 }
 
 #[derive(Clone, Copy)]
-// TODO: Allocator should alloate a certain part of the fram to app storage
 pub struct AppStorageAddress {
     pub layout_id: u8,
     pub scene: Option<u8>,

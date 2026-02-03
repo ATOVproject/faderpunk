@@ -91,7 +91,6 @@ impl AppParams for Params {
     }
 }
 
-// TODO: Make a macro to generate this.
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     muted: bool,
