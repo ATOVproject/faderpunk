@@ -2,7 +2,11 @@ import { create } from "zustand";
 import { Value, type GlobalConfig } from "@atov/fp-config";
 
 import type { AllApps, AppLayout, ParamValues } from "./utils/types";
-import { connectToFaderPunk, getDeviceVersion } from "./utils/usb-protocol";
+import {
+  connectToFaderPunk,
+  getDeviceVersion,
+  tryAutoConnect,
+} from "./utils/usb-protocol";
 import {
   getAllAppParams,
   getAllApps,
@@ -13,6 +17,7 @@ import { NavigateFunction } from "react-router-dom";
 
 interface State {
   apps: AllApps | undefined;
+  autoConnect: () => Promise<boolean>;
   connect: (navigate: NavigateFunction) => Promise<void>;
   config: GlobalConfig | undefined;
   disconnect: () => void;
@@ -37,6 +42,26 @@ const initialState = {
 
 export const useStore = create<State>((set) => ({
   ...initialState,
+  autoConnect: async () => {
+    try {
+      const device = await tryAutoConnect();
+      if (!device) return false;
+
+      const deviceVersion = getDeviceVersion(device);
+      set({ deviceVersion });
+
+      const apps = await getAllApps(device);
+      const params = await getAllAppParams(device);
+      const layout = await getLayout(device, apps);
+      const config = await getGlobalConfig(device);
+
+      set({ apps, config, deviceVersion, layout, params, usbDevice: device });
+      return true;
+    } catch (error) {
+      console.error("Auto-connect failed:", error);
+      return false;
+    }
+  },
   connect: async (_navigate: NavigateFunction) => {
     try {
       const device = await connectToFaderPunk();

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
 import { useStore } from "./store";
@@ -9,7 +10,23 @@ import { UpdatePage } from "./components/UpdatePage";
 import { TroubleshootingPage } from "./components/TroubleshootingPage";
 
 const App = () => {
-  const { usbDevice } = useStore();
+  const { usbDevice, autoConnect } = useStore();
+  const [isAutoConnecting, setIsAutoConnecting] = useState(true);
+
+  useEffect(() => {
+    const attemptAutoConnect = async () => {
+      if (!usbDevice) {
+        await autoConnect();
+      }
+      setIsAutoConnecting(false);
+    };
+    attemptAutoConnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (isAutoConnecting) {
+    return null;
+  }
 
   return (
     <Routes>
