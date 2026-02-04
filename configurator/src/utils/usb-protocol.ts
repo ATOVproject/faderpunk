@@ -222,3 +222,31 @@ export function getDeviceName(usbDevice: USBDevice): string {
 export function getDeviceVersion(usbDevice: USBDevice): string {
   return `${usbDevice.deviceVersionMajor}.${usbDevice.deviceVersionMinor}.${usbDevice.deviceVersionSubminor}`;
 }
+
+export async function tryAutoConnect(): Promise<USBDevice | null> {
+  if (!navigator.usb) return null;
+
+  try {
+    const devices = await navigator.usb.getDevices();
+    const faderpunk = devices.find(
+      (d) =>
+        d.vendorId === FADERPUNK_VENDOR_ID &&
+        d.productId === FADERPUNK_PRODUCT_ID,
+    );
+
+    if (!faderpunk) return null;
+
+    await faderpunk.open();
+    if (!faderpunk.configuration) {
+      await faderpunk.selectConfiguration(1);
+    }
+    const iface = await getInterface(faderpunk);
+    await faderpunk.claimInterface(iface.interfaceNumber);
+    clearReceiveBuffer();
+
+    return faderpunk;
+  } catch (error) {
+    console.error("Auto-connect failed:", error);
+    return null;
+  }
+}
