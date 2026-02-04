@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.4](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.3...configurator-v1.6.4) (2026-02-04)
+
+
+### Bug Fixes
+
+* **configurator:** make landing page look like before ([9404302](https://github.com/ATOVproject/faderpunk/commit/9404302907d999a0e8a729f44f43924306cc30ce))
+* **configurator:** redirect all hash links to the correct version ([a6169ed](https://github.com/ATOVproject/faderpunk/commit/a6169ede4b2466f889c5aca0cb1a64cc8bdf5934))
+* **configurator:** try to autoconnect when coming from landing page ([98b76d4](https://github.com/ATOVproject/faderpunk/commit/98b76d4e9afef4913d741e5a664e8f0f805b3662))
+
 ## [1.6.3](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.2...configurator-v1.6.3) (2026-02-03)
 
 
