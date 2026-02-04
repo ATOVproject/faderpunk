@@ -160,8 +160,8 @@
         <button id="connectBtn" class="btn">Connect Device</button>
       </div>
       <div class="links">
-        <a href="/beta/#/troubleshooting">Trouble connecting?</a>
-        <a href="/beta/#/about">What is this?</a>
+        <a id="troubleshootingLink" href="/beta/#/troubleshooting">Trouble connecting?</a>
+        <a id="aboutLink" href="/beta/#/about">What is this?</a>
       </div>
       <div id="error" class="error" style="display: none;"></div>
       <div id="versionInfo" class="version-info" style="display: none;"></div>
@@ -172,10 +172,20 @@
     const FADERPUNK_VENDOR_ID = 0xf569;
     const FADERPUNK_PRODUCT_ID = 0x1;
     const FIRMWARE_LATEST_VERSION = '__FIRMWARE_LATEST_VERSION__';
+    const VERSION_PATH = '/' + FIRMWARE_LATEST_VERSION.split('.').slice(0, 2).join('.') + '/';
+
+    // Redirect hash routes to the versioned deployment
+    if (window.location.hash) {
+      window.location.replace(VERSION_PATH + window.location.hash);
+    }
 
     const connectBtn = document.getElementById('connectBtn');
     const errorDiv = document.getElementById('error');
     const versionInfo = document.getElementById('versionInfo');
+
+    // Update links to point to versioned deployment instead of /beta/
+    document.getElementById('troubleshootingLink').href = VERSION_PATH + '#/troubleshooting';
+    document.getElementById('aboutLink').href = VERSION_PATH + '#/about';
 
     function showError(message) {
       errorDiv.textContent = message;
