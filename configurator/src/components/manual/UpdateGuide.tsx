@@ -6,20 +6,20 @@ import { H2, H3, List } from "./Shared";
 
 export const UpdateGuide = () => (
   <>
-    <H2 id="download">Download firmware update</H2>
+    <H2 id="update">Firmware Update Guide</H2>
+
+    <p>
+      This guide will walk you through updating your Faderpunk's firmware. Don't
+      worry—it's simpler than it sounds! You'll essentially be copying a file to
+      your device while it's in a special update mode.
+    </p>
+    <H3 id="download">Download latest firmware</H3>
     <ButtonPrimary
       as="a"
       href={`https://github.com/ATOVproject/faderpunk/releases/download/faderpunk-v${FIRMWARE_LATEST_VERSION}/faderpunk-v${FIRMWARE_LATEST_VERSION}.uf2`}
     >
       Download v{FIRMWARE_LATEST_VERSION}
     </ButtonPrimary>
-    <H2 id="update">Firmware Update Guide</H2>
-    <p>
-      This guide will walk you through updating your Faderpunk's firmware. Don't
-      worry—it's simpler than it sounds! You'll essentially be copying a file to
-      your device while it's in a special update mode.
-    </p>
-
     <H3>What You'll Need</H3>
     <List>
       <li>Your Faderpunk</li>
