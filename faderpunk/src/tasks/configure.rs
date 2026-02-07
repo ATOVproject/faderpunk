@@ -18,7 +18,7 @@ use crate::tasks::global_config::{get_global_config, GLOBAL_CONFIG_WATCH};
 
 use super::transport::{WebEndpoints, USB_MAX_PACKET_SIZE};
 
-const MAX_PAYLOAD_SIZE: usize = 256;
+const MAX_PAYLOAD_SIZE: usize = 512;
 // cobs needs max 1 byte for every 254 bytes of payload
 // cobs (2) + delimiter (1)
 const COBS_BYTES: usize = 3;
