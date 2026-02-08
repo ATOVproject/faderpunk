@@ -316,9 +316,6 @@ pub async fn run(
             }
             out = slew_2(out, attenuated, 3);
 
-            if last_out != (out as u32 * 127) / 4095 {
-                midi.send_cc(midi_cc, out).await;
-            }
             jack.set_value(out);
 
             let midi_out = if muted {
