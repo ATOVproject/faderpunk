@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.7.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.4...configurator-v1.7.0) (2026-02-08)
+
+
+### Features
+
+* add specialized midi params UI ([a569e50](https://github.com/ATOVproject/faderpunk/commit/a569e50afc784bd4d423664fc4f55e5dff1e927e))
+* **lfo+:** add reset cv destination ([#415](https://github.com/ATOVproject/faderpunk/issues/415)) ([c11619d](https://github.com/ATOVproject/faderpunk/commit/c11619df4d318e3a931504276d313a8eea7b479e))
+* **midi:** add documentation for v1.7 midi functions ([#416](https://github.com/ATOVproject/faderpunk/issues/416)) ([ed2a619](https://github.com/ATOVproject/faderpunk/commit/ed2a619e49cdef573e43e0f0b24cb78b4c36d52c))
+
+
+### Bug Fixes
+
+* enable linting in CI ([c3fb00c](https://github.com/ATOVproject/faderpunk/commit/c3fb00c))
+* **manual:** configurator link ([#403](https://github.com/ATOVproject/faderpunk/issues/403)) ([39e1097](https://github.com/ATOVproject/faderpunk/commit/39e10972c3f3a9fadfd729e075195626db60194f))
+* **manual:** more typo corrections ([84cfd9c](https://github.com/ATOVproject/faderpunk/commit/84cfd9c))
+
 ## [1.6.4](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.3...configurator-v1.6.4) (2026-02-04)
 
 

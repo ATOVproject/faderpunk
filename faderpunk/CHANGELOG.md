@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.7.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.6.0...faderpunk-v1.7.0) (2026-02-08)
+
+
+### Features
+
+* add specialized midi params ([a569e50](https://github.com/ATOVproject/faderpunk/commit/a569e50afc784bd4d423664fc4f55e5dff1e927e))
+* add unique USB serial numbers from RP2350 chip ID ([a4898f0](https://github.com/ATOVproject/faderpunk/commit/a4898f0))
+* **ad:** add MIDI retrigger param ([95551e9](https://github.com/ATOVproject/faderpunk/commit/95551e9))
+* **control:** add CC button modes ([0f5928e](https://github.com/ATOVproject/faderpunk/commit/0f5928e))
+* **follower:** add range param ([a0749c8](https://github.com/ATOVproject/faderpunk/commit/a0749c8))
+* **lfo+:** add reset cv destination ([#415](https://github.com/ATOVproject/faderpunk/issues/415)) ([c11619d](https://github.com/ATOVproject/faderpunk/commit/c11619df4d318e3a931504276d313a8eea7b479e))
+* **lfo_plus:** add lfo+ app ([ce6bad8](https://github.com/ATOVproject/faderpunk/commit/ce6bad8))
+* **midi:** midi out routing ([de9704d](https://github.com/ATOVproject/faderpunk/commit/de9704d0ce442c84a5c63c03d1f9d29cbe92dae0))
+* **midi2cv:** add tb-303 style glide functionality ([e0eb4ba](https://github.com/ATOVproject/faderpunk/commit/e0eb4ba))
+* **midi2cv:** add velocity to gate param ([db9abbb](https://github.com/ATOVproject/faderpunk/commit/db9abbb))
+* **quantizer:** add ability to get current scale in apps ([60ba174](https://github.com/ATOVproject/faderpunk/commit/60ba174407010d60aa302e1a39ec82fff16e68ac))
+
+
+### Bug Fixes
+
+* double usb MAX_PAYLOAD_SIZE to 512 bytes ([5ae9c7d](https://github.com/ATOVproject/faderpunk/commit/5ae9c7d0ce143f8de4a5536a2fbcc62b72cd9e46))
+* **ad:** support zero-velocity note-offs ([1fee9a7](https://github.com/ATOVproject/faderpunk/commit/1fee9a7))
+* **clk_div:** turn LED button off when muted ([7b96911](https://github.com/ATOVproject/faderpunk/commit/7b96911))
+* **clkturing:** set correct new length ([47a6599](https://github.com/ATOVproject/faderpunk/commit/47a6599))
+* **control:** remove filtering on MIDI CC ([0475ccf](https://github.com/ATOVproject/faderpunk/commit/0475ccf))
+* **cv2midi:** increase input gain in uni-polar mode ([1c4010a](https://github.com/ATOVproject/faderpunk/commit/1c4010a))
+* **led:** increase dynamic range, simplify nomenclature ([eded147](https://github.com/ATOVproject/faderpunk/commit/eded147ddb896f1b013f2c66710d4927ae25ecee))
+* **lfo:** prevent fader from freezing when clock is turned off in clocked mode ([c331fab](https://github.com/ATOVproject/faderpunk/commit/c331fab))
+* **midi:** set default source/destinations ([36a48b4](https://github.com/ATOVproject/faderpunk/commit/36a48b460fcc3d0bdb1c84eb54027e363d697651))
+* **midi2cv:** re-trigger gate on legato ([3f0deec](https://github.com/ATOVproject/faderpunk/commit/3f0deec))
+* **midi2cv:** support zero-velocity note-offs ([38e1e47](https://github.com/ATOVproject/faderpunk/commit/38e1e47))
+* **rndcvcc:** correct inverted mute LED logic in scene handler ([81d7d3b](https://github.com/ATOVproject/faderpunk/commit/81d7d3b))
+* **slew & follower:** extend slew range, added passthrough a minimum ([b711231](https://github.com/ATOVproject/faderpunk/commit/b711231385705fcc6f61e0fff09aa24567328562))
+* **turing:** cleanup scene recall ([0c13e9d](https://github.com/ATOVproject/faderpunk/commit/0c13e9d))
+* **turing:** disable note off on stop when midi mode is not Note ([e53b785](https://github.com/ATOVproject/faderpunk/commit/e53b785))
+* **turing:** fix range setting stuck on 0-10V ([a96156f](https://github.com/ATOVproject/faderpunk/commit/a96156fbadbe2bb2f4154c9ec29be30484ea12ed))
+
 ## [1.6.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.3...faderpunk-v1.6.0) (2026-01-27)
 
 

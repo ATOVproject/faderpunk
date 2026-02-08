@@ -62,7 +62,7 @@ export const useStore = create<State>((set) => ({
       return false;
     }
   },
-  connect: async (_navigate: NavigateFunction) => {
+  connect: async () => {
     try {
       const device = await connectToFaderPunk();
       const deviceVersion = getDeviceVersion(device);

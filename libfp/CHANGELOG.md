@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.9.0...libfp-v0.10.0) (2026-02-08)
+
+
+### Features
+
+* add specialized midi params ([a569e50](https://github.com/ATOVproject/faderpunk/commit/a569e50afc784bd4d423664fc4f55e5dff1e927e))
+* **midi:** midi out routing ([de9704d](https://github.com/ATOVproject/faderpunk/commit/de9704d0ce442c84a5c63c03d1f9d29cbe92dae0))
+* **quantizer:** add ability to get current scale in apps ([60ba174](https://github.com/ATOVproject/faderpunk/commit/60ba174407010d60aa302e1a39ec82fff16e68ac))
+
+
+### Bug Fixes
+
+* **led:** increase dynamic range, simplify nomenclature ([eded147](https://github.com/ATOVproject/faderpunk/commit/eded147ddb896f1b013f2c66710d4927ae25ecee))
+* **slew & follower:** extend slew range, added passthrough a minimum ([b711231](https://github.com/ATOVproject/faderpunk/commit/b711231385705fcc6f61e0fff09aa24567328562))
+
 ## [0.9.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.8.2...libfp-v0.9.0) (2025-12-07)
 
 
