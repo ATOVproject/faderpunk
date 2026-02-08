@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 import { FIRMWARE_LATEST_VERSION } from "../../consts";
 import { ButtonPrimary } from "../Button";
 import { H2, H3, List } from "./Shared";
@@ -141,13 +143,13 @@ export const UpdateGuide = () => (
       <li>Connect your Faderpunk normally (without holding any buttons)</li>
       <li>
         Open the{" "}
-        <a
+        <Link
           className="font-semibold underline"
-          href="/configurator"
+          to="/configurator"
           target="_blank"
         >
           Faderpunk Configurator
-        </a>{" "}
+        </Link>{" "}
         in your browser, press the "Connect" button
       </li>
       <li>
