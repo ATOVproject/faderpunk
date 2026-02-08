@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.7.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.6.0...faderpunk-v1.7.0) (2026-02-08)
+
+
+### Features
+
+* **ad:** add MIDI retrigger param ([9586ddd](https://github.com/ATOVproject/faderpunk/commit/9586ddd1744a2f9c979d33b4b157aa40a37fe25f))
+* add specialized midi params ([b288f57](https://github.com/ATOVproject/faderpunk/commit/b288f5720255efaf136464408599725ac0be9adf))
+* add unique USB serial numbers from RP2350 chip ID ([8c4b248](https://github.com/ATOVproject/faderpunk/commit/8c4b24825fdc45a6062980f218684e85aeb2b336))
+* **control:** add CC button modes ([2e2f24a](https://github.com/ATOVproject/faderpunk/commit/2e2f24a51d8ea914f8aaf87bb15c202b9c31d254))
+* **follower:** add range param ([1f8e382](https://github.com/ATOVproject/faderpunk/commit/1f8e3828dd049ba7681e58047c2a9394c07a1d22))
+* **lfo_plus:** add lfo+ app ([70c0e08](https://github.com/ATOVproject/faderpunk/commit/70c0e08db9191077978210b2bdf3aabb5b56704a))
+* **lfo+:** add reset cv destination ([#415](https://github.com/ATOVproject/faderpunk/issues/415)) ([999b274](https://github.com/ATOVproject/faderpunk/commit/999b2748e2dd3df546b598cd3d94e1e65df267d2))
+* **midi2cv:** add tb-303 style glide functionality ([61b3ab6](https://github.com/ATOVproject/faderpunk/commit/61b3ab6f1393e141bfb7252647f97e4742b43f2f))
+* **midi2cv:** add velocity to gate param ([6cc69d0](https://github.com/ATOVproject/faderpunk/commit/6cc69d0b96ea2656e40b04266c9a5b510db5e5b2))
+* **midi:** midi out routing ([9d773b1](https://github.com/ATOVproject/faderpunk/commit/9d773b1806c5dbd52df542d4363190df5460756f))
+* **quantizer:** add ability to get current scale in apps ([d421562](https://github.com/ATOVproject/faderpunk/commit/d42156201d3285cd4e3ea67002dfcb2d9afe041b))
+
+
+### Bug Fixes
+
+* **clk_div:** turn LED button off when muted ([8a04a7a](https://github.com/ATOVproject/faderpunk/commit/8a04a7a3f7a1771e50e2c8961cfb5d76c006702a))
+* **clkturing:** set correct new length ([992e650](https://github.com/ATOVproject/faderpunk/commit/992e650829b83df20f0858dd8468fa310a433275))
+* **control:** merge conflict artifact ([670c1fb](https://github.com/ATOVproject/faderpunk/commit/670c1fb4ddb777e3449216be21eaf287ff8d82e1))
+* **control:** remove filtering on MIDI CC ([0522fc5](https://github.com/ATOVproject/faderpunk/commit/0522fc53d8dc10b8295f1de94b45bab12731d824))
+* **cv2midi:** increase input gain in uni-polar mode ([f8b91b6](https://github.com/ATOVproject/faderpunk/commit/f8b91b61747a1acbe8a64fac2e9dba59e320d70c))
+* double usb MAX_PAYLOAD_SIZE to 512 bytes ([b703221](https://github.com/ATOVproject/faderpunk/commit/b70322119ef1ad037ec38b584f7e181fdfec2835))
+* **led:** increase dynamic range, simplify nomenclature ([0e31ec7](https://github.com/ATOVproject/faderpunk/commit/0e31ec763b87c831eba9ef241cc8ba6850e71987))
+* **lfo:** prevent fader from freezing when clock is turned off in clocked mode ([ddaaf44](https://github.com/ATOVproject/faderpunk/commit/ddaaf44759841f7d15d6c28803978c277141db8e))
+* **midi2cv:** re-trigger gate on legato ([11e6676](https://github.com/ATOVproject/faderpunk/commit/11e667650063fa0c38f7133fb5577d12f80fd8ec))
+* **midi2cv:** support zero-velocity note-offs ([a8043f9](https://github.com/ATOVproject/faderpunk/commit/a8043f939eb68b49a37677db333e3d5633f2caea))
+* **midi:** set default source/destinations ([4638c7d](https://github.com/ATOVproject/faderpunk/commit/4638c7d0d47cd53137b853ab30db176d0a0d2625))
+* **rndcvcc:** correct inverted mute LED logic in scene handler ([d417222](https://github.com/ATOVproject/faderpunk/commit/d4172224e59e9a6f9a6484eb3756bf387a1cb8bd))
+* **turing:** cleanup scene recall ([523773a](https://github.com/ATOVproject/faderpunk/commit/523773afe83d4c0dee7268ed6bc7161902e3a178))
+* **turing:** disable note off on stop when midi mode is not Note ([959c2e4](https://github.com/ATOVproject/faderpunk/commit/959c2e4b54d54457ab3cf925eae8afd710d67beb))
+* **turing:** fix range setting stuck on 0-10V ([6de54e6](https://github.com/ATOVproject/faderpunk/commit/6de54e6f492b28f76cdf94150596b34913b733ed))
+
 ## [1.6.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.3...faderpunk-v1.6.0) (2026-01-27)
 
 

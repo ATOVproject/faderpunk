@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.7.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.4...configurator-v1.7.0) (2026-02-08)
+
+
+### Features
+
+* **ad:** add MIDI retrigger param ([9586ddd](https://github.com/ATOVproject/faderpunk/commit/9586ddd1744a2f9c979d33b4b157aa40a37fe25f))
+* add specialized midi params ([b288f57](https://github.com/ATOVproject/faderpunk/commit/b288f5720255efaf136464408599725ac0be9adf))
+* **lfo_plus:** add lfo+ app ([70c0e08](https://github.com/ATOVproject/faderpunk/commit/70c0e08db9191077978210b2bdf3aabb5b56704a))
+* **lfo+:** add reset cv destination ([#415](https://github.com/ATOVproject/faderpunk/issues/415)) ([999b274](https://github.com/ATOVproject/faderpunk/commit/999b2748e2dd3df546b598cd3d94e1e65df267d2))
+* **midi2cv:** add velocity to gate param ([6cc69d0](https://github.com/ATOVproject/faderpunk/commit/6cc69d0b96ea2656e40b04266c9a5b510db5e5b2))
+* **midi:** add documentation for v1.7 midi functions ([#416](https://github.com/ATOVproject/faderpunk/issues/416)) ([1dd560d](https://github.com/ATOVproject/faderpunk/commit/1dd560d0ab02e2641c838b147e2b2227df6cb62c))
+* **midi:** midi out routing ([9d773b1](https://github.com/ATOVproject/faderpunk/commit/9d773b1806c5dbd52df542d4363190df5460756f))
+
+
+### Bug Fixes
+
+* **configurator:** enable linting in CI ([59c8de5](https://github.com/ATOVproject/faderpunk/commit/59c8de550a44facd3de89ac20955cbb66cc86f50))
+* **led:** increase dynamic range, simplify nomenclature ([0e31ec7](https://github.com/ATOVproject/faderpunk/commit/0e31ec763b87c831eba9ef241cc8ba6850e71987))
+* **manual:** configurator link ([#403](https://github.com/ATOVproject/faderpunk/issues/403)) ([d2779c6](https://github.com/ATOVproject/faderpunk/commit/d2779c656713263850fe4f247e6e3b06303667b8))
+* **manual:** more typo corrections ([3209bfd](https://github.com/ATOVproject/faderpunk/commit/3209bfd035e2a50a936985298a729cd01d1278e7))
+
 ## [1.6.4](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.3...configurator-v1.6.4) (2026-02-04)
 
 
