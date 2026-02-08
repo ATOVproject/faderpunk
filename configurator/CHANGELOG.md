@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.7.0...configurator-v1.7.1) (2026-02-08)
+
+
+### Bug Fixes
+
+* remove unused navigate parameter from connect function ([73daa2a](https://github.com/ATOVproject/faderpunk/commit/73daa2a6706150434c5fbfcb7e88f0e818e32dcb))
+
 ## [1.7.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.4...configurator-v1.7.0) (2026-02-08)
 
 
