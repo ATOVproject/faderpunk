@@ -122,7 +122,7 @@ impl Default for Storage {
             wave: Waveform::Sine,
             in_att: 4095,
             in_mute: false,
-            dest: 0, // 0 => speed, 1 => phase, 2 => amp
+            dest: 0, // 0 => speed, 1 => phase, 2 => amp, 3 => reset
         }
     }
 }
@@ -214,6 +214,7 @@ pub async fn run(
     };
 
     let fut1 = async {
+        let mut oldinputval = 0;
         loop {
             app.delay_millis(1).await;
             let in_mute = storage.query(|s| s.in_mute);
@@ -226,6 +227,13 @@ pub async fn run(
 
             let speed_offset = if destination == 0 { in_val } else { 2047 };
             time_calc(speed_offset);
+
+            if destination == 3 {
+                if in_val >= 2458 && oldinputval < 2458 {
+                    glob_lfo_pos.set(0.0);
+                }
+                oldinputval = in_val;
+            }
 
             let latch_active_layer =
                 glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
@@ -319,6 +327,7 @@ pub async fn run(
                         0 => Color::Yellow,
                         1 => Color::Pink,
                         2 => Color::Cyan,
+                        3 => Color::Red,
                         _ => Color::Yellow,
                     };
                     leds.set(0, Led::Button, dest_color, Brightness::Mid);
@@ -407,18 +416,9 @@ pub async fn run(
                 }
             } else {
                 if chan == 0 {
-                    let dest = storage.modify_and_save(|s| {
-                        s.dest = (s.dest + 1) % 3;
-                        s.dest
+                    storage.modify_and_save(|s| {
+                        s.dest = (s.dest + 1) % 4;
                     });
-
-                    let dest_color = match dest {
-                        0 => Color::Yellow,
-                        1 => Color::Pink,
-                        2 => Color::Cyan,
-                        _ => Color::Yellow,
-                    };
-                    leds.set(0, Led::Button, dest_color, Brightness::Mid);
                 }
                 if chan == 1 {
                     glob_lfo_pos.set(0.0);
