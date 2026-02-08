@@ -2,9 +2,12 @@ import type {
   AuxJackMode,
   ClockDivision,
   ClockSrc,
+  FixedLengthArray,
   GlobalConfig,
   I2cMode,
   Key,
+  MidiOutConfig,
+  MidiOutMode,
   Note,
   ResetSrc,
 } from "@atov/fp-config";
@@ -18,6 +21,7 @@ import { useStore } from "../store";
 import { I2cSettings } from "./settings/I2cSettings";
 import { QuantizerSettings } from "./settings/QuantizerSettings";
 import { AuxSettings } from "./settings/AuxSettings";
+import { MidiSettings } from "./settings/MidiSettings";
 import { MiscSettings } from "./settings/MiscSettings";
 import { setGlobalConfig } from "../utils/config";
 import { FactoryReset } from "./settings/FactoryReset";
@@ -41,10 +45,57 @@ export interface Inputs {
   resetSrc: ResetSrc["tag"];
   quantizerKey: Key["tag"];
   quantizerTonic: Note["tag"];
+  // MIDI USB
+  midiUsbMode: MidiOutMode["tag"];
+  midiUsbSendClock: boolean;
+  midiUsbSendTransport: boolean;
+  midiUsbSourceUsb: boolean;
+  midiUsbSourceDin: boolean;
+  // MIDI Out 1
+  midiOut1Mode: MidiOutMode["tag"];
+  midiOut1SendClock: boolean;
+  midiOut1SendTransport: boolean;
+  midiOut1SourceUsb: boolean;
+  midiOut1SourceDin: boolean;
+  // MIDI Out 2
+  midiOut2Mode: MidiOutMode["tag"];
+  midiOut2SendClock: boolean;
+  midiOut2SendTransport: boolean;
+  midiOut2SourceUsb: boolean;
+  midiOut2SourceDin: boolean;
 }
 
 const SettingsForm = ({ config }: SettingsFormProps) => {
-  const { usbDevice, deviceVersion } = useStore();
+  const { usbDevice, deviceVersion, setConfig } = useStore();
+
+  // Helper to extract MIDI output config values
+  const getMidiOutValues = (index: number) => {
+    const out = config.midi.outs[index];
+    const mode = out.mode.tag;
+
+    if (mode === "MidiThru" || mode === "MidiMerge") {
+      return {
+        mode: mode,
+        sendClock: out.send_clock,
+        sendTransport: out.send_transport,
+        sourceUsb: out.mode.value.sources[0][0],
+        sourceDin: out.mode.value.sources[0][1],
+      };
+    }
+
+    return {
+      mode: mode as "None" | "Local",
+      sendClock: out.send_clock,
+      sendTransport: out.send_transport,
+      sourceUsb: false,
+      sourceDin: false,
+    };
+  };
+
+  const midiUsb = getMidiOutValues(0);
+  const midiOut1 = getMidiOutValues(1);
+  const midiOut2 = getMidiOutValues(2);
+
   const methods = useForm<Inputs>({
     defaultValues: {
       auxAtom: config.aux[0].tag,
@@ -63,6 +114,24 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
       quantizerKey: config.quantizer.key.tag,
       quantizerTonic: config.quantizer.tonic.tag,
       ledBrightness: config.led_brightness,
+      // MIDI USB
+      midiUsbMode: midiUsb.mode,
+      midiUsbSendClock: midiUsb.sendClock,
+      midiUsbSendTransport: midiUsb.sendTransport,
+      midiUsbSourceUsb: midiUsb.sourceUsb,
+      midiUsbSourceDin: midiUsb.sourceDin,
+      // MIDI Out 1
+      midiOut1Mode: midiOut1.mode,
+      midiOut1SendClock: midiOut1.sendClock,
+      midiOut1SendTransport: midiOut1.sendTransport,
+      midiOut1SourceUsb: midiOut1.sourceUsb,
+      midiOut1SourceDin: midiOut1.sourceDin,
+      // MIDI Out 2
+      midiOut2Mode: midiOut2.mode,
+      midiOut2SendClock: midiOut2.sendClock,
+      midiOut2SendTransport: midiOut2.sendTransport,
+      midiOut2SourceUsb: midiOut2.sourceUsb,
+      midiOut2SourceDin: midiOut2.sourceDin,
     },
   });
   const [saved, setSaved] = useState<boolean>(false);
@@ -77,13 +146,14 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
       if (usbDevice) {
         const config = transformFormToGlobalConfig(formValues);
         await setGlobalConfig(usbDevice, config);
+        setConfig(config);
         setSaved(true);
         setTimeout(() => {
           setSaved(false);
         }, 2000);
       }
     },
-    [usbDevice],
+    [usbDevice, setConfig],
   );
 
   useEffect(() => {
@@ -98,9 +168,10 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
     <FormProvider {...methods}>
       <form onSubmit={handleSubmit(onSubmit)}>
         <ClockSettings />
-        <QuantizerSettings />
-        <I2cSettings />
         <AuxSettings />
+        <QuantizerSettings />
+        <MidiSettings />
+        <I2cSettings />
         <MiscSettings />
         <SaveLoadSetup />
         <FactoryReset />
@@ -150,24 +221,85 @@ const buildAuxJackMode = (
   return { tag: modeTag as "None" | "ResetOut" };
 };
 
-const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
+const buildMidiOutConfig = (
+  mode: MidiOutMode["tag"],
+  sendClock: boolean,
+  sendTransport: boolean,
+  sourceUsb: boolean,
+  sourceDin: boolean,
+): MidiOutConfig => {
+  if (mode === "MidiThru" || mode === "MidiMerge") {
+    // MidiIn is a tuple struct: [FixedLengthArray<boolean, 2>]
+    const sources = [
+      [sourceUsb, sourceDin] as FixedLengthArray<boolean, 2>,
+    ] as [FixedLengthArray<boolean, 2>];
+
+    return {
+      send_clock: sendClock,
+      send_transport: sendTransport,
+      mode: {
+        tag: mode,
+        value: {
+          sources,
+        },
+      },
+    };
+  }
+
   return {
-    aux: [
-      buildAuxJackMode(formValues.auxAtom, formValues.auxAtomDiv),
-      buildAuxJackMode(formValues.auxMeteor, formValues.auxMeteorDiv),
-      buildAuxJackMode(formValues.auxCube, formValues.auxCubeDiv),
-    ],
+    send_clock: sendClock,
+    send_transport: sendTransport,
+    mode: { tag: mode },
+  };
+};
+
+const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
+  const auxArray = [
+    buildAuxJackMode(formValues.auxAtom, formValues.auxAtomDiv),
+    buildAuxJackMode(formValues.auxMeteor, formValues.auxMeteorDiv),
+    buildAuxJackMode(formValues.auxCube, formValues.auxCubeDiv),
+  ] as FixedLengthArray<AuxJackMode, 3>;
+
+  const midiOutsArray = [
+    buildMidiOutConfig(
+      formValues.midiUsbMode,
+      formValues.midiUsbSendClock,
+      formValues.midiUsbSendTransport,
+      false, // USB output cannot route from USB input
+      true, // USB output always routes from DIN (only valid source)
+    ),
+    buildMidiOutConfig(
+      formValues.midiOut1Mode,
+      formValues.midiOut1SendClock,
+      formValues.midiOut1SendTransport,
+      formValues.midiOut1SourceUsb,
+      formValues.midiOut1SourceDin,
+    ),
+    buildMidiOutConfig(
+      formValues.midiOut2Mode,
+      formValues.midiOut2SendClock,
+      formValues.midiOut2SendTransport,
+      formValues.midiOut2SourceUsb,
+      formValues.midiOut2SourceDin,
+    ),
+  ] as FixedLengthArray<MidiOutConfig, 3>;
+
+  return {
+    aux: auxArray,
     clock: {
       clock_src: { tag: formValues.clockSrc },
+      ext_ppqn: 24,
       reset_src: { tag: formValues.resetSrc },
       internal_bpm: formValues.internalBpm,
-      ext_ppqn: 24,
     },
     i2c_mode: { tag: formValues.i2cMode },
+    led_brightness: formValues.ledBrightness,
+    midi: {
+      outs: midiOutsArray,
+    },
     quantizer: {
       key: { tag: formValues.quantizerKey },
       tonic: { tag: formValues.quantizerTonic },
     },
-    led_brightness: formValues.ledBrightness,
   };
 };

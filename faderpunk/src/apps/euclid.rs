@@ -10,7 +10,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
     constants::BJORKLUND_PATTERNS, ext::FromValue, latch::LatchLayer, AppIcon, Brightness,
-    ClockDivision, Color, Config, Param, Value, APP_MAX_PARAMS,
+    ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -19,9 +19,9 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 6;
 
-const LED_BRIGHTNESS: Brightness = Brightness::Lower;
+const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Euclid",
@@ -29,20 +29,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Orange,
     AppIcon::Euclid,
 )
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel",
-    min: 1,
-    max: 16,
 })
-.add_param(Param::i32 {
-    name: "MIDI NOTE 1",
-    min: 1,
-    max: 128,
+.add_param(Param::MidiNote {
+    name: "MIDI Note 1",
 })
-.add_param(Param::i32 {
+.add_param(Param::MidiNote {
     name: "MIDI NOTE 2",
-    min: 1,
-    max: 128,
 })
 .add_param(Param::i32 {
     name: "GATE %",
@@ -61,12 +55,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
-});
+})
+.add_param(Param::MidiOut);
 
 pub struct Params {
-    midi_channel: i32,
-    note: i32,
-    note2: i32,
+    midi_channel: MidiChannel,
+    midi_out: MidiOut,
+    note: MidiNote,
+    note2: MidiNote,
     gatel: i32,
     color: Color,
 }
@@ -74,9 +70,10 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
-            midi_channel: 1,
-            note: 32,
-            note2: 33,
+            midi_channel: MidiChannel::default(),
+            midi_out: MidiOut::default(),
+            note: MidiNote::from(32),
+            note2: MidiNote::from(33),
             gatel: 50,
             color: Color::Orange,
         }
@@ -89,11 +86,12 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_channel: i32::from_value(values[0]),
-            note: i32::from_value(values[1]),
-            note2: i32::from_value(values[2]),
+            midi_channel: MidiChannel::from_value(values[0]),
+            note: MidiNote::from_value(values[1]),
+            note2: MidiNote::from_value(values[2]),
             gatel: i32::from_value(values[3]),
             color: Color::from_value(values[4]),
+            midi_out: MidiOut::from_value(values[5]),
         })
     }
 
@@ -104,6 +102,7 @@ impl AppParams for Params {
         vec.push(self.note2.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec
     }
 }
@@ -163,10 +162,18 @@ pub async fn run(
     let buttons = app.use_buttons();
     let leds = app.use_leds();
 
-    let (midi_chan, note, note2, gatel, led_color) =
-        params.query(|p| (p.midi_channel, p.note, p.note2, p.gatel, p.color));
+    let (midi_out, midi_chan, note, note2, gatel, led_color) = params.query(|p| {
+        (
+            p.midi_out,
+            p.midi_channel,
+            p.note,
+            p.note2,
+            p.gatel,
+            p.color,
+        )
+    });
 
-    let midi = app.use_midi_output(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_out, midi_chan);
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
@@ -210,8 +217,8 @@ pub async fn run(
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
-                    midi.send_note_off(note as u8 - 1).await;
-                    midi.send_note_off(note2 as u8 - 1).await;
+                    midi.send_note_off(note).await;
+                    midi.send_note_off(note2).await;
                     note_on = false;
                     jack[0].set_low().await;
                 }
@@ -219,65 +226,64 @@ pub async fn run(
                     let muted = glob_muted.get();
                     let div = div_glob.get();
 
-                    if clkn % div == 0 {
+                    if clkn.is_multiple_of(div) {
                         if !muted {
                             if euclidean_filter(
                                 num_beat_glob.get(),
                                 num_step_glob.get(),
                                 rotation_glob.get(),
                                 clkn / div,
-                            ) && storage.query(|s| (s.shift_fader_saved[1]))
+                            ) && storage.query(|s| s.shift_fader_saved[1])
                                 >= die.roll().clamp(100, 3900)
                             {
-                                midi.send_note_on(note as u8 - 1, 4095).await;
-                                // info!("proba {}", storage.query(|s| (s.shift_fader_saved[1])));
+                                midi.send_note_on(note, 4095).await;
                                 jack[0].set_high().await;
                                 note_on = true;
                             }
                             if storage.query(|s| s.mode) {
-                                if clkn / div % num_beat_glob.get() as u32 == 0 {
+                                if (clkn / div).is_multiple_of(num_beat_glob.get() as u32) {
                                     jack[1].set_high().await;
-                                    midi.send_note_on(note2 as u8 - 1, 4095).await;
+                                    midi.send_note_on(note2, 4095).await;
 
                                     aux_on = true;
                                 }
                             } else if !note_on {
                                 jack[1].set_high().await;
-                                midi.send_note_on(note2 as u8 - 1, 4095).await;
+                                midi.send_note_on(note2, 4095).await;
                                 aux_on = true;
                             }
                         }
 
                         if glob_latch_layer.get() == LatchLayer::Third {
-                            leds.set(0, Led::Bottom, Color::Red, Brightness::Lower);
+                            leds.set(0, Led::Bottom, Color::Red, Brightness::Mid);
                         }
                     }
 
                     if clkn % div == (div * gatel as u32 / 100).clamp(1, div - 1) {
                         if note_on {
-                            midi.send_note_off(note as u8 - 1).await;
+                            midi.send_note_off(note).await;
 
                             note_on = false;
                             jack[0].set_low().await;
                         }
                         if aux_on {
-                            midi.send_note_off(note2 as u8 - 1).await;
+                            midi.send_note_off(note2).await;
                             aux_on = false;
                             jack[1].set_low().await;
                         }
 
-                        leds.set(0, Led::Bottom, led_color, Brightness::Custom(0))
+                        leds.set(0, Led::Bottom, led_color, Brightness::Off)
                     }
                     if glob_latch_layer.get() == LatchLayer::Main {
                         if note_on {
-                            leds.set(0, Led::Top, led_color, Brightness::Default);
+                            leds.set(0, Led::Top, led_color, Brightness::High);
                         } else {
-                            leds.set(0, Led::Top, led_color, Brightness::Custom(0))
+                            leds.set(0, Led::Top, led_color, Brightness::Off)
                         }
                         if aux_on {
-                            leds.set(1, Led::Top, led_color, Brightness::Default);
+                            leds.set(1, Led::Top, led_color, Brightness::High);
                         } else {
-                            leds.set(1, Led::Top, led_color, Brightness::Custom(0))
+                            leds.set(1, Led::Top, led_color, Brightness::Off)
                         }
                     }
                     if glob_latch_layer.get() == LatchLayer::Alt {
@@ -286,7 +292,7 @@ pub async fn run(
                             Led::Top,
                             Color::Red,
                             Brightness::Custom(
-                                (storage.query(|s| (s.shift_fader_saved[0])) / 16) as u8,
+                                (storage.query(|s| s.shift_fader_saved[0]) / 16) as u8,
                             ),
                         );
                         leds.set(
@@ -294,7 +300,7 @@ pub async fn run(
                             Led::Top,
                             Color::Red,
                             Brightness::Custom(
-                                (storage.query(|s| (s.shift_fader_saved[1])) / 16) as u8,
+                                (storage.query(|s| s.shift_fader_saved[1]) / 16) as u8,
                             ),
                         );
                     }
@@ -332,9 +338,9 @@ pub async fn run(
                     s.mode
                 });
                 if !mode {
-                    leds.set(1, Led::Button, led_color, Brightness::Low);
+                    leds.set(1, Led::Button, led_color, Brightness::High);
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Lowest);
+                    leds.set(1, Led::Button, led_color, Brightness::Low);
                 }
             }
         }
@@ -420,7 +426,7 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
 
                     num_beat_glob
@@ -468,14 +474,14 @@ pub async fn run(
                 if glob_muted.get() {
                     leds.unset(1, Led::Button);
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Lower);
+                    leds.set(1, Led::Button, led_color, Brightness::Mid);
                 }
             }
             if latch_active_layer == LatchLayer::Alt {
                 if !storage.query(|s| s.mode) {
-                    leds.set(1, Led::Button, led_color, Brightness::Low);
+                    leds.set(1, Led::Button, led_color, Brightness::High);
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Lowest);
+                    leds.set(1, Led::Button, led_color, Brightness::Low);
                 }
             }
             if latch_active_layer == LatchLayer::Third {}

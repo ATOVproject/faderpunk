@@ -28,12 +28,9 @@ jobs:
       - name: Run formatting check
         run: cargo fmt -- --check
       - name: Run clippy
-        # TODO: enable later
-        # cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf -- -D warnings
-        # cargo clippy -p libfp -- -D warnings
         run: |
-          cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf
-          cargo clippy -p libfp
+          cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf -- -D warnings
+          cargo clippy -p libfp -- -D warnings
       - name: Run tests on libfp
         run: cargo test --lib -p libfp
   check-configurator:
@@ -58,6 +55,9 @@ jobs:
         working-directory: ./configurator
       - name: Generate postcard bindings (for configurator)
         run: ./gen-bindings.sh
+      - name: Lint configurator
+        run: pnpm run lint
+        working-directory: ./configurator
       - name: Build configurator
         run: pnpm run build
         working-directory: ./configurator

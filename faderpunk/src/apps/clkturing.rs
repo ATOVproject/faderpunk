@@ -10,38 +10,26 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Curve, Param, Range,
-    Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Curve, MidiCc,
+    MidiChannel, MidiMode, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 7;
 
-// TODO: How to add param for midi-cc base number that it just works as a default?
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing+",
     "Turing machine, with clock input",
     Color::Pink,
     AppIcon::SequenceSquare,
 )
-.add_param(Param::Enum {
-    name: "MIDI mode",
-    variants: &["Off", "Note", "CC"],
+.add_param(Param::MidiMode)
+.add_param(Param::MidiChannel {
+    name: "MIDI Channel",
 })
-.add_param(Param::i32 {
-    //is it possible to have this apear only if CC or note are selected
-    name: "Midi channel",
-    min: 1,
-    max: 16,
-})
-.add_param(Param::i32 {
-    //is it possible to have this apear only if CC or note are selected
-    name: "CC number",
-    min: 1,
-    max: 128,
-})
+.add_param(Param::MidiCc { name: "CC number" })
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -59,30 +47,29 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Range",
     variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
 })
-.add_param(Param::i32 {
-    name: "Base Note",
-    min: 1,
-    max: 128,
-});
+.add_param(Param::MidiNote { name: "Base note" })
+.add_param(Param::MidiOut);
 
 pub struct Params {
-    midi_mode: usize,
-    midi_channel: i32,
-    midi_cc: i32,
+    midi_channel: MidiChannel,
+    midi_cc: MidiCc,
+    midi_mode: MidiMode,
+    midi_note: MidiNote,
+    midi_out: MidiOut,
     color: Color,
     range: Range,
-    note: i32,
 }
 
 impl Default for Params {
     fn default() -> Self {
         Self {
-            midi_mode: 1,
-            midi_channel: 1,
-            midi_cc: 38,
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(38),
+            midi_mode: MidiMode::default(),
+            midi_note: MidiNote::from(36),
+            midi_out: MidiOut::default(),
             color: Color::Pink,
             range: Range::_0_5V,
-            note: 36,
         }
     }
 }
@@ -93,12 +80,13 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_mode: usize::from_value(values[0]),
-            midi_channel: i32::from_value(values[1]),
-            midi_cc: i32::from_value(values[2]),
+            midi_mode: MidiMode::from_value(values[0]),
+            midi_channel: MidiChannel::from_value(values[1]),
+            midi_cc: MidiCc::from_value(values[2]),
             color: Color::from_value(values[3]),
             range: Range::from_value(values[4]),
-            note: i32::from_value(values[5]),
+            midi_note: MidiNote::from_value(values[5]),
+            midi_out: MidiOut::from_value(values[6]),
         })
     }
 
@@ -109,7 +97,8 @@ impl AppParams for Params {
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.range.into()).unwrap();
-        vec.push(self.note.into()).unwrap();
+        vec.push(self.midi_note.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec
     }
 }
@@ -159,22 +148,24 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_mode, midi_cc, led_color, midi_chan, range, base_note) = params.query(|p| {
-        (
-            p.midi_mode,
-            p.midi_cc,
-            p.color,
-            p.midi_channel,
-            p.range,
-            p.note,
-        )
-    });
+    let (midi_mode, midi_cc, base_note, midi_out, midi_chan, led_color, range) =
+        params.query(|p| {
+            (
+                p.midi_mode,
+                p.midi_cc,
+                p.midi_note,
+                p.midi_out,
+                p.midi_channel,
+                p.color,
+                p.range,
+            )
+        });
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
     let die = app.use_die();
-    let midi = app.use_midi_output(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_out, midi_chan);
 
     // let mut prob_glob = app.make_global_with_store(0, StorageSlot::A);
     // let mut length_glob = app.make_global_with_store(15, StorageSlot::B);
@@ -185,29 +176,25 @@ pub async fn run(
 
     let register_glob = app.make_global(0);
     let recall_flag = app.make_global(false);
-    let midi_note = app.make_global(0);
+    let midi_note = app.make_global(MidiNote::from(0));
 
     let quantizer = app.use_quantizer(range);
 
-    // let latched_glob = app.make_global(true);
-
-    leds.set(0, Led::Button, led_color, Brightness::Lower);
-    leds.set(1, Led::Button, led_color, Brightness::Lower);
+    leds.set(0, Led::Button, led_color, Brightness::Mid);
+    leds.set(1, Led::Button, led_color, Brightness::Mid);
 
     let input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
 
-    let (att, length, mut register) =
-        storage.query(|s| (s.att_saved, s.length_saved, s.register_saved));
+    let (length, mut register) = storage.query(|s| (s.length_saved, s.register_saved));
 
     length_glob.set(length);
     register_glob.set(register);
     let curve = Curve::Linear;
 
     let fut1 = async {
-        let mut att_reg = 0;
+        let mut att_reg: u16;
         let mut oldinputval = 0;
-        let mut note = 0;
 
         loop {
             app.delay_millis(1).await;
@@ -225,15 +212,12 @@ pub async fn run(
                     s.register_saved = register;
                 });
 
-                //leds.set(0, Led::Button, led_color.into(), 100 * rotation.1 as u8);
-
                 let register_scalled = scale_to_12bit(register, length as u8);
                 att_reg = (register_scalled as u32
-                    * curve.at(storage.query(|s| (s.att_saved))) as u32
+                    * curve.at(storage.query(|s| s.att_saved)) as u32
                     / 4095) as u16;
 
                 let out = quantizer.get_quantized_note(att_reg).await;
-                // let out = att_reg;
 
                 output.set_value(out.as_counts(range));
                 leds.set(
@@ -248,27 +232,28 @@ pub async fn run(
                     led_color,
                     Brightness::Custom((att_reg / 16) as u8),
                 );
-                // info!("{}", register_scalled);
-                if midi_mode == 1 {
-                    let note = out.as_midi() + base_note as u8;
-                    midi.send_note_on(note, 4095).await;
 
+                if let MidiMode::Note = midi_mode {
+                    let note = base_note + out.as_midi();
+                    midi.send_note_on(note, 4095).await;
                     midi_note.set(note);
                 }
-                if midi_mode == 2 {
-                    midi.send_cc(midi_cc as u8, att_reg).await;
+
+                if let MidiMode::Cc = midi_mode {
+                    midi.send_cc(midi_cc, att_reg).await;
                 }
 
-                leds.set(0, Led::Bottom, Color::Red, Brightness::Low);
+                leds.set(0, Led::Bottom, Color::Red, Brightness::High);
             }
 
             if inputval <= 406 && oldinputval > 406 {
-                leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(0));
+                leds.set(0, Led::Bottom, Color::Red, Brightness::Off);
 
-                if midi_mode == 1 {
+                if let MidiMode::Note = midi_mode {
                     let note = midi_note.get();
                     midi.send_note_off(note).await;
                 }
+
                 register_glob.set(register);
             }
             oldinputval = inputval;
@@ -283,9 +268,6 @@ pub async fn run(
         // faders handling
         loop {
             let chan = faders.wait_for_any_change().await;
-
-            let chan = faders.wait_for_any_change().await;
-            let vals = faders.get_all_values();
 
             if chan == 0 {
                 if let Some(new_value) =
@@ -306,30 +288,6 @@ pub async fn run(
                     });
                 }
             }
-            // let val = faders.get_all_values();
-            // let att = storage.query(|s| (s.att_saved));
-            // let prob = prob_glob.get();
-
-            // let target_value = match latch_layer {
-            //     LatchLayer::Main => storage.query(|s| s.att_saved[chan]),
-            //     LatchLayer::Alt => storage.query(|s| s.att_saved),
-            //     LatchLayer::Third => 0,
-            // };
-
-            // if chan == 1 {
-            //     if is_close(att as u16, val[chan]) {
-            //         latched_glob.set(true);
-            //     }
-
-            //     if latched_glob.get() {
-            //         storage
-            //             .modify_and_save(|s| s.att_saved = val[chan], None)
-            //             .await;
-            //     }
-            // }
-            // if chan == 0 {
-            //     prob_glob.set(val[chan]);
-            // }
         }
     };
 
@@ -339,7 +297,6 @@ pub async fn run(
     let fut3 = async {
         loop {
             let shift = buttons.wait_for_down(0).await;
-            // latched_glob.set(false);
             let mut length = length_rec.get();
             if shift && rec_flag.get() {
                 length += 1;
@@ -364,8 +321,7 @@ pub async fn run(
                 rec_flag.set(false);
                 let length = length_rec.get();
                 if length > 1 {
-                    length_glob.set(length - 1);
-
+                    length_glob.set(length);
                     storage.modify_and_save(|s| s.length_saved = length);
                 }
             }
@@ -375,7 +331,7 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                     let (length, register) = storage.query(|s| (s.length_saved, s.register_saved));
 

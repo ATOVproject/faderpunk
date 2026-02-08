@@ -76,6 +76,60 @@ export const getParamSchema = (param: Param) => {
           value: { tag: choices[0] },
         });
     }
+    case "MidiCc": {
+      return z
+        .object({
+          tag: z.literal("MidiCc"),
+          value: z.tuple([z.number().int().min(0).max(127)]),
+        })
+        .default({ tag: "MidiCc", value: [0] });
+    }
+    case "MidiChannel": {
+      return z
+        .object({
+          tag: z.literal("MidiChannel"),
+          value: z.tuple([z.number().int().min(0).max(15)]),
+        })
+        .default({ tag: "MidiChannel", value: [0] });
+    }
+    case "MidiNote": {
+      return z
+        .object({
+          tag: z.literal("MidiNote"),
+          value: z.tuple([z.number().int().min(0).max(127)]),
+        })
+        .default({ tag: "MidiNote", value: [60] });
+    }
+    case "MidiIn": {
+      // MidiIn is a tuple struct: [[usb, din]]
+      return z
+        .object({
+          tag: z.literal("MidiIn"),
+          value: z.tuple([z.tuple([z.boolean(), z.boolean()])]),
+        })
+        .default({ tag: "MidiIn", value: [[false, false]] });
+    }
+    case "MidiOut": {
+      // MidiOut is a tuple struct: [[usb, out1, out2]]
+      return z
+        .object({
+          tag: z.literal("MidiOut"),
+          value: z.tuple([z.tuple([z.boolean(), z.boolean(), z.boolean()])]),
+        })
+        .default({ tag: "MidiOut", value: [[false, false, false]] });
+    }
+    case "MidiMode": {
+      // MidiMode is still enum-like with tag-based variants
+      return z
+        .object({
+          tag: z.literal("MidiMode"),
+          value: z.object({ tag: z.string() }),
+        })
+        .catch({
+          tag: "MidiMode",
+          value: { tag: "Note" },
+        });
+    }
     default: {
       return z.never();
     }

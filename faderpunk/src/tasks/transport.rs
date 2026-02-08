@@ -1,5 +1,5 @@
 use embassy_executor::Spawner;
-use embassy_futures::join::join3;
+use embassy_futures::join::join4;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_usb::class::midi::MidiClass;
@@ -9,8 +9,9 @@ use embassy_usb::{Builder, Config as UsbConfig};
 
 use embassy_rp::uart::{Async, BufferedUart, UartTx};
 
+use crate::tasks::midi::{midi_in_task, midi_out_task};
+
 use super::configure::start_webusb_loop;
-use super::midi::start_midi_loops;
 use super::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
 
 // 0x0 (Major) | 0x1 (Minor) | 0x0 (Patch)
@@ -46,21 +47,35 @@ pub async fn start_transports(
     usb_driver: usb::Driver<'static, USB>,
     uart0: UartTx<'static, Async>,
     uart1: BufferedUart,
+    chip_id: u64,
 ) {
     spawner
-        .spawn(run_transports(usb_driver, uart0, uart1))
+        .spawn(run_transports(usb_driver, uart0, uart1, chip_id))
         .unwrap();
 }
 
 #[embassy_executor::task]
 async fn run_transports(
     usb_driver: usb::Driver<'static, USB>,
-    uart0: UartTx<'static, Async>,
+    uart0_tx: UartTx<'static, Async>,
     uart1: BufferedUart,
+    chip_id: u64,
 ) {
+    // Convert chip ID to hex string for USB serial number
+    let mut serial_buf = [0u8; 16];
+    let chip_id_bytes = chip_id.to_be_bytes();
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    for (i, &byte) in chip_id_bytes.iter().enumerate() {
+        serial_buf[i * 2] = HEX[(byte >> 4) as usize];
+        serial_buf[i * 2 + 1] = HEX[(byte & 0x0F) as usize];
+    }
+    // Safety: We just filled the buffer with valid ASCII hex chars
+    let serial_number = unsafe { core::str::from_utf8_unchecked(&serial_buf) };
+
     let mut usb_config = UsbConfig::new(USB_VENDOR_ID, USB_PRODUCT_ID);
     usb_config.manufacturer = Some(USB_VENDOR_NAME);
     usb_config.product = Some(USB_PRODUCT_NAME);
+    usb_config.serial_number = Some(serial_number);
     usb_config.device_release = USB_RELEASE_VERSION;
     usb_config.max_power = 500;
     usb_config.max_packet_size_0 = USB_MAX_PACKET_SIZE as u8;
@@ -117,8 +132,13 @@ async fn run_transports(
 
     let mut usb = usb_builder.build();
 
-    let midi_fut = start_midi_loops(usb_midi, uart0, uart1);
+    let (usb_tx, usb_rx) = usb_midi.split();
+    let (uart1_tx, uart1_rx) = uart1.split();
+
+    // let midi_fut = start_midi_loops(usb_midi, uart0, uart1);
+    let midi_out_fut = midi_out_task(usb_tx, uart0_tx, uart1_tx);
+    let midi_in_fut = midi_in_task(usb_rx, uart1_rx);
     let webusb_fut = start_webusb_loop(webusb);
 
-    join3(usb.run(), midi_fut, webusb_fut).await;
+    join4(usb.run(), midi_in_fut, midi_out_fut, webusb_fut).await;
 }

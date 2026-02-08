@@ -122,7 +122,7 @@ pub async fn run(
 
     for n in 0..=1 {
         if storage.query(|s| s.offset_att_toggle[n]) {
-            leds.set(n, Led::Button, led_color, Brightness::Lower);
+            leds.set(n, Led::Button, led_color, Brightness::Mid);
         } else {
             leds.unset(n, Led::Button);
         }
@@ -137,29 +137,28 @@ pub async fn run(
 
             att = clickless(
                 att,
-                if storage.query(|s| (s.offset_att_toggle[1])) {
-                    storage.query(|s| (s.att_saved))
+                if storage.query(|s| s.offset_att_toggle[1]) {
+                    storage.query(|s| s.att_saved)
                 } else {
                     3071
                 },
             );
             offset_fad = clickless(
                 offset_fad,
-                if storage.query(|s| (s.offset_att_toggle[0])) {
-                    storage.query(|s| (s.offset_saved))
+                if storage.query(|s| s.offset_att_toggle[0]) {
+                    storage.query(|s| s.offset_saved)
                 } else {
                     2047
                 },
             );
             let offset = offset_fad as i32 - 2047;
 
-            let mut outval =
-                (attenuverter(inval as u16, att) as i32 + offset).clamp(0, 4095) as u16;
+            let mut outval = (attenuverter(inval, att) as i32 + offset).clamp(0, 4095) as u16;
             outval = ((outval as i32 - 2047) * 2 + 2047).clamp(0, 4094) as u16;
 
-            output.set_value(outval as u16);
+            output.set_value(outval);
 
-            let slew_led = split_unsigned_value(inval as u16);
+            let slew_led = split_unsigned_value(inval);
             leds.set(0, Led::Top, led_color, Brightness::Custom(slew_led[0]));
             leds.set(0, Led::Bottom, led_color, Brightness::Custom(slew_led[1]));
 
@@ -181,7 +180,7 @@ pub async fn run(
                 if let Some(new_value) = latch[chan].update(
                     faders.get_value_at(chan),
                     LatchLayer::Main,
-                    storage.query(|s| (s.offset_saved)),
+                    storage.query(|s| s.offset_saved),
                 ) {
                     storage.modify_and_save(|s| {
                         s.offset_saved = new_value;
@@ -213,7 +212,7 @@ pub async fn run(
                 });
                 for n in 0..=1 {
                     if storage.query(|s| s.offset_att_toggle[n]) {
-                        leds.set(n, Led::Button, led_color, Brightness::Lower);
+                        leds.set(n, Led::Button, led_color, Brightness::Mid);
                     } else {
                         leds.unset(n, Led::Button);
                     }
@@ -225,7 +224,7 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                 }
                 SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,

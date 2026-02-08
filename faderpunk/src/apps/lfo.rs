@@ -10,8 +10,8 @@ use libfp::{
     ext::FromValue,
     latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, split_unsigned_value},
-    AppIcon, Brightness, ClockDivision, Color, Config, Curve, Param, Range, Value, Waveform,
-    APP_MAX_PARAMS,
+    AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
+    Range, Value, Waveform, APP_MAX_PARAMS,
 };
 
 use crate::{
@@ -33,24 +33,18 @@ pub static CONFIG: Config<PARAMS> =
             name: "Range",
             variants: &[Range::_0_10V, Range::_Neg5_5V],
         })
-        .add_param(Param::bool { name: "Send MIDI" })
-        .add_param(Param::i32 {
+        .add_param(Param::MidiOut)
+        .add_param(Param::MidiChannel {
             name: "MIDI Channel",
-            min: 1,
-            max: 16,
         })
-        .add_param(Param::i32 {
-            name: "MIDI CC",
-            min: 1,
-            max: 128,
-        });
+        .add_param(Param::MidiCc { name: "MIDI CC" });
 
 pub struct Params {
     speed_mult: usize,
     range: Range,
-    use_midi: bool,
-    midi_channel: i32,
-    midi_cc: i32,
+    midi_out: MidiOut,
+    midi_channel: MidiChannel,
+    midi_cc: MidiCc,
 }
 
 impl Default for Params {
@@ -58,9 +52,9 @@ impl Default for Params {
         Self {
             speed_mult: 0,
             range: Range::_Neg5_5V,
-            use_midi: false,
-            midi_channel: 1,
-            midi_cc: 32,
+            midi_out: MidiOut([false, false, false]),
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(32),
         }
     }
 }
@@ -70,9 +64,9 @@ impl AppParams for Params {
         Some(Self {
             speed_mult: usize::from_value(values[0]),
             range: Range::from_value(values[1]),
-            use_midi: bool::from_value(values[2]),
-            midi_channel: i32::from_value(values[3]),
-            midi_cc: i32::from_value(values[4]),
+            midi_out: MidiOut::from_value(values[2]),
+            midi_channel: MidiChannel::from_value(values[3]),
+            midi_cc: MidiCc::from_value(values[4]),
         })
     }
 
@@ -80,7 +74,7 @@ impl AppParams for Params {
         let mut vec = Vec::new();
         vec.push(self.speed_mult.into()).unwrap();
         vec.push(self.range.into()).unwrap();
-        vec.push(self.use_midi.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec
@@ -135,8 +129,8 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (range, use_midi, midi_chan, midi_cc) =
-        params.query(|p| (p.range, p.use_midi, p.midi_channel, p.midi_cc));
+    let (range, midi_out, midi_chan, midi_cc) =
+        params.query(|p| (p.range, p.midi_out, p.midi_channel, p.midi_cc));
 
     let speed_mult = 2u32.pow(params.query(|p| p.speed_mult).min(31) as u32);
     let output = app.make_out_jack(0, range).await;
@@ -145,28 +139,35 @@ pub async fn run(
     let leds = app.use_leds();
     let mut clk = app.use_clock();
 
-    let midi = app.use_midi_output(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_out, midi_chan);
 
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
     let glob_tick = app.make_global(false);
-    let glob_div = app.make_global(24);
+    let glob_quant_speed = app.make_global(0.07);
+    let glob_count = app.make_global(500);
 
     let curve = Curve::Exponential;
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6];
 
-    let (speed, wave) = storage.query(|s| (s.layer_speed, s.wave));
+    let wave = storage.query(|s| s.wave);
 
     let color = get_color_for(wave);
 
-    leds.set(0, Led::Button, color, Brightness::Lower);
+    leds.set(0, Led::Button, color, Brightness::Mid);
 
-    glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
-    glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
     let mut count = 0;
-    let mut quant_speed: f32 = 6.;
     let mut last_out = 0;
+
+    let update_speed = async || {
+        glob_lfo_speed.set((curve.at(storage.query(|s| s.layer_speed)) as f32) * 0.015 + 0.0682);
+
+        let div = resolution[((storage.query(|s| s.layer_speed)) as usize / 500).clamp(0, 8)];
+        glob_quant_speed.set(4095. / ((glob_count.get().max(1) as f32 * div as f32) / 24.));
+    };
+
+    update_speed().await;
 
     let fut1 = async {
         loop {
@@ -180,13 +181,17 @@ pub async fn run(
             count += 1;
             if glob_tick.get() {
                 // add timeout
-                let div = glob_div.get();
-                quant_speed = 4095. / ((count.max(1) as f32 * div as f32) / 24.);
+
+                if count < 2000 {
+                    glob_count.set(count);
+                    update_speed().await
+                }
                 count = 0;
                 glob_tick.set(false);
             }
 
             let lfo_speed = glob_lfo_speed.get();
+            let quant_speed = glob_quant_speed.get();
             let lfo_pos = glob_lfo_pos.get();
 
             let next_pos = if sync {
@@ -203,9 +208,9 @@ pub async fn run(
             };
 
             output.set_value(val);
-            if use_midi {
+            if midi_out.is_some() {
                 if last_out / 32 != val / 32 {
-                    midi.send_cc(midi_cc as u8, val).await;
+                    midi.send_cc(midi_cc, val).await;
                 }
                 last_out = val;
             }
@@ -219,9 +224,9 @@ pub async fn run(
             let color = get_color_for(wave);
 
             if sync && next_pos as u16 > 2048 {
-                leds.set(0, Led::Button, color, Brightness::Lowest);
+                leds.set(0, Led::Button, color, Brightness::Low);
             } else {
-                leds.set(0, Led::Button, color, Brightness::Lower);
+                leds.set(0, Led::Button, color, Brightness::Mid);
             }
 
             match latch_active_layer {
@@ -262,9 +267,8 @@ pub async fn run(
             if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
                 match latch_layer {
                     LatchLayer::Main => {
-                        glob_lfo_speed.set(curve.at(new_value) as f32 * 0.015 + 0.0682);
-                        glob_div.set(resolution[(new_value as usize / 500).clamp(0, 8)]);
                         storage.modify_and_save(|s| s.layer_speed = new_value);
+                        update_speed().await;
                     }
                     LatchLayer::Alt => {
                         storage.modify_and_save(|s| s.layer_attenuation = new_value);
@@ -286,7 +290,7 @@ pub async fn run(
                 });
 
                 let color = get_color_for(wave);
-                leds.set(0, Led::Button, color, Brightness::Lower);
+                leds.set(0, Led::Button, color, Brightness::Mid);
             } else {
                 glob_lfo_pos.set(0.0);
             }
@@ -325,16 +329,12 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let speed = storage.query(|s| s.layer_speed);
                     let wave_saved = storage.query(|s| s.wave);
-
-                    glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
-                    glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
-
+                    update_speed().await;
                     let color = get_color_for(wave_saved);
-                    leds.set(0, Led::Button, color, Brightness::Lower);
+                    leds.set(0, Led::Button, color, Brightness::Mid);
                 }
                 SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }

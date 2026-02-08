@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 
+use embassy_futures::select::{select, Either};
 use embassy_rp::clocks::RoscRng;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
@@ -13,11 +14,12 @@ use libfp::{
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
     utils::scale_bits_12_7,
-    Brightness, ClockDivision, Color, Range,
+    Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
+    Range,
 };
 
 use crate::{
-    events::{EventPubSubChannel, EventPubSubSubscriber, InputEvent},
+    events::{EventPubSubChannel, InputEvent},
     tasks::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
         clock::{ClockSubscriber, CLOCK_PUBSUB},
@@ -26,7 +28,7 @@ use crate::{
         max::{
             MaxCmd, MaxSender, MAX_TRIGGERS_GPO, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
         },
-        midi::AppMidiSender,
+        midi::{AppMidiSender, MidiEventSource, MidiMsg, MidiPubSubChannel, MidiPubSubSubscriber},
     },
     QUANTIZER,
 };
@@ -211,6 +213,7 @@ impl<const N: usize> Buttons<N> {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn wait_for_long_press(&self, chan: usize) -> bool {
         let chan = chan.clamp(0, N - 1);
         loop {
@@ -329,7 +332,7 @@ impl Clock {
 }
 
 pub enum SceneEvent {
-    LoadSscene(u8),
+    LoadScene(u8),
     SaveScene(u8),
 }
 
@@ -359,16 +362,23 @@ impl<const N: usize> I2cOutput<N> {
 #[derive(Clone, Copy)]
 pub struct MidiOutput {
     start_channel: usize,
-    midi_sender: AppMidiSender,
     midi_channel: u4,
+    midi_out: MidiOut,
+    midi_sender: AppMidiSender,
 }
 
 impl MidiOutput {
-    pub fn new(start_channel: usize, midi_channel: u4, midi_sender: AppMidiSender) -> Self {
+    pub fn new(
+        midi_out: MidiOut,
+        start_channel: usize,
+        midi_channel: u4,
+        midi_sender: AppMidiSender,
+    ) -> Self {
         Self {
             start_channel,
-            midi_sender,
             midi_channel,
+            midi_out,
+            midi_sender,
         }
     }
 
@@ -377,12 +387,13 @@ impl MidiOutput {
             channel: self.midi_channel,
             message: msg,
         };
-        self.midi_sender.send((self.start_channel, event)).await;
+        let msg = MidiMsg::new(event, self.midi_out, MidiEventSource::Local);
+        self.midi_sender.send((self.start_channel, msg)).await;
     }
 
     /// Sends a MIDI CC message.
     /// value is normalized to a range of 0-4095
-    pub async fn send_cc(&self, cc: u8, value: u16) {
+    pub async fn send_cc(&self, cc: MidiCc, value: u16) {
         let msg = MidiMessage::Controller {
             controller: cc.into(),
             value: scale_bits_12_7(value),
@@ -392,17 +403,16 @@ impl MidiOutput {
 
     /// Sends a MIDI NoteOn message.
     /// velocity is normalized to a range of 0-4095
-    pub async fn send_note_on(&self, note_number: u8, velocity: u16) {
+    pub async fn send_note_on(&self, note_number: MidiNote, velocity: u16) {
         let msg = MidiMessage::NoteOn {
             key: note_number.into(),
-
             vel: scale_bits_12_7(velocity),
         };
         self.send_midi_msg(msg).await;
     }
 
     /// Sends a MIDI NoteOff message.
-    pub async fn send_note_off(&self, note_number: u8) {
+    pub async fn send_note_off(&self, note_number: MidiNote) {
         let msg = MidiMessage::NoteOff {
             key: note_number.into(),
             vel: 0.into(),
@@ -412,6 +422,7 @@ impl MidiOutput {
 
     /// Sends a MIDI Aftertouch message.
     /// velocity is normalized to a range of 0-4095
+    #[allow(dead_code)]
     pub async fn send_aftertouch(&self, note_number: u8, velocity: u16) {
         let msg = MidiMessage::Aftertouch {
             key: note_number.into(),
@@ -422,6 +433,7 @@ impl MidiOutput {
 
     /// Sends a MIDI PitchBend message.
     /// bend is a value between 0 and 16,383
+    #[allow(dead_code)]
     pub async fn send_pitch_bend(&self, bend: u16) {
         let msg = MidiMessage::PitchBend {
             bend: PitchBend(bend.into()),
@@ -431,24 +443,56 @@ impl MidiOutput {
 }
 
 pub struct MidiInput {
-    subscriber: EventPubSubSubscriber,
     midi_channel: u4,
+    din_sub: Option<MidiPubSubSubscriber>,
+    usb_sub: Option<MidiPubSubSubscriber>,
 }
 
 impl MidiInput {
-    pub fn new(midi_channel: u4, event_pubsub: &'static EventPubSubChannel) -> Self {
-        let subscriber = event_pubsub.subscriber().unwrap();
+    pub fn new(
+        midi_in: MidiIn,
+        midi_channel: u4,
+        din_channel: &'static MidiPubSubChannel,
+        usb_channel: &'static MidiPubSubChannel,
+    ) -> Self {
+        let usb_sub = match midi_in {
+            MidiIn([true, _]) => Some(usb_channel.subscriber().unwrap()),
+            _ => None,
+        };
+
+        // Only create subscribers for the requested sources
+        let din_sub = match midi_in {
+            MidiIn([_, true]) => Some(din_channel.subscriber().unwrap()),
+            _ => None,
+        };
+
         Self {
-            subscriber,
             midi_channel,
+            din_sub,
+            usb_sub,
         }
     }
 
     pub async fn wait_for_message(&mut self) -> MidiMessage {
         loop {
-            if let InputEvent::MidiMsg(LiveEvent::Midi { channel, message }) =
-                self.subscriber.next_message_pure().await
-            {
+            // Determine which future to await based on active subscribers
+            let event = match (&mut self.din_sub, &mut self.usb_sub) {
+                (Some(din), None) => din.next_message_pure().await,
+                (None, Some(usb)) => usb.next_message_pure().await,
+                (Some(din), Some(usb)) => {
+                    match select(din.next_message_pure(), usb.next_message_pure()).await {
+                        Either::First(evt) => evt,
+                        Either::Second(evt) => evt,
+                    }
+                }
+                (None, None) => {
+                    core::future::pending::<()>().await;
+                    unreachable!()
+                }
+            };
+
+            // Common filtering logic
+            if let LiveEvent::Midi { channel, message } = event {
                 if channel == self.midi_channel {
                     return message;
                 }
@@ -540,9 +584,16 @@ impl Quantizer {
         let mut state = self.state.borrow_mut();
         quantizer.get_quantized_note(&mut state, value, self.range)
     }
+    /// Get Quantizer scale
+    #[allow(dead_code)]
+    pub async fn get_scale(&self) -> (Key, Note) {
+        let quantizer = QUANTIZER.get().lock().await;
+        (quantizer.get_key(), quantizer.get_tonic())
+    }
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum AppError {
     DeserializeFailed,
 }
@@ -556,9 +607,12 @@ pub struct App<const N: usize> {
     i2c_sender: I2cLeaderSender,
     max_sender: MaxSender,
     midi_sender: AppMidiSender,
+    midi_din_pubsub: &'static MidiPubSubChannel,
+    midi_usb_pubsub: &'static MidiPubSubChannel,
 }
 
 impl<const N: usize> App<N> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         app_id: u8,
         start_channel: usize,
@@ -567,6 +621,8 @@ impl<const N: usize> App<N> {
         i2c_sender: I2cLeaderSender,
         max_sender: MaxSender,
         midi_sender: AppMidiSender,
+        midi_din_pubsub: &'static MidiPubSubChannel,
+        midi_usb_pubsub: &'static MidiPubSubChannel,
     ) -> Self {
         Self {
             app_id,
@@ -575,6 +631,8 @@ impl<const N: usize> App<N> {
             layout_id,
             max_sender,
             midi_sender,
+            midi_din_pubsub,
+            midi_usb_pubsub,
             start_channel,
         }
     }
@@ -636,6 +694,7 @@ impl<const N: usize> App<N> {
         Timer::after_millis(millis).await
     }
 
+    #[allow(dead_code)]
     pub async fn delay_secs(&self, secs: u64) {
         Timer::after_secs(secs).await
     }
@@ -664,12 +723,22 @@ impl<const N: usize> App<N> {
         Quantizer::new(range)
     }
 
-    pub fn use_midi_input(&self, midi_channel: u8) -> MidiInput {
-        MidiInput::new(midi_channel.into(), self.event_pubsub)
+    pub fn use_midi_input(&self, midi_in: MidiIn, midi_channel: MidiChannel) -> MidiInput {
+        MidiInput::new(
+            midi_in,
+            midi_channel.into(),
+            self.midi_din_pubsub,
+            self.midi_usb_pubsub,
+        )
     }
 
-    pub fn use_midi_output(&self, midi_channel: u8) -> MidiOutput {
-        MidiOutput::new(self.start_channel, midi_channel.into(), self.midi_sender)
+    pub fn use_midi_output(&self, midi_out: MidiOut, midi_channel: MidiChannel) -> MidiOutput {
+        MidiOutput::new(
+            midi_out,
+            self.start_channel,
+            midi_channel.into(),
+            self.midi_sender,
+        )
     }
 
     pub fn use_i2c_output(&self) -> I2cOutput<N> {
@@ -682,7 +751,7 @@ impl<const N: usize> App<N> {
         loop {
             match subscriber.next_message_pure().await {
                 InputEvent::LoadScene(scene) => {
-                    return SceneEvent::LoadSscene(scene);
+                    return SceneEvent::LoadScene(scene);
                 }
                 InputEvent::SaveScene(scene) => {
                     return SceneEvent::SaveScene(scene);

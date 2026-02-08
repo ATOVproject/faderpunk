@@ -110,12 +110,12 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let led_color = params.query(|p| (p.color));
+    let led_color = params.query(|p| p.color);
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    leds.set(0, Led::Button, led_color, Brightness::Lower);
-    leds.set(1, Led::Button, led_color, Brightness::Lower);
+    leds.set(0, Led::Button, led_color, Brightness::Mid);
+    leds.set(1, Led::Button, led_color, Brightness::Mid);
 
     let range = Range::_Neg5_5V;
     let quantizer = app.use_quantizer(range);
@@ -123,28 +123,25 @@ pub async fn run(
     let output = app.make_out_jack(1, range).await;
     for chan in 0..2 {
         if !storage.query(|s| s.offset_toggles[chan]) {
-            leds.set(chan, Led::Button, led_color, Brightness::Lower);
+            leds.set(chan, Led::Button, led_color, Brightness::Mid);
         } else {
             leds.unset(chan, Led::Button);
         }
     }
 
     let main_loop = async {
-        let mut oct = 0;
-        let mut st = 0;
-
         loop {
             app.delay_millis(1).await;
 
             let inval = _input.get_value() as i16;
 
-            oct = if storage.query(|s| s.offset_toggles[1]) {
+            let oct = if storage.query(|s| s.offset_toggles[1]) {
                 0
             } else {
                 (((storage.query(|s| s.oct) * 10 / 4095) as f32 - 5.) * 410.) as i16
             };
 
-            st = if storage.query(|s| s.offset_toggles[0]) {
+            let st = if storage.query(|s| s.offset_toggles[0]) {
                 0
             } else {
                 ((storage.query(|s| s.st) * 12 / 4095) as f32 * 410. / 12.) as i16
@@ -176,7 +173,7 @@ pub async fn run(
                     s.offset_toggles[chan] = !s.offset_toggles[chan];
                 });
                 if !storage.query(|s| s.offset_toggles[chan]) {
-                    leds.set(chan, Led::Button, led_color, Brightness::Lower);
+                    leds.set(chan, Led::Button, led_color, Brightness::Mid);
                 } else {
                     leds.unset(chan, Led::Button);
                 }
@@ -239,11 +236,11 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                     for chan in 0..2 {
                         if !storage.query(|s| s.offset_toggles[chan]) {
-                            leds.set(chan, Led::Button, led_color, Brightness::Lower);
+                            leds.set(chan, Led::Button, led_color, Brightness::Mid);
                         } else {
                             leds.unset(chan, Led::Button);
                         }

@@ -16,9 +16,9 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 1;
+pub const PARAMS: usize = 2;
 
-const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Envelope Follower",
@@ -38,15 +38,23 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
+})
+.add_param(Param::Range {
+    name: "Range",
+    variants: &[Range::_0_10V, Range::_Neg5_5V],
 });
 
 pub struct Params {
     color: Color,
+    range: Range,
 }
 
 impl Default for Params {
     fn default() -> Self {
-        Self { color: Color::Pink }
+        Self {
+            color: Color::Pink,
+            range: Range::_Neg5_5V,
+        }
     }
 }
 
@@ -57,12 +65,14 @@ impl AppParams for Params {
         }
         Some(Self {
             color: Color::from_value(values[0]),
+            range: Range::from_value(values[1]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.range.into()).unwrap();
         vec
     }
 }
@@ -121,14 +131,13 @@ pub async fn run(
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let input = app.make_in_jack(0, Range::_Neg5_5V).await;
-    let output = app.make_out_jack(1, Range::_Neg5_5V).await;
-    let curve = Curve::Logarithmic;
+    let range = params.query(|p| p.range);
+    let input = app.make_in_jack(0, range).await;
+    let output = app.make_out_jack(1, range).await;
 
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let mut oldval = 0.;
-    let mut shift_old = false;
 
     leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
     leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
@@ -147,7 +156,9 @@ pub async fn run(
             glob_latch_layer.set(latch_active_layer);
 
             let mut inval = input.get_value();
-            inval = rectify(inval);
+            if range.is_bipolar() {
+                inval = rectify(inval);
+            }
             inval = (inval as f32
                 * (curve_gain.at(storage.query(|s| s.gain_saved)) as f32 * 2. / 4095. + 1.))
                 .clamp(0., 4095.) as u16;
@@ -155,26 +166,41 @@ pub async fn run(
             oldval = slew_limiter(
                 oldval,
                 inval,
-                storage.query(|s| (s.fader_saved[0])),
-                storage.query(|s| (s.fader_saved[1])),
+                storage.query(|s| s.fader_saved[0]),
+                storage.query(|s| s.fader_saved[1]),
             )
             .clamp(0., 4095.);
 
-            let att = storage.query(|s| (s.att_saved));
-            let offset = storage.query(|s| (s.offset_saved)) as i32 - 2047;
+            let att = storage.query(|s| s.att_saved);
+            let offset = storage.query(|s| s.offset_saved) as i32 - 2047;
 
             let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
 
             output.set_value(outval);
 
             if latch_active_layer == LatchLayer::Main {
-                let slew_led = split_unsigned_value(oldval as u16);
-                leds.set(0, Led::Top, led_color, Brightness::Custom(slew_led[0]));
-                leds.set(0, Led::Bottom, led_color, Brightness::Custom(slew_led[1]));
+                if range.is_bipolar() {
+                    let slew_led = split_unsigned_value(oldval as u16);
+                    leds.set(0, Led::Top, led_color, Brightness::Custom(slew_led[0]));
+                    leds.set(0, Led::Bottom, led_color, Brightness::Custom(slew_led[1]));
 
-                let out_led = split_unsigned_value(outval);
-                leds.set(1, Led::Top, led_color, Brightness::Custom(out_led[0]));
-                leds.set(1, Led::Bottom, led_color, Brightness::Custom(out_led[1]));
+                    let out_led = split_unsigned_value(outval);
+                    leds.set(1, Led::Top, led_color, Brightness::Custom(out_led[0]));
+                    leds.set(1, Led::Bottom, led_color, Brightness::Custom(out_led[1]));
+                } else {
+                    leds.set(
+                        0,
+                        Led::Top,
+                        led_color,
+                        Brightness::Custom((oldval as u16 / 16) as u8),
+                    );
+                    leds.set(
+                        1,
+                        Led::Top,
+                        led_color,
+                        Brightness::Custom((outval / 16) as u8),
+                    );
+                }
                 leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
                 leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
             }
@@ -185,12 +211,12 @@ pub async fn run(
                 let att_led = split_unsigned_value(att);
                 leds.set(1, Led::Top, Color::Red, Brightness::Custom(att_led[0]));
                 leds.set(1, Led::Bottom, Color::Red, Brightness::Custom(att_led[1]));
-                if storage.query(|s| (s.offset_saved)) == 2047 {
+                if storage.query(|s| s.offset_saved) == 2047 {
                     leds.unset(0, Led::Button);
                 } else {
                     leds.set(0, Led::Button, Color::Red, BUTTON_BRIGHTNESS);
                 }
-                if storage.query(|s| (s.att_saved)) == 4095 {
+                if storage.query(|s| s.att_saved) == 4095 {
                     leds.unset(1, Led::Button);
                 } else {
                     leds.set(1, Led::Button, Color::Red, BUTTON_BRIGHTNESS);
@@ -300,7 +326,7 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                 }
                 SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,

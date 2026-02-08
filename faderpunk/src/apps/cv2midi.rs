@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, split_unsigned_value},
-    AppIcon, Brightness, Color, APP_MAX_PARAMS,
+    AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -16,9 +16,9 @@ use libfp::{ext::FromValue, Config, Param, Range, Value};
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 5;
 
-const BUTTON_BRIGHTNESS: Brightness = Brightness::Lower;
+const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "CV to MIDI",
@@ -27,16 +27,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     AppIcon::NoteGrid,
 )
 .add_param(Param::bool { name: "Bipolar" })
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel",
-    min: 1,
-    max: 16,
 })
-.add_param(Param::i32 {
-    name: "MIDI CC",
-    min: 1,
-    max: 128,
-})
+.add_param(Param::MidiCc { name: "MIDI CC" })
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -49,12 +43,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
-});
+})
+.add_param(Param::MidiOut);
 
 pub struct Params {
     bipolar: bool,
-    midi_channel: i32,
-    midi_cc: i32,
+    midi_channel: MidiChannel,
+    midi_cc: MidiCc,
+    midi_out: MidiOut,
     color: Color,
 }
 
@@ -62,8 +58,9 @@ impl Default for Params {
     fn default() -> Self {
         Self {
             bipolar: false,
-            midi_channel: 1,
-            midi_cc: 32,
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(32),
+            midi_out: MidiOut::default(),
             color: Color::Violet,
         }
     }
@@ -76,9 +73,10 @@ impl AppParams for Params {
         }
         Some(Self {
             bipolar: bool::from_value(values[0]),
-            midi_channel: i32::from_value(values[1]),
-            midi_cc: i32::from_value(values[2]),
+            midi_channel: MidiChannel::from_value(values[1]),
+            midi_cc: MidiCc::from_value(values[2]),
             color: Color::from_value(values[3]),
+            midi_out: MidiOut::from_value(values[4]),
         })
     }
 
@@ -88,6 +86,7 @@ impl AppParams for Params {
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec
     }
 }
@@ -138,14 +137,14 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (bipolar, midi_channel, midi_cc, led_color) =
-        params.query(|p| (p.bipolar, p.midi_channel, p.midi_cc, p.color));
+    let (bipolar, midi_out, midi_channel, midi_cc, led_color) =
+        params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc, p.color));
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
 
-    let midi = app.use_midi_output(midi_channel as u8 - 1);
+    let midi = app.use_midi_output(midi_out, midi_channel);
 
     let muted_glob = app.make_global(false);
 
@@ -175,7 +174,7 @@ pub async fn run(
 
             let input_val = if !muted_glob.get() {
                 if !bipolar {
-                    (attenuate(input.get_value(), storage.query(|s| s.att_saved))
+                    (attenuate(input.get_value() * 2, storage.query(|s| s.att_saved))
                         + storage.query(|s| s.offset_saved))
                     .clamp(0, 4095)
                 } else {
@@ -190,7 +189,7 @@ pub async fn run(
             };
             if latch_active_layer == LatchLayer::Main {
                 if bipolar {
-                    let led1 = split_unsigned_value(input_val as u16);
+                    let led1 = split_unsigned_value(input_val);
                     leds.set(0, Led::Top, led_color, Brightness::Custom(led1[0]));
                     leds.set(0, Led::Bottom, led_color, Brightness::Custom(led1[1]));
                 } else {
@@ -210,9 +209,9 @@ pub async fn run(
                 );
             }
 
-            if old_midi != input_val as u16 / 32 {
-                midi.send_cc(midi_cc as u8, input_val as u16).await;
-                old_midi = input_val as u16 / 32;
+            if old_midi != input_val / 32 {
+                midi.send_cc(midi_cc, input_val).await;
+                old_midi = input_val / 32;
             }
         }
     };
@@ -229,7 +228,7 @@ pub async fn run(
             if muted {
                 leds.unset(0, Led::Button);
             } else {
-                leds.set(0, Led::Button, led_color, Brightness::Lower);
+                leds.set(0, Led::Button, led_color, Brightness::Mid);
             }
         }
     };
@@ -263,13 +262,13 @@ pub async fn run(
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
 
                     if storage.query(|s| s.muted) {
                         leds.unset(0, Led::Button);
                     } else {
-                        leds.set(0, Led::Button, led_color, Brightness::Lower);
+                        leds.set(0, Led::Button, led_color, Brightness::Mid);
                     }
 
                     muted_glob.set(storage.query(|s| s.muted));

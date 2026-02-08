@@ -1,6 +1,6 @@
 [package]
 name = "faderpunk"
-version = "1.6.0"
+version = "1.7.0-beta.1"
 edition = "2021"
 license = "GPL-3.0"
 
@@ -63,4 +63,6 @@ libfp = { path = "../libfp" }
 
 [lints.clippy]
 large_futures = "warn"
+
+[lints.rust]
 unused_must_use = "deny"

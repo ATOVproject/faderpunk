@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config, Curve,
-    Param, Value, APP_MAX_PARAMS,
+    MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -16,9 +16,9 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 5;
 
-const LED_BRIGHTNESS: Brightness = Brightness::Low;
+const LED_BRIGHTNESS: Brightness = Brightness::High;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Random Triggers",
@@ -26,16 +26,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Cyan,
     AppIcon::Die,
 )
-.add_param(Param::i32 {
+.add_param(Param::MidiChannel {
     name: "MIDI Channel",
-    min: 1,
-    max: 16,
 })
-.add_param(Param::i32 {
-    name: "MIDI NOTE",
-    min: 1,
-    max: 128,
-})
+.add_param(Param::MidiNote { name: "MIDI Note" })
 .add_param(Param::i32 {
     name: "GATE %",
     min: 1,
@@ -53,11 +47,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
-});
+})
+.add_param(Param::MidiOut);
 
 pub struct Params {
-    midi_channel: i32,
-    note: i32,
+    midi_channel: MidiChannel,
+    midi_note: MidiNote,
+    midi_out: MidiOut,
     gatel: i32,
     color: Color,
 }
@@ -65,8 +61,9 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
-            midi_channel: 1,
-            note: 32,
+            midi_channel: MidiChannel::default(),
+            midi_note: MidiNote::from(32),
+            midi_out: MidiOut([false, false, false]),
             gatel: 50,
             color: Color::Cyan,
         }
@@ -79,19 +76,21 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_channel: i32::from_value(values[0]),
-            note: i32::from_value(values[1]),
+            midi_channel: MidiChannel::from_value(values[0]),
+            midi_note: MidiNote::from_value(values[1]),
             gatel: i32::from_value(values[2]),
             color: Color::from_value(values[3]),
+            midi_out: MidiOut::from_value(values[4]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
         vec.push(self.midi_channel.into()).unwrap();
-        vec.push(self.note.into()).unwrap();
+        vec.push(self.midi_note.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec
     }
 }
@@ -141,8 +140,8 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_chan, note, gatel, led_color) =
-        params.query(|p| (p.midi_channel, p.note, p.gatel, p.color));
+    let (midi_out, midi_chan, note, gatel, led_color) =
+        params.query(|p| (p.midi_out, p.midi_channel, p.midi_note, p.gatel, p.color));
     let curve = Curve::Exponential;
 
     let mut clock = app.use_clock();
@@ -151,7 +150,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let leds = app.use_leds();
 
-    let midi = app.use_midi_output(midi_chan as u8 - 1);
+    let midi = app.use_midi_output(midi_out, midi_chan);
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
@@ -165,7 +164,7 @@ pub async fn run(
 
     let mut rndval = die.roll();
 
-    let (res, mute, att) = storage.query(|s| (s.fader_saved, s.mute_saved, s.prob_saved));
+    let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_saved));
 
     glob_muted.set(mute);
     div_glob.set(resolution[res as usize / 345]);
@@ -184,20 +183,20 @@ pub async fn run(
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
-                    midi.send_note_off(note as u8 - 1).await;
+                    midi.send_note_off(note).await;
                     note_on = false;
                     jack.set_low().await;
                 }
                 ClockEvent::Tick => {
                     let muted = glob_muted.get();
-                    let val = storage.query(|s| (s.prob_saved));
+                    let val = storage.query(|s| s.prob_saved);
                     let div = div_glob.get();
 
                     if clkn % div == 0 {
                         if curve.at(val) >= rndval && !muted {
                             jack.set_high().await;
                             leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
-                            midi.send_note_on(note as u8 - 1, 4095).await;
+                            midi.send_note_on(note, 4095).await;
                             note_on = true;
                         }
 
@@ -211,15 +210,13 @@ pub async fn run(
 
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
                         if note_on {
-                            midi.send_note_off(note as u8 - 1).await;
-                            leds.set(0, Led::Top, led_color, Brightness::Custom(0));
-                            // leds.unset(0, Led::Top);
+                            midi.send_note_off(note).await;
+                            leds.set(0, Led::Top, led_color, Brightness::Off);
                             note_on = false;
                             jack.set_low().await;
                         }
 
-                        // leds.unset(0, Led::Bottom);
-                        leds.set(0, Led::Bottom, led_color, Brightness::Custom(0));
+                        leds.set(0, Led::Bottom, led_color, Brightness::Off);
                     }
                     clkn += 1;
                 }
@@ -272,38 +269,15 @@ pub async fn run(
                     LatchLayer::Third => {}
                 }
             }
-
-            // storage.load(None).await;
-            // let fad = fader.get_value();
-
-            // if buttons.is_shift_pressed() {
-            //     let fad_saved = storage.query(|s| s.fader_saved);
-            //     if is_close(fad, fad_saved) {
-            //         latched_glob.set(true);
-            //     }
-            //     if latched_glob.get() {
-            //         div_glob.set(resolution[fad as usize / 345]);
-            //         storage.modify_and_save(|s| s.fader_saved = fad, None).await;
-            //     }
-            // } else {
-            //     let prob = storage.query(|s| (s.prob_saved));
-            //     if is_close(fad, prob) {
-            //         latched_glob.set(true);
-            //     }
-            //     if latched_glob.get() {
-            //         prob_glob.set(fad);
-            //         storage.modify_and_save(|s| s.prob_saved = fad, None).await;
-            //     }
-            // }
         }
     };
 
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
-                SceneEvent::LoadSscene(scene) => {
+                SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let (res, mute, att) =
+                    let (res, mute, _att) =
                         storage.query(|s| (s.fader_saved, s.mute_saved, s.prob_saved));
 
                     glob_muted.set(mute);

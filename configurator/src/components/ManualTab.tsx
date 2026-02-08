@@ -58,7 +58,7 @@ const apps: ManualAppData[] = [
     icon: "sine",
     params: ["Speed division", "Range", "Send MIDI", "MIDI Channel", "MIDI CC"],
     storage: ["Clocked", "Attenuation", "Speed", "Waveform"],
-    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (blue), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
+    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
     channels: [
       {
         jackTitle: "Output",
@@ -70,7 +70,7 @@ const apps: ManualAppData[] = [
         faderPlusShiftDescription: "Reduces the output range",
         fnTitle: "Waveform selection",
         fnDescription:
-          "Sine (yellow), triangle (pink), ramp down (blue), ramp up (red), and square (white)",
+          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
         fnPlusShiftTitle: "Reset - Clocked mode",
         fnPlusShiftDescription: "Short reset - Long clock mode",
         ledTop: "Positive level indicator",
@@ -85,7 +85,7 @@ const apps: ManualAppData[] = [
     description: "Variable curve AD, ASR or looping AD",
     color: "Yellow",
     icon: "ad-env",
-    params: ["Use MIDI", "MIDI Channel"],
+    params: ["Use MIDI", "MIDI Channel", "MIDI retrigger"],
     storage: [
       "AD lengths",
       "AD curves",
@@ -93,7 +93,7 @@ const apps: ManualAppData[] = [
       "Attenuation",
       "Trigger to gate timing",
     ],
-    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. As with all apps where LED color has no functional role, you’re free to customize it in the settings.",
+    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. The 'MIDI retrigger' parameter allow for the envelope to be retriggered when MIDI notes are overlapping",
     channels: [
       {
         jackTitle: "Gate Input",
@@ -113,7 +113,7 @@ const apps: ManualAppData[] = [
       {
         jackTitle: "Envelope Output",
         jackDescription: "0-10V output range",
-        faderTitle: "Attack time",
+        faderTitle: "Decay time",
         faderDescription: "Sets the decay time from 0 to 4 sec",
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range.",
@@ -180,7 +180,7 @@ const apps: ManualAppData[] = [
       "Ranges",
       "Octaves",
     ],
-    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, and you can navigate between them using Shift + Buttons. The CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 2&3 for sequencer 2, and so on. MIDI channels for each sequencer can be set individually in the parameters. Faders are used to set note values, buttons define the gate pattern, and long button presses enable legato. Shift modifies settings for the selected sequencer: Shift + Fader 1 sets step length, Fader 2 sets gate length, Fader 3 selects octave, Fader 4 defines the sequence range (1–5 octaves), and Fader 5 sets the sequence resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th). Buttons are used to select pages, with two pages available per sequencer. The output of each sequencer is quantized to the scale set in the global quantizer.",
+    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, and you can navigate between them using Shift + Buttons. The CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, and so on. MIDI channels for each sequencer can be set individually in the parameters. Faders are used to set note values, buttons define the gate pattern, and long button presses enable legato. Shift modifies settings for the selected sequencer: Shift + Fader 1 sets step length, Fader 2 sets gate length, Fader 3 selects octave, Fader 4 defines the sequence range (1–5 octaves), and Fader 5 sets the sequence resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th). Buttons are used to select pages, with two pages available per sequencer. The output of each sequencer is quantized to the scale set in the global quantizer.",
     channels: [
       {
         jackTitle: "CV Output",
@@ -561,7 +561,7 @@ const apps: ManualAppData[] = [
     description: "Audio amplitude to CV",
     color: "Pink",
     icon: "env-follower",
-    params: ["Color"],
+    params: ["Color", "Range"],
     storage: ["Attack", "Attenuvertion", "Offset", "Input Gain"],
     text: "This app is an envelope follower with input and output ranges of ±5V. Jack 1 is the input, Jack 2 is the output. It includes offset and attenuverter functionality, making it ideal for driving VCAs or implementing sidechain compression. The attenuverter has a maximum gain of 2x. Main functions include Fader 1 for attack and Fader 2 for decay. Shift + Fader 1 sets offset, Shift + Fader 2 sets attenuvertion. Button 1 kills the offset, Button 2 sets the attenuvertion. Button 1 + Fader 1 adjusts input gain from 1x to 3x.",
     channels: [
@@ -642,9 +642,10 @@ const apps: ManualAppData[] = [
       "Bend Range",
       "Note",
       "Color",
+      "Velocity on Gate",
     ],
     storage: ["Attenuation", "Muted"],
-    text: "This app converts MIDI messages into CV signals. It supports multiple modes, each with different output behaviors. The output range is typically 0–10V, except for Pitch Bend mode which uses ±5V. When set to MIDI to Gate conversion (Gate and Note Gate modes) the gate voltage is directly related to the velocity of the MIDI note with the minimum velocity being 1V and maximum 10V. Parameters include MIDI channel, curve shaping (for CC and Aftertouch), pitch bend range. The Note Gate mode is especially useful for triggering drum modules, as it allows individual gate outputs to be assigned to specific MIDI notes—ideal for drum sequencing setups.",
+    text: "This app converts MIDI messages into CV signals. It supports multiple modes, each with different output behaviors. The output range is typically 0–10V, except for Pitch Bend mode which uses ±5V. When the `Velocity on Gate` toggle is activated the gate voltage in `Gate` and `Note Gate` modes is directly related to the velocity of the MIDI note with the minimum velocity being 1V and maximum 10V. Parameters include MIDI channel, curve shaping (for CC and Aftertouch), pitch bend range. The Note Gate mode is especially useful for triggering drum modules, as it allows individual gate outputs to be assigned to specific MIDI notes—ideal for drum sequencing setups.",
     channels: [
       {
         jackTitle: "Output",
@@ -808,7 +809,60 @@ const apps: ManualAppData[] = [
         fnDescription: "",
         fnPlusShiftTitle: "LFO Waveform selection",
         fnPlusShiftDescription:
-          "Sine (yellow), triangle (pink), ramp down (blue), ramp up (red), and square (white)",
+          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
+        ledTop: "Positive level indicator",
+        ledTopPlusShift: "Attenuation level in red",
+        ledBottom: "Negative level indicator",
+      },
+    ],
+  },
+  {
+    appId: 22,
+    title: "LFO+",
+    description: "Multi shape LFO",
+    color: "Yellow",
+    icon: "sine",
+    params: ["Speed division", "Range", "Send MIDI", "MIDI Channel", "MIDI CC"],
+    storage: [
+      "CV attenuation",
+      "CV mute",
+      "CV destination",
+      "Clocked",
+      "Attenuation",
+      "Speed",
+      "Waveform",
+    ],
+    text: "This app is a variation of the simple LFO, adding an assignable CV input. The first channel processes the CV input, with the fader controlling its attenuation and the button acting as a mute. Use Shift + Button 1 to set the CV destination, indicated by the button color: speed (yellow), phase (pink), amplitude (cyan) or reset (red). Note that the speed CV is through 0, meaning that the waveform will invert and speed up again when the CV input is negative. When in 'reset' mode, the LFO resets when a rising edge passing the 1V threshold is detected. It is also worth knowing that even in reset mode this input is affected by the CV attenuation and 'mute' state allowing to change the rising edge detection level. As in the standard LFO, you can select the waveform by pressing the second button, with LED colors showing the shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). Adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Free-running speed ranges from 14 Hz to one cycle per minute; clocked mode offers resolutions like 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. App parameters let you set overall speed—Normal, Slow (÷2), or Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. Output can be bipolar (-5V to +5V) or unipolar (0V to 10V), affecting the attenuator's center when sending MIDI CC (0 for unipolar, 64 for bipolar). The app can also output MIDI CC, with freely configurable channel and CC number.",
+    channels: [
+      {
+        jackTitle: "Input",
+        jackDescription: "-5V to 5V CV in",
+        faderTitle: "CV attenuation",
+        faderDescription: "Attenuates the incoming CV",
+        faderPlusShiftTitle: "",
+        faderPlusShiftDescription: "",
+        fnTitle: "CV input Mute",
+        fnDescription: "",
+        fnPlusShiftTitle: "CV destination",
+        fnPlusShiftDescription:
+          "Speed (yellow), phase (pink), amplitude (cyan), reset (red)",
+        ledTop: "Positive level indicator",
+        ledTopPlusShift: "",
+        ledBottom: "Negative level indicator",
+      },
+      {
+        jackTitle: "Output",
+        jackDescription: "-5V to 5V LFO out",
+        faderTitle: "LFO speed",
+        faderDescription:
+          "Sets the LFO speed, top is maximum and bottom slowest",
+        faderPlusShiftTitle: "Attenuation",
+        faderPlusShiftDescription: "Reduces the output range",
+        fnTitle: "Waveform selection",
+        fnDescription:
+          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
+        fnPlusShiftTitle: "Reset - Clocked mode",
+        fnPlusShiftDescription: "Short reset - Long clock mode",
         ledTop: "Positive level indicator",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "Negative level indicator",

@@ -1,6 +1,8 @@
 use embassy_time::Duration;
 use midly::num::u7;
 
+use crate::Curve;
+
 pub const fn bpm_to_clock_duration(bpm: f32, ppqn: u8) -> Duration {
     Duration::from_nanos((1_000_000_000.0 / (bpm as f64 / 60.0 * ppqn as f64)) as u64)
 }
@@ -86,22 +88,31 @@ pub fn attenuverter(input: u16, modulation: u16) -> u16 {
 
 /// Slew limiter
 pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f32 {
-    let min_slew = 200.0;
+    let curve = Curve::Exponential;
+    let min_slew = 50.0;
     let max_slew = 0.5;
     let delta = input as i32 - prev as i32;
     if delta > 0 {
-        let step = (4095 - rise_rate) as f32 / min_slew + max_slew;
-        if prev + step < input as f32 {
-            prev + step
+        let step = curve.at(4095 - rise_rate) as f32 / min_slew + max_slew;
+        if step < (4095.0 / min_slew + max_slew) - 10.0 {
+            if prev + step < input as f32 {
+                prev + step
+            } else {
+                input as f32
+            }
         } else {
-            input as f32
+            input.clamp(0, 4095) as f32
         }
     } else if delta < 0 {
-        let step = (4095 - fall_rate) as f32 / min_slew + max_slew;
-        if prev - step > input as f32 {
-            prev - step
+        let step = curve.at(4095 - fall_rate) as f32 / min_slew + max_slew;
+        if step < (4095.0 / min_slew + max_slew) - 10.0 {
+            if prev - step > input as f32 {
+                prev - step
+            } else {
+                input as f32
+            }
         } else {
-            input as f32
+            input.clamp(0, 4095) as f32
         }
     } else {
         input.clamp(0, 4095) as f32
@@ -109,17 +120,6 @@ pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f3
 }
 
 /// Very short slew meant to avoid clicks
-// pub fn clickless(prev: u16, input: u16) -> u16 {
-//     let smoothed = ((prev as u32 * 15 + input as u32) / 16) as u16;
-
-//     // Snap to target if close enough
-//     if (smoothed as i32 - input as i32).abs() < 2 {
-//         input
-//     } else {
-//         smoothed
-//     }
-// }
-
 pub fn clickless(prev: u16, input: u16) -> u16 {
     // Snap threshold: if the difference is small, jump to input
     if (prev as i32 - input as i32).abs() < 16 {

@@ -16,13 +16,15 @@ use embassy_time::{Instant, Timer};
 use midly::live::SystemRealtime;
 use portable_atomic::Ordering;
 
-use libfp::{utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig};
+use libfp::{
+    utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig, MidiOut, MidiOutConfig,
+};
 
 use crate::{
     state::{is_clock_running, update_state},
     tasks::{
         max::MAX_TRIGGERS_GPO,
-        midi::{MidiClockTarget, MidiOutEvent, MIDI_CHANNEL},
+        midi::{MidiClockMsg, MidiOutEvent, MIDI_CHANNEL},
     },
     Spawner, GLOBAL_CONFIG_WATCH,
 };
@@ -67,7 +69,21 @@ pub enum ClockInEvent {
     Continue(ClockSrc),
 }
 
+impl ClockInEvent {
+    pub fn is_clock(&self) -> bool {
+        if let Self::Tick(_) = self {
+            return true;
+        }
+        false
+    }
+    #[allow(dead_code)]
+    pub fn is_transport(&self) -> bool {
+        !self.is_clock()
+    }
+}
+
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum TransportCmd {
     Start,
     Stop,
@@ -178,7 +194,7 @@ async fn run_clock_gatekeeper() {
     loop {
         match select(clock_in_receiver.receive(), config_receiver.changed()).await {
             Either::First(event) => {
-                let (is_active, source) = match event {
+                let (is_active, _source) = match event {
                     ClockInEvent::Tick(s)
                     | ClockInEvent::Start(s)
                     | ClockInEvent::Stop(s)
@@ -191,13 +207,33 @@ async fn run_clock_gatekeeper() {
                 }
 
                 // Determine MIDI routing target
-                let midi_target = match source {
-                    ClockSrc::MidiUsb => MidiClockTarget::Uart,
-                    ClockSrc::MidiIn => MidiClockTarget::Usb,
-                    _ => MidiClockTarget::Both,
+                let midi_targets = if event.is_clock() {
+                    config.midi.outs.map(|c| {
+                        matches!(
+                            c,
+                            MidiOutConfig {
+                                send_clock: true,
+                                ..
+                            }
+                        )
+                    })
+                } else {
+                    config.midi.outs.map(|c| {
+                        matches!(
+                            c,
+                            MidiOutConfig {
+                                send_transport: true,
+                                ..
+                            },
+                        )
+                    })
                 };
 
+                let midi_target = MidiOut(midi_targets);
+                let should_send_midi = midi_targets.iter().any(|&t| t);
+
                 // Process the event
+                let mut midi_rt_event: Option<SystemRealtime> = None;
                 match event {
                     // Clock tick. Only process if clock is running
                     ClockInEvent::Tick(source) => {
@@ -206,43 +242,43 @@ async fn run_clock_gatekeeper() {
                         {
                             clock_publisher.publish(ClockEvent::Tick).await;
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
-                            let _ = midi_sender.try_send(MidiOutEvent::Clock(
-                                SystemRealtime::TimingClock,
-                                midi_target,
-                            ));
+                            midi_rt_event = Some(SystemRealtime::TimingClock);
                         }
                     }
                     // Start the clock without resetting the phase
-                    ClockInEvent::Continue(source) => {
+                    ClockInEvent::Continue(_) => {
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Start).await;
-                        let _ = midi_sender
-                            .try_send(MidiOutEvent::Clock(SystemRealtime::Continue, midi_target));
+                        midi_rt_event = Some(SystemRealtime::Continue);
                     }
                     // (Re-)start the clock. Full phase reset
-                    ClockInEvent::Start(source) => {
+                    ClockInEvent::Start(_) => {
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
-                        let _ = midi_sender
-                            .try_send(MidiOutEvent::Clock(SystemRealtime::Start, midi_target));
+                        midi_rt_event = Some(SystemRealtime::Start);
                     }
                     // Stop the clock. No phase reset
-                    ClockInEvent::Stop(source) => {
+                    ClockInEvent::Stop(_) => {
                         is_running = false;
                         clock_publisher.publish(ClockEvent::Stop).await;
-                        let _ = midi_sender
-                            .try_send(MidiOutEvent::Clock(SystemRealtime::Stop, midi_target));
+                        midi_rt_event = Some(SystemRealtime::Stop);
                     }
                     // Reset the phase without affecting the run state
-                    ClockInEvent::Reset(source) => {
+                    ClockInEvent::Reset(_) => {
                         clock_publisher.publish(ClockEvent::Reset).await;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
-                        let _ = midi_sender
-                            .try_send(MidiOutEvent::Clock(SystemRealtime::Reset, midi_target));
+                        midi_rt_event = Some(SystemRealtime::Reset);
+                    }
+                }
+
+                if should_send_midi {
+                    if let Some(rt_event) = midi_rt_event {
+                        let msg = MidiClockMsg::new(rt_event, midi_target);
+                        let _ = midi_sender.try_send(MidiOutEvent::Clock(msg));
                     }
                 }
             }
