@@ -8,8 +8,7 @@
 			"prerelease-type": "beta",
 			"versioning": "prerelease",
 			"skip-github-release": false,
-			"changelog-path": ".changelog-beta-faderpunk.md",
-			"release-as": "1.7.0-beta.0"
+			"changelog-path": ".changelog-beta-faderpunk.md"
 		},
 		"configurator": {
 			"release-type": "node",
