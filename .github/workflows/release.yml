@@ -1,51 +1,48 @@
-name: Release firmware and deploy configurator
+name: Release
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    types: [closed]
+    branches: [main]
+
 env:
   CARGO_TERM_COLOR: always
+
 permissions:
   contents: write
   pull-requests: write
-  issues: write
   pages: write
   id-token: write
+
 jobs:
-  release-please:
+  # --- Detect which packages have new versions ---
+  detect-changes:
+    if: github.head_ref == 'release' && github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
-      faderpunk_release_created: ${{ steps.release.outputs['faderpunk--release_created'] }}
-      libfp_release_created: ${{ steps.release.outputs['libfp--release_created'] }}
-      configurator_release_created: ${{ steps.release.outputs['configurator--release_created'] }}
-      faderpunk_tag_name: ${{ steps.release.outputs['faderpunk--tag_name'] }}
-      configurator_tag_name: ${{ steps.release.outputs['configurator--tag_name'] }}
+      faderpunk: ${{ steps.check.outputs.faderpunk }}
+      libfp: ${{ steps.check.outputs.libfp }}
+      configurator: ${{ steps.check.outputs.configurator }}
+      configurator_minor: ${{ steps.check.outputs.configurator_minor }}
     steps:
-      - uses: googleapis/release-please-action@v4
-        id: release
+      - uses: actions/checkout@v5
         with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-          target-branch: main
-  extract_version_info:
-    name: Extract Version Info
-    needs: release-please
-    if: ${{ needs.release-please.outputs.configurator_release_created == 'true' }}
-    runs-on: ubuntu-latest
-    outputs:
-      minor_version: ${{ steps.extract.outputs.minor_version }}
-    steps:
-      - name: Extract minor version from tag
-        id: extract
+          fetch-depth: 0
+      - id: check
         run: |
-          TAG="${{ needs.release-please.outputs.configurator_tag_name }}"
-          VERSION="${TAG#configurator-v}"
-          MINOR_VERSION=$(echo "$VERSION" | cut -d. -f1,2)
-          echo "minor_version=${MINOR_VERSION}" >> $GITHUB_OUTPUT
-  build_picotool_for_release:
-    name: Build Picotool for Release
-    needs: release-please
-    if: ${{ needs.release-please.outputs.faderpunk_release_created == 'true' }}
+          FP_VERSION=$(grep '^version' faderpunk/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          LP_VERSION=$(grep '^version' libfp/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          CF_VERSION=$(jq -r .version configurator/package.json)
+          CF_MINOR=$(echo "$CF_VERSION" | cut -d. -f1,2)
+
+          echo "faderpunk=$(git tag -l "faderpunk/v$FP_VERSION" | grep -q . && echo 'false' || echo 'true')" >> $GITHUB_OUTPUT
+          echo "libfp=$(git tag -l "libfp/v$LP_VERSION" | grep -q . && echo 'false' || echo 'true')" >> $GITHUB_OUTPUT
+          echo "configurator=$(git tag -l "configurator/v$CF_VERSION" | grep -q . && echo 'false' || echo 'true')" >> $GITHUB_OUTPUT
+          echo "configurator_minor=$CF_MINOR" >> $GITHUB_OUTPUT
+
+  # --- Build picotool (cached) ---
+  build-picotool:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.faderpunk == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -100,10 +97,11 @@ jobs:
         with:
           name: picotool-artifact
           path: picotool/build/picotool
-  build_firmware_for_release:
-    name: Build Firmware for Release
-    needs: release-please
-    if: ${{ needs.release-please.outputs.faderpunk_release_created == 'true' }}
+
+  # --- Build firmware ---
+  build-firmware:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.faderpunk == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -123,10 +121,11 @@ jobs:
         with:
           name: firmware-artifact
           path: target/thumbv8m.main-none-eabihf/release/faderpunk
-  package_and_release_firmware:
-    name: Package and Release Firmware
-    needs: [release-please, build_firmware_for_release, build_picotool_for_release]
-    if: ${{ needs.release-please.outputs.faderpunk_release_created == 'true' }}
+
+  # --- Package firmware (ELF + UF2) ---
+  package-firmware:
+    needs: [detect-changes, build-firmware, build-picotool]
+    if: needs.detect-changes.outputs.faderpunk == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Download picotool artifact
@@ -141,22 +140,20 @@ jobs:
           path: firmware_build
       - name: Prepare release files
         run: |
-          mkdir -p release_files
-          cp firmware_build/faderpunk release_files/faderpunk.elf
+          mkdir -p artifacts
+          cp firmware_build/faderpunk artifacts/faderpunk.elf
           chmod +x picotool_executable/picotool
-          TAG_NAME="${{ needs.release-please.outputs.faderpunk_tag_name }}"
-          picotool_executable/picotool uf2 convert release_files/faderpunk.elf release_files/${TAG_NAME}.uf2
-      - name: Publish GitHub Release Artifacts
-        uses: softprops/action-gh-release@v2
+          picotool_executable/picotool uf2 convert artifacts/faderpunk.elf artifacts/faderpunk.uf2
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ needs.release-please.outputs.faderpunk_tag_name }}
-          files: |
-            release_files/faderpunk.elf
-            release_files/${{ needs.release-please.outputs.faderpunk_tag_name }}.uf2
-  build_configurator_for_release:
-    name: Build Configurator for Release
-    needs: [release-please, extract_version_info]
-    if: ${{ needs.release-please.outputs.configurator_release_created == 'true' }}
+          name: release-artifacts-firmware
+          path: artifacts
+
+  # --- Build configurator ---
+  build-configurator:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.configurator == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -181,43 +178,55 @@ jobs:
         run: pnpm run build
         working-directory: ./configurator
         env:
-          BASE_URL: /${{ needs.extract_version_info.outputs.minor_version }}/
+          BASE_URL: /${{ needs.detect-changes.outputs.configurator_minor }}/
       - name: Create configurator release package
         run: |
-          mkdir -p release_files
+          mkdir -p artifacts
           cd configurator/dist
-          zip -r ../../release_files/configurator.zip .
+          zip -r ../../artifacts/configurator.zip .
       - name: Upload configurator release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: configurator-release-artifact
-          path: release_files/configurator.zip
+          name: release-artifacts-configurator
+          path: artifacts
       - name: Upload configurator artifact for GitHub Pages
         uses: actions/upload-artifact@v4
         with:
-          name: configurator-pages-main-artifact
-          path: 'configurator/dist'
-  package_and_release_configurator:
-    name: Package and Release Configurator
-    needs: [release-please, build_configurator_for_release]
-    if: ${{ needs.release-please.outputs.configurator_release_created == 'true' }}
+          name: configurator-pages-artifact
+          path: configurator/dist
+
+  # --- Create GitHub releases + upload assets ---
+  release:
+    needs: [detect-changes, package-firmware, build-configurator]
+    if: always() && needs.detect-changes.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - name: Download configurator release artifact
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Download firmware artifacts
+        if: needs.package-firmware.result == 'success'
         uses: actions/download-artifact@v5
         with:
-          name: configurator-release-artifact
-          path: configurator_build
-      - name: Publish GitHub Release Artifacts
-        uses: softprops/action-gh-release@v2
+          name: release-artifacts-firmware
+          path: artifacts
+      - name: Download configurator artifacts
+        if: needs.build-configurator.result == 'success'
+        uses: actions/download-artifact@v5
         with:
-          tag_name: ${{ needs.release-please.outputs.configurator_tag_name }}
-          files: |
-            configurator_build/configurator.zip
-  deploy_configurator_to_pages:
-    name: Deploy Configurator to GitHub Pages
-    needs: [release-please, build_configurator_for_release, extract_version_info]
-    if: ${{ needs.release-please.outputs.configurator_release_created == 'true' }}
+          name: release-artifacts-configurator
+          path: artifacts
+      - uses: knope-dev/action@v2.1.0
+        with:
+          version: 0.22.2
+      - run: knope release --verbose
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --- Deploy configurator to GitHub Pages ---
+  deploy-configurator:
+    needs: [detect-changes, build-configurator]
+    if: needs.detect-changes.outputs.configurator == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -232,11 +241,11 @@ jobs:
       - name: Download configurator artifact
         uses: actions/download-artifact@v5
         with:
-          name: configurator-pages-main-artifact
+          name: configurator-pages-artifact
           path: configurator-dist
       - name: Deploy to versioned folder and root
         run: |
-          VERSION="${{ needs.extract_version_info.outputs.minor_version }}"
+          VERSION="${{ needs.detect-changes.outputs.configurator_minor }}"
 
           # Create/update versioned directory
           mkdir -p gh-pages/${VERSION}
@@ -258,7 +267,7 @@ jobs:
           cp configurator/landing/index.html gh-pages/index.html
 
           # Replace __FIRMWARE_LATEST_VERSION__ in landing page
-          FIRMWARE_VERSION=$(grep '"faderpunk"' .release-please-manifest.json | cut -d'"' -f4)
+          FIRMWARE_VERSION=$(grep '^version' faderpunk/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
           sed -i "s/__FIRMWARE_LATEST_VERSION__/${FIRMWARE_VERSION}/g" gh-pages/index.html
 
           # Copy assets to root
@@ -274,19 +283,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Deploy configurator ${{ needs.release-please.outputs.configurator_tag_name }} to /${VERSION}/ and update landing page" || echo "No changes"
+          git commit -m "Deploy configurator v${VERSION} and update landing page" || echo "No changes"
           git push origin gh-pages
-  publish_libfp_to_crates_io:
-    name: Publish libfp to crates.io
-    needs: release-please
-    if: ${{ needs.release-please.outputs.libfp_release_created == 'true' }}
+
+  # --- Publish libfp to crates.io ---
+  publish-libfp:
+    needs: [detect-changes, release]
+    if: needs.detect-changes.outputs.libfp == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      - name: Publish libfp crate
-        run: cargo publish --package libfp
+      - run: cargo publish --package libfp
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
