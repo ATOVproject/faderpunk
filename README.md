@@ -332,154 +332,43 @@ Contributions are welcome! Please follow the [Rust Code of Conduct](https://www.
 
 ## Release Process
 
-Faderpunk uses a dual-track release system managed by release-please:
-- **Beta releases**: Published from the `develop` branch (e.g., `1.6.0-beta.5`)
-- **Stable releases**: Published from the `main` branch (e.g., `1.5.0`)
-
-Both workflows are automated via GitHub Actions, but version management requires manual steps to keep the tracks synchronized.
-
-### Making a Beta Release
-
-Beta releases happen automatically when commits are merged to the `develop` branch:
-
-1. **Merge changes to `develop`**:
-   ```bash
-   git checkout develop
-   git merge feature-branch
-   git push origin develop
-   ```
-
-2. **Release-please creates a PR**:
-   - Workflow runs automatically on push
-   - Creates/updates a release PR with changelog
-   - Review the PR to verify version bumps and changelog
-
-3. **Merge the release PR**:
-   - Merge the release-please PR on GitHub
-   - This triggers the build and publish workflow
-   - Beta releases are published with `prerelease: true` flag
-   - Configurator deploys to GitHub Pages at `/beta` path
+Faderpunk uses **knope** for release management on a single `main` branch:
+- **Stable releases**: Automated via release PR flow
+- **Beta releases**: Triggered manually via GitHub Actions `workflow_dispatch`
 
 ### Making a Stable Release
 
-Stable releases happen when `develop` is ready for production:
+Stable releases are fully automated:
 
-1. **Create PR from `develop` to `main`**:
-   ```bash
-   git checkout develop
-   git push origin develop  # Ensure develop is up to date
-   ```
-   Then create a PR on GitHub from `develop` → `main`
+1. **Push commits to `main`** using [conventional commits](https://www.conventionalcommits.org/) (e.g., `feat:`, `fix:`)
+2. **Release PR auto-created**: The `prepare-release` workflow creates/updates a `release` branch and PR with version bumps and changelogs
+3. **Review the release PR**: Edit changelogs if needed, verify version bumps
+4. **Merge the release PR**: This triggers the `release` workflow which:
+   - Builds firmware (ELF + UF2) if faderpunk version changed
+   - Builds configurator if configurator version changed
+   - Creates GitHub releases with assets via `knope release`
+   - Deploys configurator to GitHub Pages
+   - Publishes `libfp` to crates.io if version changed
 
-2. **Review and merge to `main`**:
-   - Review the PR carefully
-   - Merge to `main` when ready for stable release
+### Making a Beta Release
 
-3. **Release-please creates a release PR on `main`**:
-   - Workflow runs automatically
-   - Creates/updates a release PR with changelog
-   - Version numbers will match what was in develop
+Beta releases are triggered manually:
 
-4. **Merge the release PR**:
-   - Merge the release-please PR on GitHub
-   - This triggers the build and publish workflow
-   - Stable releases are published as full releases (not prereleases)
-   - Configurator deploys to GitHub Pages root path
-   - `libfp` is published to crates.io (if version changed)
+1. **Go to Actions → Beta Release → Run workflow** on GitHub
+2. The workflow:
+   - Runs `knope prepare-release --prerelease-label beta` to bump versions (e.g., `1.8.0-beta.0`)
+   - Commits and pushes the version bump to `main`
+   - Builds firmware and configurator
+   - Creates GitHub prereleases via `knope release`
+   - Deploys configurator to `/beta/` on GitHub Pages
+3. **Subsequent dispatches** increment the beta number (`beta.1`, `beta.2`, etc.)
+4. **Merging a stable release PR** resets to the next stable version
 
 ### Making a Patch Release (Hotfix)
 
-Patch releases allow you to fix critical bugs in stable releases without pulling in new features from `develop`.
-
-For example, to release `1.5.1` while `develop` is working on `1.6.0-beta.x`:
-
-1. **Create a hotfix branch from `main`**:
-   ```bash
-   git checkout main
-   git pull origin main
-   git checkout -b hotfix/critical-bug
-   ```
-
-2. **Make your fix and push**:
-   ```bash
-   # Make your changes
-   git add .
-   git commit -m "fix: critical bug in X"
-   git push origin hotfix/critical-bug
-   ```
-
-3. **Create PR to `main` and merge**:
-   - Create a PR from your hotfix branch → `main`
-   - Review and merge the PR
-
-4. **Release-please creates a patch release PR**:
-   - Workflow runs automatically
-   - Creates/updates a release PR (e.g., `1.5.0` → `1.5.1`)
-   - Review and merge the release PR
-   - This triggers the build and publish workflow
-
-5. **Sync the fix back to `develop`**:
-   ```bash
-   git checkout develop
-   git pull origin develop
-   git merge main --no-edit
-   git push origin develop
-   ```
-
-   This ensures the fix is included in future beta and stable releases.
-
-**Important**: You don't need to bump beta versions after a patch release, since beta is already ahead on the minor version (e.g., `1.6.0-beta.x` is ahead of `1.5.1`).
-
-### Critical: Sync Branches After Stable Release
-
-**IMPORTANT**: After a stable release is published, you must sync the release history back to `develop` and bump beta versions ahead of stable.
-
-5. **Merge `main` back into `develop`**:
-   ```bash
-   git checkout develop
-   git pull origin develop
-   git merge main --no-edit
-   git push origin develop
-   ```
-
-   This ensures release-please on `develop` sees the stable release commits and doesn't get confused about what's been released.
-
-6. **Bump beta versions ahead of stable using Release-As**:
-
-   Use release-please's `Release-As:` footer to manually set the next beta version. You need to create separate commits for each package, touching a file in each package directory so release-please correctly assigns the version.
-
-   For example, if stable just released `faderpunk-1.5.0` and `configurator-1.6.1`, beta should jump to `1.6.0-beta.0` and `1.7.0-beta.0`:
-
-   ```bash
-   # Bump faderpunk to next beta version
-   touch faderpunk/.release-as
-   git add faderpunk/.release-as
-   git commit -m "chore(faderpunk): bump to next beta version" -m "Release-As: 1.6.0-beta.0"
-
-   # Bump configurator to next beta version
-   touch configurator/.release-as
-   git add configurator/.release-as
-   git commit -m "chore(configurator): bump to next beta version" -m "Release-As: 1.7.0-beta.0"
-
-   # Push to trigger release-please
-   git push origin develop
-   ```
-
-   The `Release-As:` footer tells release-please to use that specific version for the next release, preventing it from bundling old commits.
-
-7. **Review and merge the release PR**:
-   - Release-please will create/update a PR with the new beta versions
-   - Review the PR to ensure versions are correct
-   - Merge the PR to publish the new beta releases
-
-### Version Management Rules
-
-- Beta versions must always be ahead of the latest stable release
-- Use semantic versioning: `MAJOR.MINOR.PATCH` for stable, `MAJOR.MINOR.PATCH-beta.N` for beta
-- When stable releases `X.Y.0`, beta should jump to `X.(Y+1).0-beta.0`
-- The merge from `main` to `develop` is required for release-please to track what's been released
-- Use `Release-As:` commit footer to manually set beta versions after stable releases
-- Always touch a file in the package directory when using `Release-As:` so release-please assigns the version correctly
+1. Create a branch from `main`, make the fix with a `fix:` commit, open a PR to `main`
+2. After merging, the `prepare-release` workflow auto-updates the release PR with a patch bump
+3. Merge the release PR to publish
 
 ### Release Artifacts
 

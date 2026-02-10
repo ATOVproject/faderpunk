@@ -1,0 +1,70 @@
+[packages.faderpunk]
+versioned_files = [
+  "faderpunk/Cargo.toml",
+  { path = "Cargo.lock", dependency = "faderpunk" },
+]
+changelog = "faderpunk/CHANGELOG.md"
+
+[[packages.faderpunk.assets]]
+path = "artifacts/faderpunk.elf"
+name = "faderpunk.elf"
+
+[[packages.faderpunk.assets]]
+path = "artifacts/faderpunk.uf2"
+name = "faderpunk.uf2"
+
+[packages.libfp]
+versioned_files = [
+  "libfp/Cargo.toml",
+  { path = "Cargo.lock", dependency = "libfp" },
+]
+changelog = "libfp/CHANGELOG.md"
+
+[packages.configurator]
+versioned_files = ["configurator/package.json"]
+changelog = "configurator/CHANGELOG.md"
+
+[[packages.configurator.assets]]
+path = "artifacts/configurator.zip"
+name = "configurator.zip"
+
+# --- Workflows ---
+
+[[workflows]]
+name = "prepare-release"
+
+[[workflows.steps]]
+type = "Command"
+command = "git switch -c release"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+[[workflows.steps]]
+type = "Command"
+command = "git add -A && git commit -m \"chore: prepare release\""
+
+[[workflows.steps]]
+type = "Command"
+command = "git push --force --set-upstream origin release"
+
+[[workflows.steps]]
+type = "CreatePullRequest"
+base = "main"
+
+[workflows.steps.title]
+template = "chore: prepare release"
+
+[workflows.steps.body]
+template = "Merging this PR will create new releases.\n\n{changelog}"
+variables = { "{changelog}" = "ChangelogEntry" }
+
+[[workflows]]
+name = "release"
+
+[[workflows.steps]]
+type = "Release"
+
+[github]
+owner = "ATOVproject"
+repo = "faderpunk"
