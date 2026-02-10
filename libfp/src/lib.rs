@@ -18,6 +18,9 @@ pub mod quantizer;
 pub mod types;
 pub mod utils;
 
+// Re-export commonly used latch types
+pub use latch::{AnalogLatch, LatchLayer, TakeoverMode};
+
 use constants::{
     CURVE_EXP, CURVE_LOG, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE, WAVEFORM_SQUARE,
     WAVEFORM_TRIANGLE,
@@ -220,7 +223,7 @@ pub enum Note {
 
 impl From<u8> for Note {
     fn from(value: u8) -> Self {
-        match value {
+        match value.min(11) {
             0 => Note::C,
             1 => Note::CSharp,
             2 => Note::D,
@@ -233,7 +236,7 @@ impl From<u8> for Note {
             9 => Note::A,
             10 => Note::ASharp,
             11 => Note::B,
-            _ => unreachable!(),
+            _ => Note::C,
         }
     }
 }
@@ -405,6 +408,7 @@ pub struct GlobalConfig {
     pub led_brightness: u8,
     pub midi: MidiConfig,
     pub quantizer: QuantizerConfig,
+    pub takeover_mode: TakeoverMode,
 }
 
 #[allow(clippy::new_without_default)]
@@ -421,6 +425,7 @@ impl GlobalConfig {
             led_brightness: 150,
             midi: MidiConfig::new(),
             quantizer: QuantizerConfig::new(),
+            takeover_mode: TakeoverMode::Pickup,
         }
     }
 

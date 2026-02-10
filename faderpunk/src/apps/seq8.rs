@@ -7,8 +7,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote,
-    MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
+    MidiChannel, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -89,11 +89,12 @@ pub struct Storage {
     seq: Arr<u16, 64>,
     gateseq: Arr<bool, 64>,
     legato_seq: Arr<bool, 64>,
-    seq_length: [u8; 4],
-    seqres: [usize; 4],
-    gate_length: [u8; 4],
-    range: [u8; 4],
-    oct: [u8; 4],
+    // Alt layer - fader-scale values (0-4095)
+    length_fader: [u16; 4], // F0: derive seq_length = val/256+1
+    gate_fader: [u16; 4],   // F1: derive gate_length
+    oct_fader: [u16; 4],    // F2: derive oct = val/1000
+    range_fader: [u16; 4],  // F3: derive range = val/1000+1
+    res_fader: [u16; 4],    // F4: derive res_index = val/512
 }
 
 impl Default for Storage {
@@ -102,11 +103,12 @@ impl Default for Storage {
             seq: Arr::new([0; 64]),
             gateseq: Arr::new([true; 64]),
             legato_seq: Arr::new([false; 64]),
-            seq_length: [16; 4],
-            seqres: [4; 4],
-            gate_length: [127; 4],
-            range: [3; 4],
-            oct: [0; 4],
+            // Default fader values - positioned to produce sensible defaults
+            length_fader: [3840; 4], // -> length 16 (3840/256+1 = 16)
+            gate_fader: [2032; 4],   // -> gate_length 127 (127*16 = 2032)
+            oct_fader: [0; 4],       // -> oct 0
+            range_fader: [2000; 4],  // -> range 3 (2000/1000+1 = 3)
+            res_fader: [2048; 4],    // -> res_index 4 (2048/512 = 4)
         }
     }
 }
@@ -182,8 +184,7 @@ pub async fn run(
 
     let page_glob: Global<usize> = app.make_global(0);
     let led_flag_glob: Global<bool> = app.make_global(true);
-    let length_flag: Global<bool> = app.make_global(false);
-    let latched_glob: Global<[bool; 8]> = app.make_global([false; 8]);
+    let latch_layer_glob: Global<LatchLayer> = app.make_global(LatchLayer::Main);
     let seq_glob: Global<[u16; 64]> = app.make_global([0; 64]);
     let gateseq_glob: Global<[bool; 64]> = app.make_global([true; 64]);
     let legatoseq_glob: Global<[bool; 64]> = app.make_global([false; 64]);
@@ -195,182 +196,119 @@ pub async fn run(
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
-    let mut shift_old = false;
     let mut lastnote = [MidiNote::default(); 4];
     let mut gatelength1 = gatelength_glob.get();
 
-    let (seq_saved, gateseq_saved, seq_length_saved, mut clockres, mut gatel, legato_seq_saved) =
-        storage.query(|s| {
-            (
-                s.seq,
-                s.gateseq,
-                s.seq_length,
-                s.seqres,
-                s.gate_length,
-                s.legato_seq,
-            )
-        });
+    // Initialize latches for all 8 faders
+    let mut latches: [libfp::latch::AnalogLatch; 8] =
+        core::array::from_fn(|i| app.make_latch(faders.get_value_at(i)));
+
+    let (
+        seq_saved,
+        gateseq_saved,
+        legato_seq_saved,
+        length_faders,
+        gate_faders,
+        _oct_faders,
+        _range_faders,
+        res_faders,
+    ) = storage.query(|s| {
+        (
+            s.seq,
+            s.gateseq,
+            s.legato_seq,
+            s.length_fader,
+            s.gate_fader,
+            s.oct_fader,
+            s.range_fader,
+            s.res_fader,
+        )
+    });
 
     seq_glob.set(seq_saved.get());
     gateseq_glob.set(gateseq_saved.get());
-    seq_length_glob.set(seq_length_saved);
     legatoseq_glob.set(legato_seq_saved.get());
 
+    // Derive runtime parameters from fader values
+    let mut seq_length_saved = [0u8; 4];
+    let mut clockres = [0usize; 4];
+    let mut gatel = [0u8; 4];
     for n in 0..4 {
-        clockres[n] = resolution[clockres[n]];
-        gatel[n] = (clockres[n] * gatel[n] as usize / 256) as u8;
+        seq_length_saved[n] = (length_faders[n] / 256 + 1) as u8;
+        clockres[n] = resolution[(res_faders[n] / 512) as usize];
+        gatel[n] = (clockres[n] * (gate_faders[n] as usize) / 4096) as u8;
         gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
     }
+    seq_length_glob.set(seq_length_saved);
     clockres_glob.set(clockres);
     gatelength_glob.set(gatel);
 
-    let fut1 = async {
+    let shift_handler = async {
         loop {
-            // latching on pressing and depressing shift
-
             app.delay_millis(1).await;
-            if !shift_old && buttons.is_shift_pressed() {
-                latched_glob.set([false; 8]);
-                shift_old = true;
-            }
-            if shift_old && !buttons.is_shift_pressed() {
-                latched_glob.set([false; 8]);
-                shift_old = false;
-            }
+            let layer = if buttons.is_shift_pressed() {
+                LatchLayer::Alt
+            } else {
+                LatchLayer::Main
+            };
+            latch_layer_glob.set(layer);
         }
     };
 
-    let fut2 = async {
-        //Fader handling - Should be latching false when shift is pressed
-
+    let fader_handler = async {
         loop {
             let chan = faders.wait_for_any_change().await;
-            let vals = faders.get_all_values();
             let page = page_glob.get();
+            let seq_idx = page / 2;
+            let latch_layer = latch_layer_glob.get();
 
-            let mut seq = seq_glob.get();
-            let mut seq_length = seq_length_glob.get();
-
-            // let mut seq_length = seq_length_glob.get_array();
-            // let mut seq = seq_glob.get_array();
-
-            let _shift = buttons.is_shift_pressed();
-            let mut latched = latched_glob.get();
-
-            if !_shift {
-                if is_close(vals[chan], seq[chan + (page * 8)]) && !_shift {
-                    latched[chan] = true;
-                    latched_glob.set(latched);
+            // Determine target value based on layer and fader
+            let target_value = match latch_layer {
+                LatchLayer::Main => {
+                    let seq = seq_glob.get();
+                    seq[chan + (page * 8)]
                 }
+                LatchLayer::Alt => get_alt_target(chan, seq_idx, storage),
+                LatchLayer::Third => 0,
+            };
 
-                if chan < 8 && latched[chan] {
-                    seq[chan + (page * 8)] = vals[chan];
-                    seq_glob.set(seq);
-                    storage.modify_and_save(|s| s.seq.set(seq));
-                }
-            }
-
-            if _shift {
-                // if (vals[0] / 256 + 1) as u8 == seq_length[page / 2] && _shift {
-                //     latched[0] = true;
-                //     latched_glob.set(latched);
-                //     //info!("latching!");
-                // }
-                // add check for latching
-                if chan == 0 {
-                    if (vals[chan] / 256 + 1) as u8 == seq_length[page / 2] {
-                        latched[chan] = true;
-                        latched_glob.set(latched);
+            if let Some(new_value) =
+                latches[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+            {
+                match latch_layer {
+                    LatchLayer::Main => {
+                        // Update step value
+                        let mut seq = seq_glob.get();
+                        seq[chan + (page * 8)] = new_value;
+                        seq_glob.set(seq);
+                        storage.modify_and_save(|s| {
+                            let mut seq_arr = s.seq.get();
+                            seq_arr[chan + (page * 8)] = new_value;
+                            s.seq.set(seq_arr);
+                        });
                     }
-                    //fader 1 + shift
-                    if latched[chan] {
-                        seq_length[page / 2] = (((vals[0]) / 256) + 1) as u8;
-                        seq_length_glob.set(seq_length);
-                        //info!("{}", seq_length[page / 2]);
-                        storage.modify_and_save(|s| s.seq_length = seq_length);
-
-                        length_flag.set(true);
+                    LatchLayer::Alt => {
+                        apply_alt_update(
+                            chan,
+                            seq_idx,
+                            new_value,
+                            &AltUpdateContext {
+                                storage,
+                                seq_length_glob: &seq_length_glob,
+                                gatelength_glob: &gatelength_glob,
+                                clockres_glob: &clockres_glob,
+                                resolution: &resolution,
+                            },
+                        );
                     }
-                }
-
-                if chan == 1 {
-                    // add latching to this
-
-                    let mut gatelength_saved = storage.query(|s| s.gate_length); // get saved fader value
-
-                    if (vals[chan] / 16).abs_diff(gatelength_saved[page / 2] as u16) < 10 {
-                        // do the latching
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-
-                    if latched[chan] {
-                        let mut gatelength = gatelength_glob.get();
-                        let clockres = clockres_glob.get();
-                        gatelength_saved[page / 2] = (vals[chan] / 16) as u8;
-                        storage.modify_and_save(|s| s.gate_length = gatelength_saved);
-
-                        // gatelength[page/2] = (vals[chan] / 16) as u8;
-
-                        gatelength[page / 2] =
-                            (clockres[page / 2] * (vals[chan] as usize) / 4096) as u8; // calculate when to stop then note
-                        gatelength[page / 2] =
-                            gatelength[page / 2].clamp(1, clockres[page / 2] as u8 - 1);
-
-                        gatelength_glob.set(gatelength);
-                    }
-                }
-                if chan == 2 {
-                    if (vals[chan] / 1000) as u8 == storage.query(|s| s.oct[page / 2]) {
-                        // do the latching
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-                    if latched[chan] {
-                        storage.modify_and_save(|s| s.oct[page / 2] = (vals[chan] / 1000) as u8);
-                    }
-                }
-                if chan == 3 {
-                    if (vals[chan] / 1000 + 1) as u8 == storage.query(|s| s.range[page / 2]) {
-                        // do the latching
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-                    if latched[chan] {
-                        storage
-                            .modify_and_save(|s| s.range[page / 2] = (vals[chan] / 1000) as u8 + 1);
-                    }
-                }
-                if chan == 4 {
-                    // add latching to this
-                    let res_saved = storage.query(|s| s.seqres);
-
-                    if (vals[chan] / 512) == res_saved[page / 2] as u16 {
-                        latched[chan] = true;
-                        latched_glob.set(latched);
-                    }
-
-                    if latched[chan] {
-                        storage.modify_and_save(|s| s.seqres[page / 2] = vals[chan] as usize / 512);
-
-                        let mut clockres = clockres_glob.get();
-                        clockres[page / 2] = resolution[(vals[chan] / 512) as usize];
-                        clockres_glob.set(clockres);
-
-                        let mut gatelength = gatelength_glob.get();
-                        gatelength[page / 2] =
-                            gatelength[page / 2].clamp(1, clockres[page / 2] as u8);
-                        gatelength_glob.set(gatelength);
-                    }
+                    LatchLayer::Third => {}
                 }
             }
             led_flag_glob.set(true);
         }
     };
 
-    let fut3 = async {
-        //button handling
-
+    let button_handler = async {
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             let mut gateseq = gateseq_glob.get();
@@ -395,18 +333,14 @@ pub async fn run(
                 led_flag_glob.set(true);
             } else {
                 page_glob.set(chan);
-                latched_glob.set([false; 8]);
             }
         }
     };
 
-    let fut6 = async {
-        //long press
-
+    let button_long_press_handler = async {
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_long_press().await;
 
-            // let mut gateseq = gateseq_glob.get_array();
             let page = page_glob.get();
 
             if !is_shift_pressed {
@@ -427,9 +361,7 @@ pub async fn run(
         }
     };
 
-    let fut4 = async {
-        //LED update
-
+    let led_handler = async {
         loop {
             let intensities = [
                 Brightness::Low,
@@ -441,11 +373,8 @@ pub async fn run(
             app.delay_millis(16).await;
             let clockres = clockres_glob.get();
 
-            //if buttons.is_shift_pressed();
             if buttons.is_shift_pressed() {
                 let clockn = clockn_glob.get();
-
-                //let seq_length = seq_length_glob.get_array();
 
                 let seq_length = seq_length_glob.get();
 
@@ -484,10 +413,6 @@ pub async fn run(
                 let seq = seq_glob.get();
                 let gateseq = gateseq_glob.get();
                 let seq_length = seq_length_glob.get();
-
-                // let gateseq = gateseq_glob.get_array();
-                // let seq_length = seq_length_glob.get_array(); //use this to highlight active notes
-                // let seq = seq_glob.get_array();
 
                 let mut color = colors[0];
                 let clockn = clockn_glob.get(); // this should go
@@ -562,12 +487,8 @@ pub async fn run(
         }
     };
 
-    let fut5 = async {
-        //sequencer functions
-
+    let clock_handler = async {
         loop {
-            //let stor = storage.lock();
-
             let gateseq = gateseq_glob.get();
             let seq_length = seq_length_glob.get();
             let clockres = clockres_glob.get();
@@ -575,12 +496,9 @@ pub async fn run(
 
             let mut clockn = clockn_glob.get();
 
-            // let gateseq = gateseq_glob.get_array();
-
             match clk.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clockn = 0;
-                    // info!("reset!");
                     for n in 0..4 {
                         midi[n].send_note_off(lastnote[n]).await;
                         gate_out[n].set_low().await;
@@ -598,15 +516,14 @@ pub async fn run(
                                 let out = quantizer
                                     .get_quantized_note(
                                         (seq[clkindex] as u32
-                                            * (storage.query(|s| s.range[n]) as u32)
+                                            * ((storage.query(|s| s.range_fader[n]) / 1000 + 1)
+                                                as u32)
                                             * 410
                                             / 4095) as u16
-                                            + storage.query(|s| s.oct[n]) as u16 * 410,
+                                            + (storage.query(|s| s.oct_fader[n]) / 1000)
+                                                * 410,
                                     )
                                     .await;
-                                // if n == 0 {
-                                //     info!("{}", storage.query(|s| s.range[n]));
-                                // }
                                 lastnote[n] = out.as_midi();
 
                                 midi[n].send_note_on(lastnote[n], 4095).await;
@@ -644,31 +561,36 @@ pub async fn run(
                     let (
                         seq_saved,
                         gateseq_saved,
-                        seq_length_saved,
-                        mut clockres,
-                        mut gatel,
                         legato_seq_saved,
+                        length_faders,
+                        gate_faders,
+                        res_faders,
                     ) = storage.query(|s| {
                         (
                             s.seq,
                             s.gateseq,
-                            s.seq_length,
-                            s.seqres,
-                            s.gate_length,
                             s.legato_seq,
+                            s.length_fader,
+                            s.gate_fader,
+                            s.res_fader,
                         )
                     });
 
                     seq_glob.set(seq_saved.get());
                     gateseq_glob.set(gateseq_saved.get());
-                    seq_length_glob.set(seq_length_saved);
                     legatoseq_glob.set(legato_seq_saved.get());
 
+                    // Derive runtime parameters from fader values
+                    let mut seq_length_saved = [0u8; 4];
+                    let mut clockres = [0usize; 4];
+                    let mut gatel = [0u8; 4];
                     for n in 0..4 {
-                        clockres[n] = resolution[clockres[n]];
-                        gatel[n] = (clockres[n] * gatel[n] as usize / 256) as u8;
+                        seq_length_saved[n] = (length_faders[n] / 256 + 1) as u8;
+                        clockres[n] = resolution[(res_faders[n] / 512) as usize];
+                        gatel[n] = (clockres[n] * (gate_faders[n] as usize) / 4096) as u8;
                         gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
                     }
+                    seq_length_glob.set(seq_length_saved);
                     clockres_glob.set(clockres);
                     gatelength_glob.set(gatel);
                 }
@@ -679,9 +601,83 @@ pub async fn run(
         }
     };
 
-    join3(join5(fut1, fut2, fut3, fut4, fut5), fut6, scene_handler).await;
+    join3(
+        join5(
+            shift_handler,
+            fader_handler,
+            button_handler,
+            led_handler,
+            clock_handler,
+        ),
+        button_long_press_handler,
+        scene_handler,
+    )
+    .await;
 }
 
-fn is_close(a: u16, b: u16) -> bool {
-    a.abs_diff(b) < 100
+fn get_alt_target(chan: usize, seq_idx: usize, storage: &ManagedStorage<Storage>) -> u16 {
+    match chan {
+        0 => storage.query(|s| s.length_fader[seq_idx]),
+        1 => storage.query(|s| s.gate_fader[seq_idx]),
+        2 => storage.query(|s| s.oct_fader[seq_idx]),
+        3 => storage.query(|s| s.range_fader[seq_idx]),
+        4 => storage.query(|s| s.res_fader[seq_idx]),
+        _ => 0, // F5-F7 have no alt function
+    }
+}
+
+struct AltUpdateContext<'a> {
+    storage: &'a ManagedStorage<Storage>,
+    seq_length_glob: &'a Global<[u8; 4]>,
+    gatelength_glob: &'a Global<[u8; 4]>,
+    clockres_glob: &'a Global<[usize; 4]>,
+    resolution: &'a [usize; 8],
+}
+
+fn apply_alt_update(
+    chan: usize,
+    seq_idx: usize,
+    value: u16,
+    ctx: &AltUpdateContext,
+) {
+    match chan {
+        0 => {
+            // Sequence length
+            ctx.storage.modify_and_save(|s| s.length_fader[seq_idx] = value);
+            let mut arr = ctx.seq_length_glob.get();
+            arr[seq_idx] = (value / 256 + 1) as u8;
+            ctx.seq_length_glob.set(arr);
+        }
+        1 => {
+            // Gate length
+            ctx.storage.modify_and_save(|s| s.gate_fader[seq_idx] = value);
+            let clockres = ctx.clockres_glob.get();
+            let mut arr = ctx.gatelength_glob.get();
+            arr[seq_idx] = (clockres[seq_idx] * (value as usize) / 4096) as u8;
+            arr[seq_idx] = arr[seq_idx].clamp(1, clockres[seq_idx] as u8 - 1);
+            ctx.gatelength_glob.set(arr);
+        }
+        2 => {
+            // Octave
+            ctx.storage.modify_and_save(|s| s.oct_fader[seq_idx] = value);
+        }
+        3 => {
+            // Range
+            ctx.storage.modify_and_save(|s| s.range_fader[seq_idx] = value);
+        }
+        4 => {
+            // Resolution
+            ctx.storage.modify_and_save(|s| s.res_fader[seq_idx] = value);
+            let res_index = (value / 512) as usize;
+            let mut arr = ctx.clockres_glob.get();
+            arr[seq_idx] = ctx.resolution[res_index];
+            ctx.clockres_glob.set(arr);
+            // Update gate length to clamp within new resolution
+            let clockres = ctx.clockres_glob.get();
+            let mut gatel = ctx.gatelength_glob.get();
+            gatel[seq_idx] = gatel[seq_idx].clamp(1, clockres[seq_idx] as u8);
+            ctx.gatelength_glob.set(gatel);
+        }
+        _ => {}
+    }
 }

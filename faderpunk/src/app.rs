@@ -15,7 +15,7 @@ use libfp::{
     quantizer::{Pitch, QuantizerState},
     utils::scale_bits_12_7,
     Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
-    Range,
+    Range, TakeoverMode,
 };
 
 use crate::{
@@ -23,6 +23,7 @@ use crate::{
     tasks::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
         clock::{ClockSubscriber, CLOCK_PUBSUB},
+        global_config::get_global_config,
         i2c::{I2cLeaderMessage, I2cLeaderSender, I2C_CONNECTED},
         leds::{set_led_mode, LedMode, LedMsg},
         max::{
@@ -276,6 +277,7 @@ impl<const N: usize> Faders<N> {
         MAX_VALUES_FADER[self.start_channel + chan].load(Ordering::Relaxed)
     }
 
+    #[allow(dead_code)]
     pub fn get_all_values(&self) -> [u16; N] {
         let mut buf = [0_u16; N];
         for i in 0..N {
@@ -651,7 +653,13 @@ impl<const N: usize> App<N> {
     }
 
     pub fn make_latch(&self, initial: u16) -> AnalogLatch {
-        AnalogLatch::new(initial)
+        let mode = get_global_config().takeover_mode;
+        AnalogLatch::new(initial, mode)
+    }
+
+    #[allow(dead_code)]
+    pub fn make_latch_with_mode(&self, initial: u16, mode: TakeoverMode) -> AnalogLatch {
+        AnalogLatch::new(initial, mode)
     }
 
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
