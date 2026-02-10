@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.10.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.9.0...libfp-v0.10.0) (2026-02-08)
+## 0.10.0 (2026-02-08)
 
 
 ### Features
@@ -15,7 +15,7 @@
 * **led:** increase dynamic range, simplify nomenclature ([0e31ec7](https://github.com/ATOVproject/faderpunk/commit/0e31ec763b87c831eba9ef241cc8ba6850e71987))
 * **slew & follower:** extend slew range, added passthrough a minimum ([18f64cc](https://github.com/ATOVproject/faderpunk/commit/18f64cc6c8e078a5d16f7d1338a2d82fb1b3a976))
 
-## [0.9.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.8.2...libfp-v0.9.0) (2025-12-07)
+## 0.9.0 (2025-12-07)
 
 
 ### Features
@@ -26,7 +26,7 @@
 * **configurator:** add Key and Tonic mapping to the manual ([feeecf0](https://github.com/ATOVproject/faderpunk/commit/feeecf0016221613179044eb81c7932c2f2e023a))
 * **panner:** add panner app ([d990c75](https://github.com/ATOVproject/faderpunk/commit/d990c752e5bdd51704a1323dfc798c50b7ba33e6))
 
-## [0.8.2](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.8.1...libfp-v0.8.2) (2025-10-24)
+## 0.8.2 (2025-10-24)
 
 
 ### Bug Fixes
@@ -34,14 +34,14 @@
 * **control:** actually fix the bug causing CC not reaching 127 ([7cb3288](https://github.com/ATOVproject/faderpunk/commit/7cb32889f703d1b91c37b0da3318c1c559d80623))
 * **control:** fix CC output not reaching 127 ([6c9baec](https://github.com/ATOVproject/faderpunk/commit/6c9baec9d2f47028ef23e492009cbb9de720eb1a))
 
-## [0.8.1](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.8.0...libfp-v0.8.1) (2025-10-08)
+## 0.8.1 (2025-10-08)
 
 
 ### Bug Fixes
 
 * **quantizer:** increase codebook size for increased range ([291f35d](https://github.com/ATOVproject/faderpunk/commit/291f35da6f18adc0b2dfe52c8ed23b16ac0b32e4))
 
-## [0.8.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.7.0...libfp-v0.8.0) (2025-09-25)
+## 0.8.0 (2025-09-25)
 
 
 ### Features
@@ -53,7 +53,7 @@
 
 * **clock:** limit extra reset sources ([7fc8619](https://github.com/ATOVproject/faderpunk/commit/7fc861910648376d5f7963214c1c6f2a33df7bd5))
 
-## [0.7.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.6.0...libfp-v0.7.0) (2025-09-20)
+## 0.7.0 (2025-09-20)
 
 
 ### Features
@@ -65,7 +65,7 @@
 
 * **configurator:** retain storage and parameters when app is moved ([6ea3cab](https://github.com/ATOVproject/faderpunk/commit/6ea3cab3c1e5ae7a8213c57c10b453972b2b48c0))
 
-## [0.6.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.5.0...libfp-v0.6.0) (2025-09-13)
+## 0.6.0 (2025-09-13)
 
 
 ### Features
@@ -88,7 +88,7 @@
 * exponential and logarithmic curves were switched ([6a2f311](https://github.com/ATOVproject/faderpunk/commit/6a2f3111712a0cb3a993bf2fae294efe3a6667bf))
 * **quantizer:** use the first 16 scale from o_C ([9a0e5c7](https://github.com/ATOVproject/faderpunk/commit/9a0e5c7ae073458aee048ab5aa3ddba1b1bb5131))
 
-## [0.5.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.4.0...libfp-v0.5.0) (2025-09-04)
+## 0.5.0 (2025-09-04)
 
 
 ### Features
@@ -114,7 +114,7 @@
 * **layout:** allow for holes in layout ([20ff5bc](https://github.com/ATOVproject/faderpunk/commit/20ff5bc92461369f145b13716ba3fe45f93e3e4c))
 * validate layout after loading from fram ([848e2aa](https://github.com/ATOVproject/faderpunk/commit/848e2aa79130d134737f66309c023211e041f861))
 
-## [0.4.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.3.0...libfp-v0.4.0) (2025-08-23)
+## 0.4.0 (2025-08-23)
 
 
 ### Features
@@ -126,7 +126,7 @@
 
 * **calibration:** fixes for semi-automatic calibration ([932321b](https://github.com/ATOVproject/faderpunk/commit/932321bad07da39aaa704c64fcc023f7399ea835))
 
-## [0.3.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.2.2...libfp-v0.3.0) (2025-08-20)
+## 0.3.0 (2025-08-20)
 
 
 ### Features
@@ -142,21 +142,21 @@
 * **params:** bump app max param size to 8 ([7900abc](https://github.com/ATOVproject/faderpunk/commit/7900abc2e749ac0311d6d2100eb5ed8b6c865325))
 * **params:** use .into() instead of .get() for Color ([818391b](https://github.com/ATOVproject/faderpunk/commit/818391b30f2e99d281965a63a27f0e84031ead7b))
 
-## [0.2.2](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.2.1...libfp-v0.2.2) (2025-08-14)
+## 0.2.2 (2025-08-14)
 
 
 ### Bug Fixes
 
 * **default:** fix curve, slew and bipolar recall ([968d4df](https://github.com/ATOVproject/faderpunk/commit/968d4dfca3812f1f3f4084d8a9448b81b70a7603))
 
-## [0.2.1](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.2.0...libfp-v0.2.1) (2025-08-08)
+## 0.2.1 (2025-08-08)
 
 
 ### Bug Fixes
 
 * **api:** rename Sawinv to SawInv ([9b18e3c](https://github.com/ATOVproject/faderpunk/commit/9b18e3c5f6fd4134e83119d209608b06f5a863e0))
 
-## [0.2.0](https://github.com/ATOVproject/faderpunk/compare/libfp-v0.1.0...libfp-v0.2.0) (2025-08-08)
+## 0.2.0 (2025-08-08)
 
 
 ### Features

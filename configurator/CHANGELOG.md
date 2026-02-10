@@ -1,13 +1,13 @@
 # Changelog
 
-## [1.7.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.7.0...configurator-v1.7.1) (2026-02-08)
+## 1.7.1 (2026-02-08)
 
 
 ### Bug Fixes
 
 * remove unused navigate parameter from connect function ([73daa2a](https://github.com/ATOVproject/faderpunk/commit/73daa2a6706150434c5fbfcb7e88f0e818e32dcb))
 
-## [1.7.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.4...configurator-v1.7.0) (2026-02-08)
+## 1.7.0 (2026-02-08)
 
 
 ### Features
@@ -28,7 +28,7 @@
 * **manual:** configurator link ([#403](https://github.com/ATOVproject/faderpunk/issues/403)) ([d2779c6](https://github.com/ATOVproject/faderpunk/commit/d2779c656713263850fe4f247e6e3b06303667b8))
 * **manual:** more typo corrections ([3209bfd](https://github.com/ATOVproject/faderpunk/commit/3209bfd035e2a50a936985298a729cd01d1278e7))
 
-## [1.6.4](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.3...configurator-v1.6.4) (2026-02-04)
+## 1.6.4 (2026-02-04)
 
 
 ### Bug Fixes
@@ -37,14 +37,14 @@
 * **configurator:** redirect all hash links to the correct version ([a6169ed](https://github.com/ATOVproject/faderpunk/commit/a6169ede4b2466f889c5aca0cb1a64cc8bdf5934))
 * **configurator:** try to autoconnect when coming from landing page ([98b76d4](https://github.com/ATOVproject/faderpunk/commit/98b76d4e9afef4913d741e5a664e8f0f805b3662))
 
-## [1.6.3](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.2...configurator-v1.6.3) (2026-02-03)
+## 1.6.3 (2026-02-03)
 
 
 ### Bug Fixes
 
 * **configurator:** deploy configurator to versioned folders ([437f5df](https://github.com/ATOVproject/faderpunk/commit/437f5df7909c895f7e41b0318b20dc0b6eedc2a1))
 
-## [1.6.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.1...configurator-v1.6.2) (2026-01-25)
+## 1.6.2 (2026-01-25)
 
 
 ### Bug Fixes
@@ -53,14 +53,14 @@
 * **configurator:** add browser connection troubleshooting ([58ebc41](https://github.com/ATOVproject/faderpunk/commit/58ebc4159a38061d8460988dea654dcf277dabbb))
 * **configurator:** auto-inject firmware version from release-please manifest ([a1adab9](https://github.com/ATOVproject/faderpunk/commit/a1adab94a3a345d6ee35c38055bf28099ec521d9))
 
-## [1.6.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.6.0...configurator-v1.6.1) (2025-12-08)
+## 1.6.1 (2025-12-08)
 
 
 ### Bug Fixes
 
 * **configurator:** properly redirect for firmware update ([87e3dca](https://github.com/ATOVproject/faderpunk/commit/87e3dca452617e5296701fc86dab27eac9ff1003))
 
-## [1.6.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.4...configurator-v1.6.0) (2025-12-07)
+## 1.6.0 (2025-12-07)
 
 
 ### Features
@@ -84,35 +84,35 @@
 * **configurator:** fix some copy to reflect save/recall setup ([f9c57ea](https://github.com/ATOVproject/faderpunk/commit/f9c57ea7a64198a8d8c79ffc31b666fd7821bb6d))
 * **manual:** fix some typo ([e60559b](https://github.com/ATOVproject/faderpunk/commit/e60559b2d4f5d8340c32970aa2e97fb19135f43f))
 
-## [1.5.4](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.3...configurator-v1.5.4) (2025-11-08)
+## 1.5.4 (2025-11-08)
 
 
 ### Bug Fixes
 
 * **configurator:** change description for deployment testing ([de51654](https://github.com/ATOVproject/faderpunk/commit/de51654d8173a59e2045abe8515c66ce270fc26d))
 
-## [1.5.3](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.2...configurator-v1.5.3) (2025-11-08)
+## 1.5.3 (2025-11-08)
 
 
 ### Bug Fixes
 
 * **configurator:** add package description for beta testing ([0049628](https://github.com/ATOVproject/faderpunk/commit/0049628dd29c81bd76c4d90b02994de37bc52a26))
 
-## [1.5.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.1...configurator-v1.5.2) (2025-10-27)
+## 1.5.2 (2025-10-27)
 
 
 ### Bug Fixes
 
 * **configurator:** add proper semver version check ([2d19880](https://github.com/ATOVproject/faderpunk/commit/2d19880aa5bc3b1ed0b55ea80fbd08fbf511c15a))
 
-## [1.5.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.5.0...configurator-v1.5.1) (2025-10-25)
+## 1.5.1 (2025-10-25)
 
 
 ### Bug Fixes
 
 * **configurator:** disable configurator version check ([284994f](https://github.com/ATOVproject/faderpunk/commit/284994f1b60a743d03e1ddae28b4c40121c4c95f))
 
-## [1.5.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.4.0...configurator-v1.5.0) (2025-10-24)
+## 1.5.0 (2025-10-24)
 
 
 ### Features
@@ -124,28 +124,28 @@
 
 * **configurator:** use proper bool default value ([3655941](https://github.com/ATOVproject/faderpunk/commit/3655941bfef41835c5396c851e45e447f28b4030))
 
-## [1.4.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.3.2...configurator-v1.4.0) (2025-10-21)
+## 1.4.0 (2025-10-21)
 
 
 ### Features
 
 * **configurator:** add button to clear apps ([0c0a009](https://github.com/ATOVproject/faderpunk/commit/0c0a009cf2f81465bafa899d1dc1f46d7f170aac))
 
-## [1.3.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.3.1...configurator-v1.3.2) (2025-10-15)
+## 1.3.2 (2025-10-15)
 
 
 ### Bug Fixes
 
 * **configurator:** add troubleshooting link ([f8595a8](https://github.com/ATOVproject/faderpunk/commit/f8595a8c8c6eb68503c874d82b0fd2ccdcb51484))
 
-## [1.3.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.3.0...configurator-v1.3.1) (2025-10-14)
+## 1.3.1 (2025-10-14)
 
 
 ### Bug Fixes
 
 * **manual:** add app parameters and storage to manual ([8d0e976](https://github.com/ATOVproject/faderpunk/commit/8d0e9764102711f85be2cd3df40cc2a23ed6e1cf))
 
-## [1.3.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.3...configurator-v1.3.0) (2025-10-10)
+## 1.3.0 (2025-10-10)
 
 
 ### Features
@@ -158,7 +158,7 @@
 * **configurator:** integrate manual into configurator ([421e8e0](https://github.com/ATOVproject/faderpunk/commit/421e8e0a20e9b916d4a7ee06aecf4bebfee9d224))
 * **configurator:** show device version in settings tab ([f23d99a](https://github.com/ATOVproject/faderpunk/commit/f23d99ae27ab8d00903d625c0c01467e4f5bebf6))
 
-## [1.2.3](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.2...configurator-v1.2.3) (2025-10-10)
+## 1.2.3 (2025-10-10)
 
 
 ### Bug Fixes
@@ -166,21 +166,21 @@
 * **configurator:** fix app links to manual ([d2667ba](https://github.com/ATOVproject/faderpunk/commit/d2667ba2be17f8ad061c3a959d8a2fe4981639bc))
 * **configurator:** quick manual styling fixes ([f5064e7](https://github.com/ATOVproject/faderpunk/commit/f5064e79722c6b8c5b33f75d9a5ae550a976904d))
 
-## [1.2.2](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.1...configurator-v1.2.2) (2025-10-09)
+## 1.2.2 (2025-10-09)
 
 
 ### Bug Fixes
 
 * **configurator:** fix routing for GitHub pages ([492e4e0](https://github.com/ATOVproject/faderpunk/commit/492e4e0fa7e15e6c9a06de207a7c1fafb273ea7b))
 
-## [1.2.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.2.0...configurator-v1.2.1) (2025-10-09)
+## 1.2.1 (2025-10-09)
 
 
 ### Bug Fixes
 
 * **configurator:** lil update procedure fix ([57a4be6](https://github.com/ATOVproject/faderpunk/commit/57a4be60a0d82dd4e61fb84e94aeb927f3bdfc94))
 
-## [1.2.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.1.1...configurator-v1.2.0) (2025-10-09)
+## 1.2.0 (2025-10-09)
 
 
 ### Features
@@ -198,7 +198,7 @@
 * **configurator:** add app params to manual ([155e9dd](https://github.com/ATOVproject/faderpunk/commit/155e9dd28b5538a9c38c537d81168a478c6c8c3e))
 * **configurator:** add favicon ([86f45d4](https://github.com/ATOVproject/faderpunk/commit/86f45d4a64771430ea2af9c43db3ed65ae9378e0))
 
-## [1.1.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.1.0...configurator-v1.1.1) (2025-10-08)
+## 1.1.1 (2025-10-08)
 
 
 ### Bug Fixes
@@ -206,7 +206,7 @@
 * **configurator:** disambiguate range names ([87947ef](https://github.com/ATOVproject/faderpunk/commit/87947eff463d2df42dd188c7e4e625f18bbcfc08))
 * **configurator:** properly parse enum defaultValue ([00db2a0](https://github.com/ATOVproject/faderpunk/commit/00db2a0a3bf569ce80076519ba075b3a451232b6))
 
-## [1.1.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v1.0.0...configurator-v1.1.0) (2025-09-25)
+## 1.1.0 (2025-09-25)
 
 
 ### Features
@@ -219,7 +219,7 @@
 * **clock:** limit extra reset sources ([7fc8619](https://github.com/ATOVproject/faderpunk/commit/7fc861910648376d5f7963214c1c6f2a33df7bd5))
 * **configurator:** add about tab and attributions ([8d9ab89](https://github.com/ATOVproject/faderpunk/commit/8d9ab8931922e0896094a5cd518bd5de71b207ca))
 
-## [1.0.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.4.0...configurator-v1.0.0) (2025-09-20)
+## 1.0.0 (2025-09-20)
 
 
 ### ⚠ BREAKING CHANGES
@@ -239,14 +239,14 @@
 * **configurator:** disable popover when dragging in layout ([63dc2ba](https://github.com/ATOVproject/faderpunk/commit/63dc2bae4d2ace8bd0af23505d5678ba0ef9c79e))
 * **configurator:** properly check activeId against null ([90fb701](https://github.com/ATOVproject/faderpunk/commit/90fb701aa63a5194b88faac822afe6193f6b051a))
 
-## [0.2.1](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.2.0...configurator-v0.2.1) (2025-08-21)
+## 0.2.1 (2025-08-21)
 
 
 ### Bug Fixes
 
 * **configurator:** fix color param not being sent ([9ba5bc9](https://github.com/ATOVproject/faderpunk/commit/9ba5bc90c3f8f7cfe6ddf721e7f45ae085234d3e))
 
-## [0.2.0](https://github.com/ATOVproject/faderpunk/compare/configurator-v0.1.0...configurator-v0.2.0) (2025-08-21)
+## 0.2.0 (2025-08-21)
 
 
 ### Features

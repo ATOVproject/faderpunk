@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.7.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.6.0...faderpunk-v1.7.0) (2026-02-08)
+## 1.7.0 (2026-02-08)
 
 
 ### Features
@@ -36,28 +36,28 @@
 * **turing:** disable note off on stop when midi mode is not Note ([959c2e4](https://github.com/ATOVproject/faderpunk/commit/959c2e4b54d54457ab3cf925eae8afd710d67beb))
 * **turing:** fix range setting stuck on 0-10V ([6de54e6](https://github.com/ATOVproject/faderpunk/commit/6de54e6f492b28f76cdf94150596b34913b733ed))
 
-## [1.6.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.3...faderpunk-v1.6.0) (2026-01-27)
+## 1.6.0 (2026-01-27)
 
 
 ### Features
 
 * **faderpunk:** bump version to align with configurator ([50cdb88](https://github.com/ATOVproject/faderpunk/commit/50cdb88e26dff2a567411c84605adeeed557d504))
 
-## [1.5.3](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.2...faderpunk-v1.5.3) (2026-01-25)
+## 1.5.3 (2026-01-25)
 
 
 ### Bug Fixes
 
 * add hardware factory reset ([e3fef02](https://github.com/ATOVproject/faderpunk/commit/e3fef022b1dbe497aed6c3875c32e3c481ca1297))
 
-## [1.5.2](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.1...faderpunk-v1.5.2) (2026-01-07)
+## 1.5.2 (2026-01-07)
 
 
 ### Bug Fixes
 
 * **control:** remove filtering on MIDI CC ([fb71d00](https://github.com/ATOVproject/faderpunk/commit/fb71d004ab19ab57df2464ef979a65335d73fe19))
 
-## [1.5.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.5.0...faderpunk-v1.5.1) (2025-12-10)
+## 1.5.1 (2025-12-10)
 
 
 ### Bug Fixes
@@ -66,7 +66,7 @@
 * **midi2cv:** re-trigger gate on legato ([8bf3697](https://github.com/ATOVproject/faderpunk/commit/8bf3697f00c1bf14c1a967719258727eed0b1499))
 * **midi2cv:** support zero-velocity note-offs ([95ed381](https://github.com/ATOVproject/faderpunk/commit/95ed38114a1850a341d11b2068fe553fb61709d3))
 
-## [1.5.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.4.0...faderpunk-v1.5.0) (2025-12-07)
+## 1.5.0 (2025-12-07)
 
 
 ### Features
@@ -91,7 +91,7 @@
 * **panner:** fix crash when pressing button 2 and moving fader 1 ([e674d84](https://github.com/ATOVproject/faderpunk/commit/e674d84861ccd9e850a4322b4de8f7b782b2504b))
 * **panner:** make LED color more consistent ([be56867](https://github.com/ATOVproject/faderpunk/commit/be56867e8ed34846f2e3b082e3ba3334c7fbcbcd))
 
-## [1.4.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.3.0...faderpunk-v1.4.0) (2025-10-24)
+## 1.4.0 (2025-10-24)
 
 
 ### Features
@@ -109,7 +109,7 @@
 * **randomcvcc:** fix bug preventing  going into free running mode ([420ce0e](https://github.com/ATOVproject/faderpunk/commit/420ce0ea4fa52043ec0fa5e3a6d57540284aa3ca))
 * **turing & turing+:** fix MIDI CC number offset ([6783f71](https://github.com/ATOVproject/faderpunk/commit/6783f71e5cc07c299ea7845d7e64d7612604a37e))
 
-## [1.3.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.2.2...faderpunk-v1.3.0) (2025-10-08)
+## 1.3.0 (2025-10-08)
 
 
 ### Features
@@ -130,14 +130,14 @@
 * **rndcvcc:** Change description ([edda804](https://github.com/ATOVproject/faderpunk/commit/edda804da43eff04339bef417ec4a1e04791fec0))
 * **storage:** enable calibration data migration ([b8f140e](https://github.com/ATOVproject/faderpunk/commit/b8f140e1548559ea25032ef32868ae597800e0aa))
 
-## [1.2.2](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.2.1...faderpunk-v1.2.2) (2025-10-01)
+## 1.2.2 (2025-10-01)
 
 
 ### Bug Fixes
 
 * **midi2cv:** fix param size ([9362331](https://github.com/ATOVproject/faderpunk/commit/93623319a56ba4117437b47e19b4f195416f00b5))
 
-## [1.2.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.2.0...faderpunk-v1.2.1) (2025-10-01)
+## 1.2.1 (2025-10-01)
 
 
 ### Bug Fixes
@@ -146,7 +146,7 @@
 * **clkcvrnd:** move color change to clock handler ([4aba760](https://github.com/ATOVproject/faderpunk/commit/4aba760da1566a447b9c2be58e0fa0d6911206d4))
 * **euclid:** fix warping issues making it loose phase ([47e0ff1](https://github.com/ATOVproject/faderpunk/commit/47e0ff1a42eb018b4d2ca337f0dec777fa11ab07))
 
-## [1.2.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.1.0...faderpunk-v1.2.0) (2025-09-25)
+## 1.2.0 (2025-09-25)
 
 
 ### Features
@@ -167,7 +167,7 @@
 * fix subdivision numbers ([bb99959](https://github.com/ATOVproject/faderpunk/commit/bb99959d27df505b97fcddce64ee4c690c455277))
 * **turing:** fix issues with sequences length is 16 ([67aa1b8](https://github.com/ATOVproject/faderpunk/commit/67aa1b8cc416dc5184d5f343b08831c432d43d94))
 
-## [1.1.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v1.0.0...faderpunk-v1.1.0) (2025-09-20)
+## 1.1.0 (2025-09-20)
 
 
 ### Features
@@ -181,7 +181,7 @@
 * **apps:** fix sticky params race condition ([0d9d817](https://github.com/ATOVproject/faderpunk/commit/0d9d817e85a156683b03c243bce849dca56b6154))
 * **configurator:** retain storage and parameters when app is moved ([6ea3cab](https://github.com/ATOVproject/faderpunk/commit/6ea3cab3c1e5ae7a8213c57c10b453972b2b48c0))
 
-## [1.0.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.9.0...faderpunk-v1.0.0) (2025-09-13)
+## 1.0.0 (2025-09-13)
 
 
 ### ⚠ BREAKING CHANGES
@@ -230,7 +230,7 @@
 * **notefader:** reset now actually reset to 0 ([b3691b1](https://github.com/ATOVproject/faderpunk/commit/b3691b18ff37936f6fee1654475b3dc0c0854c13))
 * **seq8:** rearrange the shift functions ([a8728fb](https://github.com/ATOVproject/faderpunk/commit/a8728fb3c5d43a974d85900b9884247982c5e3d9))
 
-## [0.9.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.8.1...faderpunk-v0.9.0) (2025-09-08)
+## 0.9.0 (2025-09-08)
 
 
 ### Features
@@ -258,14 +258,14 @@
 * **probatrigger:** remove fader curve param ([ca57153](https://github.com/ATOVproject/faderpunk/commit/ca5715384b64077f324cda314b6e23a625d39751))
 * **turing &  turing+:** fix attenuation curve ([bf5fc19](https://github.com/ATOVproject/faderpunk/commit/bf5fc1951ed0ccc09889a844c806e0d723b078ac))
 
-## [0.8.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.8.0...faderpunk-v0.8.1) (2025-09-04)
+## 0.8.1 (2025-09-04)
 
 
 ### Bug Fixes
 
 * prefixed commit ([3f3c80b](https://github.com/ATOVproject/faderpunk/commit/3f3c80b24aac772bafbd3c62fd520be81c2c3421))
 
-## [0.8.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.7.0...faderpunk-v0.8.0) (2025-09-04)
+## 0.8.0 (2025-09-04)
 
 
 ### Features
@@ -320,7 +320,7 @@
 * **turing:** implement new latching system ([d706882](https://github.com/ATOVproject/faderpunk/commit/d706882f61344269ad640ec81083cac28ffdedf3))
 * validate layout after loading from fram ([848e2aa](https://github.com/ATOVproject/faderpunk/commit/848e2aa79130d134737f66309c023211e041f861))
 
-## [0.7.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.6.1...faderpunk-v0.7.0) (2025-08-23)
+## 0.7.0 (2025-08-23)
 
 
 ### Features
@@ -339,14 +339,14 @@
 * **midi2cv:** fix small led bug ([4cac8c5](https://github.com/ATOVproject/faderpunk/commit/4cac8c54ff873bcde61940b23b258dd291ab9120))
 * **midi:** improve midi subscriber instantiation ([46e20f2](https://github.com/ATOVproject/faderpunk/commit/46e20f2763ca7582c6b938ee800d47efb7e26492))
 
-## [0.6.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.6.0...faderpunk-v0.6.1) (2025-08-20)
+## 0.6.1 (2025-08-20)
 
 
 ### Bug Fixes
 
 * make a change to force rebuild ([5ba1572](https://github.com/ATOVproject/faderpunk/commit/5ba1572459a6b40e63b009938e9fc017a456d2c9))
 
-## [0.6.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.5.0...faderpunk-v0.6.0) (2025-08-20)
+## 0.6.0 (2025-08-20)
 
 
 ### Features
@@ -368,7 +368,7 @@
 * **midi:** make wait_for_message method public ([5618706](https://github.com/ATOVproject/faderpunk/commit/56187062690ac313c656db5d703c12da4c1ca451))
 * **midi:** properly handle larger usb midi packets ([94c757f](https://github.com/ATOVproject/faderpunk/commit/94c757f7d7e35f874c1a849c5adeac501d50c2e5))
 
-## [0.5.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.4.2...faderpunk-v0.5.0) (2025-08-14)
+## 0.5.0 (2025-08-14)
 
 
 ### Features
@@ -391,14 +391,14 @@
 * **quantizer:** reactivate quantizer ([2a7fada](https://github.com/ATOVproject/faderpunk/commit/2a7fadae6392bf1bee65d226b9580ab11e784142))
 * **sequencer:** remove running light when stopped ([094cc66](https://github.com/ATOVproject/faderpunk/commit/094cc66a844d21dffccc4d890de310af70d6a5f7))
 
-## [0.4.2](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.4.1...faderpunk-v0.4.2) (2025-08-12)
+## 0.4.2 (2025-08-12)
 
 
 ### Bug Fixes
 
 * **buttons:** improve debounce and add button state sync ([f12cc04](https://github.com/ATOVproject/faderpunk/commit/f12cc04beaef36fe155c222e1de7892d62e7de7e))
 
-## [0.4.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.4.0...faderpunk-v0.4.1) (2025-08-08)
+## 0.4.1 (2025-08-08)
 
 
 ### Bug Fixes
@@ -406,7 +406,7 @@
 * **api:** rename Sawinv to SawInv ([9b18e3c](https://github.com/ATOVproject/faderpunk/commit/9b18e3c5f6fd4134e83119d209608b06f5a863e0))
 * **lfo:** fix crash on certain fader positions ([0bf3aaa](https://github.com/ATOVproject/faderpunk/commit/0bf3aaa289e22940a2ec2f92549a39d97d78bc57))
 
-## [0.4.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.3.0...faderpunk-v0.4.0) (2025-08-08)
+## 0.4.0 (2025-08-08)
 
 
 ### Features
@@ -440,7 +440,7 @@
 * **turing & turing+:** bigger dead zones on probability ([be19ccd](https://github.com/ATOVproject/faderpunk/commit/be19ccdc9b0069ad04308b5048a8b7be0c209a9f))
 * **turing & turing+:** make bit flip more direct ([460e28d](https://github.com/ATOVproject/faderpunk/commit/460e28d443fe553f837f7df6b06ee564f77f13c8))
 
-## [0.3.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.2.0...faderpunk-v0.3.0) (2025-07-27)
+## 0.3.0 (2025-07-27)
 
 
 ### Features
@@ -459,7 +459,7 @@
 * **calibration:** add a little more leeway for the calibration range ([7a8f3f2](https://github.com/ATOVproject/faderpunk/commit/7a8f3f2b232e07071a7abefe8433d7553acec755))
 * **fram:** make READ_BUFFERS pointer cast a bit more ideomatic ([7ab304e](https://github.com/ATOVproject/faderpunk/commit/7ab304e13c230423620c68b9a7a2bb360b2cac42))
 
-## [0.2.0](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.1.1...faderpunk-v0.2.0) (2025-07-19)
+## 0.2.0 (2025-07-19)
 
 
 ### Features
@@ -509,7 +509,7 @@
 * **slew:** refine ([f7e0fc1](https://github.com/ATOVproject/faderpunk/commit/f7e0fc11c33164ee70722ad88ece3e6f33344b00))
 * **turing:** added param, saving and led feedback ([5e3fe40](https://github.com/ATOVproject/faderpunk/commit/5e3fe407a9b091d337a7d73e91a0c2a0db4cfe55))
 
-## [0.1.1](https://github.com/ATOVproject/faderpunk/compare/faderpunk-v0.1.0...faderpunk-v0.1.1) (2025-07-08)
+## 0.1.1 (2025-07-08)
 
 
 ### Bug Fixes
