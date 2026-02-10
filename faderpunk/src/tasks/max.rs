@@ -165,7 +165,7 @@ async fn read_fader(
         core::array::from_fn(|channel| get_fader_value_from_config(channel, &global_config));
 
     let mut fader_latches: [AnalogLatch; 16] = core::array::from_fn(|channel| {
-        AnalogLatch::new(main_fader_values[channel], libfp::TakeoverMode::Pickup)
+        AnalogLatch::new(main_fader_values[channel], global_config.takeover_mode)
     });
 
     let mut chan: usize = 0;
