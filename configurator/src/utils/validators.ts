@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Param, Value } from "@atov/fp-config";
+import { GlobalConfig, Param, Value } from "@atov/fp-config";
 
 export const getParamSchema = (param: Param) => {
   switch (param.tag) {
@@ -153,4 +153,112 @@ export const parseParamValueFromFile = (
 
   // If parsing fails, return the schema's default value
   return schema.parse(undefined) as Value;
+};
+
+// Default GlobalConfig matching libfp defaults
+const defaultGlobalConfig: GlobalConfig = {
+  aux: [
+    { tag: "ClockOut", value: { tag: "_1" } },
+    { tag: "None" },
+    { tag: "None" },
+  ],
+  clock: {
+    clock_src: { tag: "Internal" },
+    ext_ppqn: 24,
+    reset_src: { tag: "None" },
+    internal_bpm: 120.0,
+  },
+  i2c_mode: { tag: "Leader" },
+  led_brightness: 150,
+  midi: {
+    outs: [
+      {
+        send_clock: true,
+        send_transport: true,
+        mode: { tag: "Local" },
+      },
+      {
+        send_clock: true,
+        send_transport: true,
+        mode: { tag: "Local" },
+      },
+      {
+        send_clock: true,
+        send_transport: true,
+        mode: { tag: "Local" },
+      },
+    ],
+  },
+  quantizer: {
+    key: { tag: "Chromatic" },
+    tonic: { tag: "C" },
+  },
+  takeover_mode: { tag: "Pickup" },
+};
+
+// Lenient schema that validates structure but allows any valid tag values
+const taggedObjectSchema = z.object({ tag: z.string() }).passthrough();
+
+const globalConfigSchema = z.object({
+  aux: z.array(taggedObjectSchema).length(3),
+  clock: z.object({
+    clock_src: taggedObjectSchema,
+    ext_ppqn: z.number().int().min(1).max(96),
+    reset_src: taggedObjectSchema,
+    internal_bpm: z.number().min(1).max(300),
+  }),
+  i2c_mode: taggedObjectSchema,
+  led_brightness: z.number().int().min(100).max(255),
+  midi: z.object({
+    outs: z
+      .array(
+        z.object({
+          send_clock: z.boolean(),
+          send_transport: z.boolean(),
+          mode: taggedObjectSchema,
+        }),
+      )
+      .length(3),
+  }),
+  quantizer: z.object({
+    key: taggedObjectSchema,
+    tonic: taggedObjectSchema,
+  }),
+  takeover_mode: taggedObjectSchema,
+});
+
+export const parseGlobalConfigFromFile = (
+  fileConfig: unknown,
+): GlobalConfig => {
+  const result = globalConfigSchema.safeParse(fileConfig);
+
+  if (!result.success) {
+    // If parsing fails, return the default config
+    return defaultGlobalConfig;
+  }
+
+  // Manually construct a properly-typed GlobalConfig from validated data
+  const validated = result.data;
+
+  const config: GlobalConfig = {
+    aux: [
+      validated.aux[0],
+      validated.aux[1],
+      validated.aux[2],
+    ] as GlobalConfig["aux"],
+    clock: validated.clock as GlobalConfig["clock"],
+    i2c_mode: validated.i2c_mode as GlobalConfig["i2c_mode"],
+    led_brightness: validated.led_brightness,
+    midi: {
+      outs: [
+        validated.midi.outs[0],
+        validated.midi.outs[1],
+        validated.midi.outs[2],
+      ] as GlobalConfig["midi"]["outs"],
+    },
+    quantizer: validated.quantizer as GlobalConfig["quantizer"],
+    takeover_mode: validated.takeover_mode as GlobalConfig["takeover_mode"],
+  };
+
+  return config;
 };

@@ -18,6 +18,9 @@ const LAYOUT_WATCH_SUBSCRIBERS: usize = 2;
 pub static LAYOUT_WATCH: Watch<CriticalSectionRawMutex, Layout, LAYOUT_WATCH_SUBSCRIBERS> =
     Watch::new();
 
+/// Signal to force respawn all apps
+pub static FORCE_RESPAWN_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
 pub static LAYOUT_MANAGER: StaticCell<LayoutManager> = StaticCell::new();
 
 pub struct LayoutManager {
@@ -44,6 +47,17 @@ impl LayoutManager {
             self.exit_signals[start_channel].signal(true);
             Timer::after_millis(10).await;
         }
+    }
+
+    /// Force respawn all apps by exiting them all and then respawning with the given layout
+    pub async fn respawn_all(&'static self, layout: &Layout) {
+        // Exit all currently running apps
+        for start_channel in 0..GLOBAL_CHANNELS {
+            self.exit_app(start_channel).await;
+        }
+
+        // Now spawn the desired layout
+        self.spawn_layout(layout).await;
     }
 
     pub async fn spawn_layout(&'static self, layout: &Layout) -> bool {

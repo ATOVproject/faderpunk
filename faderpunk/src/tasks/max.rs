@@ -164,8 +164,9 @@ async fn read_fader(
     let mut global_settings_fader_values: [u16; 16] =
         core::array::from_fn(|channel| get_fader_value_from_config(channel, &global_config));
 
-    let mut fader_latches: [AnalogLatch; 16] =
-        core::array::from_fn(|channel| AnalogLatch::new(main_fader_values[channel]));
+    let mut fader_latches: [AnalogLatch; 16] = core::array::from_fn(|channel| {
+        AnalogLatch::new(main_fader_values[channel], global_config.takeover_mode)
+    });
 
     let mut chan: usize = 0;
 
@@ -195,7 +196,7 @@ async fn read_fader(
         let target_value = match active_layer {
             LatchLayer::Main => main_fader_values[channel],
             LatchLayer::Alt => global_settings_fader_values[channel],
-            _ => unreachable!(),
+            LatchLayer::Third => 0,
         };
 
         if let Some(new_value) = latch.update(val, active_layer, target_value) {
@@ -216,7 +217,7 @@ async fn read_fader(
                         global_settings_fader_values[channel] = new_value;
                     }
                 }
-                _ => unreachable!(),
+                LatchLayer::Third => {}
             }
         }
 

@@ -6,26 +6,26 @@ import type {
   GlobalConfig,
   I2cMode,
   Key,
+  latch,
   MidiOutConfig,
   MidiOutMode,
   Note,
   ResetSrc,
 } from "@atov/fp-config";
-import { FormProvider, useForm, type SubmitHandler } from "react-hook-form";
 import { useCallback, useEffect, useState } from "react";
-
-import { ClockSettings } from "./settings/ClockSettings";
+import { FormProvider, type SubmitHandler, useForm } from "react-hook-form";
+import { useStore } from "../store";
+import { setGlobalConfig } from "../utils/config";
 import { ButtonPrimary } from "./Button";
 import { Icon } from "./Icon";
-import { useStore } from "../store";
-import { I2cSettings } from "./settings/I2cSettings";
-import { QuantizerSettings } from "./settings/QuantizerSettings";
+import { SaveLoadSetup } from "./SaveLoadSetup";
 import { AuxSettings } from "./settings/AuxSettings";
+import { ClockSettings } from "./settings/ClockSettings";
+import { FactoryReset } from "./settings/FactoryReset";
+import { I2cSettings } from "./settings/I2cSettings";
 import { MidiSettings } from "./settings/MidiSettings";
 import { MiscSettings } from "./settings/MiscSettings";
-import { setGlobalConfig } from "../utils/config";
-import { FactoryReset } from "./settings/FactoryReset";
-import { SaveLoadSetup } from "./SaveLoadSetup";
+import { QuantizerSettings } from "./settings/QuantizerSettings";
 
 interface SettingsFormProps {
   config: GlobalConfig;
@@ -45,6 +45,7 @@ export interface Inputs {
   resetSrc: ResetSrc["tag"];
   quantizerKey: Key["tag"];
   quantizerTonic: Note["tag"];
+  takeoverMode: latch.TakeoverMode["tag"];
   // MIDI USB
   midiUsbMode: MidiOutMode["tag"];
   midiUsbSendClock: boolean;
@@ -114,6 +115,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
       quantizerKey: config.quantizer.key.tag,
       quantizerTonic: config.quantizer.tonic.tag,
       ledBrightness: config.led_brightness,
+      takeoverMode: config.takeover_mode.tag,
       // MIDI USB
       midiUsbMode: midiUsb.mode,
       midiUsbSendClock: midiUsb.sendClock,
@@ -301,5 +303,6 @@ const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
       key: { tag: formValues.quantizerKey },
       tonic: { tag: formValues.quantizerTonic },
     },
+    takeover_mode: { tag: formValues.takeoverMode },
   };
 };
