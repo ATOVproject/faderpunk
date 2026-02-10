@@ -42,7 +42,11 @@ type = "PrepareRelease"
 
 [[workflows.steps]]
 type = "Command"
-command = "git add -A && git commit -m \"chore: prepare release\""
+command = "git add -A"
+
+[[workflows.steps]]
+type = "Command"
+command = "git commit -m \"chore: prepare release\""
 
 [[workflows.steps]]
 type = "Command"
@@ -56,8 +60,14 @@ base = "main"
 template = "chore: prepare release"
 
 [workflows.steps.body]
-template = "Merging this PR will create new releases.\n\n{changelog}"
-variables = { "{changelog}" = "ChangelogEntry" }
+template = "Merging this PR will create new releases.\n\nSee the updated changelogs in this PR for details."
+
+[[workflows]]
+name = "prepare-beta"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+prerelease_label = "beta"
 
 [[workflows]]
 name = "release"
