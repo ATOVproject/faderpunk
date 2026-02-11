@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
+      faderpunk_version: ${{ steps.commit.outputs.faderpunk_version }}
     steps:
       - uses: actions/create-github-app-token@v2
         id: app-token
@@ -40,6 +41,7 @@ jobs:
           git commit -m "chore: beta release"
           git push
           echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "faderpunk_version=$(grep '^version' faderpunk/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
 
   build-picotool:
     needs: prepare-beta
@@ -143,7 +145,8 @@ jobs:
           mkdir -p artifacts
           cp firmware_build/faderpunk artifacts/faderpunk.elf
           chmod +x picotool_executable/picotool
-          picotool_executable/picotool uf2 convert artifacts/faderpunk.elf artifacts/faderpunk.uf2
+          VERSION="v${{ needs.prepare-beta.outputs.faderpunk_version }}"
+          picotool_executable/picotool uf2 convert artifacts/faderpunk.elf artifacts/faderpunk-${VERSION}.uf2
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       faderpunk: ${{ steps.check.outputs.faderpunk }}
+      faderpunk_version: ${{ steps.check.outputs.faderpunk_version }}
       libfp: ${{ steps.check.outputs.libfp }}
       configurator: ${{ steps.check.outputs.configurator }}
       configurator_minor: ${{ steps.check.outputs.configurator_minor }}
@@ -34,6 +35,7 @@ jobs:
           CF_VERSION=$(jq -r .version configurator/package.json)
           CF_MINOR=$(echo "$CF_VERSION" | cut -d. -f1,2)
 
+          echo "faderpunk_version=$FP_VERSION" >> $GITHUB_OUTPUT
           echo "faderpunk=$(git tag -l "faderpunk/v$FP_VERSION" | grep -q . && echo 'false' || echo 'true')" >> $GITHUB_OUTPUT
           echo "libfp=$(git tag -l "libfp/v$LP_VERSION" | grep -q . && echo 'false' || echo 'true')" >> $GITHUB_OUTPUT
           echo "configurator=$(git tag -l "configurator/v$CF_VERSION" | grep -q . && echo 'false' || echo 'true')" >> $GITHUB_OUTPUT
@@ -143,7 +145,8 @@ jobs:
           mkdir -p artifacts
           cp firmware_build/faderpunk artifacts/faderpunk.elf
           chmod +x picotool_executable/picotool
-          picotool_executable/picotool uf2 convert artifacts/faderpunk.elf artifacts/faderpunk.uf2
+          VERSION="v${{ needs.detect-changes.outputs.faderpunk_version }}"
+          picotool_executable/picotool uf2 convert artifacts/faderpunk.elf artifacts/faderpunk-${VERSION}.uf2
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
