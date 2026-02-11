@@ -131,12 +131,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download picotool artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: picotool-artifact
           path: picotool_executable
       - name: Download firmware artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: firmware-artifact
           path: firmware_build
@@ -208,12 +208,12 @@ jobs:
           ref: ${{ needs.prepare-beta.outputs.sha }}
           fetch-depth: 0
       - name: Download firmware artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: release-artifacts-firmware
           path: artifacts
       - name: Download configurator artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: release-artifacts-configurator
           path: artifacts
@@ -239,7 +239,7 @@ jobs:
           ref: gh-pages
           path: gh-pages
       - name: Download configurator artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: configurator-pages-artifact
           path: configurator-dist
