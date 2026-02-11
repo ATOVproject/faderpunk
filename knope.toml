@@ -7,11 +7,9 @@ changelog = "faderpunk/CHANGELOG.md"
 
 [[packages.faderpunk.assets]]
 path = "artifacts/faderpunk.elf"
-name = "faderpunk.elf"
 
 [[packages.faderpunk.assets]]
-path = "artifacts/faderpunk.uf2"
-name = "faderpunk.uf2"
+path = "artifacts/faderpunk-*.uf2"
 
 [packages.libfp]
 versioned_files = [
@@ -26,7 +24,6 @@ changelog = "configurator/CHANGELOG.md"
 
 [[packages.configurator.assets]]
 path = "artifacts/configurator.zip"
-name = "configurator.zip"
 
 # --- Workflows ---
 
@@ -39,6 +36,10 @@ command = "git switch -c release"
 
 [[workflows.steps]]
 type = "PrepareRelease"
+
+[[workflows.steps]]
+type = "Command"
+command = "./gen-bindings.sh"
 
 [[workflows.steps]]
 type = "Command"
