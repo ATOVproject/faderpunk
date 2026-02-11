@@ -707,7 +707,7 @@ dependencies = [
  "embedded-hal-async",
  "embedded-io-async",
  "fm24v10",
- "heapless 0.7.17",
+ "heapless 0.8.0",
  "libfp",
  "libm",
  "linreg",
