@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub mod colors;
 pub mod constants;
 pub mod ext;
+pub mod fp_grids_lib;
 pub mod i2c_proto;
 pub mod latch;
 pub mod quantizer;
