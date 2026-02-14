@@ -62,7 +62,7 @@ export const Interface = () => (
         </strong>
         <br />
         Positioned above the Shift button, this button is used to{" "}
-        <strong>save and recall scenes</strong>:
+        <strong>save and recall scenes</strong>, this buttons also acts as a  <strong>tempo indicator</strong> and flashes when the  <strong>clock</strong> is running.
         <List>
           <li>
             <strong>To save a scene</strong>: Press and hold the Scene button,
