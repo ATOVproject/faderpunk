@@ -7,18 +7,26 @@ use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
 use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
-use libfp::{Brightness, Color, LED_BRIGHTNESS_RANGE};
-use portable_atomic::{AtomicU8, Ordering};
+use libfp::{Brightness, ClockDivision, Color, LED_BRIGHTNESS_RANGE};
+use portable_atomic::{AtomicU32, AtomicU8, Ordering};
 use smart_leds::colors::BLACK;
 use smart_leds::{brightness, gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
+
+use crate::tasks::buttons::{is_scene_button_pressed, LAST_SCENE_INDEX, NO_SCENE_INDEX};
+use crate::tasks::clock::{ClockEvent, CLOCK_PUBSUB};
+use crate::tasks::global_config::get_global_config;
 
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
 const NUM_LEDS: usize = 50;
 const LED_OVERLAY_CHANNEL_SIZE: usize = 16;
+const TEMPO_PULSE_FRAMES: u8 = 3;
 
 pub static LED_BRIGHTNESS: AtomicU8 = AtomicU8::new(LED_BRIGHTNESS_RANGE.end);
+
+static CLOCK_TICKS: AtomicU32 = AtomicU32::new(0);
+static CLOCK_EPOCH: AtomicU32 = AtomicU32::new(0);
 
 static LED_SIGNALS: [Signal<CriticalSectionRawMutex, LedMsg>; NUM_LEDS] =
     [const { Signal::new() }; NUM_LEDS];
@@ -31,6 +39,7 @@ static LED_OVERLAY_CHANNEL: Channel<
 
 pub async fn start_leds(spawner: &Spawner, spi1: Spi<'static, SPI1, Async>) {
     spawner.spawn(run_leds(spi1)).unwrap();
+    spawner.spawn(run_led_clock_sync()).unwrap();
 }
 
 #[derive(Clone, Copy)]
@@ -49,15 +58,18 @@ pub enum Led {
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub enum LedMode {
+    Off,
     Static(Color, Brightness),
     FadeOut(Color),
     Flash(Color, Option<usize>),
     StaticFade(Color, u16),
+    TempoPulse(Color, ClockDivision),
 }
 
 impl LedMode {
     fn into_effect(self) -> LedEffect {
         match self {
+            LedMode::Off => LedEffect::Off,
             LedMode::Static(color, brightness) => LedEffect::Static {
                 color: color.into(),
                 brightness: brightness.into(),
@@ -75,6 +87,17 @@ impl LedMode {
                 color: color.into(),
                 delay_ms,
                 elapsed_frames: 0,
+            },
+            LedMode::TempoPulse(color, division) => LedEffect::TempoPulse {
+                color: color.into(),
+                division: (division as u16).max(1),
+                base_brightness: Brightness::Mid.into(),
+                flash_brightness: Brightness::High.into(),
+                pulse_frames: TEMPO_PULSE_FRAMES,
+                pulse_remaining: 0,
+                tick_counter: 0,
+                last_tick: CLOCK_TICKS.load(Ordering::Relaxed),
+                last_epoch: CLOCK_EPOCH.load(Ordering::Relaxed),
             },
         }
     }
@@ -100,6 +123,17 @@ enum LedEffect {
         color: RGB8,
         delay_ms: u16,
         elapsed_frames: u64,
+    },
+    TempoPulse {
+        color: RGB8,
+        division: u16,
+        base_brightness: u8,
+        flash_brightness: u8,
+        pulse_frames: u8,
+        pulse_remaining: u8,
+        tick_counter: u16,
+        last_tick: u32,
+        last_epoch: u32,
     },
 }
 
@@ -178,6 +212,45 @@ impl LedEffect {
                     *color
                 }
             }
+            LedEffect::TempoPulse {
+                color,
+                division,
+                base_brightness,
+                flash_brightness,
+                pulse_frames,
+                pulse_remaining,
+                tick_counter,
+                last_tick,
+                last_epoch,
+            } => {
+                let epoch = CLOCK_EPOCH.load(Ordering::Relaxed);
+                if epoch != *last_epoch {
+                    *last_epoch = epoch;
+                    *last_tick = CLOCK_TICKS.load(Ordering::Relaxed);
+                    *tick_counter = 0;
+                    *pulse_remaining = 0;
+                }
+
+                let current_ticks = CLOCK_TICKS.load(Ordering::Relaxed);
+                let delta = current_ticks.wrapping_sub(*last_tick);
+                if delta != 0 {
+                    *last_tick = current_ticks;
+                    for _ in 0..delta {
+                        *tick_counter = tick_counter.saturating_add(1);
+                        if *tick_counter >= *division {
+                            *tick_counter = 0;
+                            *pulse_remaining = *pulse_frames;
+                        }
+                    }
+                }
+
+                if *pulse_remaining > 0 {
+                    *pulse_remaining = pulse_remaining.saturating_sub(1);
+                    color.scale(*flash_brightness)
+                } else {
+                    color.scale(*base_brightness)
+                }
+            }
         }
     }
 }
@@ -191,13 +264,41 @@ struct LedProcessor {
 
 impl LedProcessor {
     async fn process(&mut self) {
-        for ((base, overlay), led) in self
+        let scene_pressed = is_scene_button_pressed();
+        let last_scene_index = LAST_SCENE_INDEX.load(Ordering::Relaxed);
+        let last_scene_led = if last_scene_index == NO_SCENE_INDEX {
+            None
+        } else {
+            Some(get_no(last_scene_index.min(15) as usize, Led::Button))
+        };
+        let (quant_key_color, quant_tonic_color) = if scene_pressed {
+            let config = get_global_config();
+            let key: RGB8 = Color::from(config.quantizer.key as usize).into();
+            let tonic: RGB8 = Color::from(config.quantizer.tonic as usize).into();
+            (
+                key.scale(Brightness::Mid.into()),
+                tonic.scale(Brightness::Mid.into()),
+            )
+        } else {
+            (BLACK, BLACK)
+        };
+
+        let luminosity_led = get_no(0, Led::Top);
+        for (index, ((base, overlay), led)) in self
             .base_layer
             .iter_mut()
             .zip(self.overlay_layer.iter_mut())
             .zip(self.buffer.iter_mut())
+            .enumerate()
         {
-            if let LedEffect::Off = overlay {
+            let overlay_active = match overlay {
+                LedEffect::Off => false,
+                LedEffect::TempoPulse { .. } => scene_pressed,
+                LedEffect::StaticFade { .. } => scene_pressed || index > 11,
+                _ => true,
+            };
+
+            if !overlay_active {
                 // Overlay effect is off, we use the base layer
                 *led = base.update();
             } else {
@@ -211,6 +312,39 @@ impl LedProcessor {
                         // Also update base layer to continue effects that have state
                         base.update();
                     }
+                }
+            }
+
+            if scene_pressed && !overlay_active {
+                if let Some(last_scene_led) = last_scene_led {
+                    if index == last_scene_led {
+                        let green: RGB8 = Color::Green.into();
+                        *led = green.scale(Brightness::Mid.into());
+                    }
+                }
+            }
+
+            if scene_pressed
+                && index != 16
+                && index != 17
+                && index != 37
+                && index != 38
+                && Some(index) != last_scene_led
+                && !overlay_active
+            {
+                *led = BLACK;
+            }
+
+            if scene_pressed && index == luminosity_led {
+                let white: RGB8 = Color::White.into();
+                *led = white.scale(Brightness::High.into());
+            }
+
+            if scene_pressed {
+                if index == 37 {
+                    *led = quant_key_color;
+                } else if index == 38 {
+                    *led = quant_tonic_color;
                 }
             }
         }
@@ -259,13 +393,31 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
 
     startup_animation(&mut leds).await;
 
-    leds.base_layer[16] = LedEffect::Static {
+    leds.base_layer[16] = LedEffect::TempoPulse {
         color: Color::Pink.into(),
-        brightness: Brightness::Mid.into(),
+        division: ClockDivision::_24 as u16,
+        base_brightness: Brightness::Mid.into(),
+        flash_brightness: Brightness::High.into(),
+        pulse_frames: TEMPO_PULSE_FRAMES,
+        pulse_remaining: 0,
+        tick_counter: 0,
+        last_tick: CLOCK_TICKS.load(Ordering::Relaxed),
+        last_epoch: CLOCK_EPOCH.load(Ordering::Relaxed),
     };
     leds.base_layer[17] = LedEffect::Static {
         color: Color::Yellow.into(),
         brightness: Brightness::Mid.into(),
+    };
+    leds.overlay_layer[49] = LedEffect::TempoPulse {
+        color: Color::Red.into(),
+        division: ClockDivision::_24 as u16,
+        base_brightness: Brightness::Mid.into(),
+        flash_brightness: Brightness::High.into(),
+        pulse_frames: TEMPO_PULSE_FRAMES,
+        pulse_remaining: 0,
+        tick_counter: 0,
+        last_tick: CLOCK_TICKS.load(Ordering::Relaxed),
+        last_epoch: CLOCK_EPOCH.load(Ordering::Relaxed),
     };
 
     loop {
@@ -305,6 +457,23 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
         }
 
         leds.process().await;
+    }
+}
+
+#[embassy_executor::task]
+async fn run_led_clock_sync() {
+    let mut subscriber = CLOCK_PUBSUB.subscriber().unwrap();
+
+    loop {
+        match subscriber.next_message_pure().await {
+            ClockEvent::Tick => {
+                CLOCK_TICKS.fetch_add(1, Ordering::Relaxed);
+            }
+            ClockEvent::Reset | ClockEvent::Start | ClockEvent::Stop => {
+                CLOCK_TICKS.store(0, Ordering::Relaxed);
+                CLOCK_EPOCH.fetch_add(1, Ordering::Relaxed);
+            }
+        }
     }
 }
 
