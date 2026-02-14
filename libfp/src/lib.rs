@@ -926,14 +926,11 @@ impl Range {
     }
 
     /// Converts a normalised jack signal value (in range 0 - 4095) to signed voltage value
-    /// 
     /// e.g. convert from an InJack get_value() method call, or from a DAC output value
     /// If Range 0-10V, output in range 0 - 4095
     /// If Range 0-5V, output in range 0 - 2047
     /// If Range -5 - 5V, output in range -2048 - 2047
-    /// 
     /// Useful for simulating real-world voltage math (e.g. Precision Adders)
-    /// 
     pub fn jack_value_to_voltage_value(&self, value: u16) -> i16 {
         let value = value.clamp(0, 4095) as i16;
         match self {
@@ -971,7 +968,6 @@ impl FromValue for Range {
         }
     }
 }
-
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub struct MidiCc(u8);
