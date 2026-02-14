@@ -15,3 +15,4 @@ postcard = "1.1.3"
 postcard-bindgen = "0.7.1"
 serde = { version = "1.0.219", features = ["derive"], default-features = false }
 smart-leds = "0.4.0"
+enum-ordinalize = "4.3.2"

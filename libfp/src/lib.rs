@@ -17,6 +17,7 @@ pub mod latch;
 pub mod quantizer;
 pub mod types;
 pub mod utils;
+pub mod fp_grids_lib;
 
 // Re-export commonly used latch types
 pub use latch::{AnalogLatch, LatchLayer, TakeoverMode};
