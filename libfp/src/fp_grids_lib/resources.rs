@@ -17,12 +17,13 @@
 // Ported to Rust by Richard Smith @phommed
 // Constants from grids/pattern_generator.h (or relevant to data usage)
 pub const K_NUM_PARTS: usize = 3;
-pub const K_NUM_STEPS_PER_PATTERN: u16 = 32;
+pub const K_NUM_STEPS_PER_PATTERN: u8 = 32;
 
 pub const LUT_RES_EUCLIDEAN_SIZE: usize = 1024;
 pub const LUT_RES_TEMPO_PHASE_INCREMENT: u16 = 1;
 pub const LUT_RES_TEMPO_PHASE_INCREMENT_SIZE: usize = 512;
 pub const NODE_DATA_SIZE: usize = 96;
+
 
 // Euclidean patterns lookup table
 pub const LUT_RES_EUCLIDEAN: [u32; LUT_RES_EUCLIDEAN_SIZE] = [
