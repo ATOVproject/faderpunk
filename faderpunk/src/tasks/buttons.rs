@@ -14,6 +14,7 @@ use portable_atomic::{AtomicBool, AtomicU8, Ordering};
 use crate::app::Led;
 use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
 use crate::tasks::clock::{TransportCmd, TRANSPORT_CMD_CHANNEL};
+use crate::tasks::global_config::{clear_scale_keyboard, get_global_config, show_scale_keyboard};
 
 use super::leds::{set_led_overlay_mode, LedMode};
 
@@ -175,6 +176,10 @@ async fn process_modifier_button(i: usize, mut button: Input<'_>) {
         } else {
             // Do not register the button press
             BUTTON_PRESSED[i].store(true, Ordering::Relaxed);
+            if i == 16 {
+                let config = get_global_config();
+                show_scale_keyboard(config.quantizer.key, config.quantizer.tonic).await;
+            }
         }
 
         button.wait_for_rising_edge().await;
@@ -185,6 +190,9 @@ async fn process_modifier_button(i: usize, mut button: Input<'_>) {
         }
 
         BUTTON_PRESSED[i].store(false, Ordering::Relaxed);
+        if i == 16 {
+            clear_scale_keyboard().await;
+        }
 
         Timer::after_millis(1).await;
     }

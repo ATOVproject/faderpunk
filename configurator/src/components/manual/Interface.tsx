@@ -62,7 +62,9 @@ export const Interface = () => (
         </strong>
         <br />
         Positioned above the Shift button, this button is used to{" "}
-        <strong>save and recall scenes</strong>, this buttons also acts as a  <strong>tempo indicator</strong> and flashes when the  <strong>clock</strong> is running.
+        <strong>save and recall scenes</strong>, this buttons also acts as a{" "}
+        <strong>tempo indicator</strong> and flashes when the{" "}
+        <strong>clock</strong> is running.
         <List>
           <li>
             <strong>To save a scene</strong>: Press and hold the Scene button,
@@ -137,8 +139,8 @@ export const Interface = () => (
     <p>Additionally:</p>
     <List>
       <li>
-        <strong>Scene + Shift</strong> → <strong>Starts/stops</strong> the
-        internal clock
+        <strong>Hold scene and then press Shift</strong> →{" "}
+        <strong>Starts/stops</strong> the internal clock
       </li>
     </List>
     <p>
@@ -147,10 +149,13 @@ export const Interface = () => (
     </p>
 
     <p className="mt-4">
-      When adjusting the <strong>quantizer scale</strong> (Fader 4) or{" "}
-      <strong>quantizer root note</strong> (Fader 5), the LED below the
+      The <strong>quantizer scale</strong> (Fader 4) or{" "}
+      <strong>quantizer root note</strong> (Fader 5), the LED on top of the
       respective fader displays a color indicating the current selection. This
-      provides immediate visual feedback for the active scale or tonic.
+      provides immediate visual feedback for the active scale or tonic. The LEDs
+      on the bottom of the fader display the notes of the selected scale, with
+      the intensity reflecting whether the note is in the scale or not. White
+      keys are represented by a white LED and black by a yellow LED.
     </p>
 
     <Table
