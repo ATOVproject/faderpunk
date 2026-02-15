@@ -13,7 +13,9 @@ use smart_leds::colors::BLACK;
 use smart_leds::{brightness, gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
 
+use crate::tasks::buttons::{is_scene_button_pressed, LAST_SCENE_INDEX, NO_SCENE_INDEX};
 use crate::tasks::clock::{ClockEvent, CLOCK_PUBSUB};
+use crate::tasks::global_config::get_global_config;
 
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
@@ -260,13 +262,39 @@ struct LedProcessor {
 
 impl LedProcessor {
     async fn process(&mut self) {
-        for ((base, overlay), led) in self
+        let scene_pressed = is_scene_button_pressed();
+        let last_scene_index = LAST_SCENE_INDEX.load(Ordering::Relaxed);
+        let last_scene_led = if last_scene_index == NO_SCENE_INDEX {
+            None
+        } else {
+            Some(get_no(last_scene_index.min(15) as usize, Led::Bottom))
+        };
+        let (quant_key_color, quant_tonic_color) = if scene_pressed {
+            let config = get_global_config();
+            let key: RGB8 = Color::from(config.quantizer.key as usize).into();
+            let tonic: RGB8 = Color::from(config.quantizer.tonic as usize).into();
+            (
+                key.scale(Brightness::Mid.into()),
+                tonic.scale(Brightness::Mid.into()),
+            )
+        } else {
+            (BLACK, BLACK)
+        };
+
+        for (index, ((base, overlay), led)) in self
             .base_layer
             .iter_mut()
             .zip(self.overlay_layer.iter_mut())
             .zip(self.buffer.iter_mut())
+            .enumerate()
         {
-            if let LedEffect::Off = overlay {
+            let overlay_active = match overlay {
+                LedEffect::Off => false,
+                LedEffect::TempoPulse { .. } => scene_pressed,
+                _ => true,
+            };
+
+            if !overlay_active {
                 // Overlay effect is off, we use the base layer
                 *led = base.update();
             } else {
@@ -280,6 +308,37 @@ impl LedProcessor {
                         // Also update base layer to continue effects that have state
                         base.update();
                     }
+                }
+            }
+
+            if scene_pressed {
+                if !overlay_active {
+                    if let Some(last_scene_led) = last_scene_led {
+                        if index == last_scene_led {
+                            let green: RGB8 = Color::Green.into();
+                            *led = green.scale(Brightness::Mid.into());
+                        }
+                    }
+                }
+            }
+
+            if scene_pressed
+                && index != 16
+                && index != 17
+                && index != 37
+                && index != 38
+                && Some(index) != last_scene_led
+            {
+                if !overlay_active {
+                    *led = BLACK;
+                }
+            }
+
+            if scene_pressed {
+                if index == 37 {
+                    *led = quant_key_color;
+                } else if index == 38 {
+                    *led = quant_tonic_color;
                 }
             }
         }
@@ -342,6 +401,17 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
     leds.base_layer[17] = LedEffect::Static {
         color: Color::Yellow.into(),
         brightness: Brightness::Mid.into(),
+    };
+    leds.overlay_layer[49] = LedEffect::TempoPulse {
+        color: Color::Red.into(),
+        division: ClockDivision::_24 as u16,
+        base_brightness: Brightness::Mid.into(),
+        flash_brightness: Brightness::High.into(),
+        pulse_frames: TEMPO_PULSE_FRAMES,
+        pulse_remaining: 0,
+        tick_counter: 0,
+        last_tick: CLOCK_TICKS.load(Ordering::Relaxed),
+        last_epoch: CLOCK_EPOCH.load(Ordering::Relaxed),
     };
 
     loop {
