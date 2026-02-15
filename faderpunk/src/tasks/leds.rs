@@ -58,6 +58,7 @@ pub enum Led {
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub enum LedMode {
+    Off,
     Static(Color, Brightness),
     FadeOut(Color),
     Flash(Color, Option<usize>),
@@ -68,6 +69,7 @@ pub enum LedMode {
 impl LedMode {
     fn into_effect(self) -> LedEffect {
         match self {
+            LedMode::Off => LedEffect::Off,
             LedMode::Static(color, brightness) => LedEffect::Static {
                 color: color.into(),
                 brightness: brightness.into(),
@@ -267,7 +269,7 @@ impl LedProcessor {
         let last_scene_led = if last_scene_index == NO_SCENE_INDEX {
             None
         } else {
-            Some(get_no(last_scene_index.min(15) as usize, Led::Bottom))
+            Some(get_no(last_scene_index.min(15) as usize, Led::Button))
         };
         let (quant_key_color, quant_tonic_color) = if scene_pressed {
             let config = get_global_config();
@@ -281,6 +283,7 @@ impl LedProcessor {
             (BLACK, BLACK)
         };
 
+        let luminosity_led = get_no(0, Led::Top);
         for (index, ((base, overlay), led)) in self
             .base_layer
             .iter_mut()
@@ -291,6 +294,7 @@ impl LedProcessor {
             let overlay_active = match overlay {
                 LedEffect::Off => false,
                 LedEffect::TempoPulse { .. } => scene_pressed,
+                LedEffect::StaticFade { .. } => scene_pressed || index > 11,
                 _ => true,
             };
 
@@ -311,13 +315,11 @@ impl LedProcessor {
                 }
             }
 
-            if scene_pressed {
-                if !overlay_active {
-                    if let Some(last_scene_led) = last_scene_led {
-                        if index == last_scene_led {
-                            let green: RGB8 = Color::Green.into();
-                            *led = green.scale(Brightness::Mid.into());
-                        }
+            if scene_pressed && !overlay_active {
+                if let Some(last_scene_led) = last_scene_led {
+                    if index == last_scene_led {
+                        let green: RGB8 = Color::Green.into();
+                        *led = green.scale(Brightness::Mid.into());
                     }
                 }
             }
@@ -328,10 +330,14 @@ impl LedProcessor {
                 && index != 37
                 && index != 38
                 && Some(index) != last_scene_led
+                && !overlay_active
             {
-                if !overlay_active {
-                    *led = BLACK;
-                }
+                *led = BLACK;
+            }
+
+            if scene_pressed && index == luminosity_led {
+                let white: RGB8 = Color::White.into();
+                *led = white.scale(Brightness::High.into());
             }
 
             if scene_pressed {
