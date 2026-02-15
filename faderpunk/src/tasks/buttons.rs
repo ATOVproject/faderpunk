@@ -9,7 +9,7 @@ use embassy_rp::peripherals::{
 use embassy_rp::Peri;
 use embassy_time::Timer;
 use libfp::Color;
-use portable_atomic::{AtomicBool, Ordering};
+use portable_atomic::{AtomicBool, AtomicU8, Ordering};
 
 use crate::app::Led;
 use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
@@ -41,6 +41,8 @@ type Buttons = (
 );
 
 pub static BUTTON_PRESSED: [AtomicBool; 18] = [const { AtomicBool::new(false) }; 18];
+pub const NO_SCENE_INDEX: u8 = u8::MAX;
+pub static LAST_SCENE_INDEX: AtomicU8 = AtomicU8::new(NO_SCENE_INDEX);
 
 pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
     spawner.spawn(run_buttons(buttons)).unwrap();
@@ -94,6 +96,7 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
                     // Short press - Load scene
                     set_led_overlay_mode(i, Led::Button, LedMode::Flash(Color::Green, Some(2)))
                         .await;
+                    LAST_SCENE_INDEX.store(i as u8, Ordering::Relaxed);
                     // TODO: experiment with using publish_immediate everywhere to prevent hanging
                     // subscribers
                     event_publisher
@@ -103,6 +106,7 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
                 Either::Second(_) => {
                     // Long press - Save scene
                     set_led_overlay_mode(i, Led::Button, LedMode::Flash(Color::Red, Some(3))).await;
+                    LAST_SCENE_INDEX.store(i as u8, Ordering::Relaxed);
                     event_publisher
                         .publish(InputEvent::SaveScene(i as u8))
                         .await;
