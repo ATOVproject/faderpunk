@@ -2,9 +2,13 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, watch::Watch};
 use embassy_time::Timer;
-use libfp::{AuxJackMode, Color, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
+use libfp::{
+    ext::BrightnessExt, AuxJackMode, Brightness, Color, GlobalConfig, Key, Note,
+    LED_BRIGHTNESS_RANGE,
+};
 use max11300::config::{ConfigMode0, ConfigMode3, Mode};
 use portable_atomic::Ordering;
+use smart_leds::RGB8;
 
 use crate::app::Led;
 use crate::layout::FORCE_RESPAWN_SIGNAL;
@@ -21,6 +25,10 @@ const LED_BRIGHTNESS_FADER: usize = 0;
 const QUANTIZER_KEY_FADER: usize = 3;
 const QUANTIZER_TONIC_FADER: usize = 4;
 const INTERNAL_BPM_FADER: usize = 15;
+const SCALE_KEYBOARD_DISPLAY_MS: u16 = 1000;
+const SCALE_KEYBOARD_BLACK_KEYS: [bool; 12] = [
+    false, true, false, true, false, false, true, false, true, false, true, false,
+];
 
 pub static GLOBAL_CONFIG_WATCH: Watch<
     ThreadModeRawMutex,
@@ -120,6 +128,34 @@ pub async fn start_global_config(spawner: &Spawner) {
     spawner.spawn(global_config_change()).unwrap();
 }
 
+async fn show_scale_keyboard(key: Key, tonic: Note) {
+    let mask = key.as_u16_key();
+    let tonic_offset = tonic as i16;
+
+    for (index, is_black_key) in SCALE_KEYBOARD_BLACK_KEYS.iter().enumerate() {
+        let scale_degree = (index as i16 - tonic_offset).rem_euclid(12) as u8;
+        let in_scale = ((mask >> (11 - scale_degree)) & 1) != 0;
+        let base: RGB8 = if *is_black_key {
+            Color::Yellow.into()
+        } else {
+            Color::White.into()
+        };
+        let brightness = if in_scale {
+            Brightness::High
+        } else {
+            Brightness::Low
+        };
+        let scaled = base.scale(brightness.into());
+        let color = Color::Custom(scaled.r, scaled.g, scaled.b);
+        set_led_overlay_mode(
+            index,
+            Led::Button,
+            LedMode::StaticFade(color, SCALE_KEYBOARD_DISPLAY_MS),
+        )
+        .await;
+    }
+}
+
 async fn set_aux_config(aux_port: usize, aux_jack_mode: &AuxJackMode) {
     match aux_jack_mode {
         AuxJackMode::ClockOut(_) | AuxJackMode::ResetOut => {
@@ -190,23 +226,7 @@ async fn global_config_change() {
         {
             let mut quantizer = QUANTIZER.get().lock().await;
             quantizer.set_scale(config.quantizer.key, config.quantizer.tonic);
-            if config.quantizer.key != old.quantizer.key {
-                let color = Color::from(config.quantizer.key as usize);
-                set_led_overlay_mode(
-                    QUANTIZER_KEY_FADER,
-                    Led::Button,
-                    LedMode::StaticFade(color, 2000),
-                )
-                .await;
-            } else {
-                let color = Color::from(config.quantizer.tonic as usize);
-                set_led_overlay_mode(
-                    QUANTIZER_TONIC_FADER,
-                    Led::Button,
-                    LedMode::StaticFade(color, 2000),
-                )
-                .await;
-            }
+            show_scale_keyboard(config.quantizer.key, config.quantizer.tonic).await;
         }
         if config.led_brightness != old.led_brightness {
             LED_BRIGHTNESS.store(config.led_brightness, Ordering::Relaxed);

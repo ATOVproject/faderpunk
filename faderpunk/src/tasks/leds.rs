@@ -291,6 +291,7 @@ impl LedProcessor {
             let overlay_active = match overlay {
                 LedEffect::Off => false,
                 LedEffect::TempoPulse { .. } => scene_pressed,
+                LedEffect::StaticFade { .. } => scene_pressed || index > 11,
                 _ => true,
             };
 
