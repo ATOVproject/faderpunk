@@ -12,12 +12,12 @@ use serde::{Deserialize, Serialize};
 pub mod colors;
 pub mod constants;
 pub mod ext;
+pub mod fp_grids_lib;
 pub mod i2c_proto;
 pub mod latch;
 pub mod quantizer;
 pub mod types;
 pub mod utils;
-pub mod fp_grids_lib;
 
 // Re-export commonly used latch types
 pub use latch::{AnalogLatch, LatchLayer, TakeoverMode};
