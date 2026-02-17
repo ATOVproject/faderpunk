@@ -388,7 +388,6 @@ impl PatternGenerator {
         }
 
         let mut accent_bits_for_parts: u8 = 0; // Accumulates trigger and accent bits for the current tick
-        let mut i = 0;
         for (part, threshold) in density_thresholds
             .iter()
             .enumerate()
@@ -402,18 +401,14 @@ impl PatternGenerator {
                 level = 255;
             }
 
-            panic!("level {}, threshold {}", level, *threshold);
             if level > *threshold {
                 if level > 192 {
                     // Threshold for accent
                     accent_bits_for_parts |= 1 << part; // Mark part 'part' (0,1,2) as having an accent
                 }
                 new_state_for_tick |= 1 << part; // Set trigger bit for part 'part' (maps to OUTPUT_BIT_TRIG_1/2/3)
-                i += 1;
             }
         }
-
-        panic!("i {}", i);
 
         // Handle the ACCENT output bit (bit 3 / OUTPUT_BIT_ACCENT)
         // In this port, accent is triggered if any part has an accent.
@@ -496,6 +491,11 @@ impl PatternGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use env_logger::Env;
+
+    fn init_logger() {
+        let _ = env_logger::Builder::from_env(Env::default().default_filter_or("warn")).is_test(true).try_init();
+    }
 
     #[test]
     fn test_initialization() {
@@ -520,11 +520,20 @@ mod tests {
 
     #[test]
     fn test_evaluate_drums() {
+        init_logger(); // Logs will now be visible
+
         let mut generator: PatternGenerator = PatternGenerator::default();
+        generator.set_seed(0xFFF1);
+        generator.options_.output_mode = OutputMode::OutputModeDrums;
+        generator.options_.gate_mode = true;
+        generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].options =
+            PatternModeSettings::Drums { x: 0, y: 0, randomness: 0 };
+        generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].density =
+            [31; K_NUM_PARTS];
 
         generator.evaluate();
         assert_eq!(0, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
+        assert_eq!(13, generator.get_trigger_state());
 
         generator.tick(true);
         assert_eq!(1, generator.get_step());
@@ -532,7 +541,7 @@ mod tests {
 
         generator.tick(true);
         assert_eq!(2, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
+        assert_eq!(2, generator.get_trigger_state());
 
         generator.tick(true);
         assert_eq!(3, generator.get_step());
@@ -540,11 +549,13 @@ mod tests {
 
         generator.tick(true);
         assert_eq!(4, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
+        assert_eq!(6, generator.get_trigger_state());
     }
 
     #[test]
     fn test_evaluate_euclidean() {
+        init_logger(); // Logs will now be visible
+
         let mut generator: PatternGenerator = PatternGenerator::default();
         generator.set_seed(0xFFF1);
         generator.options_.output_mode = OutputMode::OutputModeEuclidean;
