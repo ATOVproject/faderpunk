@@ -248,7 +248,11 @@ pub async fn run(
                             note_on = true;
                         }
 
-                        leds.set(0, Led::Bottom, Color::Red, LED_BRIGHTNESS);
+                        if matches!(div, 2 | 4 | 8 | 16) {
+                            leds.set(0, Led::Bottom, Color::Orange, Brightness::High);
+                        } else {
+                            leds.set(0, Led::Bottom, Color::Blue, Brightness::High);
+                        }
                     }
 
                     if clkn % div == (div * gatel / 100).clamp(1, div - 1) {

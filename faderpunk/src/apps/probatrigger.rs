@@ -201,7 +201,11 @@ pub async fn run(
                         }
 
                         if glob_latch_layer.get() == LatchLayer::Alt {
-                            leds.set(0, Led::Bottom, Color::Red, LED_BRIGHTNESS);
+                            if matches!(div, 2 | 4 | 8 | 16) {
+                                leds.set(0, Led::Bottom, Color::Orange, Brightness::High);
+                            } else {
+                                leds.set(0, Led::Bottom, Color::Blue, Brightness::High);
+                            }
                         } else {
                             leds.unset(0, Led::Bottom);
                         }

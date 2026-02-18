@@ -202,7 +202,10 @@ pub async fn run(
                         leds.set(0, Led::Button, color, Brightness::Mid);
                     }
 
-                    if clkn % div == 0 && storage.query(|s: &Storage| s.clocked) && buttons.is_shift_pressed() {
+                    if clkn % div == 0
+                        && storage.query(|s: &Storage| s.clocked)
+                        && buttons.is_shift_pressed()
+                    {
                         leds.set(0, Led::Bottom, Color::Red, Brightness::High);
                     }
                     if clkn % div == (div * 50 / 100).clamp(1, div - 1)

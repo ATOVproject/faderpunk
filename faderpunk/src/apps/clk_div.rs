@@ -198,7 +198,11 @@ pub async fn run(
                     if clkn.is_multiple_of(div) && !muted {
                         jack.set_high().await;
                         if glob_latch_layer.get() == LatchLayer::Main {
-                            leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
+                            if matches!(div, 2 | 4 | 8 | 16) {
+                                leds.set(0, Led::Bottom, Color::Orange, Brightness::High);
+                            } else {
+                                leds.set(0, Led::Bottom, Color::Blue, Brightness::High);
+                            }
                         }
                         midi.send_note_on(note, 4095).await;
                         note_on = true;
