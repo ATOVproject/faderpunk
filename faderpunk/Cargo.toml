@@ -41,6 +41,7 @@ defmt = "1.0.1"
 defmt-rtt = "1.0.0"
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
+enum-ordinalize = "4.3.2"
 fm24v10 = "0.1.1"
 # NOTE: Older version needed by postcard
 heapless = "0.7.17"

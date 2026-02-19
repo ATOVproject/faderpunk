@@ -34,15 +34,15 @@ use crate::fp_grids_lib::utils::{u8_mix, u8_u8_mul_shift8, Random};
 const K_PULSE_DURATION: u8 = 8; // 8 ticks of the main 24 ppqn clock
 
 #[derive(Debug, Clone, Copy)]
-enum PatternModeSettings {
+pub enum PatternModeSettings {
     Drums { x: u8, y: u8, randomness: u8 },
     Euclidean { chaos_amount: u8 },
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct PatternGeneratorSettings {
-    options: PatternModeSettings,
-    density: [u8; K_NUM_PARTS],
+    pub options: PatternModeSettings,
+    pub density: [u8; K_NUM_PARTS],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Ordinalize)]
@@ -53,8 +53,8 @@ pub enum OutputMode {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Options {
-    output_mode: OutputMode,
-    gate_mode: bool, // true for gate mode, false for trigger mode
+    pub output_mode: OutputMode,
+    pub gate_mode: bool, // true for gate mode, false for trigger mode
 }
 
 #[allow(dead_code)]
