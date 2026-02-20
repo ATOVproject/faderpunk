@@ -61,7 +61,7 @@
 //! | Fader 1  | Density 1 | Map X  | Speed  |
 //! | LED 1 Top | Gate output | Gate output | N/A
 //! | LED 1 Bottom | Density 1 | Map X | Speed
-//! | Fn 1    | Mute Trigger 1 | Mode Toggle (Red: Drum vs Blue: Euclidean) | N/A |
+//! | Fn 1    | Mute Trigger 1 | N/A | N/A |
 //! | Jack 2  | Snare Out | N/A     | N/A  | 
 //! | Fader 2  | Density 2 | Map Y  | N/A  |
 //! | LED 2 Top | Gate output | Gate output | N/A
@@ -105,6 +105,7 @@
 //! 
 //! ## App Configuration
 //! 
+//! * Mode (Drum or Euclidean)
 //! * MIDI Channel
 //! * MIDI NOTE 1
 //! * MIDI NOTE 2
@@ -125,7 +126,7 @@
 //! * Speed 
 
 use embassy_futures::{
-    join::{join}, select::{select, select3}
+    join::{join3}, select::{select, select3}
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -134,7 +135,7 @@ use enum_ordinalize::Ordinalize;
 use libfp::{
     APP_MAX_PARAMS, AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, 
     Param, Value, ext::FromValue, fp_grids_lib::{K_NUM_PARTS, OutputBits, OutputMode, PatternGenerator, PatternModeSettings},
-    latch::LatchLayer
+    latch::LatchLayer,
 };
 
 use serde::{Deserialize, Serialize};
@@ -142,7 +143,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::{App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent };
 
 pub const CHANNELS: usize = 4;
-pub const PARAMS: usize = 9;
+pub const PARAMS: usize = 10;
 
 // App configuration visible to the configurator
 pub static CONFIG: Config<PARAMS> = Config::new(
@@ -151,6 +152,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::SkyBlue,
     AppIcon::Euclid,
 )
+.add_param(Param::Enum { name: "Mode", variants: &["Euclidean", "Drums"] })
 .add_param(Param::MidiChannel {
     name: "MIDI Channel",
 })
@@ -197,6 +199,7 @@ pub struct Params {
     accent: i32,
     gatel: i32,
     color: Color,
+    mode: usize,
 }
 
 impl Default for Params {
@@ -211,6 +214,7 @@ impl Default for Params {
             accent: 127,
             gatel: 50,
             color: Color::Orange,
+            mode: OutputMode::OutputModeDrums.ordinal() as usize, 
         }
     }
 }
@@ -221,20 +225,22 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_channel: MidiChannel::from_value(values[0]),
-            note1: MidiNote::from_value(values[1]),
-            note2: MidiNote::from_value(values[2]),
-            note3: MidiNote::from_value(values[3]),
-            velocity: i32::from_value(values[4]),
-            accent: i32::from_value(values[5]),
-            gatel: i32::from_value(values[6]),
-            color: Color::from_value(values[7]),
-            midi_out: MidiOut::from_value(values[8]),
+            mode: usize::from_value(values[0]),
+            midi_channel: MidiChannel::from_value(values[1]),
+            note1: MidiNote::from_value(values[2]),
+            note2: MidiNote::from_value(values[3]),
+            note3: MidiNote::from_value(values[4]),
+            velocity: i32::from_value(values[5]),
+            accent: i32::from_value(values[6]),
+            gatel: i32::from_value(values[7]),
+            color: Color::from_value(values[8]),
+            midi_out: MidiOut::from_value(values[9]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
+        vec.push(self.mode.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.note1.into()).unwrap();
         vec.push(self.note2.into()).unwrap();
@@ -260,9 +266,8 @@ pub struct Storage {
     // Common
     chaos_enabled_saved: bool, 
     chaos_saved: u16,           // 0 - 255 scaled range
-    div_saved: u16,             // 12 clock divisions (same as euclid.rs)
+    div_saved: u16,             // 0 - 4095 range, maps to index into 'resolution' clock div array (same as euclid.rs)
     mute_saved: [bool; K_NUM_PARTS + 1],      // 3 triggers + accent
-    is_drum_mode: bool,         // = true for drum mode, false = euclidean mode
 }
 
 impl Default for Storage {
@@ -277,7 +282,6 @@ impl Default for Storage {
             chaos_saved: 0,
             div_saved: 3000,
             mute_saved: [false; K_NUM_PARTS + 1],
-            is_drum_mode: true,
         }
     }
 }
@@ -315,7 +319,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let leds = app.use_leds();
 
-    let (midi_out, midi_channel, gatel, note1, note2, note3, velocity, accent, led_color) = params.query(|p| {
+    let (midi_out, midi_channel, gatel, note1, note2, note3, velocityi32, accent_velocityi32, led_color) = params.query(|p| {
         (
             p.midi_out,
             p.midi_channel,
@@ -328,7 +332,15 @@ pub async fn run(
             p.color,
         )
     });
+    let midi_velocity = ((velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
+    let accent_velocity = ((accent_velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
 
+    let output_mode: OutputMode = match OutputMode::from_ordinal(params.query(|p| p.mode) as i8) {
+        None => OutputMode::OutputModeDrums,
+        Some(mode) => mode
+    };
+    defmt::info!("Output Mode {}", output_mode.ordinal());
+    
     let midi = app.use_midi_output(midi_out, midi_channel);    
     let notes = [note1, note2, note3];
     let jack = [
@@ -340,8 +352,7 @@ pub async fn run(
     let resolution = [384u32, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
     let div_glob = app.make_global(6);
 
-
-
+    let glob_latch_layer = app.make_global(LatchLayer::Main);
 
 
     let main_loop = async {
@@ -351,7 +362,9 @@ pub async fn run(
         let mut accent_on = false;
 
         let mut generator = PatternGenerator::default();
-        generator.set_seed(0xFFF1);
+        generator.set_seed(die.roll());
+
+        // TODO: initialise from scene storage
         generator.options_.output_mode = OutputMode::OutputModeDrums;
         generator.options_.gate_mode = true;
         generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].options =
@@ -373,6 +386,7 @@ pub async fn run(
                 ClockEvent::Reset => {
                     clkn = 0;
                     generator.reset();
+                    generator.set_seed(die.roll());
                     midi.send_note_off(note1).await;
                     midi.send_note_off(note2).await;
                     midi.send_note_off(note3).await;
@@ -389,29 +403,24 @@ pub async fn run(
 
                         // Get generator state and handle individual triggers
                         let state = generator.get_trigger_state();
+                        let is_accent = state & (1 << 3) > 0;
+                        let velocity_ = if is_accent {
+                            midi_velocity
+                        } else {
+                            accent_velocity
+                        };
 
-                        if state & (1 << 0) > 0 {
-                            // Trigger 1 fired
-                            jack[0].set_high().await;
-                            note_on[0] = true;
-                            midi.send_note_on(note1, 4095).await;
-                            leds.set(0, Led::Top, led_color, Brightness::High);
+                        for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
+                            if state & (1 << part) > 0 {
+                                // Trigger fired
+                                jack[part].set_high().await;
+                                note_on[part] = true;
+                                midi.send_note_on(*note, velocity_).await;
+                                leds.set(part, Led::Top, led_color, if is_accent {Brightness::High} else {Brightness::Mid});
+                            }
                         }
-                        if state & (1 << 1) > 0 {
-                            // Trigger 2 fired
-                            jack[1].set_high().await;
-                            note_on[1] = true;
-                            midi.send_note_on(note2, 4095).await;
-                            leds.set(1, Led::Top, led_color, Brightness::High);
-                        }
-                        if state & (1 << 2) > 0 {
-                            // Trigger 3 fired
-                            jack[2].set_high().await;
-                            note_on[2] = true;
-                            midi.send_note_on(note3, 4095).await;
-                            leds.set(2, Led::Top, led_color, Brightness::High);
-                        }
-                       if state & (1 << 3) > 0 {
+     
+                        if is_accent {
                             // Accent fired
                             jack[3].set_high().await;
                             accent_on = true;
@@ -447,6 +456,86 @@ pub async fn run(
         }
     };
 
+    let fader_fut = async {
+        let mut latch = [
+            app.make_latch(faders.get_value_at(0)),
+            app.make_latch(faders.get_value_at(1)),
+            app.make_latch(faders.get_value_at(2)),
+            app.make_latch(faders.get_value_at(3)),
+        ];
+        loop {
+            let chan = faders.wait_for_any_change().await;
+            let latch_layer = glob_latch_layer.get();
+            match output_mode {
+                OutputMode::OutputModeDrums => {
+                    match chan {
+                        0 => {
+                            let target_value = match latch_layer {
+                                LatchLayer::Main => storage.query(|s| s.density_saved[chan]),
+                                LatchLayer::Alt => storage.query(|s| s.map_x_saved),
+                                LatchLayer::Third => storage.query(|s| s.div_saved),
+                            };
+                            if let Some(new_value) =
+                                latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                            {
+                                match latch_layer {
+                                    LatchLayer::Main => {
+                                        // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
+                                        storage.modify_and_save(|s| s.density_saved[chan] = new_value >> 4);
+                                    },
+                                    LatchLayer::Alt => {
+                                        // Convert fader value 0 .. 4095 12 bit to Drums Map X 0 .. 255
+                                        storage.modify_and_save(|s| s.map_x_saved = new_value >> 4);
+                                    },
+                                    LatchLayer::Third => {
+                                        div_glob.set(resolution[new_value as usize / 345]);
+                                        storage.modify_and_save(|s| s.div_saved = new_value);
+                                        defmt::info!("div_glob {}", div_glob.get());
+                                    }
+                                };
+                            }
+                        },
+                        1 => {
+                            let target_value = match latch_layer {
+                                LatchLayer::Main => storage.query(|s| s.density_saved[chan]),
+                                LatchLayer::Alt => storage.query(|s| s.map_y_saved),
+                                _ => 0,
+                            };
+                            if let Some(new_value) =
+                                latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                            {
+                                match latch_layer {
+                                    LatchLayer::Main => {
+                                        // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
+                                        storage.modify_and_save(|s| s.density_saved[chan] = new_value >> 4);
+                                    },
+                                    LatchLayer::Alt => {
+                                        // Convert fader value 0 .. 4095 12 bit to Drums Map Y 0 .. 255
+                                        storage.modify_and_save(|s| s.map_y_saved = new_value >> 4);
+                                    },
+                                    _ => {}
+                                };
+                            }
+                        },
+                        2 => {
+
+                        },
+                        _ => {},
+
+                    };
+                },
+                OutputMode::OutputModeEuclidean => {
+
+                }
+            };
+            
+
+
+
+           
+        }
+    };
+
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
@@ -464,7 +553,7 @@ pub async fn run(
         }
     };
 
-    join(main_loop, scene_handler).await;
+    join3(main_loop, fader_fut, scene_handler).await;
 
 
 }
