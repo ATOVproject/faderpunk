@@ -12,6 +12,11 @@ pub fn scale_bits_12_7(value: u16) -> u7 {
     u7::new(((value as u32 * 127) / 4095) as u8)
 }
 
+/// Scale from 4095 u16 to 255 u8
+pub fn scale_bits_12_8(value: u16) -> u8 {
+    ((value as u32 * 255) / 4095) as u8
+}
+
 /// Scale from 127 u7 to 4095 u16
 pub fn scale_bits_7_12(value: u7) -> u16 {
     ((value.as_int() as u32 * 4095) / 127) as u16

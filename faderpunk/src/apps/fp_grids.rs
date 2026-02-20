@@ -126,7 +126,7 @@
 //! * Speed 
 
 use embassy_futures::{
-    join::{join3}, select::{select, select3}
+    join::{join4}, select::{select, select3}
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -135,12 +135,12 @@ use enum_ordinalize::Ordinalize;
 use libfp::{
     APP_MAX_PARAMS, AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, 
     Param, Value, ext::FromValue, fp_grids_lib::{K_NUM_PARTS, OutputBits, OutputMode, PatternGenerator, PatternModeSettings},
-    latch::LatchLayer,
+    latch::LatchLayer, utils::{scale_bits_12_8}
 };
 
 use serde::{Deserialize, Serialize};
 
-use crate::app::{App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent };
+use crate::app::{App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage, ParamStore, SceneEvent };
 
 pub const CHANNELS: usize = 4;
 pub const PARAMS: usize = 10;
@@ -256,14 +256,8 @@ impl AppParams for Params {
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
-    // Drum mode
-    density_saved: [u16; K_NUM_PARTS],    // 0 - 255 scaled range
-    map_x_saved: u16,           // 0 - 255 scaled range
-    map_y_saved: u16,           // 0 - 255 scaled range
-    // Euclidean mode
-    length_saved: [u16; K_NUM_PARTS],     // 0 - 15 scaled range
-    fill_saved: [u16; K_NUM_PARTS],       // 0 - 16 scaled range
-    // Common
+    fader_saved: [u16; K_NUM_PARTS],
+    shift_fader_saved: [u16; K_NUM_PARTS],
     chaos_enabled_saved: bool, 
     chaos_saved: u16,           // 0 - 255 scaled range
     div_saved: u16,             // 0 - 4095 range, maps to index into 'resolution' clock div array (same as euclid.rs)
@@ -273,11 +267,8 @@ pub struct Storage {
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            density_saved: [2047; K_NUM_PARTS],
-            map_x_saved: 2047,
-            map_y_saved: 2047,
-            length_saved: [2047; K_NUM_PARTS],
-            fill_saved: [1024; K_NUM_PARTS],
+            fader_saved: [2047; K_NUM_PARTS],
+            shift_fader_saved: [2047; K_NUM_PARTS],
             chaos_enabled_saved: false,
             chaos_saved: 0,
             div_saved: 3000,
@@ -339,8 +330,7 @@ pub async fn run(
         None => OutputMode::OutputModeDrums,
         Some(mode) => mode
     };
-    defmt::info!("Output Mode {}", output_mode.ordinal());
-    
+
     let midi = app.use_midi_output(midi_out, midi_channel);    
     let notes = [note1, note2, note3];
     let jack = [
@@ -350,9 +340,17 @@ pub async fn run(
         app.make_gate_jack(3, 0).await,
     ];
     let resolution = [384u32, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
-    let div_glob = app.make_global(6);
-
+    let div_glob = app.make_global(6); // = 1/16th note
     let glob_latch_layer = app.make_global(LatchLayer::Main);
+    // use globs to track pattern generator parameter values, transformed from fader values
+    let drums_density_glob = app.make_global([127u8; K_NUM_PARTS]); // 0 - 255 fill density
+    let drums_map_x_glob = app.make_global(127u8); // 0 - 255 Map X
+    let drums_map_y_glob = app.make_global(127u8); // 0 - 255 Map Y
+    let euclidean_length_glob = app.make_global([16u8; K_NUM_PARTS]); // 1 - 32 steps
+    let euclidean_fill_glob = app.make_global([64u8; K_NUM_PARTS]); // 0 - 255 fill
+    let chaos_glob = app.make_global(0u8);
+
+    // TODO : Initialise pattern generator globs from storage
 
 
     let main_loop = async {
@@ -363,22 +361,16 @@ pub async fn run(
 
         let mut generator = PatternGenerator::default();
         generator.set_seed(die.roll());
-
-        // TODO: initialise from scene storage
-        generator.options_.output_mode = OutputMode::OutputModeDrums;
-        generator.options_.gate_mode = true;
-        generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].options =
-            PatternModeSettings::Drums { x: 0, y: 0, randomness: 0 };
-        generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].density =
-            [31; K_NUM_PARTS];
+        generator.set_output_mode(output_mode);
+        update_generator_from_parameters(&mut generator, &GeneratorUpdateContext {
+            drums_density_glob: &drums_density_glob,
+            drums_map_x_glob: &drums_map_x_glob,
+            drums_map_y_glob: &drums_map_y_glob,
+            euclidean_length_glob: &euclidean_length_glob,
+            euclidean_fill_glob: &euclidean_fill_glob,
+            chaos_glob: &chaos_glob
+        });
         generator.reset();
-
-        for part in 0..K_NUM_PARTS {
-            let length = 8;
-            generator.set_length(part, length);
-            let fill_density_param = 16;
-            generator.set_fill(part, fill_density_param);
-        }
 
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
@@ -414,6 +406,10 @@ pub async fn run(
                             if state & (1 << part) > 0 {
                                 // Trigger fired
                                 jack[part].set_high().await;
+                                // Send Note Off first if re-triggering
+                                if note_on[part] {
+                                    midi.send_note_off(*note).await;
+                                }
                                 note_on[part] = true;
                                 midi.send_note_on(*note, velocity_).await;
                                 leds.set(part, Led::Top, led_color, if is_accent {Brightness::High} else {Brightness::Mid});
@@ -426,6 +422,16 @@ pub async fn run(
                             accent_on = true;
                             leds.set(3, Led::Top, led_color, Brightness::High);
                         }
+
+                        // Update generator with parameter changes
+                        update_generator_from_parameters(&mut generator, &GeneratorUpdateContext {
+                            drums_density_glob: &drums_density_glob,
+                            drums_map_x_glob: &drums_map_x_glob,
+                            drums_map_y_glob: &drums_map_y_glob,
+                            euclidean_length_glob: &euclidean_length_glob,
+                            euclidean_fill_glob: &euclidean_fill_glob,
+                            chaos_glob: &chaos_glob
+                        });
 
                         // Finally, progress pattern ready for evaluation on next clocked sequence step
                         generator.tick(true);
@@ -471,8 +477,8 @@ pub async fn run(
                     match chan {
                         0 => {
                             let target_value = match latch_layer {
-                                LatchLayer::Main => storage.query(|s| s.density_saved[chan]),
-                                LatchLayer::Alt => storage.query(|s| s.map_x_saved),
+                                LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                                LatchLayer::Alt => storage.query(|s| s.shift_fader_saved[chan]),
                                 LatchLayer::Third => storage.query(|s| s.div_saved),
                             };
                             if let Some(new_value) =
@@ -481,24 +487,27 @@ pub async fn run(
                                 match latch_layer {
                                     LatchLayer::Main => {
                                         // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
-                                        storage.modify_and_save(|s| s.density_saved[chan] = new_value >> 4);
+                                        let mut drums_density = drums_density_glob.get();
+                                        drums_density[chan] = scale_bits_12_8(new_value);
+                                        drums_density_glob.set(drums_density);
+                                        storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
                                     },
                                     LatchLayer::Alt => {
                                         // Convert fader value 0 .. 4095 12 bit to Drums Map X 0 .. 255
-                                        storage.modify_and_save(|s| s.map_x_saved = new_value >> 4);
+                                        drums_map_x_glob.set(scale_bits_12_8(new_value));
+                                        storage.modify_and_save(|s| s.shift_fader_saved[chan] = new_value);
                                     },
                                     LatchLayer::Third => {
                                         div_glob.set(resolution[new_value as usize / 345]);
                                         storage.modify_and_save(|s| s.div_saved = new_value);
-                                        defmt::info!("div_glob {}", div_glob.get());
                                     }
                                 };
                             }
                         },
                         1 => {
                             let target_value = match latch_layer {
-                                LatchLayer::Main => storage.query(|s| s.density_saved[chan]),
-                                LatchLayer::Alt => storage.query(|s| s.map_y_saved),
+                                LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                                LatchLayer::Alt => storage.query(|s| s.shift_fader_saved[chan]),
                                 _ => 0,
                             };
                             if let Some(new_value) =
@@ -507,17 +516,40 @@ pub async fn run(
                                 match latch_layer {
                                     LatchLayer::Main => {
                                         // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
-                                        storage.modify_and_save(|s| s.density_saved[chan] = new_value >> 4);
+                                        let mut drums_density = drums_density_glob.get();
+                                        drums_density[chan] = scale_bits_12_8(new_value);
+                                        drums_density_glob.set(drums_density);
+                                        storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
                                     },
                                     LatchLayer::Alt => {
-                                        // Convert fader value 0 .. 4095 12 bit to Drums Map Y 0 .. 255
-                                        storage.modify_and_save(|s| s.map_y_saved = new_value >> 4);
+                                        // Convert fader value 0 .. 4095 12 bit to Drums Map X 0 .. 255
+                                        drums_map_y_glob.set(scale_bits_12_8(new_value));
+                                        storage.modify_and_save(|s| s.shift_fader_saved[chan] = new_value);
                                     },
                                     _ => {}
                                 };
                             }
+                           
                         },
                         2 => {
+                            let target_value = match latch_layer {
+                                LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                                _ => 0,
+                            };
+                            if let Some(new_value) =
+                                latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                            {
+                                match latch_layer {
+                                    LatchLayer::Main => {
+                                        // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
+                                        let mut drums_density = drums_density_glob.get();
+                                        drums_density[chan] = scale_bits_12_8(new_value);
+                                        drums_density_glob.set(drums_density);
+                                        storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
+                                    },
+                                    _ => {}
+                                };
+                            }
 
                         },
                         _ => {},
@@ -536,6 +568,22 @@ pub async fn run(
         }
     };
 
+   let shift_fut = async {
+        loop {
+            // latching on pressing and depressing shift
+            app.delay_millis(1).await;
+
+            let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
+            {
+                LatchLayer::Alt
+            } else if !buttons.is_shift_pressed() && buttons.is_button_pressed(0) {
+                LatchLayer::Third
+            } else {
+                LatchLayer::Main
+            };
+            glob_latch_layer.set(latch_active_layer);
+        }
+    };
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
@@ -553,7 +601,36 @@ pub async fn run(
         }
     };
 
-    join3(main_loop, fader_fut, scene_handler).await;
+    join4(main_loop, fader_fut, shift_fut, scene_handler).await;
 
 
+}
+
+struct GeneratorUpdateContext<'a> {
+    drums_density_glob: &'a Global<[u8; K_NUM_PARTS]>,
+    drums_map_x_glob: &'a Global<u8>,
+    drums_map_y_glob: &'a Global<u8>,
+    euclidean_length_glob: &'a Global<[u8; K_NUM_PARTS]>,
+    euclidean_fill_glob: &'a Global<[u8; K_NUM_PARTS]>,
+    chaos_glob: &'a Global<u8>
+}
+
+/// Update a PatternGenerator options from the app instance's managed parameters
+fn update_generator_from_parameters(generator: &mut PatternGenerator, settings: &GeneratorUpdateContext) {
+    generator.set_gate_mode(true);
+    generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].options =
+            PatternModeSettings::Drums { x: settings.drums_map_x_glob.get(), y: settings.drums_map_y_glob.get(), randomness: settings.chaos_glob.get() };
+    generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].density =
+            settings.drums_density_glob.get();     
+    generator.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].options =
+            PatternModeSettings::Euclidean { chaos_amount: settings.chaos_glob.get() };
+    generator.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].density =
+            settings.euclidean_fill_glob.get();
+    let length: [u8; K_NUM_PARTS] = settings.euclidean_length_glob.get();
+    let fill: [u8; K_NUM_PARTS] = settings.euclidean_fill_glob.get();
+    for part in 0..K_NUM_PARTS {
+        generator.set_length(part, length[part]);
+        let fill_density_param = 31;
+        generator.set_fill(part, fill[part]);
+    }
 }

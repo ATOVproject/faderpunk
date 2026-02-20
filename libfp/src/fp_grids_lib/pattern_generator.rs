@@ -42,6 +42,7 @@ pub enum PatternModeSettings {
 #[derive(Debug, Clone, Copy)]
 pub struct PatternGeneratorSettings {
     pub options: PatternModeSettings,
+    /// In Drums mode, 0-255, in Euclidean 1-16
     pub density: [u8; K_NUM_PARTS],
 }
 
@@ -89,10 +90,6 @@ pub struct PatternGenerator {
     chaos_globally_enabled_: bool, // Master switch for chaos effects
 
     // Internal state variables
-    // Commented out, unused in fp-grids
-    // output_buffer: [u8; (K_NUM_STEPS_PER_PATTERN as usize) >> 3], // Stores the full pattern bitmask (not directly used for real-time state_)
-    // pulse_counter: [u8; K_NUM_PARTS],                       // Tracks individual part pulse counts (if ever needed)
-    // pulse_duration: [u8; K_NUM_PARTS],                      // Individual pulse durations (if ever needed, currently global via state_)
     current_euclidean_length: [u8; K_NUM_PARTS], // Active length for each Euclidean part
     fill: [u8; K_NUM_PARTS], // Calculated number of active steps for Euclidean parts, based on density
     // step_counter: [u8; K_NUM_PARTS],                        // Generic step counter per part, used for Euclidean perturbation in original code
@@ -206,7 +203,7 @@ impl PatternGenerator {
         self.increment_pulse_counter(); // Handle pulse durations on every external tick, regardless of main step advancement
     }
 
-    /// Set sequence length 1 - 32 steps
+    /// Set Euclidean sequence length 1 - 32 steps
     pub fn set_length(&mut self, channel: usize, length: u8) {
         if channel > K_NUM_PARTS {
             return;
@@ -215,7 +212,7 @@ impl PatternGenerator {
         self.current_euclidean_length[channel] = length.clamp(1, 32);
     }
 
-    // fill_param_value is 0-255 from app
+    /// fill_param_value is 0-255 from app
     pub fn set_fill(&mut self, channel: usize, fill_param_value: u8) {
         if channel > K_NUM_PARTS {
             return;
@@ -255,10 +252,6 @@ impl PatternGenerator {
 impl Default for PatternGenerator {
     fn default() -> Self {
         Self {
-            // output_buffer: [0; (K_NUM_STEPS_PER_PATTERN as usize) >> 3],
-            // pulse_counter: [0; K_NUM_PARTS],
-            // pulse_duration: [0; K_NUM_PARTS],
-            // step_counter: [0; K_NUM_PARTS],
             part_perturbation: [0; K_NUM_PARTS],
             euclidean_step: [0; K_NUM_PARTS],
             options_: Options {
@@ -384,14 +377,14 @@ impl PatternGenerator {
             .enumerate()
             .take(K_NUM_PARTS)
         {
-            density_thresholds[part] = *density;
+            // Invert density 0 - 255 to 255 - 0
+            density_thresholds[part] = !*density;
         }
 
         let mut accent_bits_for_parts: u8 = 0; // Accumulates trigger and accent bits for the current tick
         for (part, threshold) in density_thresholds
             .iter()
             .enumerate()
-            .by_ref()
             .take(K_NUM_PARTS)
         {
             let mut level: u8 = self.read_drum_map(current_step_in_pattern, part as u8, x, y);
@@ -505,7 +498,7 @@ mod tests {
         assert_eq!(0, generator.pulse_);
         assert_eq!(true, generator.first_beat_);
         assert_eq!(true, generator.beat_);
-        assert_eq!(0, generator.state_);
+        assert_eq!(15, generator.state_);
         assert_eq!(0, generator.sequence_step_);
     }
 
@@ -533,7 +526,7 @@ mod tests {
 
         generator.evaluate();
         assert_eq!(0, generator.get_step());
-        assert_eq!(13, generator.get_trigger_state());
+        assert_eq!(12, generator.get_trigger_state());
 
         generator.tick(true);
         assert_eq!(1, generator.get_step());
@@ -541,7 +534,7 @@ mod tests {
 
         generator.tick(true);
         assert_eq!(2, generator.get_step());
-        assert_eq!(2, generator.get_trigger_state());
+        assert_eq!(0, generator.get_trigger_state());
 
         generator.tick(true);
         assert_eq!(3, generator.get_step());
@@ -549,7 +542,7 @@ mod tests {
 
         generator.tick(true);
         assert_eq!(4, generator.get_step());
-        assert_eq!(6, generator.get_trigger_state());
+        assert_eq!(0, generator.get_trigger_state());
     }
 
     #[test]
