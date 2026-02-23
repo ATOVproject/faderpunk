@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.2 (2026-02-23)
+
+### Features
+
+- add jump and scale latch pickup modes
+- add takeover modes to manual (#437)
+
 ## 0.10.1 (2026-02-23)
 
 ### Features

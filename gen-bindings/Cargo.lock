@@ -303,7 +303,7 @@ checksum = "6a82ae493e598baaea5209805c49bbf2ea7de956d50d7da0da1164f9c6d28543"
 
 [[package]]
 name = "libfp"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "embassy-time",
  "heapless 0.7.17",
