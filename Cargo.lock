@@ -688,7 +688,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "faderpunk"
-version = "1.8.0-beta.0"
+version = "1.8.0"
 dependencies = [
  "cobs 0.4.0",
  "cortex-m",
@@ -981,7 +981,7 @@ checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
 
 [[package]]
 name = "libfp"
-version = "0.10.1-beta.0"
+version = "0.10.1"
 dependencies = [
  "embassy-time",
  "heapless 0.7.17",
