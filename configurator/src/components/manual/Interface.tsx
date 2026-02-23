@@ -461,15 +461,38 @@ export const Interface = () => (
         <strong>stop/start</strong> message to resynchronize.
       </li>
       <li>
-        <strong>Fader Latching Behavior</strong>
+        <strong>Fader Latching &amp; Takeover Modes</strong>
         <br />
         All apps include a feature called <strong>"latching"</strong>, which
-        activates when recalling a scene or using a shift function.
+        activates when recalling a scene, using a shift function, or switching
+        pages within an app.
         <br />
-        If the physical fader position does <strong>not match</strong> the
-        stored value, the fader will <strong>not affect</strong> the output
-        until it reaches (or "catches") the stored value. This ensures smooth
-        transitions and prevents unintended jumps in modulation or control.
+        When the physical fader position does <strong>not match</strong> the
+        stored value, the device uses the configured{" "}
+        <strong>Takeover Mode</strong> to determine how the fader regains
+        control:
+        <List>
+          <li>
+            <strong>Pickup (Default)</strong> – The fader has no effect until it
+            physically reaches the stored value. Once it crosses that point, it
+            "picks up" and controls the value directly. This prevents unintended
+            jumps in modulation or control.
+          </li>
+          <li>
+            <strong>Jump</strong> – The fader immediately takes control on the
+            first movement. The value jumps to the current fader position with
+            no pickup delay.
+          </li>
+          <li>
+            <strong>Scale</strong> – The output value gradually converges toward
+            the fader position as you move it. Rather than snapping or waiting,
+            the value smoothly catches up to where the fader is. Once they meet,
+            the fader controls the value directly.
+          </li>
+        </List>
+        The takeover mode can be configured in the{" "}
+        <strong>Miscellaneous</strong> section of the{" "}
+        <strong>Configurator</strong> Settings tab.
       </li>
     </List>
   </>
