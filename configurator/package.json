@@ -1,7 +1,7 @@
 {
   "name": "configurator",
   "private": true,
-  "version": "1.8.0-beta.0",
+  "version": "1.8.0",
   "license": "GPL-3.0",
   "description": "Web configurator for Faderpunk",
   "scripts": {
