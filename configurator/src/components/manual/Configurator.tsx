@@ -319,6 +319,25 @@ export const Configurator = () => (
         You can also change this manually using <strong>Scene + Fader 1</strong>
         .
       </li>
+      <li>
+        <strong>Fader Takeover Mode</strong>: Controls how faders regain control
+        of a value after switching layers, recalling a scene, or changing pages
+        within an app.
+        <List>
+          <li>
+            <strong>Pickup (Default)</strong> – The fader has no effect until it
+            physically crosses the stored value. Prevents unintended jumps.
+          </li>
+          <li>
+            <strong>Jump</strong> – The fader immediately takes control on the
+            first movement, with no pickup delay.
+          </li>
+          <li>
+            <strong>Scale</strong> – The output gradually converges toward the
+            fader position as you move it, providing a smooth transition.
+          </li>
+        </List>
+      </li>
     </List>
 
     <H4>Save & Recall Setup</H4>
