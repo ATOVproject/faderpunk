@@ -4,12 +4,7 @@ versioned_files = [
   { path = "Cargo.lock", dependency = "faderpunk" },
 ]
 changelog = "faderpunk/CHANGELOG.md"
-
-[[packages.faderpunk.assets]]
-path = "artifacts/faderpunk.elf"
-
-[[packages.faderpunk.assets]]
-path = "artifacts/faderpunk-*.uf2"
+assets = "artifacts/faderpunk*"
 
 [packages.libfp]
 versioned_files = [
