@@ -131,12 +131,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download picotool artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: picotool-artifact
           path: picotool_executable
       - name: Download firmware artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: firmware-artifact
           path: firmware_build
@@ -217,13 +217,13 @@ jobs:
           fetch-depth: 0
       - name: Download firmware artifacts
         if: needs.package-firmware.result == 'success'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: release-artifacts-firmware
           path: artifacts
       - name: Download configurator artifacts
         if: needs.build-configurator.result == 'success'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: release-artifacts-configurator
           path: artifacts
@@ -250,12 +250,12 @@ jobs:
           ref: gh-pages
           path: gh-pages
       - name: Download configurator artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: configurator-pages-artifact
           path: configurator-dist
       - name: Download landing page artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: landing-pages-artifact
           path: landing-dist
