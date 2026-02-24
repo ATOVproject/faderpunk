@@ -362,7 +362,21 @@ pub async fn run(
     let note_on_glob = app.make_global([false; K_NUM_PARTS]);
     let accent_on_glob = app.make_global(false);
 
-    // TODO : Initialise pattern generator globs from storage
+    let (faders_, shift_faders_, div_saved_, chaos_enabled_) = storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.div_saved, s.chaos_enabled_saved));
+    match output_mode {
+        OutputMode::OutputModeDrums => {
+            let drums_density_ = [faders_[0], faders_[1], faders_[2]];
+            drums_density_glob.set(drums_density_.map(|v| scale_bits_12_8(v)));
+            drums_map_x_glob.set(scale_bits_12_8(shift_faders_[0]));
+            drums_map_y_glob.set(scale_bits_12_8(shift_faders_[1]));
+            div_glob.set(resolution[div_saved_ as usize / 345]);
+            chaos_enabled_glob.set(chaos_enabled_);
+            chaos_glob.set(scale_bits_12_8(faders_[3]));
+        },
+        OutputMode::OutputModeEuclidean => {
+
+        }
+    }
 
     // Set up initial button LEDs state (unmuted)
     for part in 0 .. K_NUM_PARTS {
@@ -370,6 +384,7 @@ pub async fn run(
     }
     // Set up chaos enabled switch state (chaos disabled)
     leds.unset(3, Led::Button);
+    // Set up bottom fader - value Leds
     update_fader_leds(storage, leds, led_color, alt_led_color, third_led_color, output_mode, glob_latch_layer.get());
 
     let main_loop = async {
