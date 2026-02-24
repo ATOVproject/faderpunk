@@ -192,11 +192,19 @@ jobs:
         with:
           name: release-artifacts-configurator
           path: artifacts
+      - name: Build landing page
+        run: pnpm run build:landing
+        working-directory: ./configurator
       - name: Upload configurator artifact for GitHub Pages
         uses: actions/upload-artifact@v4
         with:
           name: configurator-pages-artifact
           path: configurator/dist
+      - name: Upload landing page artifact for GitHub Pages
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-pages-artifact
+          path: configurator/dist-landing
 
   # --- Create GitHub releases + upload assets ---
   release:
@@ -246,6 +254,11 @@ jobs:
         with:
           name: configurator-pages-artifact
           path: configurator-dist
+      - name: Download landing page artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: landing-pages-artifact
+          path: landing-dist
       - name: Deploy to versioned folder and root
         run: |
           VERSION="${{ needs.detect-changes.outputs.configurator_minor }}"
@@ -266,14 +279,10 @@ jobs:
             ! -name '[0-9]*.[0-9]*' ! -name 'beta' ! -name '.git' \
             ! -name 'img' ! -name 'fonts' -exec rm -rf {} \;
 
-          # Deploy landing page
-          cp configurator/landing/index.html gh-pages/index.html
+          # Deploy landing page (built by Vite with version already injected)
+          cp -r landing-dist/* gh-pages/
 
-          # Replace __FIRMWARE_LATEST_VERSION__ in landing page
-          FIRMWARE_VERSION=$(grep '^version' faderpunk/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-          sed -i "s/__FIRMWARE_LATEST_VERSION__/${FIRMWARE_VERSION}/g" gh-pages/index.html
-
-          # Copy assets to root
+          # Copy assets to root (shared across all versions)
           mkdir -p gh-pages/img gh-pages/fonts
           cp -r configurator-dist/img/* gh-pages/img/ 2>/dev/null || true
           cp -r configurator-dist/fonts/* gh-pages/fonts/ 2>/dev/null || true
