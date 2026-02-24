@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.1 (2026-02-24)
+
+### Fixes
+
+- check faderpunk version on landing page (#440)
+
 ## 1.8.0 (2026-02-23)
 
 ### Features
