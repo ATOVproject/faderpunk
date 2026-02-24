@@ -5,9 +5,15 @@ import { getFirmwareVersion } from "./vite.firmware-version.mjs";
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: process.env.BASE_URL || "/",
+  base: "/",
+  root: "src/landing",
+  publicDir: "../../public",
   plugins: [react(), tailwindcss()],
   define: {
     __FIRMWARE_LATEST_VERSION__: JSON.stringify(getFirmwareVersion()),
+  },
+  build: {
+    outDir: "../../dist-landing",
+    emptyOutDir: true,
   },
 });
