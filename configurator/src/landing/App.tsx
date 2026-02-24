@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
+import { compare, major, minor } from "semver";
 
 const FADERPUNK_VENDOR_ID = 0xf569;
 const FADERPUNK_PRODUCT_ID = 0x1;
 const FIRMWARE_LATEST_VERSION = __FIRMWARE_LATEST_VERSION__;
-const VERSION_PATH =
-  "/" + FIRMWARE_LATEST_VERSION.split(".").slice(0, 2).join(".") + "/";
+const VERSION_PATH = `/${major(FIRMWARE_LATEST_VERSION)}.${minor(FIRMWARE_LATEST_VERSION)}/`;
 
 type State =
   | { status: "idle" }
@@ -16,24 +16,6 @@ type State =
       configuratorPath: string;
     }
   | { status: "error"; message: string };
-
-function parseVersion(versionString: string) {
-  const parts = versionString.split(".").map(Number);
-  return {
-    major: parts[0] || 0,
-    minor: parts[1] || 0,
-    patch: parts[2] || 0,
-  };
-}
-
-function compareVersions(v1String: string, v2String: string) {
-  const v1 = parseVersion(v1String);
-  const v2 = parseVersion(v2String);
-
-  if (v1.major !== v2.major) return v1.major - v2.major;
-  if (v1.minor !== v2.minor) return v1.minor - v2.minor;
-  return v1.patch - v2.patch;
-}
 
 export default function App() {
   const [state, setState] = useState<State>({ status: "idle" });
@@ -68,29 +50,28 @@ export default function App() {
 
       await device.open();
 
-      const deviceVersionString = `${device.deviceVersionMajor}.${device.deviceVersionMinor}.${device.deviceVersionSubminor || 0}`;
-      const versionPath = `${device.deviceVersionMajor}.${device.deviceVersionMinor}`;
+      const deviceVersion = `${device.deviceVersionMajor}.${device.deviceVersionMinor}.${device.deviceVersionSubminor || 0}`;
 
       await device.close();
 
       // Determine target path for the matching configurator
       let configuratorPath: string;
 
-      if (compareVersions(deviceVersionString, FIRMWARE_LATEST_VERSION) > 0) {
+      if (compare(deviceVersion, FIRMWARE_LATEST_VERSION) > 0) {
         // Device version is newer than latest stable → beta
         configuratorPath = "/beta/";
-      } else if (compareVersions(deviceVersionString, "1.7.0") < 0) {
+      } else if (compare(deviceVersion, "1.7.0") < 0) {
         // Device version is older than 1.7.0 → legacy
         configuratorPath = "/1.6/";
       } else {
-        configuratorPath = `/${versionPath}/`;
+        configuratorPath = `/${major(deviceVersion)}.${minor(deviceVersion)}/`;
       }
 
       // Firmware is outdated → show update choice
-      if (compareVersions(deviceVersionString, FIRMWARE_LATEST_VERSION) < 0) {
+      if (compare(deviceVersion, FIRMWARE_LATEST_VERSION) < 0) {
         setState({
           status: "update-available",
-          currentVersion: deviceVersionString,
+          currentVersion: deviceVersion,
           configuratorPath,
         });
         return;
