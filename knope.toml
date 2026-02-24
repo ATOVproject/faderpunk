@@ -1,4 +1,5 @@
 [packages.faderpunk]
+scopes = ["faderpunk"]
 versioned_files = [
   "faderpunk/Cargo.toml",
   { path = "Cargo.lock", dependency = "faderpunk" },
@@ -7,6 +8,7 @@ changelog = "faderpunk/CHANGELOG.md"
 assets = "artifacts/faderpunk*"
 
 [packages.libfp]
+scopes = ["libfp"]
 versioned_files = [
   "libfp/Cargo.toml",
   { path = "Cargo.lock", dependency = "libfp" },
@@ -14,6 +16,7 @@ versioned_files = [
 changelog = "libfp/CHANGELOG.md"
 
 [packages.configurator]
+scopes = ["configurator"]
 versioned_files = ["configurator/package.json"]
 changelog = "configurator/CHANGELOG.md"
 
