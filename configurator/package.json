@@ -6,7 +6,9 @@
   "description": "Web configurator for Faderpunk",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev:landing": "vite --config vite.landing.config.mjs",
+    "build": "tsc -b tsconfig.app.json && vite build",
+    "build:landing": "tsc -b tsconfig.landing.json && vite build --config vite.landing.config.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
