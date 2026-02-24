@@ -65,7 +65,7 @@ jobs:
           echo "picotool_hash=${picotool_hash}" >> $GITHUB_ENV
           echo "pico_sdk_hash=${pico_sdk_hash}" >> $GITHUB_ENV
       - name: Cache picotool build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: picotool/build
           key: ${{ runner.os }}-picotool-${{ env.picotool_hash }}-${{ env.pico_sdk_hash }}
