@@ -33,7 +33,8 @@
 //! * **MIDI Output** - MIDI Note per drum trigger and accent
 //! * **Fader Memory** - Remembers mode-specific fader settings
 //!
-//! Trigger output signals are a fixed duration ~5ms +5V high, 0V low
+//! Trigger output signals are a fixed duration ~5ms +5V high, 0V low.
+//! The Accent trigger will be muted if all three of the drum triggers are muted.
 //! 
 //! ## Modes
 //! 
@@ -126,7 +127,7 @@
 //! * Speed 
 
 use embassy_futures::{
-    join::{join4}, select::{select, select3}
+    join::{join5}, select::{select, select3}
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -256,10 +257,9 @@ impl AppParams for Params {
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
-    fader_saved: [u16; K_NUM_PARTS],
+    fader_saved: [u16; K_NUM_PARTS + 1],
     shift_fader_saved: [u16; K_NUM_PARTS],
     chaos_enabled_saved: bool, 
-    chaos_saved: u16,           // 0 - 255 scaled range
     div_saved: u16,             // 0 - 4095 range, maps to index into 'resolution' clock div array (same as euclid.rs)
     mute_saved: [bool; K_NUM_PARTS + 1],      // 3 triggers + accent
 }
@@ -267,10 +267,9 @@ pub struct Storage {
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            fader_saved: [2047; K_NUM_PARTS],
+            fader_saved: [2047, 2047, 2047, 0],
             shift_fader_saved: [2047; K_NUM_PARTS],
             chaos_enabled_saved: false,
-            chaos_saved: 0,
             div_saved: 3000,
             mute_saved: [false; K_NUM_PARTS + 1],
         }
@@ -348,16 +347,23 @@ pub async fn run(
     let drums_map_y_glob = app.make_global(127u8); // 0 - 255 Map Y
     let euclidean_length_glob = app.make_global([16u8; K_NUM_PARTS]); // 1 - 32 steps
     let euclidean_fill_glob = app.make_global([64u8; K_NUM_PARTS]); // 0 - 255 fill
+    let chaos_enabled_glob = app.make_global(false);
     let chaos_glob = app.make_global(0u8);
-
+    let note_on_glob = app.make_global([false; K_NUM_PARTS]);
+    let accent_on_glob = app.make_global(false);
     // TODO : Initialise pattern generator globs from storage
 
+    // Set up initial button LEDs state (unmuted)
+    for part in 0 .. K_NUM_PARTS {
+        leds.set(part, Led::Button, led_color, Brightness::High);
+    }
+    // Set up chaos enabled switch state (chaos disabled)
+    leds.unset(3, Led::Button);
 
     let main_loop = async {
         let mut clock = app.use_clock();
         let mut clkn: u32 = 0;
-        let mut note_on = [false; K_NUM_PARTS];
-        let mut accent_on = false;
+
 
         let mut generator = PatternGenerator::default();
         generator.set_seed(die.roll());
@@ -368,6 +374,7 @@ pub async fn run(
             drums_map_y_glob: &drums_map_y_glob,
             euclidean_length_glob: &euclidean_length_glob,
             euclidean_fill_glob: &euclidean_fill_glob,
+            chaos_enabled_glob: &chaos_enabled_glob,
             chaos_glob: &chaos_glob
         });
         generator.reset();
@@ -382,8 +389,8 @@ pub async fn run(
                     midi.send_note_off(note1).await;
                     midi.send_note_off(note2).await;
                     midi.send_note_off(note3).await;
-                    note_on = [false; K_NUM_PARTS];
-                    accent_on = false;
+                    note_on_glob.set([false; K_NUM_PARTS]);
+                    accent_on_glob.set(false);
                     jack[0].set_low().await;
                 }
                 ClockEvent::Tick => {
@@ -403,23 +410,26 @@ pub async fn run(
                         };
 
                         for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
-                            if state & (1 << part) > 0 {
+                            if state & (1 << part) > 0 && !muted[part]{
                                 // Trigger fired
                                 jack[part].set_high().await;
                                 // Send Note Off first if re-triggering
-                                if note_on[part] {
+                                let mut note_on_ = note_on_glob.get();
+                                if note_on_[part] {
                                     midi.send_note_off(*note).await;
                                 }
-                                note_on[part] = true;
+                                note_on_[part] = true;
+                                note_on_glob.set(note_on_);
                                 midi.send_note_on(*note, velocity_).await;
                                 leds.set(part, Led::Top, led_color, if is_accent {Brightness::High} else {Brightness::Mid});
                             }
                         }
      
-                        if is_accent {
+                        // If accent triggered and at least one of the drum triggers is not muted
+                        if is_accent && !(muted[0] && muted[1] && muted[2]){
                             // Accent fired
                             jack[3].set_high().await;
-                            accent_on = true;
+                            accent_on_glob.set(true);
                             leds.set(3, Led::Top, led_color, Brightness::High);
                         }
 
@@ -430,6 +440,7 @@ pub async fn run(
                             drums_map_y_glob: &drums_map_y_glob,
                             euclidean_length_glob: &euclidean_length_glob,
                             euclidean_fill_glob: &euclidean_fill_glob,
+                            chaos_enabled_glob: &chaos_enabled_glob,
                             chaos_glob: &chaos_glob
                         });
 
@@ -440,16 +451,18 @@ pub async fn run(
                     // If reached end of gate length between sequence steps
                     if clkn % div == (div * gatel as u32 / 100).clamp(1, div - 1) {
                         for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
-                            if note_on[part] {
+                            let mut note_on_ = note_on_glob.get();
+                            if note_on_[part] {
                                 midi.send_note_off(*note).await;
-                                note_on[part] = false;
+                                note_on_[part] = false;
+                                note_on_glob.set(note_on_);
                                 jack[part].set_low().await;
                             }
                             leds.unset(part, Led::Top);
                         }
                         // Accent jack
-                        if accent_on {
-                            accent_on = false;
+                        if accent_on_glob.get() {
+                            accent_on_glob.set(false);
                             jack[3].set_low().await;
                             leds.unset(3, Led::Top);
                         }
@@ -552,6 +565,24 @@ pub async fn run(
                             }
 
                         },
+                        3 => {
+                            let target_value = match latch_layer {
+                                LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                                _ => 0,
+                            };
+                            if let Some(new_value) =
+                                latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                            {
+                                match latch_layer {
+                                    LatchLayer::Main => {
+                                        // Convert fader value 0 .. 4095 to chaos 0 .. 255
+                                        chaos_glob.set(scale_bits_12_8(new_value));
+                                        storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
+                                    },
+                                    _ => {}
+                                }
+                            }
+                        }
                         _ => {},
 
                     };
@@ -568,7 +599,64 @@ pub async fn run(
         }
     };
 
-   let shift_fut = async {
+    let buttons_fut = async {
+
+        loop {
+            let (part, shift) = buttons.wait_for_any_down().await;
+            if !shift {
+                if part < K_NUM_PARTS {
+                    // Handle trigger muting
+                    let mut muted_ = storage.query(|s| s.mute_saved);
+                    muted_[part] = !muted_[part];
+                    if note_on_glob.get()[part] {
+                        let mut note_on_ = note_on_glob.get();
+                        if note_on_[part] {
+                            midi.send_note_off(notes[part]).await;
+                            note_on_[part] = false;
+                            note_on_glob.set(note_on_);
+                            jack[part].set_low().await;
+                        }
+                        leds.unset(part, Led::Top);
+                    } 
+                    // Mute Accent Trig out if all three trigger outs are muted
+                    if muted_[0] && muted_[1] && muted_[2] {
+                        accent_on_glob.set(false);
+                        jack[part].set_low().await;
+                        muted_[3] = false;
+                    }
+                    storage.modify_and_save(|s| {
+                        s.mute_saved = muted_;
+                        s.mute_saved
+                    });
+
+                    // Show muted trigger button state
+                    if muted_[part] {
+                        leds.unset(part, Led::Button);
+                    } else {
+                        leds.set(part, Led::Button, led_color, Brightness::High);
+                    }
+
+                } else if part == K_NUM_PARTS {
+                    // handle chaos toggle
+                    let chaos_enabled_ = storage.modify_and_save(|s| {
+                        s.chaos_enabled_saved = !s.chaos_enabled_saved;
+                        s.chaos_enabled_saved
+                    });
+                    chaos_enabled_glob.set(chaos_enabled_);
+
+                    // Show chaos enabled button state
+                    if chaos_enabled_ {
+                        leds.set(3, Led::Button, led_color, Brightness::Mid);
+                    } else {
+                        leds.unset(3, Led::Button);
+                    }
+                }
+            }
+        }
+
+    };
+
+    let shift_fut = async {
         loop {
             // latching on pressing and depressing shift
             app.delay_millis(1).await;
@@ -601,7 +689,7 @@ pub async fn run(
         }
     };
 
-    join4(main_loop, fader_fut, shift_fut, scene_handler).await;
+    join5(main_loop, fader_fut, buttons_fut, shift_fut, scene_handler).await;
 
 
 }
@@ -612,12 +700,14 @@ struct GeneratorUpdateContext<'a> {
     drums_map_y_glob: &'a Global<u8>,
     euclidean_length_glob: &'a Global<[u8; K_NUM_PARTS]>,
     euclidean_fill_glob: &'a Global<[u8; K_NUM_PARTS]>,
+    chaos_enabled_glob: &'a Global<bool>,
     chaos_glob: &'a Global<u8>
 }
 
 /// Update a PatternGenerator options from the app instance's managed parameters
 fn update_generator_from_parameters(generator: &mut PatternGenerator, settings: &GeneratorUpdateContext) {
     generator.set_gate_mode(true);
+    generator.set_global_chaos(settings.chaos_enabled_glob.get());
     generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].options =
             PatternModeSettings::Drums { x: settings.drums_map_x_glob.get(), y: settings.drums_map_y_glob.get(), randomness: settings.chaos_glob.get() };
     generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].density =
@@ -630,7 +720,6 @@ fn update_generator_from_parameters(generator: &mut PatternGenerator, settings: 
     let fill: [u8; K_NUM_PARTS] = settings.euclidean_fill_glob.get();
     for part in 0..K_NUM_PARTS {
         generator.set_length(part, length[part]);
-        let fill_density_param = 31;
         generator.set_fill(part, fill[part]);
     }
 }

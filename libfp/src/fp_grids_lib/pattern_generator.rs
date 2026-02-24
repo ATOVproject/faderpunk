@@ -350,17 +350,22 @@ impl PatternGenerator {
     // Updates the self.state_ with the trigger/accent information for the current step.
     fn evaluate_drums(&mut self) {
         if self.step_ == 0 && self.pulse_ == 0 {
-            // Generate perturbation only once at the very start of the 32-step sequence (when pulse_ is also 0)
-            let mut randomness =
-                match self.settings_[OutputMode::OutputModeDrums.ordinal() as usize].options {
-                    PatternModeSettings::Drums { randomness, .. } => randomness,
-                    _ => 0, // Default to 0 if not in Drum mode, though this should never happen
-                };
-            randomness >>= 2; // Scale randomness for perturbation amount
-            for part in 0..K_NUM_PARTS {
-                self.part_perturbation[part] = u8_u8_mul_shift8(self.random.get_byte(), randomness);
+            if self.chaos_globally_enabled_ {
+                // Generate perturbation only once at the very start of the 32-step sequence (when pulse_ is also 0)
+                let mut randomness =
+                    match self.settings_[OutputMode::OutputModeDrums.ordinal() as usize].options {
+                        PatternModeSettings::Drums { randomness, .. } => randomness,
+                        _ => 0, // Default to 0 if not in Drum mode, though this should never happen
+                    };
+                randomness >>= 2; // Scale randomness for perturbation amount
+                for part in 0..K_NUM_PARTS {
+                    self.part_perturbation[part] = u8_u8_mul_shift8(self.random.get_byte(), randomness);
+                }
+            } else {
+                // Ensure no randomisation occurs for drum pattern in next 32-step sequence
+                self.part_perturbation = [0; K_NUM_PARTS];
             }
-        }
+         }
 
         let current_step_in_pattern = self.step_;
         let mut new_state_for_tick = 0u8; // Accumulates trigger and accent bits for the current tick
