@@ -308,7 +308,6 @@ pub async fn run(
     let faders = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
-
     let (midi_out, midi_channel, gatel, note1, note2, note3, velocityi32, accent_velocityi32, led_color) = params.query(|p| {
         (
             p.midi_out,
@@ -322,6 +321,17 @@ pub async fn run(
             p.color,
         )
     });
+    let alt_led_color = if led_color == Color::Blue {
+        Color::Lime
+    } else {
+        Color::Blue
+    };
+    let third_led_color = if led_color == Color::Pink {
+        Color::Red
+    } else {
+        Color::Pink
+    };
+
     let midi_velocity = ((velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
     let accent_velocity = ((accent_velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
 
@@ -351,6 +361,7 @@ pub async fn run(
     let chaos_glob = app.make_global(0u8);
     let note_on_glob = app.make_global([false; K_NUM_PARTS]);
     let accent_on_glob = app.make_global(false);
+
     // TODO : Initialise pattern generator globs from storage
 
     // Set up initial button LEDs state (unmuted)
@@ -359,6 +370,7 @@ pub async fn run(
     }
     // Set up chaos enabled switch state (chaos disabled)
     leds.unset(3, Led::Button);
+    update_fader_leds(storage, leds, led_color, alt_led_color, third_led_color, output_mode, glob_latch_layer.get());
 
     let main_loop = async {
         let mut clock = app.use_clock();
@@ -485,6 +497,7 @@ pub async fn run(
         loop {
             let chan = faders.wait_for_any_change().await;
             let latch_layer = glob_latch_layer.get();
+            let mut fader_led_value = 0u16;
             match output_mode {
                 OutputMode::OutputModeDrums => {
                     match chan {
@@ -515,6 +528,7 @@ pub async fn run(
                                         storage.modify_and_save(|s| s.div_saved = new_value);
                                     }
                                 };
+                                fader_led_value = new_value;
                             }
                         },
                         1 => {
@@ -541,6 +555,7 @@ pub async fn run(
                                     },
                                     _ => {}
                                 };
+                                fader_led_value = new_value;
                             }
                            
                         },
@@ -562,6 +577,7 @@ pub async fn run(
                                     },
                                     _ => {}
                                 };
+                                fader_led_value = new_value;
                             }
 
                         },
@@ -581,7 +597,8 @@ pub async fn run(
                                     },
                                     _ => {}
                                 }
-                            }
+                                fader_led_value = new_value;
+                           }
                         }
                         _ => {},
 
@@ -591,11 +608,29 @@ pub async fn run(
 
                 }
             };
-            
 
-
-
-           
+            // Update fader-derived Leds
+            match output_mode {
+                OutputMode::OutputModeDrums => {
+                    match latch_layer {
+                        LatchLayer::Main => {
+                            leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
+                        },
+                        LatchLayer::Alt => {
+                            if chan == 0 || chan == 1 {
+                                leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
+                            } 
+                        },
+                        LatchLayer::Third => {
+                            if chan == 0 {
+                                leds.set(chan, Led::Bottom, third_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
+                            } 
+                        }
+                    };
+                },
+                _ => {}
+            }
+        
         }
     };
 
@@ -658,7 +693,7 @@ pub async fn run(
 
     let shift_fut = async {
         loop {
-            // latching on pressing and depressing shift
+            // latching on pressing and depressing shift and channel 0 button
             app.delay_millis(1).await;
 
             let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
@@ -669,7 +704,12 @@ pub async fn run(
             } else {
                 LatchLayer::Main
             };
-            glob_latch_layer.set(latch_active_layer);
+            
+            if latch_active_layer != glob_latch_layer.get() {
+                glob_latch_layer.set(latch_active_layer);
+                update_fader_leds(storage, leds, led_color, alt_led_color, third_led_color, output_mode, latch_active_layer);
+            }
+
         }
     };
     let scene_handler = async {
@@ -692,6 +732,36 @@ pub async fn run(
     join5(main_loop, fader_fut, buttons_fut, shift_fut, scene_handler).await;
 
 
+}
+
+fn update_fader_leds(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, third_led_color: Color, output_mode: OutputMode, latch_active_layer: LatchLayer) {
+    // Initialise bottom Led fader value Leds
+    match output_mode {
+        OutputMode::OutputModeDrums => {
+            match latch_active_layer {
+                LatchLayer::Main => {
+                    let faders_ = storage.query(|s| s.fader_saved);
+                    for chan in 0..K_NUM_PARTS + 1 {
+                        leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(faders_[chan])));
+                    }
+                },
+                LatchLayer::Alt => {
+                    let shift_faders_ = storage.query(|s| s.shift_fader_saved);
+                    leds.set(0, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(shift_faders_[0])));
+                    leds.set(1, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(shift_faders_[1])));
+                    leds.unset(2, Led::Bottom);
+                    leds.unset(3, Led::Bottom);
+                },
+                LatchLayer::Third => {
+                    leds.set(0, Led::Bottom, third_led_color, Brightness::Custom(scale_bits_12_8(storage.query(|s| s.div_saved))));
+                    leds.unset(1, Led::Bottom);
+                    leds.unset(2, Led::Bottom);
+                    leds.unset(3, Led::Bottom);
+                }
+            };
+        },
+        _ => {}
+    }
 }
 
 struct GeneratorUpdateContext<'a> {
