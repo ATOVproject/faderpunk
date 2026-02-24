@@ -1,23 +1,18 @@
 import { useCallback, useEffect } from "react";
 import { Modal, ModalContent } from "@heroui/modal";
 import { Tabs, Tab } from "@heroui/tabs";
-import { addToast, closeAll } from "@heroui/toast";
-import semverLt from "semver/functions/lt";
 import { useNavigate } from "react-router-dom";
 
 import { useModalContext } from "../contexts/ModalContext";
 import { ModalProvider } from "../contexts/ModalProvider";
-import { FIRMWARE_LATEST_VERSION } from "../consts";
 import { useStore } from "../store";
 import { ModalMode } from "../utils/types";
-import { getDeviceVersion } from "../utils/usb-protocol";
 import { Layout } from "./Layout";
 import { DeviceTab } from "./DeviceTab";
 import { AppsTab } from "./AppsTab";
 import { SettingsTab } from "./SettingsTab";
 import { EditLayoutModal } from "./EditLayoutModal";
 import { ManualTab } from "./ManualTab";
-import { UpdateGuide } from "./manual/UpdateGuide";
 
 const ConfiguratorPageContent = () => {
   const { apps, config, setLayout, layout, usbDevice } = useStore();
@@ -35,43 +30,11 @@ const ConfiguratorPageContent = () => {
     [modalConfig, setModalConfig],
   );
 
-  const handleToastClick = useCallback(() => {
-    closeAll();
-    navigate("/update");
-  }, [navigate]);
-
-  const version = usbDevice && getDeviceVersion(usbDevice);
-  const updatedAvailable =
-    version && semverLt(version, FIRMWARE_LATEST_VERSION);
-
   useEffect(() => {
     if (!usbDevice) {
       navigate("/");
-      return;
     }
-
-    if (updatedAvailable) {
-      addToast({
-        title: (
-          <span className="cursor-pointer" onClick={handleToastClick}>
-            New firmware available
-          </span>
-        ),
-        description: (
-          <span className="cursor-pointer" onClick={handleToastClick}>
-            Firmware version {FIRMWARE_LATEST_VERSION} is available. Click here
-            to update.
-          </span>
-        ),
-        timeout: Infinity,
-        color: "danger",
-      });
-    }
-
-    return () => {
-      closeAll();
-    };
-  }, [navigate, handleToastClick, usbDevice, updatedAvailable]);
+  }, [navigate, usbDevice]);
 
   const initialLayout = modalConfig.recallLayout || layout;
 
@@ -100,11 +63,6 @@ const ConfiguratorPageContent = () => {
           <Tab key="manual" title="Manual">
             <ManualTab />
           </Tab>
-          {updatedAvailable ? (
-            <Tab key="update" title="Update">
-              <UpdateGuide />
-            </Tab>
-          ) : null}
         </Tabs>
         {initialLayout ? (
           <Modal
