@@ -92,7 +92,7 @@ pub enum TransportCmd {
 
 #[derive(Clone, Copy)]
 pub enum ClockEvent {
-    Tick,
+    Tick(u32),
     Start,
     Stop,
     Reset,
@@ -190,6 +190,7 @@ async fn run_clock_gatekeeper() {
     let mut config = config_receiver.get().await;
     let mut is_running = false;
     let mut analog_tick_counters: [u16; 3] = [0; 3];
+    let mut tick_counter: u32 = 0;
 
     loop {
         match select(clock_in_receiver.receive(), config_receiver.changed()).await {
@@ -240,7 +241,8 @@ async fn run_clock_gatekeeper() {
                         if is_running
                             || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
                         {
-                            clock_publisher.publish(ClockEvent::Tick).await;
+                            clock_publisher.publish(ClockEvent::Tick(tick_counter)).await;
+                            tick_counter = tick_counter.wrapping_add(1);
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
                             midi_rt_event = Some(SystemRealtime::TimingClock);
                         }
@@ -256,6 +258,7 @@ async fn run_clock_gatekeeper() {
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
+                        tick_counter = 0;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
                         midi_rt_event = Some(SystemRealtime::Start);
@@ -269,6 +272,7 @@ async fn run_clock_gatekeeper() {
                     // Reset the phase without affecting the run state
                     ClockInEvent::Reset(_) => {
                         clock_publisher.publish(ClockEvent::Reset).await;
+                        tick_counter = 0;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
                         midi_rt_event = Some(SystemRealtime::Reset);

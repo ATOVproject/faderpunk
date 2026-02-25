@@ -504,7 +504,8 @@ pub async fn run(
                         gate_out[n].set_low().await;
                     }
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick_counter) => {
+                    clockn = tick_counter as usize;
                     for n in 0..=3 {
                         if clockn.is_multiple_of(clockres[n]) {
                             let clkindex =
@@ -543,7 +544,6 @@ pub async fn run(
                             }
                         }
                     }
-                    clockn += 1;
                 }
                 _ => {}
             }

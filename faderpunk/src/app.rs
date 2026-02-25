@@ -299,7 +299,7 @@ impl Faders<1> {
 
 pub struct Clock {
     subscriber: ClockSubscriber,
-    tick_count: u16,
+    division_counter: u16,
 }
 
 impl Clock {
@@ -307,25 +307,25 @@ impl Clock {
         let subscriber = CLOCK_PUBSUB.subscriber().unwrap();
         Self {
             subscriber,
-            tick_count: 0,
+            division_counter: 0,
         }
     }
 
     pub async fn wait_for_event(&mut self, division: ClockDivision) -> ClockEvent {
         loop {
             match self.subscriber.next_message_pure().await {
-                ClockEvent::Tick => {
-                    self.tick_count += 1;
-                    if self.tick_count >= division as u16 {
-                        self.tick_count = 0;
-                        return ClockEvent::Tick;
+                ClockEvent::Tick(counter) => {
+                    self.division_counter += 1;
+                    if self.division_counter >= division as u16 {
+                        self.division_counter = 0;
+                        return ClockEvent::Tick(counter);
                     }
                 }
                 ClockEvent::Stop => {
                     return ClockEvent::Stop;
                 }
                 clock_event @ ClockEvent::Start | clock_event @ ClockEvent::Reset => {
-                    self.tick_count = 0;
+                    self.division_counter = 0;
                     return clock_event;
                 }
             }

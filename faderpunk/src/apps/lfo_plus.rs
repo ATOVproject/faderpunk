@@ -446,7 +446,7 @@ pub async fn run(
     let clock_handler = async {
         loop {
             match clk.wait_for_event(ClockDivision::_24).await {
-                ClockEvent::Tick => {
+                ClockEvent::Tick(_) => {
                     glob_tick.set(true);
                 }
                 ClockEvent::Reset => {
