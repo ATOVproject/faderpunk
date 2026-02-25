@@ -1,6 +1,6 @@
 use embassy_futures::{
     join::join4,
-    select::{select, select3, Either, Either3},
+    select::{select, select4, Either, Either4},
 };
 use embassy_rp::{
     gpio::{Input, Pull},
@@ -32,7 +32,7 @@ use crate::{
 const CLOCK_PUBSUB_SIZE: usize = 16;
 // 16 apps + 1 metronome
 const CLOCK_PUBSUB_SUBSCRIBERS: usize = 17;
-// 3 Ext clocks, internal clock, midi
+// Only the gatekeeper publishes to CLOCK_PUBSUB
 const CLOCK_PUBSUB_PUBLISHERS: usize = 5;
 // Add a slight delay before the very first tick (to offset it to reset)
 const TICK_RESET_DELAY: u8 = 2;
@@ -79,6 +79,13 @@ pub enum ClockInEvent {
 }
 
 impl ClockInEvent {
+    pub fn source(&self) -> ClockSrc {
+        match self {
+            Self::Tick(s) | Self::Start(s) | Self::Stop(s) | Self::Reset(s) | Self::Continue(s) => {
+                *s
+            }
+        }
+    }
     pub fn is_clock(&self) -> bool {
         if let Self::Tick(_) = self {
             return true;
@@ -113,6 +120,23 @@ pub enum ClockEvent {
     Reset,
 }
 
+#[derive(Clone, Copy)]
+pub enum SyncEngineEvent {
+    /// A timing pulse from an analog pin or MIDI TimingClock
+    Pulse {
+        source: ClockSrc,
+        timestamp: Instant,
+    },
+    /// A transport command from an external source (MIDI Start/Stop/Continue/Reset)
+    Transport(ClockInEvent),
+}
+
+pub static SYNC_ENGINE_CHANNEL: Channel<ThreadModeRawMutex, SyncEngineEvent, 16> = Channel::new();
+
+const DEBOUNCE_THRESHOLD: Duration = Duration::from_millis(8);
+const HISTORY_SIZE: usize = 4;
+const WATCHDOG_MULTIPLIER: u32 = 3;
+
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(run_clock_sources(aux_inputs)).unwrap();
     spawner.spawn(run_clock_gatekeeper()).unwrap();
@@ -120,43 +144,16 @@ pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
 }
 
 async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
-    let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
-    let config = config_receiver.get().await;
-    let mut current_clock_src = config.clock.clock_src;
-    let mut current_reset_src: ClockSrc = config.clock.reset_src.into();
-    let clock_in_sender = CLOCK_IN_CHANNEL.sender();
-
+    let sender = SYNC_ENGINE_CHANNEL.sender();
     loop {
-        // Cast into ClockSrc
-        let should_be_active = current_clock_src == clock_src || current_reset_src == clock_src;
-
-        if !should_be_active {
-            let new_config = config_receiver.changed().await;
-            current_clock_src = new_config.clock.clock_src;
-            current_reset_src = new_config.clock.reset_src.into();
-            // Re-check active condition with new config
-            continue;
-        }
-
-        match select(pin.wait_for_falling_edge(), config_receiver.changed()).await {
-            Either::First(()) => {
-                // Pin event happened.
-                pin.wait_for_low().await;
-
-                let clock_event = if current_reset_src == clock_src {
-                    ClockInEvent::Reset(clock_src)
-                } else {
-                    ClockInEvent::Tick(clock_src)
-                };
-
-                clock_in_sender.send(clock_event).await;
-            }
-            Either::Second(new_config) => {
-                // Config change happened.
-                current_clock_src = new_config.clock.clock_src;
-                current_reset_src = new_config.clock.reset_src.into();
-            }
-        }
+        pin.wait_for_falling_edge().await;
+        pin.wait_for_low().await;
+        sender
+            .send(SyncEngineEvent::Pulse {
+                source: clock_src,
+                timestamp: Instant::now(),
+            })
+            .await;
     }
 }
 
@@ -351,65 +348,83 @@ async fn store_clock_running(is_running: bool) {
     .await;
 }
 
-// TODO: Rework the clock to use only one tick generator with various tempo and sync sources
-#[embassy_executor::task]
-async fn run_clock_sources(aux_inputs: AuxInputs) {
-    let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
-    let atom = Input::new(atom_pin, Pull::Up);
-    let meteor = Input::new(meteor_pin, Pull::Up);
-    let cube = Input::new(hexagon_pin, Pull::Up);
+async fn run_unified_clock_engine() {
+    let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
+    let clock_in_sender = CLOCK_IN_CHANNEL.sender();
+    let sync_engine_receiver = SYNC_ENGINE_CHANNEL.receiver();
+    let transport_receiver = TRANSPORT_CMD_CHANNEL.receiver();
     let spawner = Spawner::for_current_executor().await;
 
-    let internal_fut = async {
-        let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
-        let clock_in_sender = CLOCK_IN_CHANNEL.sender();
-        let clock_receiver = TRANSPORT_CMD_CHANNEL.receiver();
+    let config = config_receiver.get().await;
+    let mut is_running = is_clock_running().await;
+    let mut current_tick_duration = bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
+    let mut next_tick_at = Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
+    let mut last_pulse: Option<Instant> = None;
+    let mut delta_history: [Duration; HISTORY_SIZE] = [Duration::from_ticks(0); HISTORY_SIZE];
+    let mut history_idx: usize = 0;
+    let mut config = config;
 
-        let config = config_receiver.get().await;
-        let mut is_running = is_clock_running().await;
-        let mut tick_duration = bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
-        let mut next_tick_at = Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
+    // If clock was already running at startup (persisted state) with internal source,
+    // inform the gatekeeper to synchronize its state.
+    if is_running && config.clock.clock_src == ClockSrc::Internal {
+        clock_in_sender
+            .send(ClockInEvent::Start(ClockSrc::Internal))
+            .await;
+    }
 
-        if is_running {
-            // If we're starting up and the clock should already be running,
-            // we need to inform the gatekeeper to synchronize its state.
-            clock_in_sender
-                .send(ClockInEvent::Start(ClockSrc::Internal))
-                .await;
-        }
-
-        loop {
-            // This future only resolves on a tick when the internal clock is active.
-            // Otherwise, it pends forever, preventing ticks from being generated.
-            let tick_fut = async {
-                if is_running {
-                    Timer::at(next_tick_at).await;
-                } else {
-                    core::future::pending::<()>().await;
-                }
+    loop {
+        // Timer future depends on mode:
+        // - Internal + running: fire on tick schedule
+        // - External + running + has pulse: watchdog timer
+        // - Otherwise: pend forever
+        let timer_fut = async {
+            let should_tick = if config.clock.clock_src == ClockSrc::Internal {
+                is_running
+            } else {
+                is_running && last_pulse.is_some()
             };
+            if should_tick {
+                Timer::at(next_tick_at).await;
+            } else {
+                core::future::pending::<()>().await;
+            }
+        };
 
-            match select3(
-                tick_fut,
-                config_receiver.changed(),
-                clock_receiver.receive(),
-            )
-            .await
-            {
-                Either3::First(_) => {
-                    // Schedule next tick relative to the previous one to avoid drift.
-                    next_tick_at += tick_duration;
-                    clock_in_sender
-                        .send(ClockInEvent::Tick(ClockSrc::Internal))
-                        .await;
-                }
-                Either3::Second(new_config) => {
-                    let old_tick_duration = tick_duration;
+        match select4(
+            config_receiver.changed(),
+            transport_receiver.receive(),
+            sync_engine_receiver.receive(),
+            timer_fut,
+        )
+        .await
+        {
+            // Arm 1: Config changes
+            Either4::First(new_config) => {
+                if config.clock.clock_src != new_config.clock.clock_src {
+                    // Source changed: reset external tracking state
+                    last_pulse = None;
+                    delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
+                    history_idx = 0;
+
+                    // Drop transport state to match the gatekeeper's behavior,
+                    // which also resets is_running on source change.
+                    if is_running {
+                        is_running = false;
+                        spawner.spawn(store_clock_running(false)).ok();
+                    }
+
+                    if new_config.clock.clock_src == ClockSrc::Internal {
+                        // Switching to internal: recalculate tick duration from BPM
+                        current_tick_duration =
+                            bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
+                    }
+                } else if config.clock.clock_src == ClockSrc::Internal {
+                    // BPM change while on internal source
+                    let old_tick_duration = current_tick_duration;
                     let new_tick_duration =
                         bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
 
-                    // If BPM changes while the clock is running, adjust the next tick time
-                    // to make the transition smooth.
+                    // Proportionally rescale next_tick_at for smooth BPM transition
                     if old_tick_duration != new_tick_duration && is_running {
                         let now = Instant::now();
                         if let Some(time_until_next_tick) = next_tick_at.checked_duration_since(now)
@@ -419,49 +434,148 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
                                     (time_until_next_tick.as_ticks() as u128
                                         * new_tick_duration.as_ticks() as u128)
                                         / old_tick_duration.as_ticks() as u128;
-                                let new_time_until_next_tick = embassy_time::Duration::from_ticks(
-                                    new_time_until_next_tick_ticks as u64,
-                                );
+                                let new_time_until_next_tick =
+                                    Duration::from_ticks(new_time_until_next_tick_ticks as u64);
                                 next_tick_at = now + new_time_until_next_tick;
                             }
                         }
                     }
 
-                    tick_duration = new_tick_duration;
+                    current_tick_duration = new_tick_duration;
                 }
-                Either3::Third(cmd) => {
-                    let next_is_running = match cmd {
-                        TransportCmd::Start => true,
-                        TransportCmd::Stop => false,
-                        TransportCmd::Toggle => !is_running,
-                    };
 
-                    if is_running != next_is_running {
-                        if next_is_running {
-                            // Schedule the first tick immediately. The main loop will
-                            // handle publishing it and scheduling the subsequent tick.
-                            next_tick_at =
-                                Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
-                            clock_in_sender
-                                .send(ClockInEvent::Start(ClockSrc::Internal))
-                                .await;
-                        } else {
-                            clock_in_sender
-                                .send(ClockInEvent::Stop(ClockSrc::Internal))
-                                .await;
-                        }
-                        is_running = next_is_running;
-                        // If user hammers the clock toggle, maybe just ignore it
-                        spawner.spawn(store_clock_running(is_running)).ok();
+                config = new_config;
+            }
+
+            // Arm 2: Transport commands from UI (only effective for internal clock)
+            Either4::Second(cmd) => {
+                if config.clock.clock_src != ClockSrc::Internal {
+                    continue;
+                }
+
+                let next_is_running = match cmd {
+                    TransportCmd::Start => true,
+                    TransportCmd::Stop => false,
+                    TransportCmd::Toggle => !is_running,
+                };
+
+                if is_running != next_is_running {
+                    if next_is_running {
+                        next_tick_at =
+                            Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
+                        clock_in_sender
+                            .send(ClockInEvent::Start(ClockSrc::Internal))
+                            .await;
+                    } else {
+                        clock_in_sender
+                            .send(ClockInEvent::Stop(ClockSrc::Internal))
+                            .await;
                     }
+                    is_running = next_is_running;
+                    spawner.spawn(store_clock_running(is_running)).ok();
+                }
+            }
+
+            // Arm 3: Sync engine events (from ext pins and MIDI)
+            Either4::Third(sync_event) => match sync_event {
+                SyncEngineEvent::Transport(event) => {
+                    // Only forward transport events that match the active clock source
+                    if event.source() != config.clock.clock_src {
+                        continue;
+                    }
+                    clock_in_sender.send(event).await;
+                    match event {
+                        ClockInEvent::Start(_) | ClockInEvent::Continue(_) => {
+                            is_running = true;
+                        }
+                        ClockInEvent::Stop(_) => {
+                            is_running = false;
+                        }
+                        _ => {}
+                    }
+                }
+                SyncEngineEvent::Pulse { source, timestamp } => {
+                    // Check if this pulse is from the reset source
+                    let reset_src: ClockSrc = config.clock.reset_src.into();
+                    if source == reset_src && reset_src != ClockSrc::None {
+                        clock_in_sender.send(ClockInEvent::Reset(source)).await;
+                        continue;
+                    }
+
+                    // Only process pulses from the active clock source
+                    if source != config.clock.clock_src {
+                        continue;
+                    }
+
+                    // Debounce: discard pulses that arrive too quickly
+                    if let Some(last) = last_pulse {
+                        if timestamp.duration_since(last) < DEBOUNCE_THRESHOLD {
+                            continue;
+                        }
+                    }
+
+                    // Phase snap: forward tick immediately
+                    clock_in_sender.send(ClockInEvent::Tick(source)).await;
+
+                    // Frequency tracking: compute rolling average of pulse intervals
+                    if let Some(last) = last_pulse {
+                        let delta = timestamp.duration_since(last);
+                        delta_history[history_idx] = delta;
+                        history_idx = (history_idx + 1) % HISTORY_SIZE;
+
+                        let mut sum: u64 = 0;
+                        let mut count: u32 = 0;
+                        for d in &delta_history {
+                            if d.as_ticks() > 0 {
+                                sum += d.as_ticks();
+                                count += 1;
+                            }
+                        }
+                        if count > 0 {
+                            current_tick_duration = Duration::from_ticks(sum / count as u64);
+                        }
+                    }
+
+                    last_pulse = Some(timestamp);
+                    // Schedule watchdog: if no pulse arrives within N× the expected period,
+                    // declare external clock lost
+                    next_tick_at = timestamp + current_tick_duration * WATCHDOG_MULTIPLIER;
+                }
+            },
+
+            // Arm 4: Timer fired
+            Either4::Fourth(_) => {
+                if config.clock.clock_src == ClockSrc::Internal && is_running {
+                    // Internal tick: advance schedule and send
+                    next_tick_at += current_tick_duration;
+                    clock_in_sender
+                        .send(ClockInEvent::Tick(ClockSrc::Internal))
+                        .await;
+                } else if is_running && last_pulse.is_some() {
+                    // Watchdog: external clock lost
+                    clock_in_sender
+                        .send(ClockInEvent::Stop(config.clock.clock_src))
+                        .await;
+                    last_pulse = None;
+                    is_running = false;
+                    spawner.spawn(store_clock_running(false)).ok();
                 }
             }
         }
-    };
+    }
+}
 
+#[embassy_executor::task]
+async fn run_clock_sources(aux_inputs: AuxInputs) {
+    let (atom_pin, meteor_pin, hexagon_pin) = aux_inputs;
+    let atom = Input::new(atom_pin, Pull::Up);
+    let meteor = Input::new(meteor_pin, Pull::Up);
+    let cube = Input::new(hexagon_pin, Pull::Up);
+
+    let engine_fut = run_unified_clock_engine();
     let atom_fut = make_ext_clock_loop(atom, ClockSrc::Atom);
     let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor);
     let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube);
 
-    join4(internal_fut, atom_fut, meteor_fut, cube_fut).await;
+    join4(engine_fut, atom_fut, meteor_fut, cube_fut).await;
 }
