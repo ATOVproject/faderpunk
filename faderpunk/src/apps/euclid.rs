@@ -157,6 +157,7 @@ pub async fn run(
     storage: &ManagedStorage<Storage>,
 ) {
     let mut clock = app.use_clock();
+    let ticks = clock.get_ticker();
     let die = app.use_die();
     let faders = app.use_faders();
     let buttons = app.use_buttons();
@@ -190,8 +191,6 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-    let mut clkn: u32 = 0;
-
     let (fader_saved, shift_fader_saved, mute) =
         storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.mute_saved));
 
@@ -212,11 +211,12 @@ pub async fn run(
     let fut1 = async {
         let mut note_on = false;
         let mut aux_on = false;
+        let mut tick_origin = ticks() as u32;
 
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    clkn = 0;
+                    tick_origin = ticks() as u32;
                     midi.send_note_off(note).await;
                     midi.send_note_off(note2).await;
                     note_on = false;
@@ -233,6 +233,7 @@ pub async fn run(
                     jack[1].set_low().await;
                 }
                 ClockEvent::Tick => {
+                    let clkn = (ticks() as u32).wrapping_sub(tick_origin);
                     let muted = glob_muted.get();
                     let div = div_glob.get();
 
@@ -314,7 +315,6 @@ pub async fn run(
                             ),
                         );
                     }
-                    clkn += 1;
                 }
                 _ => {}
             }
