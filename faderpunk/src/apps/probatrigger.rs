@@ -160,8 +160,6 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-    let mut clkn = 0;
-
     let mut rndval = die.roll();
 
     let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_saved));
@@ -182,12 +180,11 @@ pub async fn run(
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    clkn = 0;
                     midi.send_note_off(note).await;
                     note_on = false;
                     jack.set_low().await;
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(clkn) => {
                     let muted = glob_muted.get();
                     let val = storage.query(|s| s.prob_saved);
                     let div = div_glob.get();
@@ -208,7 +205,7 @@ pub async fn run(
                         rndval = die.roll();
                     }
 
-                    if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
+                    if clkn % div == (div * gatel as u32 / 100).clamp(1, div - 1) {
                         if note_on {
                             midi.send_note_off(note).await;
                             leds.set(0, Led::Top, led_color, Brightness::Off);
@@ -218,7 +215,6 @@ pub async fn run(
 
                         leds.set(0, Led::Bottom, led_color, Brightness::Off);
                     }
-                    clkn += 1;
                 }
                 _ => {}
             }

@@ -157,8 +157,6 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-    let mut clkn = 0;
-
     let curve = Curve::Exponential;
     let fader_curve = Curve::Exponential;
 
@@ -179,9 +177,8 @@ pub async fn run(
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    clkn = 0;
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(clkn) => {
                     let muted = glob_muted.get();
 
                     let div = div_glob.get();
@@ -210,7 +207,6 @@ pub async fn run(
                     {
                         leds.unset(0, Led::Bottom);
                     }
-                    clkn += 1;
                 }
                 _ => {}
             }

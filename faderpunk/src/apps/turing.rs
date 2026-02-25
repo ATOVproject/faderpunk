@@ -207,7 +207,6 @@ pub async fn run(
     div_glob.set(resolution[res as usize / 512]);
 
     let fut1 = async {
-        let mut clkn: usize = 0;
         let mut att_reg: u16;
         loop {
             let div = div_glob.get();
@@ -215,13 +214,13 @@ pub async fn run(
 
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    clkn = 0;
                     if midi_mode == MidiMode::Note {
                         midi.send_note_off(midi_note.get()).await;
                     }
                     register = storage.query(|s| s.register_saved);
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick_counter) => {
+                    let clkn = tick_counter as usize;
                     if clkn.is_multiple_of(div) {
                         if (clkn / div).is_multiple_of(length as usize) {
                             let reg_old = storage.query(|s| s.register_saved);
@@ -282,7 +281,6 @@ pub async fn run(
                         }
                     }
 
-                    clkn += 1;
                 }
                 ClockEvent::Stop => {
                     if midi_mode == MidiMode::Note {
