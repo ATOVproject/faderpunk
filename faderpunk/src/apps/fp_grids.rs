@@ -839,7 +839,6 @@ pub async fn run(
 
     join5(main_loop, fader_fut, buttons_fut, shift_fut, scene_handler).await;
 
-
 }
 
 struct RefreshStateFromStorageContext<'a> {
@@ -853,6 +852,8 @@ struct RefreshStateFromStorageContext<'a> {
     chaos_enabled_glob: &'a Global<bool>, 
     chaos_glob: &'a Global<u8>
 }
+
+/// Update in-memory globals from scene-stored data
 fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, output_mode: OutputMode, resolution: [u32; 12], globs: &RefreshStateFromStorageContext) {
     let (faders_, shift_faders_, div_saved_, chaos_enabled_) = storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.div_fader_saved, s.chaos_enabled_saved));
     match output_mode {
@@ -866,10 +867,10 @@ fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::ap
             globs.chaos_glob.set(scale_bits_12_8(faders_[3]));
         },
         OutputMode::OutputModeEuclidean => {
-            let euclidean_length_ = [faders_[0], faders_[1], faders_[2]];
-            globs.euclidean_length_glob.set(euclidean_length_.map(|v| ((v / 128) + 1) as u8)); // 1 - 32
-            let euclidean_fill_ = [shift_faders_[0], shift_faders_[1], shift_faders_[2]];
+            let euclidean_fill_ = [faders_[0], faders_[1], faders_[2]];
             globs.euclidean_fill_glob.set(euclidean_fill_.map(|v| (v / 128) as u8)); // 0 .. 31
+            let euclidean_length_ = [shift_faders_[0], shift_faders_[1], shift_faders_[2]];
+            globs.euclidean_length_glob.set(euclidean_length_.map(|v| ((v / 128) + 1) as u8)); // 1 - 32
             globs.div_glob.set(resolution[div_saved_ as usize / 345]);
             globs.chaos_enabled_glob.set(chaos_enabled_);
             globs.chaos_glob.set(scale_bits_12_8(faders_[3]));
@@ -889,6 +890,7 @@ fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::ap
     update_fader_leds(storage, leds, led_color, alt_led_color, output_mode, globs.glob_latch_layer.get());
 }
 
+/// Update bottom row of Fader Leds from fader values
 fn update_fader_leds(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, output_mode: OutputMode, latch_active_layer: LatchLayer) {
     // Initialise bottom Led fader value Leds
     match output_mode {
