@@ -61,7 +61,7 @@
 //! | Jack 1  | Kick Out | N/A     | N/A  | 
 //! | Fader 1  | Density 1 | Map X  | N/A  |
 //! | LED 1 Top | Gate output | Gate output | N/A
-//! | LED 1 Bottom | Density 1 | Map X | Speed
+//! | LED 1 Bottom | Density 1 | Map X | N/A
 //! | Fn 1    | Mute Trigger 1 | N/A | N/A |
 //! | Jack 2  | Snare Out | N/A     | N/A  | 
 //! | Fader 2  | Density 2 | Map Y  | N/A  |
@@ -76,7 +76,7 @@
 //! | Jack 4  | Accent Out | N/A     | N/A  | 
 //! | Fader 4  | Chaos | Speed  | N/A  |
 //! | LED 4 Top | Accent output | Accent output | N/A
-//! | LED 4 Bottom | Clock pulse | N/A | N/A
+//! | LED 4 Bottom | Clock pulse | Speed | N/A
 //! | Fn 4    | Mute Accent | Chaos on/off | N/A |
 //! 
 //! ## Hardware Mapping in Euclidean
@@ -101,7 +101,7 @@
 //! | Jack 4  | Accent Out | N/A     | N/A  | 
 //! | Fader 4  | Chaos | Speed  | N/A  |
 //! | LED 4 Top | Accent output | Accent output | N/A
-//! | LED 4 Bottom | Chaos | N/A | N/A
+//! | LED 4 Bottom | Chaos | Speed | N/A
 //! | Fn 4    | Mute Accent | Chaos on/off | N/A |
 //! 
 //! ## App Configuration
@@ -135,7 +135,7 @@ use enum_ordinalize::Ordinalize;
 
 use libfp::{
     APP_MAX_PARAMS, AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, 
-    Param, Value, ext::FromValue, fp_grids_lib::{K_NUM_PARTS, OutputBits, OutputMode, PatternGenerator, PatternModeSettings},
+    Param, Value, ext::FromValue, fp_grids_lib::{K_NUM_PARTS, OutputMode, PatternGenerator, PatternModeSettings},
     latch::LatchLayer, utils::{scale_bits_12_8}
 };
 
@@ -379,12 +379,15 @@ pub async fn run(
         }
     }
 
-    // Set up initial button LEDs state (unmuted)
-    for part in 0 .. K_NUM_PARTS {
-        leds.set(part, Led::Button, led_color, Brightness::High);
+    let mutes = storage.query(|s| s.mute_saved);
+    for part in 0 .. K_NUM_PARTS + 1 {
+        if !mutes[part] {
+            leds.set(part, Led::Button, led_color, Brightness::High);
+        } else {
+            leds.unset(part, Led::Button);
+        }
     }
-    // Set up chaos enabled switch state (chaos disabled)
-    leds.unset(3, Led::Button);
+
     // Set up bottom fader - value Leds
     update_fader_leds(storage, leds, led_color, alt_led_color, output_mode, glob_latch_layer.get());
 
@@ -458,8 +461,8 @@ pub async fn run(
                             }
                         }
      
-                        // If accent triggered and at least one of the drum triggers is not muted
-                        if is_accent && !(muted[0] && muted[1] && muted[2]){
+                        // If accent triggered (will fire even if all of the drum triggers are muted)
+                        if is_accent {
                             // Accent fired
                             jack[3].set_high().await;
                             accent_on_glob.set(true);
@@ -730,12 +733,6 @@ pub async fn run(
                         }
                         leds.unset(part, Led::Top);
                     } 
-                    // Mute Accent Trig out if all three trigger outs are muted
-                    if muted_[0] && muted_[1] && muted_[2] {
-                        accent_on_glob.set(false);
-                        jack[part].set_low().await;
-                        muted_[3] = false;
-                    }
                     storage.modify_and_save(|s| {
                         s.mute_saved = muted_;
                         s.mute_saved
@@ -749,7 +746,33 @@ pub async fn run(
                     }
 
                 } else if part == K_NUM_PARTS {
-                    // handle chaos toggle
+                    // accent mute
+                    let mut muted_ = storage.query(|s| s.mute_saved);
+                    muted_[part] = !muted_[part];
+                    accent_on_glob.set(muted_[part]);
+                    if muted_[part] {
+                        jack[part].set_low().await;
+                        leds.unset(part, Led::Top);
+                    } else {
+                        jack[part].set_high().await;
+                        leds.unset(part, Led::Top);
+                    };
+                
+                    storage.modify_and_save(|s| {
+                        s.mute_saved = muted_;
+                        s.mute_saved
+                    });
+
+                    // Show muted trigger button state
+                    if muted_[part] {
+                        leds.unset(part, Led::Button);
+                    } else {
+                        leds.set(part, Led::Button, led_color, Brightness::High);
+                    }
+                }
+            } else {
+                if part == K_NUM_PARTS {
+                    // Chaos on/off button toggled whilst shift held down
                     let chaos_enabled_ = storage.modify_and_save(|s| {
                         s.chaos_enabled_saved = !s.chaos_enabled_saved;
                         s.chaos_enabled_saved
@@ -783,9 +806,36 @@ pub async fn run(
             if latch_active_layer != glob_latch_layer.get() {
                 glob_latch_layer.set(latch_active_layer);
                 update_fader_leds(storage, leds, led_color, alt_led_color, output_mode, latch_active_layer);
+
+                // Update Button LEDs
+                match latch_active_layer {
+                    LatchLayer::Main => {
+                        let mutes = storage.query(|s| s.mute_saved);
+                        for part in 0 .. K_NUM_PARTS + 1 {
+                            if !mutes[part] {
+                                leds.set(part, Led::Button, led_color, Brightness::High);
+                            } else {
+                                leds.unset(part, Led::Button);
+                            }
+                        }
+                    },
+                    LatchLayer::Alt => {
+                        let chaos_enabled_ = storage.query(|s| s.chaos_enabled_saved);
+                        for part in 0 .. K_NUM_PARTS {
+                            leds.unset(part, Led::Button);
+                        }
+                        if chaos_enabled_ {
+                            leds.set(3, Led::Button, alt_led_color, Brightness::High);
+                        } else {
+                            leds.unset(3, Led::Button);
+                        }
+                    },
+                    _ => {}
+                }
             }
         }
     };
+
     let scene_handler = async {
         loop {
             match app.wait_for_scene_event().await {
