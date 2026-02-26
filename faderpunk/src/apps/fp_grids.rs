@@ -123,8 +123,6 @@
 //! * Faderpunk Port: Richard Smith (GitHub: rjsmith)
 //! * Special acknowledgement: [Disting NT Port](https://github.com/thorinside/nt_grids/tree/main) by Neal Sanche (GitHub: Thorinside)
 //! 
-//! TODO:
-//! * Speed 
 
 use embassy_futures::{
     join::{join5}, select::{select, select3}
@@ -357,40 +355,18 @@ pub async fn run(
     let note_on_glob = app.make_global([false; K_NUM_PARTS]);
     let accent_on_glob = app.make_global(false);
 
-    let (faders_, shift_faders_, div_saved_, chaos_enabled_) = storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.div_fader_saved, s.chaos_enabled_saved));
-    match output_mode {
-        OutputMode::OutputModeDrums => {
-            let drums_density_ = [faders_[0], faders_[1], faders_[2]];
-            drums_density_glob.set(drums_density_.map(|v| scale_bits_12_8(v)));
-            drums_map_x_glob.set(scale_bits_12_8(shift_faders_[0]));
-            drums_map_y_glob.set(scale_bits_12_8(shift_faders_[1]));
-            div_glob.set(resolution[div_saved_ as usize / 345]);
-            chaos_enabled_glob.set(chaos_enabled_);
-            chaos_glob.set(scale_bits_12_8(faders_[3]));
-        },
-        OutputMode::OutputModeEuclidean => {
-            let euclidean_length_ = [faders_[0], faders_[1], faders_[2]];
-            euclidean_length_glob.set(euclidean_length_.map(|v| ((v / 128) + 1) as u8)); // 1 - 32
-            let euclidean_fill_ = [shift_faders_[0], shift_faders_[1], shift_faders_[2]];
-            euclidean_fill_glob.set(euclidean_fill_.map(|v| (v / 128) as u8)); // 0 .. 31
-            div_glob.set(resolution[div_saved_ as usize / 345]);
-            chaos_enabled_glob.set(chaos_enabled_);
-            chaos_glob.set(scale_bits_12_8(faders_[3]));
-        }
-    }
-
-    let mutes = storage.query(|s| s.mute_saved);
-    for part in 0 .. K_NUM_PARTS + 1 {
-        if !mutes[part] {
-            leds.set(part, Led::Button, led_color, Brightness::High);
-        } else {
-            leds.unset(part, Led::Button);
-        }
-    }
-
-    // Set up bottom fader - value Leds
-    update_fader_leds(storage, leds, led_color, alt_led_color, output_mode, glob_latch_layer.get());
-
+    refresh_state_from_storage(storage, leds, led_color, alt_led_color, output_mode, resolution, &RefreshStateFromStorageContext {
+        div_glob: &div_glob,
+        glob_latch_layer: &glob_latch_layer,
+        drums_density_glob: &drums_density_glob,
+        drums_map_x_glob: &drums_map_x_glob,
+        drums_map_y_glob: &drums_map_y_glob,
+        euclidean_length_glob: &euclidean_length_glob,
+        euclidean_fill_glob: &euclidean_fill_glob,
+        chaos_enabled_glob: &chaos_enabled_glob,
+        chaos_glob: &chaos_glob
+    });
+    
     let main_loop = async {
         let mut clock = app.use_clock();
         let mut clkn: u32 = 0;
@@ -460,7 +436,7 @@ pub async fn run(
                                 leds.set(part, Led::Top, led_color, if is_accent {Brightness::High} else {Brightness::Mid});
                             }
                         }
-     
+        
                         // If accent triggered (will fire even if all of the drum triggers are muted)
                         if is_accent {
                             // Accent fired
@@ -547,7 +523,7 @@ pub async fn run(
                                         drums_map_x_glob.set(scale_bits_12_8(new_value));
                                         storage.modify_and_save(|s| s.shift_fader_saved[chan] = new_value);
                                     },
-                                   _ => {},
+                                    _ => {},
                                 };
                                 fader_led_value = new_value;
                             }
@@ -559,159 +535,161 @@ pub async fn run(
                                 _ => 0,
                             };
                             if let Some(new_value) =
-                                latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
-                            {
-                                match latch_layer {
-                                    LatchLayer::Main => {
-                                        // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
-                                        let mut drums_density = drums_density_glob.get();
-                                        drums_density[chan] = scale_bits_12_8(new_value);
-                                        drums_density_glob.set(drums_density);
-                                        storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
-                                    },
-                                    LatchLayer::Alt => {
-                                        // Convert fader value 0 .. 4095 12 bit to Drums Map X 0 .. 255
-                                        drums_map_y_glob.set(scale_bits_12_8(new_value));
-                                        storage.modify_and_save(|s| s.shift_fader_saved[chan] = new_value);
-                                    },
-                                    _ => {}
-                                };
-                                fader_led_value = new_value;
-                            }
-                           
-                        },
-                        2 => {
-                            let target_value = match latch_layer {
-                                LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
-                                _ => 0,
-                            };
-                            if let Some(new_value) =
-                                latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
-                            {
-                                match latch_layer {
-                                    LatchLayer::Main => {
-                                        // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
-                                        let mut drums_density = drums_density_glob.get();
-                                        drums_density[chan] = scale_bits_12_8(new_value);
-                                        drums_density_glob.set(drums_density);
-                                        storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
-                                    },
-                                    _ => {}
-                                };
-                                fader_led_value = new_value;
-                            }
-
-                        },
-                        3 => {
-                            let target_value = match latch_layer {
-                                LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
-                                LatchLayer::Alt => storage.query(|s| s.div_fader_saved),
-                                _ => 0,
-                            };
-                            if let Some(new_value) =
-                                latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
-                            {
-                                match latch_layer {
-                                    LatchLayer::Main => {
-                                        // Convert fader value 0 .. 4095 to chaos 0 .. 255
-                                        chaos_glob.set(scale_bits_12_8(new_value));
-                                        storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
-                                    },
-                                    LatchLayer::Alt => {
-                                        // Convert fader value 0 .. 4095 to "resolution" lookup array index
-                                        div_glob.set(resolution[new_value as usize / 345]);
-                                        storage.modify_and_save(|s| s.div_fader_saved = new_value);
-                                    },
-                                    _ => {}
-                                }
-                                fader_led_value = new_value;
-                           }
-                        }
-                        _ => {},
-
-                    };
-                },
-                OutputMode::OutputModeEuclidean => {
-                    let target_value = match latch_layer {
-                        LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
-                        LatchLayer::Alt => if chan < K_NUM_PARTS {
-                            storage.query(|s| s.shift_fader_saved[chan])
-                        } else {
-                            storage.query(|s| s.div_fader_saved)
-                        },
-                        _ => 0,
-                    };
-                    if let Some(new_value) =
-                        latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
-                    {
-                        if chan < K_NUM_PARTS {
+                            latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                        {
                             match latch_layer {
                                 LatchLayer::Main => {
-                                    // Convert fader value 0..4095 to Euclidean fill parameter in range 0 .. 31
-                                    let mut fill_ = euclidean_fill_glob.get();
-                                    fill_[chan] = (new_value / 128) as u8;
-                                    euclidean_fill_glob.set(fill_);
+                                    // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
+                                    let mut drums_density = drums_density_glob.get();
+                                    drums_density[chan] = scale_bits_12_8(new_value);
+                                    drums_density_glob.set(drums_density);
                                     storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
-                                    fader_led_value = new_value;
                                 },
                                 LatchLayer::Alt => {
-                                    // Convert fader value 0..4095 to Euclidean length parameter in range 1..32 (steps)
-                                    let mut length_ = euclidean_length_glob.get();
-                                    length_[chan] = ((new_value / 128) + 1) as u8;
-                                    euclidean_length_glob.set(length_);
+                                    // Convert fader value 0 .. 4095 12 bit to Drums Map X 0 .. 255
+                                    drums_map_y_glob.set(scale_bits_12_8(new_value));
                                     storage.modify_and_save(|s| s.shift_fader_saved[chan] = new_value);
-                                    fader_led_value = new_value;
                                 },
-                                _ => {},
-                            }
-                        } else if chan == K_NUM_PARTS {
+                                _ => {}
+                            };
+                            fader_led_value = new_value;
+                        }
+                        
+                    },
+                    2 => {
+                        let target_value = match latch_layer {
+                            LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                            _ => 0,
+                        };
+                        if let Some(new_value) =
+                            latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                        {
+                            match latch_layer {
+                                LatchLayer::Main => {
+                                    // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
+                                    let mut drums_density = drums_density_glob.get();
+                                    drums_density[chan] = scale_bits_12_8(new_value);
+                                    drums_density_glob.set(drums_density);
+                                    storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
+                                },
+                                _ => {
+                                    // NB: used single-match for consistency with code in other channels
+                                }
+                            };
+                            fader_led_value = new_value;
+                        }
+
+                    },
+                    3 => {
+                        let target_value = match latch_layer {
+                            LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                            LatchLayer::Alt => storage.query(|s| s.div_fader_saved),
+                            _ => 0,
+                        };
+                        if let Some(new_value) =
+                            latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                        {
                             match latch_layer {
                                 LatchLayer::Main => {
                                     // Convert fader value 0 .. 4095 to chaos 0 .. 255
                                     chaos_glob.set(scale_bits_12_8(new_value));
                                     storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
-                                    fader_led_value = new_value;
                                 },
                                 LatchLayer::Alt => {
                                     // Convert fader value 0 .. 4095 to "resolution" lookup array index
                                     div_glob.set(resolution[new_value as usize / 345]);
                                     storage.modify_and_save(|s| s.div_fader_saved = new_value);
-                                    fader_led_value = new_value;
                                 },
                                 _ => {}
                             }
+                            fader_led_value = new_value;
                         }
                     }
-               }                    
-            };
+                    _ => {},
 
-            // Update fader-derived Leds
-            match output_mode {
-                OutputMode::OutputModeDrums => {
-                    match latch_layer {
-                        LatchLayer::Main => {
-                            leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
-                        },
-                        LatchLayer::Alt => {
-                            leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value))); 
-                        },
-                        _ => {},
-                    };
-                },
-                OutputMode::OutputModeEuclidean => {
-                    match latch_layer {
-                        LatchLayer::Main => {
-                            leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
-                        },
-                        LatchLayer::Alt => {
-                            leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
-                        },
-                        _ => {}
+                };
+            },
+            OutputMode::OutputModeEuclidean => {
+                let target_value = match latch_layer {
+                    LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                    LatchLayer::Alt => if chan < K_NUM_PARTS {
+                        storage.query(|s| s.shift_fader_saved[chan])
+                    } else {
+                        storage.query(|s| s.div_fader_saved)
+                    },
+                    _ => 0,
+                };
+                if let Some(new_value) =
+                    latch[chan].update(faders.get_value_at(chan), latch_layer, target_value)
+                {
+                    if chan < K_NUM_PARTS {
+                        match latch_layer {
+                            LatchLayer::Main => {
+                                // Convert fader value 0..4095 to Euclidean fill parameter in range 0 .. 31
+                                let mut fill_ = euclidean_fill_glob.get();
+                                fill_[chan] = (new_value / 128) as u8;
+                                euclidean_fill_glob.set(fill_);
+                                storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
+                                fader_led_value = new_value;
+                            },
+                            LatchLayer::Alt => {
+                                // Convert fader value 0..4095 to Euclidean length parameter in range 1..32 (steps)
+                                let mut length_ = euclidean_length_glob.get();
+                                length_[chan] = ((new_value / 128) + 1) as u8;
+                                euclidean_length_glob.set(length_);
+                                storage.modify_and_save(|s| s.shift_fader_saved[chan] = new_value);
+                                fader_led_value = new_value;
+                            },
+                            _ => {},
+                        }
+                    } else if chan == K_NUM_PARTS {
+                        match latch_layer {
+                            LatchLayer::Main => {
+                                // Convert fader value 0 .. 4095 to chaos 0 .. 255
+                                chaos_glob.set(scale_bits_12_8(new_value));
+                                storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
+                                fader_led_value = new_value;
+                            },
+                            LatchLayer::Alt => {
+                                // Convert fader value 0 .. 4095 to "resolution" lookup array index
+                                div_glob.set(resolution[new_value as usize / 345]);
+                                storage.modify_and_save(|s| s.div_fader_saved = new_value);
+                                fader_led_value = new_value;
+                            },
+                            _ => {}
+                        }
                     }
                 }
+            }                    
+        };
+
+        // Update fader-derived Leds
+        match output_mode {
+            OutputMode::OutputModeDrums => {
+                match latch_layer {
+                    LatchLayer::Main => {
+                        leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
+                    },
+                    LatchLayer::Alt => {
+                        leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value))); 
+                    },
+                    _ => {},
+                };
+            },
+            OutputMode::OutputModeEuclidean => {
+                match latch_layer {
+                    LatchLayer::Main => {
+                        leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
+                    },
+                    LatchLayer::Alt => {
+                        leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
+                    },
+                    _ => {}
+                }
             }
-        
         }
+    
+    }
     };
 
     let buttons_fut = async {
@@ -770,21 +748,19 @@ pub async fn run(
                         leds.set(part, Led::Button, led_color, Brightness::High);
                     }
                 }
-            } else {
-                if part == K_NUM_PARTS {
-                    // Chaos on/off button toggled whilst shift held down
-                    let chaos_enabled_ = storage.modify_and_save(|s| {
-                        s.chaos_enabled_saved = !s.chaos_enabled_saved;
-                        s.chaos_enabled_saved
-                    });
-                    chaos_enabled_glob.set(chaos_enabled_);
+            } else if part == K_NUM_PARTS {
+                // Chaos on/off button toggled whilst shift held down
+                let chaos_enabled_ = storage.modify_and_save(|s| {
+                    s.chaos_enabled_saved = !s.chaos_enabled_saved;
+                    s.chaos_enabled_saved
+                });
+                chaos_enabled_glob.set(chaos_enabled_);
 
-                    // Show chaos enabled button state
-                    if chaos_enabled_ {
-                        leds.set(3, Led::Button, led_color, Brightness::Mid);
-                    } else {
-                        leds.unset(3, Led::Button);
-                    }
+                // Show chaos enabled button state
+                if chaos_enabled_ {
+                    leds.set(3, Led::Button, led_color, Brightness::Mid);
+                } else {
+                    leds.unset(3, Led::Button);
                 }
             }
         }
@@ -811,8 +787,8 @@ pub async fn run(
                 match latch_active_layer {
                     LatchLayer::Main => {
                         let mutes = storage.query(|s| s.mute_saved);
-                        for part in 0 .. K_NUM_PARTS + 1 {
-                            if !mutes[part] {
+                        for (part, mute_) in mutes.iter().enumerate().take(K_NUM_PARTS + 1) {
+                            if *mute_ {
                                 leds.set(part, Led::Button, led_color, Brightness::High);
                             } else {
                                 leds.unset(part, Led::Button);
@@ -841,9 +817,17 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-
-                    let division = storage.query(|s| s.div_fader_saved);
-                    div_glob.set(resolution[division as usize / 345]);
+                    refresh_state_from_storage(storage, leds, led_color, alt_led_color, output_mode, resolution, &RefreshStateFromStorageContext {
+                        div_glob: &div_glob,
+                        glob_latch_layer: &glob_latch_layer,
+                        drums_density_glob: &drums_density_glob,
+                        drums_map_x_glob: &drums_map_x_glob,
+                        drums_map_y_glob: &drums_map_y_glob,
+                        euclidean_length_glob: &euclidean_length_glob,
+                        euclidean_fill_glob: &euclidean_fill_glob,
+                        chaos_enabled_glob: &chaos_enabled_glob,
+                        chaos_glob: &chaos_glob
+                    });
                 }
 
                 SceneEvent::SaveScene(scene) => {
@@ -858,6 +842,53 @@ pub async fn run(
 
 }
 
+struct RefreshStateFromStorageContext<'a> {
+    div_glob: &'a Global<u32>, 
+    glob_latch_layer: &'a Global<LatchLayer>, 
+    drums_density_glob: &'a Global<[u8; 3]>, 
+    drums_map_x_glob: &'a Global<u8>, 
+    drums_map_y_glob: &'a Global<u8>, 
+    euclidean_length_glob: &'a Global<[u8; 3]>, 
+    euclidean_fill_glob: &'a Global<[u8; 3]>, 
+    chaos_enabled_glob: &'a Global<bool>, 
+    chaos_glob: &'a Global<u8>
+}
+fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, output_mode: OutputMode, resolution: [u32; 12], globs: &RefreshStateFromStorageContext) {
+    let (faders_, shift_faders_, div_saved_, chaos_enabled_) = storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.div_fader_saved, s.chaos_enabled_saved));
+    match output_mode {
+        OutputMode::OutputModeDrums => {
+            let drums_density_ = [faders_[0], faders_[1], faders_[2]];
+            globs.drums_density_glob.set(drums_density_.map(scale_bits_12_8));
+            globs.drums_map_x_glob.set(scale_bits_12_8(shift_faders_[0]));
+            globs.drums_map_y_glob.set(scale_bits_12_8(shift_faders_[1]));
+            globs.div_glob.set(resolution[div_saved_ as usize / 345]);
+            globs.chaos_enabled_glob.set(chaos_enabled_);
+            globs.chaos_glob.set(scale_bits_12_8(faders_[3]));
+        },
+        OutputMode::OutputModeEuclidean => {
+            let euclidean_length_ = [faders_[0], faders_[1], faders_[2]];
+            globs.euclidean_length_glob.set(euclidean_length_.map(|v| ((v / 128) + 1) as u8)); // 1 - 32
+            let euclidean_fill_ = [shift_faders_[0], shift_faders_[1], shift_faders_[2]];
+            globs.euclidean_fill_glob.set(euclidean_fill_.map(|v| (v / 128) as u8)); // 0 .. 31
+            globs.div_glob.set(resolution[div_saved_ as usize / 345]);
+            globs.chaos_enabled_glob.set(chaos_enabled_);
+            globs.chaos_glob.set(scale_bits_12_8(faders_[3]));
+        }
+    }
+
+    let mutes = storage.query(|s| s.mute_saved);
+    for (part, mute_) in mutes.iter().enumerate().take(K_NUM_PARTS + 1) {
+        if *mute_ {
+            leds.set(part, Led::Button, led_color, Brightness::High);
+        } else {
+            leds.unset(part, Led::Button);
+        }
+    }
+
+    // Set up bottom fader - value Leds
+    update_fader_leds(storage, leds, led_color, alt_led_color, output_mode, globs.glob_latch_layer.get());
+}
+
 fn update_fader_leds(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, output_mode: OutputMode, latch_active_layer: LatchLayer) {
     // Initialise bottom Led fader value Leds
     match output_mode {
@@ -865,8 +896,8 @@ fn update_fader_leds(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4
             match latch_active_layer {
                 LatchLayer::Main => {
                     let faders_ = storage.query(|s| s.fader_saved);
-                    for chan in 0..K_NUM_PARTS + 1 {
-                        leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(faders_[chan])));
+                    for (chan, fader_) in faders_.iter().enumerate().take(K_NUM_PARTS + 1) {
+                        leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(*fader_)));
                     }
                 },
                 LatchLayer::Alt => {
@@ -883,14 +914,14 @@ fn update_fader_leds(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4
             match latch_active_layer {
                 LatchLayer::Main => {
                     let faders_ = storage.query(|s| s.fader_saved);
-                    for chan in 0..K_NUM_PARTS + 1 {
-                        leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(faders_[chan])));
+                    for (chan, fader_) in faders_.iter().enumerate().take(K_NUM_PARTS + 1) {
+                        leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(*fader_)));
                     }
                 },
                 LatchLayer::Alt => {
                     let shift_faders_ = storage.query(|s| s.shift_fader_saved);
-                    for chan in 0..K_NUM_PARTS {
-                        leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(shift_faders_[chan])));
+                    for (chan, shift_fader_) in shift_faders_.iter().enumerate().take(K_NUM_PARTS) {
+                        leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(*shift_fader_)));
                     }
                     leds.set(3, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(storage.query(|s| s.div_fader_saved ))));
                 },
@@ -923,7 +954,7 @@ fn update_generator_from_parameters(generator: &mut PatternGenerator, settings: 
     generator.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].density =
             settings.euclidean_fill_glob.get();
     let length: [u8; K_NUM_PARTS] = settings.euclidean_length_glob.get();
-    for part in 0..K_NUM_PARTS {
-        generator.set_length(part, length[part]);
+    for (part, length_) in length.iter().enumerate().take(K_NUM_PARTS) {
+        generator.set_length(part, *length_);
     }
 }
