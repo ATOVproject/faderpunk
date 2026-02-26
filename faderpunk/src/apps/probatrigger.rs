@@ -187,6 +187,11 @@ pub async fn run(
                     note_on = false;
                     jack.set_low().await;
                 }
+                ClockEvent::Stop => {
+                    midi.send_note_off(note).await;
+                    note_on = false;
+                    jack.set_low().await;
+                }
                 ClockEvent::Tick => {
                     let muted = glob_muted.get();
                     let val = storage.query(|s| s.prob_saved);
