@@ -182,7 +182,8 @@ pub async fn run(
                     let muted = glob_muted.get();
                     let clkn = ticks() as u32;
                     let div = div_glob.get();
-                    if clkn % div == 0 && !muted && storage.query(|s: &Storage| s.clocked) {
+                    if clkn.is_multiple_of(div) && !muted && storage.query(|s: &Storage| s.clocked)
+                    {
                         val_glob.set(rnd.roll());
 
                         let color = if !glob_muted.get() {
@@ -199,7 +200,7 @@ pub async fn run(
                         leds.set(0, Led::Button, color, Brightness::Mid);
                     }
 
-                    if clkn % div == 0
+                    if clkn.is_multiple_of(div)
                         && storage.query(|s: &Storage| s.clocked)
                         && buttons.is_shift_pressed()
                     {

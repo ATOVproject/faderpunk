@@ -203,7 +203,7 @@ pub async fn run(
                     let div = div_glob.get();
                     let clkn = ticks() as u32;
 
-                    if clkn % div == 0 {
+                    if clkn.is_multiple_of(div) {
                         if curve.at(val) >= rndval && !muted {
                             jack.set_high().await;
                             leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);

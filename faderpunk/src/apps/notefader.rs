@@ -248,7 +248,7 @@ pub async fn run(
                     let div = div_glob.get();
                     let clkn = ticks() as u32;
 
-                    if clkn % div == 0 && storage.query(|s| s.clocked) {
+                    if clkn.is_multiple_of(div) && storage.query(|s| s.clocked) {
                         if !muted {
                             if note_on {
                                 midi.send_note_off(note).await;
