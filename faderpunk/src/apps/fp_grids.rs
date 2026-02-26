@@ -76,7 +76,7 @@
 //! | Jack 4  | Accent Out | N/A     | N/A  | 
 //! | Fader 4  | Chaos | Speed  | N/A  |
 //! | LED 4 Top | Accent output | Accent output | N/A
-//! | LED 4 Bottom | Clock pulse | Speed | N/A
+//! | LED 4 Bottom | Chaos | Speed | N/A
 //! | Fn 4    | Mute Accent | Chaos on/off | N/A |
 //! 
 //! ## Hardware Mapping in Euclidean
@@ -731,9 +731,10 @@ pub async fn run(
                     if muted_[part] {
                         jack[part].set_low().await;
                         leds.unset(part, Led::Top);
+                        leds.unset(part, Led::Button);
                     } else {
                         jack[part].set_high().await;
-                        leds.unset(part, Led::Top);
+                        leds.set(part, Led::Button, led_color, Brightness::High);
                     };
                 
                     storage.modify_and_save(|s| {
@@ -758,7 +759,7 @@ pub async fn run(
 
                 // Show chaos enabled button state
                 if chaos_enabled_ {
-                    leds.set(3, Led::Button, led_color, Brightness::Mid);
+                    leds.set(3, Led::Button, alt_led_color, Brightness::Mid);
                 } else {
                     leds.unset(3, Led::Button);
                 }
@@ -789,9 +790,9 @@ pub async fn run(
                         let mutes = storage.query(|s| s.mute_saved);
                         for (part, mute_) in mutes.iter().enumerate().take(K_NUM_PARTS + 1) {
                             if *mute_ {
-                                leds.set(part, Led::Button, led_color, Brightness::High);
-                            } else {
                                 leds.unset(part, Led::Button);
+                            } else {
+                                leds.set(part, Led::Button, led_color, Brightness::High);
                             }
                         }
                     },
@@ -880,9 +881,9 @@ fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::ap
     let mutes = storage.query(|s| s.mute_saved);
     for (part, mute_) in mutes.iter().enumerate().take(K_NUM_PARTS + 1) {
         if *mute_ {
-            leds.set(part, Led::Button, led_color, Brightness::High);
-        } else {
             leds.unset(part, Led::Button);
+        } else {
+            leds.set(part, Led::Button, led_color, Brightness::High);
         }
     }
 
