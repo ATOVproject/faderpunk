@@ -359,13 +359,14 @@ impl PatternGenerator {
                     };
                 randomness >>= 2; // Scale randomness for perturbation amount
                 for part in 0..K_NUM_PARTS {
-                    self.part_perturbation[part] = u8_u8_mul_shift8(self.random.get_byte(), randomness);
+                    self.part_perturbation[part] =
+                        u8_u8_mul_shift8(self.random.get_byte(), randomness);
                 }
             } else {
                 // Ensure no randomisation occurs for drum pattern in next 32-step sequence
                 self.part_perturbation = [0; K_NUM_PARTS];
             }
-         }
+        }
 
         let current_step_in_pattern = self.step_;
         let mut new_state_for_tick = 0u8; // Accumulates trigger and accent bits for the current tick
@@ -387,11 +388,7 @@ impl PatternGenerator {
         }
 
         let mut accent_bits_for_parts: u8 = 0; // Accumulates trigger and accent bits for the current tick
-        for (part, threshold) in density_thresholds
-            .iter()
-            .enumerate()
-            .take(K_NUM_PARTS)
-        {
+        for (part, threshold) in density_thresholds.iter().enumerate().take(K_NUM_PARTS) {
             let mut level: u8 = self.read_drum_map(current_step_in_pattern, part as u8, x, y);
             if level < 255 - self.part_perturbation[part] {
                 level += self.part_perturbation[part];
@@ -492,7 +489,9 @@ mod tests {
     use env_logger::Env;
 
     fn init_logger() {
-        let _ = env_logger::Builder::from_env(Env::default().default_filter_or("warn")).is_test(true).try_init();
+        let _ = env_logger::Builder::from_env(Env::default().default_filter_or("warn"))
+            .is_test(true)
+            .try_init();
     }
 
     #[test]
@@ -525,7 +524,11 @@ mod tests {
         generator.options_.output_mode = OutputMode::OutputModeDrums;
         generator.options_.gate_mode = true;
         generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].options =
-            PatternModeSettings::Drums { x: 0, y: 0, randomness: 0 };
+            PatternModeSettings::Drums {
+                x: 0,
+                y: 0,
+                randomness: 0,
+            };
         generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].density =
             [31; K_NUM_PARTS];
 
