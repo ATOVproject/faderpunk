@@ -504,6 +504,12 @@ pub async fn run(
                         gate_out[n].set_low().await;
                     }
                 }
+                ClockEvent::Stop => {
+                    for n in 0..4 {
+                        midi[n].send_note_off(lastnote[n]).await;
+                        gate_out[n].set_low().await;
+                    }
+                }
                 ClockEvent::Tick => {
                     for n in 0..=3 {
                         if clockn.is_multiple_of(clockres[n]) {
@@ -520,8 +526,7 @@ pub async fn run(
                                                 as u32)
                                             * 410
                                             / 4095) as u16
-                                            + (storage.query(|s| s.oct_fader[n]) / 1000)
-                                                * 410,
+                                            + (storage.query(|s| s.oct_fader[n]) / 1000) * 410,
                                     )
                                     .await;
                                 lastnote[n] = out.as_midi();
@@ -634,23 +639,20 @@ struct AltUpdateContext<'a> {
     resolution: &'a [usize; 8],
 }
 
-fn apply_alt_update(
-    chan: usize,
-    seq_idx: usize,
-    value: u16,
-    ctx: &AltUpdateContext,
-) {
+fn apply_alt_update(chan: usize, seq_idx: usize, value: u16, ctx: &AltUpdateContext) {
     match chan {
         0 => {
             // Sequence length
-            ctx.storage.modify_and_save(|s| s.length_fader[seq_idx] = value);
+            ctx.storage
+                .modify_and_save(|s| s.length_fader[seq_idx] = value);
             let mut arr = ctx.seq_length_glob.get();
             arr[seq_idx] = (value / 256 + 1) as u8;
             ctx.seq_length_glob.set(arr);
         }
         1 => {
             // Gate length
-            ctx.storage.modify_and_save(|s| s.gate_fader[seq_idx] = value);
+            ctx.storage
+                .modify_and_save(|s| s.gate_fader[seq_idx] = value);
             let clockres = ctx.clockres_glob.get();
             let mut arr = ctx.gatelength_glob.get();
             arr[seq_idx] = (clockres[seq_idx] * (value as usize) / 4096) as u8;
@@ -659,15 +661,18 @@ fn apply_alt_update(
         }
         2 => {
             // Octave
-            ctx.storage.modify_and_save(|s| s.oct_fader[seq_idx] = value);
+            ctx.storage
+                .modify_and_save(|s| s.oct_fader[seq_idx] = value);
         }
         3 => {
             // Range
-            ctx.storage.modify_and_save(|s| s.range_fader[seq_idx] = value);
+            ctx.storage
+                .modify_and_save(|s| s.range_fader[seq_idx] = value);
         }
         4 => {
             // Resolution
-            ctx.storage.modify_and_save(|s| s.res_fader[seq_idx] = value);
+            ctx.storage
+                .modify_and_save(|s| s.res_fader[seq_idx] = value);
             let res_index = (value / 512) as usize;
             let mut arr = ctx.clockres_glob.get();
             arr[seq_idx] = ctx.resolution[res_index];
