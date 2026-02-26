@@ -233,6 +233,16 @@ pub async fn run(
                     clkn = 0;
                     midi.send_note_off(note).await;
                     note_on = false;
+                    if outmode == 1 {
+                        jack.set_value(0);
+                    }
+                }
+                ClockEvent::Stop => {
+                    midi.send_note_off(note).await;
+                    note_on = false;
+                    if outmode == 1 {
+                        jack.set_value(0);
+                    }
                 }
                 ClockEvent::Tick => {
                     let muted = glob_muted.get();
