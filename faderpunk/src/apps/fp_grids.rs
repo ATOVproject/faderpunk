@@ -390,7 +390,6 @@ pub async fn run(
             match clock.wait_for_event(ClockDivision::_1).await {
 
                 ClockEvent::Reset => {
-                    defmt::info!("fp-grids Reset");
                     clkn = 0;
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
                     
@@ -766,18 +765,15 @@ pub async fn run(
                 update_fader_leds(storage, leds, led_color, alt_led_color, output_mode, latch_active_layer);
 
                 // Update Button LEDs
-                match latch_active_layer {
-                    LatchLayer::Main => {
-                        let mutes = storage.query(|s| s.mute_saved);
-                        for (part, mute_) in mutes.iter().enumerate().take(K_NUM_PARTS + 1) {
-                            if *mute_ {
-                                leds.unset(part, Led::Button);
-                            } else {
-                                leds.set(part, Led::Button, led_color, Brightness::High);
-                            }
+                if latch_active_layer == LatchLayer::Main {
+                    let mutes = storage.query(|s| s.mute_saved);
+                    for (part, mute_) in mutes.iter().enumerate().take(K_NUM_PARTS + 1) {
+                        if *mute_ {
+                            leds.unset(part, Led::Button);
+                        } else {
+                            leds.set(part, Led::Button, led_color, Brightness::High);
                         }
-                    },
-                    _ => {}
+                    }
                 }
             }
         }
