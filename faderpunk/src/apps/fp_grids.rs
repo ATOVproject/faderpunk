@@ -21,20 +21,22 @@
 //! 
 //! Grids is described as a "topographic drum sequencer" - it generates a variety of drum patterns based on continuous interpolation through a "map" of patterns (Drum Mode) or using Euclidean algorithms (Euclidean Mode).
 //! 
-//! The original Eurorack module manual is [here](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/manual/)
+//! The original Mutable Instruments module manual is [here](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/manual/)
 //! 
 //! ## Features
 //! 
 //! * **Two modes** - Switch between classic Drum map interpolation and Euclidean pattern generation.
-//! * **Four-channel Faderpunk app** - three trigger outputs and an additional accent trigger output
+//! * **Four-channel Faderpunk app** - three trigger outputs and an additional global accent trigger output
 //! * **Global Clock** - uses the global Faderpunk clock
-//! * **Chaos** - Introduce controlled randomness to patterns (On/Off, with Amount control).
+//! * **Chaos** - Introduce controlled randomness to patterns.
 //! * **Scene Storage & Recall** - save dynamic state of generator and recall in Faderpunk scenes
 //! * **MIDI Output** - MIDI Note per drum trigger and accent
 //! * **Fader Memory** - Remembers mode-specific fader settings
 //!
-//! Trigger output signals are a fixed duration ~5ms +5V high, 0V low.
+//! Gate output signal width is configured as a percentage of clock step width (unlike the original Grids)
 //! The Accent trigger will be muted if all three of the drum triggers are muted.
+//! 
+//! The sequencers can be reset rhythmically by patching in an external reset trigger (e.g. from a Pam's Pro Workout that is also synced to the Faderpunk) into one of the Faderpunk Aux Jacks (configured as a reset input). As at firmware v1.8, it's not posisble to self-patch 
 //! 
 //! ## Modes
 //! 
@@ -44,7 +46,7 @@
 //! 
 //! * **Map X / Map Y:** Controls the position on the pattern map. Small changes typically result in related rhythmic variations.
 //! * **Density 1 / Density 2 / Density 3:** Controls the event density (fill) for each of the three main trigger outputs.
-//! * **Chaos Amount:** Controls the amount of randomness applied (when Chaos is enabled).
+//! * **Chaos Amount:** Controls the amount of randomness applied. When set to a high value, rolls / ghost notes will be randomly added to the pattern.
 //! 
 //! ### 2. Euclidean Mode
 //! 
@@ -52,7 +54,7 @@
 //!
 //! * **Length 1 / Length 2 / Length 3:** Sets the total number of steps in the sequence for each output (1-32).
 //! * **Fill 1 / Fill 2 / Fill 3:** Sets the number of triggers distributed as evenly as possible within the sequence length for each output (0-31). If fill is greater than length, it's capped at the length value (so trigger will emit on every step)
-//! * **Chaos Amount:** Controls the amount of random step-skipping/triggering (when Chaos is enabled).
+//! * **Chaos Amount:** Controls the amount of random step-skipping/triggering.
 //! 
 //! ## Hardware Mapping in Drum Mode
 //! 
@@ -125,7 +127,7 @@
 //! 
 
 use embassy_futures::{
-    join::{join5}, select::{select, select3}
+    join::{join, join5}, select::{select, select3}
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -352,6 +354,19 @@ pub async fn run(
     let note_on_glob = app.make_global([false; K_NUM_PARTS]);
     let accent_on_glob = app.make_global(false);
     
+    refresh_state_from_storage(storage, leds, led_color, alt_led_color, output_mode, resolution, &RefreshStateFromStorageContext {
+        div_glob: &div_glob,
+        glob_latch_layer: &glob_latch_layer,
+        drums_density_glob: &drums_density_glob,
+        drums_map_x_glob: &drums_map_x_glob,
+        drums_map_y_glob: &drums_map_y_glob,
+        euclidean_length_glob: &euclidean_length_glob,
+        euclidean_fill_glob: &euclidean_fill_glob,
+        chaos_glob: &chaos_glob
+    });
+
+    reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
+
     let main_loop = async {
         let mut clock = app.use_clock();
         let mut clkn: u32 = 0;
@@ -375,15 +390,15 @@ pub async fn run(
             match clock.wait_for_event(ClockDivision::_1).await {
 
                 ClockEvent::Reset => {
+                    defmt::info!("fp-grids Reset");
                     clkn = 0;
-                    generator.reset();
+                    reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
+                    
                     generator.set_seed(die.roll());
-                    midi.send_note_off(note1).await;
-                    midi.send_note_off(note2).await;
-                    midi.send_note_off(note3).await;
-                    note_on_glob.set([false; K_NUM_PARTS]);
-                    accent_on_glob.set(false);
-                    jack[0].set_low().await;
+                    generator.reset();
+                }
+                ClockEvent::Stop => {
+                    reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;                   
                 }
                 ClockEvent::Tick => {
                     let muted = storage.query(|s| s.mute_saved);
@@ -391,7 +406,7 @@ pub async fn run(
 
                     // If we have reached the next sequence step
                     if clkn.is_multiple_of(div) {
-
+  
                         // Get generator state and handle individual triggers
                         // State byte bits:
                         // 0: Trigger 1
@@ -405,7 +420,7 @@ pub async fn run(
                         } else {
                             accent_velocity
                         };
-
+                      
                         for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
                             if state & (1 << part) > 0 && !muted[part]{
                                 // Trigger fired
@@ -422,8 +437,8 @@ pub async fn run(
                             }
                         }
         
-                        // If accent triggered (will fire even if all of the drum triggers are muted)
-                        if is_accent {
+                        // If accent triggered 
+                        if is_accent & !muted[3] {
                             // Accent fired
                             jack[3].set_high().await;
                             accent_on_glob.set(true);
@@ -716,11 +731,7 @@ pub async fn run(
                         jack[part].set_low().await;
                         leds.unset(part, Led::Top);
                         leds.unset(part, Led::Button);
-                    } else {
-                        jack[part].set_high().await;
-                        leds.set(part, Led::Button, led_color, Brightness::High);
-                    };
-                
+                    } 
                     storage.modify_and_save(|s| {
                         s.mute_saved = muted_;
                         s.mute_saved
@@ -787,6 +798,7 @@ pub async fn run(
                         euclidean_fill_glob: &euclidean_fill_glob,
                         chaos_glob: &chaos_glob
                     });
+                    reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
                 }
 
                 SceneEvent::SaveScene(scene) => {
@@ -800,6 +812,21 @@ pub async fn run(
 
 }
 
+async fn reset_all_outputs(midi: crate::app::MidiOutput, leds: crate::app::Leds<4>, notes: [MidiNote; 3], jack: &[crate::app::GateJack; 4], note_on_glob: &Global<[bool; 3]>, accent_on_glob: &Global<bool>) {
+    for part in 0..K_NUM_PARTS {
+        join(
+            // Only send a MIDI note off if we think we have previously sent a note on
+            midi.send_note_off(notes[part]), 
+            jack[part].set_low()).await;
+        leds.unset(part, Led::Top);        
+    }
+    note_on_glob.set([false; K_NUM_PARTS]);
+    jack[3].set_low().await;
+    accent_on_glob.set(false);
+    leds.unset(3, Led::Top);        
+
+}
+
 struct RefreshStateFromStorageContext<'a> {
     div_glob: &'a Global<u32>, 
     glob_latch_layer: &'a Global<LatchLayer>, 
@@ -808,7 +835,7 @@ struct RefreshStateFromStorageContext<'a> {
     drums_map_y_glob: &'a Global<u8>, 
     euclidean_length_glob: &'a Global<[u8; 3]>, 
     euclidean_fill_glob: &'a Global<[u8; 3]>, 
-    chaos_glob: &'a Global<u8>
+    chaos_glob: &'a Global<u8>,
 }
 
 /// Update in-memory globals from scene-stored data
