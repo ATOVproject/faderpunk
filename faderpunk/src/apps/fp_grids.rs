@@ -77,7 +77,7 @@
 //! | Fader 4  | Chaos | Speed  | N/A  |
 //! | LED 4 Top | Accent output | Accent output | N/A
 //! | LED 4 Bottom | Chaos | Speed | N/A
-//! | Fn 4    | Mute Accent | Chaos on/off | N/A |
+//! | Fn 4    | Mute Accent | N/A | N/A |
 //! 
 //! ## Hardware Mapping in Euclidean
 //! 
@@ -102,7 +102,7 @@
 //! | Fader 4  | Chaos | Speed  | N/A  |
 //! | LED 4 Top | Accent output | Accent output | N/A
 //! | LED 4 Bottom | Chaos | Speed | N/A
-//! | Fn 4    | Mute Accent | Chaos on/off | N/A |
+//! | Fn 4    | Mute Accent | N/A | N/A |
 //! 
 //! ## App Configuration
 //! 
@@ -257,7 +257,6 @@ impl AppParams for Params {
 pub struct Storage {
     fader_saved: [u16; K_NUM_PARTS + 1],
     shift_fader_saved: [u16; K_NUM_PARTS],
-    chaos_enabled_saved: bool, 
     div_fader_saved: u16,             // 0 - 4095 range, maps to index into 'resolution' clock div array (same as euclid.rs)
     mute_saved: [bool; K_NUM_PARTS + 1],      // 3 triggers + accent
 }
@@ -265,9 +264,8 @@ pub struct Storage {
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            fader_saved: [2047, 2047, 2047, 0],
+            fader_saved: [2047, 2047, 2047, 0 /* zero chaos */],
             shift_fader_saved: [2047; K_NUM_PARTS],
-            chaos_enabled_saved: false,
             div_fader_saved: 3000,
             mute_saved: [false; K_NUM_PARTS + 1],
         }
@@ -350,22 +348,9 @@ pub async fn run(
     let drums_map_y_glob = app.make_global(127u8); // 0 - 255 Map Y
     let euclidean_length_glob = app.make_global([16u8; K_NUM_PARTS]); // 1 - 32 steps
     let euclidean_fill_glob = app.make_global([8u8; K_NUM_PARTS]); // 0 - 31 fill
-    let chaos_enabled_glob = app.make_global(false);
     let chaos_glob = app.make_global(0u8);
     let note_on_glob = app.make_global([false; K_NUM_PARTS]);
     let accent_on_glob = app.make_global(false);
-
-    refresh_state_from_storage(storage, leds, led_color, alt_led_color, output_mode, resolution, &RefreshStateFromStorageContext {
-        div_glob: &div_glob,
-        glob_latch_layer: &glob_latch_layer,
-        drums_density_glob: &drums_density_glob,
-        drums_map_x_glob: &drums_map_x_glob,
-        drums_map_y_glob: &drums_map_y_glob,
-        euclidean_length_glob: &euclidean_length_glob,
-        euclidean_fill_glob: &euclidean_fill_glob,
-        chaos_enabled_glob: &chaos_enabled_glob,
-        chaos_glob: &chaos_glob
-    });
     
     let main_loop = async {
         let mut clock = app.use_clock();
@@ -375,13 +360,13 @@ pub async fn run(
         let mut generator = PatternGenerator::default();
         generator.set_seed(die.roll());
         generator.set_output_mode(output_mode);
+        generator.set_global_chaos(true);
         update_generator_from_parameters(&mut generator, &GeneratorUpdateContext {
             drums_density_glob: &drums_density_glob,
             drums_map_x_glob: &drums_map_x_glob,
             drums_map_y_glob: &drums_map_y_glob,
             euclidean_length_glob: &euclidean_length_glob,
             euclidean_fill_glob: &euclidean_fill_glob,
-            chaos_enabled_glob: &chaos_enabled_glob,
             chaos_glob: &chaos_glob
         });
         generator.reset();
@@ -452,7 +437,6 @@ pub async fn run(
                             drums_map_y_glob: &drums_map_y_glob,
                             euclidean_length_glob: &euclidean_length_glob,
                             euclidean_fill_glob: &euclidean_fill_glob,
-                            chaos_enabled_glob: &chaos_enabled_glob,
                             chaos_glob: &chaos_glob
                         });
 
@@ -749,21 +733,7 @@ pub async fn run(
                         leds.set(part, Led::Button, led_color, Brightness::High);
                     }
                 }
-            } else if part == K_NUM_PARTS {
-                // Chaos on/off button toggled whilst shift held down
-                let chaos_enabled_ = storage.modify_and_save(|s| {
-                    s.chaos_enabled_saved = !s.chaos_enabled_saved;
-                    s.chaos_enabled_saved
-                });
-                chaos_enabled_glob.set(chaos_enabled_);
-
-                // Show chaos enabled button state
-                if chaos_enabled_ {
-                    leds.set(3, Led::Button, alt_led_color, Brightness::Mid);
-                } else {
-                    leds.unset(3, Led::Button);
-                }
-            }
+            } 
         }
 
     };
@@ -796,17 +766,6 @@ pub async fn run(
                             }
                         }
                     },
-                    LatchLayer::Alt => {
-                        let chaos_enabled_ = storage.query(|s| s.chaos_enabled_saved);
-                        for part in 0 .. K_NUM_PARTS {
-                            leds.unset(part, Led::Button);
-                        }
-                        if chaos_enabled_ {
-                            leds.set(3, Led::Button, alt_led_color, Brightness::High);
-                        } else {
-                            leds.unset(3, Led::Button);
-                        }
-                    },
                     _ => {}
                 }
             }
@@ -826,7 +785,6 @@ pub async fn run(
                         drums_map_y_glob: &drums_map_y_glob,
                         euclidean_length_glob: &euclidean_length_glob,
                         euclidean_fill_glob: &euclidean_fill_glob,
-                        chaos_enabled_glob: &chaos_enabled_glob,
                         chaos_glob: &chaos_glob
                     });
                 }
@@ -850,13 +808,12 @@ struct RefreshStateFromStorageContext<'a> {
     drums_map_y_glob: &'a Global<u8>, 
     euclidean_length_glob: &'a Global<[u8; 3]>, 
     euclidean_fill_glob: &'a Global<[u8; 3]>, 
-    chaos_enabled_glob: &'a Global<bool>, 
     chaos_glob: &'a Global<u8>
 }
 
 /// Update in-memory globals from scene-stored data
 fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, output_mode: OutputMode, resolution: [u32; 12], globs: &RefreshStateFromStorageContext) {
-    let (faders_, shift_faders_, div_saved_, chaos_enabled_) = storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.div_fader_saved, s.chaos_enabled_saved));
+    let (faders_, shift_faders_, div_saved_) = storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.div_fader_saved));
     match output_mode {
         OutputMode::OutputModeDrums => {
             let drums_density_ = [faders_[0], faders_[1], faders_[2]];
@@ -864,7 +821,6 @@ fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::ap
             globs.drums_map_x_glob.set(scale_bits_12_8(shift_faders_[0]));
             globs.drums_map_y_glob.set(scale_bits_12_8(shift_faders_[1]));
             globs.div_glob.set(resolution[div_saved_ as usize / 345]);
-            globs.chaos_enabled_glob.set(chaos_enabled_);
             globs.chaos_glob.set(scale_bits_12_8(faders_[3]));
         },
         OutputMode::OutputModeEuclidean => {
@@ -873,7 +829,6 @@ fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::ap
             let euclidean_length_ = [shift_faders_[0], shift_faders_[1], shift_faders_[2]];
             globs.euclidean_length_glob.set(euclidean_length_.map(|v| ((v / 128) + 1) as u8)); // 1 - 32
             globs.div_glob.set(resolution[div_saved_ as usize / 345]);
-            globs.chaos_enabled_glob.set(chaos_enabled_);
             globs.chaos_glob.set(scale_bits_12_8(faders_[3]));
         }
     }
@@ -940,14 +895,13 @@ struct GeneratorUpdateContext<'a> {
     drums_map_y_glob: &'a Global<u8>,
     euclidean_length_glob: &'a Global<[u8; K_NUM_PARTS]>,
     euclidean_fill_glob: &'a Global<[u8; K_NUM_PARTS]>,
-    chaos_enabled_glob: &'a Global<bool>,
     chaos_glob: &'a Global<u8>
 }
 
 /// Update a PatternGenerator options from the app instance's managed parameters
 fn update_generator_from_parameters(generator: &mut PatternGenerator, settings: &GeneratorUpdateContext) {
     generator.set_gate_mode(true);
-    generator.set_global_chaos(settings.chaos_enabled_glob.get());
+    generator.set_global_chaos(true);
     generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].options =
             PatternModeSettings::Drums { x: settings.drums_map_x_glob.get(), y: settings.drums_map_y_glob.get(), randomness: settings.chaos_glob.get() };
     generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].density =
