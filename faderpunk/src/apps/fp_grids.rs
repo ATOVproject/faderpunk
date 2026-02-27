@@ -336,10 +336,10 @@ pub async fn run(
     let midi = app.use_midi_output(midi_out, midi_channel);    
     let notes = [note1, note2, note3];
     let jack = [
-        app.make_gate_jack(0, 0).await,
-        app.make_gate_jack(1, 0).await,
-        app.make_gate_jack(2, 0).await,
-        app.make_gate_jack(3, 0).await,
+        app.make_gate_jack(0, 4095).await,
+        app.make_gate_jack(1, 4095).await,
+        app.make_gate_jack(2, 4095).await,
+        app.make_gate_jack(3, 4095).await,
     ];
     let resolution = [384u32, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
     let div_glob = app.make_global(6); // = 1/16th note
