@@ -42,7 +42,7 @@
 //! 
 //! ### 1. Drum Mode
 //! 
-//! Generates patterns by interpolating through a 2D map of pre-analyzed drum patterns.
+//! Generates patterns by interpolating through a 2D map of pre-analyzed drum patterns. Sequence length is always 32 steps
 //! 
 //! * **Map X / Map Y:** Controls the position on the pattern map. Small changes typically result in related rhythmic variations.
 //! * **Density 1 / Density 2 / Density 3:** Controls the event density (fill) for each of the three main trigger outputs.
@@ -55,6 +55,8 @@
 //! * **Length 1 / Length 2 / Length 3:** Sets the total number of steps in the sequence for each output (1-32).
 //! * **Fill 1 / Fill 2 / Fill 3:** Sets the number of triggers distributed as evenly as possible within the sequence length for each output (0-31). If fill is greater than length, it's capped at the length value (so trigger will emit on every step)
 //! * **Chaos Amount:** Controls the amount of random step-skipping/triggering.
+//! 
+//! Try saving different Scenes with different Output Modes, then switching between scenes in a performance (sequence will reset on next step)
 //! 
 //! ## Hardware Mapping in Drum Mode
 //! 
@@ -79,7 +81,7 @@
 //! | Fader 4  | Chaos | Speed  | N/A  |
 //! | LED 4 Top | Accent output | Accent output | N/A
 //! | LED 4 Bottom | Chaos | Speed | N/A
-//! | Fn 4    | Mute Accent | N/A | N/A |
+//! | Fn 4    | Mute Accent | Mode (Light Blue=Drums, Pink = Euclidean) | N/A |
 //! 
 //! ## Hardware Mapping in Euclidean
 //! 
@@ -104,11 +106,10 @@
 //! | Fader 4  | Chaos | Speed  | N/A  |
 //! | LED 4 Top | Accent output | Accent output | N/A
 //! | LED 4 Bottom | Chaos | Speed | N/A
-//! | Fn 4    | Mute Accent | N/A | N/A |
+//! | Fn 4    | Mute Accent | Mode (Light Blue=Drums, Pink = Euclidean) | N/A |
 //! 
 //! ## App Configuration
 //! 
-//! * Mode (Drum or Euclidean)
 //! * MIDI Channel
 //! * MIDI NOTE 1
 //! * MIDI NOTE 2
@@ -144,7 +145,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::{App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage, ParamStore, SceneEvent };
 
 pub const CHANNELS: usize = 4;
-pub const PARAMS: usize = 10;
+pub const PARAMS: usize = 9;
 
 // App configuration visible to the configurator
 pub static CONFIG: Config<PARAMS> = Config::new(
@@ -153,7 +154,6 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::SkyBlue,
     AppIcon::Euclid,
 )
-.add_param(Param::Enum { name: "Mode", variants: &["Euclidean", "Drums"] })
 .add_param(Param::MidiChannel {
     name: "MIDI Channel",
 })
@@ -200,7 +200,6 @@ pub struct Params {
     accent: i32,
     gatel: i32,
     color: Color,
-    mode: usize,
 }
 
 impl Default for Params {
@@ -215,7 +214,6 @@ impl Default for Params {
             accent: 127,
             gatel: 50,
             color: Color::Orange,
-            mode: OutputMode::OutputModeDrums.ordinal() as usize, 
         }
     }
 }
@@ -226,22 +224,20 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            mode: usize::from_value(values[0]),
-            midi_channel: MidiChannel::from_value(values[1]),
-            note1: MidiNote::from_value(values[2]),
-            note2: MidiNote::from_value(values[3]),
-            note3: MidiNote::from_value(values[4]),
-            velocity: i32::from_value(values[5]),
-            accent: i32::from_value(values[6]),
-            gatel: i32::from_value(values[7]),
-            color: Color::from_value(values[8]),
-            midi_out: MidiOut::from_value(values[9]),
+            midi_channel: MidiChannel::from_value(values[0]),
+            note1: MidiNote::from_value(values[1]),
+            note2: MidiNote::from_value(values[2]),
+            note3: MidiNote::from_value(values[3]),
+            velocity: i32::from_value(values[4]),
+            accent: i32::from_value(values[5]),
+            gatel: i32::from_value(values[6]),
+            color: Color::from_value(values[7]),
+            midi_out: MidiOut::from_value(values[8]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
-        vec.push(self.mode.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.note1.into()).unwrap();
         vec.push(self.note2.into()).unwrap();
@@ -261,6 +257,7 @@ pub struct Storage {
     shift_fader_saved: [u16; K_NUM_PARTS],
     div_fader_saved: u16,             // 0 - 4095 range, maps to index into 'resolution' clock div array (same as euclid.rs)
     mute_saved: [bool; K_NUM_PARTS + 1],      // 3 triggers + accent
+    is_drum_mode: bool, // = true (Drums Mode), = false (Euclidean mode)
 }
 
 impl Default for Storage {
@@ -270,6 +267,7 @@ impl Default for Storage {
             shift_fader_saved: [2047; K_NUM_PARTS],
             div_fader_saved: 3000,
             mute_saved: [false; K_NUM_PARTS + 1],
+            is_drum_mode: true,
         }
     }
 }
@@ -325,13 +323,11 @@ pub async fn run(
         Color::Blue
     };
 
+    let drums_btn_color = Color::LightBlue;
+    let euclidean_btn_color = Color::Pink;
+
     let midi_velocity = ((velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
     let accent_velocity = ((accent_velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
-
-    let output_mode: OutputMode = match OutputMode::from_ordinal(params.query(|p| p.mode) as i8) {
-        None => OutputMode::OutputModeDrums,
-        Some(mode) => mode
-    };
 
     let midi = app.use_midi_output(midi_out, midi_channel);    
     let notes = [note1, note2, note3];
@@ -353,8 +349,9 @@ pub async fn run(
     let chaos_glob = app.make_global(0u8);
     let note_on_glob = app.make_global([false; K_NUM_PARTS]);
     let accent_on_glob = app.make_global(false);
+    let output_mode_glob = app.make_global(OutputMode::OutputModeDrums);
     
-    refresh_state_from_storage(storage, leds, led_color, alt_led_color, output_mode, resolution, &RefreshStateFromStorageContext {
+    refresh_state_from_storage(storage, leds, led_color, alt_led_color, resolution, &RefreshStateFromStorageContext {
         div_glob: &div_glob,
         glob_latch_layer: &glob_latch_layer,
         drums_density_glob: &drums_density_glob,
@@ -362,7 +359,8 @@ pub async fn run(
         drums_map_y_glob: &drums_map_y_glob,
         euclidean_length_glob: &euclidean_length_glob,
         euclidean_fill_glob: &euclidean_fill_glob,
-        chaos_glob: &chaos_glob
+        chaos_glob: &chaos_glob,
+        output_mode_glob: &output_mode_glob
     });
 
     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
@@ -370,7 +368,7 @@ pub async fn run(
     let main_loop = async {
         let mut clock = app.use_clock();
         let mut clkn: u32 = 0;
-
+        let mut output_mode = output_mode_glob.get();
 
         let mut generator = PatternGenerator::default();
         generator.set_seed(die.roll());
@@ -391,9 +389,11 @@ pub async fn run(
 
                 ClockEvent::Reset => {
                     clkn = 0;
+                    output_mode = output_mode_glob.get();
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
                     
                     generator.set_seed(die.roll());
+                    generator.set_output_mode(output_mode);
                     generator.reset();
                 }
                 ClockEvent::Stop => {
@@ -405,7 +405,15 @@ pub async fn run(
 
                     // If we have reached the next sequence step
                     if clkn.is_multiple_of(div) {
-  
+
+                        // If output mode has changed since last step, change generator mode and reset the sequence
+                        if output_mode_glob.get() != output_mode {
+                            output_mode = output_mode_glob.get();
+                            generator.set_output_mode(output_mode);
+                            generator.reset();
+                            defmt::info!("New mode {}", if output_mode == OutputMode::OutputModeDrums { "DRUMS"} else {"EUCLIDEAN"});
+                        }
+
                         // Get generator state and handle individual triggers
                         // State byte bits:
                         // 0: Trigger 1
@@ -477,7 +485,6 @@ pub async fn run(
                             leds.unset(3, Led::Top);
                         }
                     }
-
                     clkn += 1;
                 }
                 _ => {}
@@ -496,7 +503,8 @@ pub async fn run(
             let chan = faders.wait_for_any_change().await;
             let latch_layer = glob_latch_layer.get();
             let mut fader_led_value = 0u16;
-            match output_mode {
+            let output_mode_ = output_mode_glob.get();
+            match output_mode_ {
                 OutputMode::OutputModeDrums => {
                     match chan {
                         0 => {
@@ -662,7 +670,7 @@ pub async fn run(
         };
 
         // Update fader-derived Leds
-        match output_mode {
+        match output_mode_ {
             OutputMode::OutputModeDrums => {
                 match latch_layer {
                     LatchLayer::Main => {
@@ -743,7 +751,23 @@ pub async fn run(
                         leds.set(part, Led::Button, led_color, Brightness::High);
                     }
                 }
-            } 
+            } else if part == K_NUM_PARTS {
+                // shift + output mode toggle
+                let drum_mode_ = if storage.modify_and_save(|s| {
+                    s.is_drum_mode = !s.is_drum_mode;
+                    s.is_drum_mode
+                }) == true {
+                    OutputMode::OutputModeDrums
+                } else {
+                    OutputMode::OutputModeEuclidean
+                };
+                output_mode_glob.set(drum_mode_);
+                if drum_mode_ == OutputMode::OutputModeDrums {
+                    leds.set(3, Led::Button, drums_btn_color, Brightness::High);
+                } else {
+                    leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                }
+            }
         }
 
     };
@@ -762,7 +786,7 @@ pub async fn run(
             };
             if latch_active_layer != glob_latch_layer.get() {
                 glob_latch_layer.set(latch_active_layer);
-                update_fader_leds(storage, leds, led_color, alt_led_color, output_mode, latch_active_layer);
+                update_fader_leds(storage, leds, led_color, alt_led_color, output_mode_glob.get(), latch_active_layer);
 
                 // Update Button LEDs
                 if latch_active_layer == LatchLayer::Main {
@@ -774,6 +798,15 @@ pub async fn run(
                             leds.set(part, Led::Button, led_color, Brightness::High);
                         }
                     }
+                } else if latch_active_layer == LatchLayer::Alt {
+                    for part in 0..K_NUM_PARTS {
+                        leds.unset(part, Led::Button);
+                    }
+                    if output_mode_glob.get() == OutputMode::OutputModeDrums {
+                        leds.set(3, Led::Button, drums_btn_color, Brightness::High);
+                    } else {
+                        leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                    }
                 }
             }
         }
@@ -784,7 +817,7 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    refresh_state_from_storage(storage, leds, led_color, alt_led_color, output_mode, resolution, &RefreshStateFromStorageContext {
+                    refresh_state_from_storage(storage, leds, led_color, alt_led_color, resolution, &RefreshStateFromStorageContext {
                         div_glob: &div_glob,
                         glob_latch_layer: &glob_latch_layer,
                         drums_density_glob: &drums_density_glob,
@@ -792,7 +825,8 @@ pub async fn run(
                         drums_map_y_glob: &drums_map_y_glob,
                         euclidean_length_glob: &euclidean_length_glob,
                         euclidean_fill_glob: &euclidean_fill_glob,
-                        chaos_glob: &chaos_glob
+                        chaos_glob: &chaos_glob,
+                        output_mode_glob: &output_mode_glob,
                     });
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
                 }
@@ -832,12 +866,19 @@ struct RefreshStateFromStorageContext<'a> {
     euclidean_length_glob: &'a Global<[u8; 3]>, 
     euclidean_fill_glob: &'a Global<[u8; 3]>, 
     chaos_glob: &'a Global<u8>,
+    output_mode_glob: &'a Global<OutputMode>,
 }
 
 /// Update in-memory globals from scene-stored data
-fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, output_mode: OutputMode, resolution: [u32; 12], globs: &RefreshStateFromStorageContext) {
-    let (faders_, shift_faders_, div_saved_) = storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.div_fader_saved));
-    match output_mode {
+fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, resolution: [u32; 12], globs: &RefreshStateFromStorageContext) {
+    let (is_drum_mode_, faders_, shift_faders_, div_saved_) = storage.query(|s| (s.is_drum_mode, s.fader_saved, s.shift_fader_saved, s.div_fader_saved));
+    let output_mode_ = if is_drum_mode_ {
+        OutputMode::OutputModeDrums
+    } else {
+        OutputMode::OutputModeEuclidean
+    };
+    globs.output_mode_glob.set(output_mode_);
+    match output_mode_ {
         OutputMode::OutputModeDrums => {
             let drums_density_ = [faders_[0], faders_[1], faders_[2]];
             globs.drums_density_glob.set(drums_density_.map(scale_bits_12_8));
@@ -856,6 +897,7 @@ fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::ap
         }
     }
 
+    // Assume we are always on LatchLayer::Main when switching scenes
     let mutes = storage.query(|s| s.mute_saved);
     for (part, mute_) in mutes.iter().enumerate().take(K_NUM_PARTS + 1) {
         if *mute_ {
@@ -866,7 +908,7 @@ fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::ap
     }
 
     // Set up bottom fader - value Leds
-    update_fader_leds(storage, leds, led_color, alt_led_color, output_mode, globs.glob_latch_layer.get());
+    update_fader_leds(storage, leds, led_color, alt_led_color, output_mode_, globs.glob_latch_layer.get());
 }
 
 /// Update bottom row of Fader Leds from fader values
