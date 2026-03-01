@@ -22,7 +22,7 @@ use crate::{
     events::{EventPubSubChannel, InputEvent},
     tasks::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
-        clock::{ClockSubscriber, CLOCK_PUBSUB},
+        clock::{ClockSubscriber, CLOCK_PUBSUB, TICK_COUNTER},
         global_config::get_global_config,
         i2c::{I2cLeaderMessage, I2cLeaderSender, I2C_CONNECTED},
         leds::{set_led_mode, LedMode, LedMsg},
@@ -299,25 +299,20 @@ impl Faders<1> {
 
 pub struct Clock {
     subscriber: ClockSubscriber,
-    tick_count: u16,
 }
 
 impl Clock {
     pub fn new() -> Self {
         let subscriber = CLOCK_PUBSUB.subscriber().unwrap();
-        Self {
-            subscriber,
-            tick_count: 0,
-        }
+        Self { subscriber }
     }
 
     pub async fn wait_for_event(&mut self, division: ClockDivision) -> ClockEvent {
         loop {
             match self.subscriber.next_message_pure().await {
                 ClockEvent::Tick => {
-                    self.tick_count += 1;
-                    if self.tick_count >= division as u16 {
-                        self.tick_count = 0;
+                    let ticks = TICK_COUNTER.load(Ordering::Relaxed);
+                    if ticks.is_multiple_of(division as u64) {
                         return ClockEvent::Tick;
                     }
                 }
@@ -325,12 +320,21 @@ impl Clock {
                     return ClockEvent::Stop;
                 }
                 clock_event @ ClockEvent::Start | clock_event @ ClockEvent::Reset => {
-                    self.tick_count = 0;
                     return clock_event;
                 }
             }
         }
     }
+
+    #[allow(dead_code)]
+    pub fn get_ticker(&self) -> fn() -> u64 {
+        ticks
+    }
+}
+
+#[allow(dead_code)]
+fn ticks() -> u64 {
+    TICK_COUNTER.load(Ordering::Relaxed)
 }
 
 pub enum SceneEvent {

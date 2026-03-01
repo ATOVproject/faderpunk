@@ -140,11 +140,19 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_out, midi_chan, note, gatel, led_color) =
-        params.query(|p| (p.midi_out, p.midi_channel, p.midi_note, p.gatel, p.color));
+    let (midi_out, midi_chan, note, gatel, led_color) = params.query(|p| {
+        (
+            p.midi_out,
+            p.midi_channel,
+            p.midi_note,
+            p.gatel as u32,
+            p.color,
+        )
+    });
     let curve = Curve::Exponential;
 
     let mut clock = app.use_clock();
+    let ticks = clock.get_ticker();
     let die = app.use_die();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
@@ -159,8 +167,6 @@ pub async fn run(
     let jack = app.make_gate_jack(0, 4095).await;
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
-
-    let mut clkn = 0;
 
     let mut rndval = die.roll();
 
@@ -182,7 +188,6 @@ pub async fn run(
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    clkn = 0;
                     midi.send_note_off(note).await;
                     note_on = false;
                     jack.set_low().await;
@@ -196,8 +201,9 @@ pub async fn run(
                     let muted = glob_muted.get();
                     let val = storage.query(|s| s.prob_saved);
                     let div = div_glob.get();
+                    let clkn = ticks() as u32;
 
-                    if clkn % div == 0 {
+                    if clkn.is_multiple_of(div) {
                         if curve.at(val) >= rndval && !muted {
                             jack.set_high().await;
                             leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
@@ -223,7 +229,6 @@ pub async fn run(
 
                         leds.set(0, Led::Bottom, led_color, Brightness::Off);
                     }
-                    clkn += 1;
                 }
                 _ => {}
             }
