@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.1 (2026-03-01)
+
+### Fixes
+
+- add public tick counter, reset delay (#449)
+
 ## 1.8.0 (2026-02-23)
 
 ### Features
