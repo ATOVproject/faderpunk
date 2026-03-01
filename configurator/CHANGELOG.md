@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.4 (2026-03-01)
+
+### Fixes
+
+- add markdown parser for app entries (#451)
+
 ## 1.8.3 (2026-02-24)
 
 ### Fixes
