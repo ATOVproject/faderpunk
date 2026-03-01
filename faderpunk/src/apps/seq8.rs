@@ -156,6 +156,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let mut clk = app.use_clock();
+    let ticks = clk.get_ticker();
     let led = app.use_leds();
 
     let midi = [
@@ -164,8 +165,6 @@ pub async fn run(
         app.use_midi_output(midi_out, midi_chan3),
         app.use_midi_output(midi_out, midi_chan4),
     ];
-
-    let clockn_glob = app.make_global(0);
 
     let cv_out = [
         app.make_out_jack(0, Range::_0_10V).await,
@@ -372,10 +371,9 @@ pub async fn run(
             let colors = [Color::Yellow, Color::Pink, Color::Cyan, Color::White];
             app.delay_millis(16).await;
             let clockres = clockres_glob.get();
+            let clockn = ticks() as usize;
 
             if buttons.is_shift_pressed() {
-                let clockn = clockn_glob.get();
-
                 let seq_length = seq_length_glob.get();
 
                 let page = page_glob.get();
@@ -415,7 +413,6 @@ pub async fn run(
                 let seq_length = seq_length_glob.get();
 
                 let mut color = colors[0];
-                let clockn = clockn_glob.get(); // this should go
 
                 if page / 2 == 0 {
                     color = colors[0];
@@ -494,11 +491,8 @@ pub async fn run(
             let clockres = clockres_glob.get();
             let legato_seq = legatoseq_glob.get();
 
-            let mut clockn = clockn_glob.get();
-
             match clk.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    clockn = 0;
                     for n in 0..4 {
                         midi[n].send_note_off(lastnote[n]).await;
                         gate_out[n].set_low().await;
@@ -511,6 +505,7 @@ pub async fn run(
                     }
                 }
                 ClockEvent::Tick => {
+                    let clockn = ticks() as usize;
                     for n in 0..=3 {
                         if clockn.is_multiple_of(clockres[n]) {
                             let clkindex =
@@ -548,12 +543,9 @@ pub async fn run(
                             }
                         }
                     }
-                    clockn += 1;
                 }
                 _ => {}
             }
-
-            clockn_glob.set(clockn);
         }
     };
 
