@@ -18,5 +18,6 @@ register_apps!(
     17 => cv2midinote,
     18 => clk_div,
     19 => panner,
+    20 => rnd_plus,
     22 => lfo_plus,
 );
