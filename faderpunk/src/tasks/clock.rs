@@ -12,9 +12,9 @@ use embassy_sync::{
     channel::Channel,
     pubsub::{PubSubChannel, Subscriber},
 };
-use embassy_time::{Instant, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use midly::live::SystemRealtime;
-use portable_atomic::Ordering;
+use portable_atomic::{AtomicU64, Ordering};
 
 use libfp::{
     utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig, MidiOut, MidiOutConfig,
@@ -34,6 +34,10 @@ const CLOCK_PUBSUB_SIZE: usize = 16;
 const CLOCK_PUBSUB_SUBSCRIBERS: usize = 16;
 // 3 Ext clocks, internal clock, midi
 const CLOCK_PUBSUB_PUBLISHERS: usize = 5;
+// Add a slight delay before the very first tick (to offset it to reset)
+const TICK_RESET_DELAY: u8 = 2;
+
+pub static TICK_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 type AuxInputs = (
     Peri<'static, PIN_1>,
@@ -240,6 +244,7 @@ async fn run_clock_gatekeeper() {
                         if is_running
                             || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
                         {
+                            TICK_COUNTER.fetch_add(1, Ordering::Relaxed);
                             clock_publisher.publish(ClockEvent::Tick).await;
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
                             midi_rt_event = Some(SystemRealtime::TimingClock);
@@ -253,6 +258,7 @@ async fn run_clock_gatekeeper() {
                     }
                     // (Re-)start the clock. Full phase reset
                     ClockInEvent::Start(_) => {
+                        TICK_COUNTER.store(0, Ordering::Relaxed);
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
@@ -268,6 +274,7 @@ async fn run_clock_gatekeeper() {
                     }
                     // Reset the phase without affecting the run state
                     ClockInEvent::Reset(_) => {
+                        TICK_COUNTER.store(0, Ordering::Relaxed);
                         clock_publisher.publish(ClockEvent::Reset).await;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
@@ -321,7 +328,7 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
         let config = config_receiver.get().await;
         let mut is_running = is_clock_running().await;
         let mut tick_duration = bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
-        let mut next_tick_at = Instant::now();
+        let mut next_tick_at = Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
 
         if is_running {
             // If we're starting up and the clock should already be running,
@@ -393,7 +400,8 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
                         if next_is_running {
                             // Schedule the first tick immediately. The main loop will
                             // handle publishing it and scheduling the subsequent tick.
-                            next_tick_at = Instant::now();
+                            next_tick_at =
+                                Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
                             clock_in_sender
                                 .send(ClockInEvent::Start(ClockSrc::Internal))
                                 .await;
