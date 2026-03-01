@@ -15,7 +15,7 @@ export const Configurator = () => (
       <strong>Chromium-based browser</strong>.
     </p>
 
-    <H3>Compatible Browsers with WebUSB Support:</H3>
+    <H3 id="compatible-browsers">Compatible Browsers with WebUSB Support:</H3>
     <List>
       <li>Google Chrome</li>
       <li>Microsoft Edge</li>
@@ -54,7 +54,7 @@ export const Configurator = () => (
       </li>
     </List>
 
-    <H3>Device Tab</H3>
+    <H3 id="device-tab">Device Tab</H3>
 
     <img
       className="my-6"
@@ -102,7 +102,7 @@ export const Configurator = () => (
       modifications are made.
     </p>
 
-    <H3>Apps Tab</H3>
+    <H3 id="apps-tab">Apps Tab</H3>
 
     <img
       className="my-6"
@@ -156,7 +156,7 @@ export const Configurator = () => (
       Edit Layout pop-up.
     </p>
 
-    <H3>Settings Tab</H3>
+    <H3 id="settings-tab">Settings Tab</H3>
 
     <img
       className="my-6"
@@ -169,7 +169,7 @@ export const Configurator = () => (
       Faderpunk device.
     </p>
 
-    <H4>Clock Section</H4>
+    <H4 id="settings-clock">Clock Section</H4>
     <p>Here you can configure the clock behavior:</p>
     <List>
       <li>
@@ -214,7 +214,7 @@ export const Configurator = () => (
       </li>
     </List>
 
-    <H4>Quantizer</H4>
+    <H4 id="settings-quantizer">Quantizer</H4>
     <p>Configure the internal quantizer used across all apps:</p>
     <List>
       <li>
@@ -253,7 +253,7 @@ export const Configurator = () => (
     </List>
     <p>Refer to each app's manual to check if it uses the global quantizer.</p>
 
-    <H4>MIDI</H4>
+    <H4 id="settings-midi">MIDI</H4>
     <p>
       Here you can configure which MIDI data is transmitted to each MIDI output,
       essentially allowing Faderpunk to function as a MIDI router. You can also
@@ -281,7 +281,7 @@ export const Configurator = () => (
       the selected source are sent to this output.
     </List>
 
-    <H4>I²C Configuration</H4>
+    <H4 id="settings-i2c">I²C Configuration</H4>
     <p>
       Faderpunk can operate as either a <strong>Leader</strong> or{" "}
       <strong>Follower</strong> on the I²C bus.
@@ -289,7 +289,7 @@ export const Configurator = () => (
       You can set this behavior in the Settings tab.
     </p>
 
-    <H4>AUX Jacks</H4>
+    <H4 id="settings-aux">AUX Jacks</H4>
     <p>
       Configure AUX jacks as <strong>clock outputs</strong> or{" "}
       <strong>reset outputs</strong>.
@@ -310,7 +310,7 @@ export const Configurator = () => (
       <li>4 bars</li>
     </List>
 
-    <H4>Miscellaneous</H4>
+    <H4 id="settings-misc">Miscellaneous</H4>
     <List>
       <li>
         <strong>LED Brightness</strong>: Adjust the brightness of the device's
@@ -340,7 +340,7 @@ export const Configurator = () => (
       </li>
     </List>
 
-    <H4>Save & Recall Setup</H4>
+    <H4 id="settings-save-recall">Save & Recall Setup</H4>
     <p>
       At the bottom of the Settings tab, you'll find controls for saving and
       recalling your Faderpunk setup. Keep in mind that scenes are currently{" "}

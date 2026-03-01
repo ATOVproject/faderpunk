@@ -12,7 +12,7 @@ import { H2, H3, List } from "./Shared";
 export const Interface = () => (
   <>
     <H2 id="interface">Interface</H2>
-    <H3>Front Panel Overview</H3>
+    <H3 id="front-panel">Front Panel Overview</H3>
     <img
       className="my-6"
       alt="Overview of the Faderpunk panel"
@@ -45,7 +45,7 @@ export const Interface = () => (
       Apps can be loaded per channel, and some apps span multiple channels
       depending on their complexity.
     </p>
-    <H3>Additional Controls (Right Side)</H3>
+    <H3 id="additional-controls">Additional Controls (Right Side)</H3>
     <List>
       <li>
         <strong>
@@ -111,7 +111,7 @@ export const Interface = () => (
       </li>
     </List>
 
-    <H3>Global Parameters Access</H3>
+    <H3 id="global-parameters">Global Parameters Access</H3>
     <p>
       You can adjust several global settings on the Faderpunk by holding the{" "}
       <strong>Scene</strong> button and moving specific faders:
@@ -330,7 +330,7 @@ export const Interface = () => (
       </TableBody>
     </Table>
 
-    <H3>Back Connectors</H3>
+    <H3 id="back-connectors">Back Connectors</H3>
     <p>
       Faderpunk features a set of connectors on the rear panel, designed to
       support power, communication, and integration with other gear. The ability
@@ -400,7 +400,7 @@ export const Interface = () => (
       </li>
     </List>
 
-    <H3>Internal Connectors Overview</H3>
+    <H3 id="internal-connectors">Internal Connectors Overview</H3>
     <p>
       On the back of the Faderpunk PCB, you'll find a set of user-accessible
       connectors designed to expand functionality and integration:
@@ -441,7 +441,7 @@ export const Interface = () => (
       </li>
     </List>
 
-    <H3>Important Points</H3>
+    <H3 id="important-points">Important Points</H3>
     <List>
       <li>
         <strong>Configurator Parameters</strong>
