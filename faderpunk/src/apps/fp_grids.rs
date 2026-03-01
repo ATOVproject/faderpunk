@@ -399,6 +399,7 @@ pub async fn run(
                     generator.reset();
                 }
                 ClockEvent::Stop => {
+                    // Prevent hanging notes / gate CVs if clock is stopped
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;                   
                 }
                 ClockEvent::Tick => {
@@ -437,7 +438,7 @@ pub async fn run(
                                 let mut note_on_ = note_on_glob.get();
                                 if note_on_[part] {
                                     midi.send_note_off(*note).await;
-                                }
+                                } 
                                 note_on_[part] = true;
                                 note_on_glob.set(note_on_);
                                 midi.send_note_on(*note, velocity_).await;
@@ -469,16 +470,16 @@ pub async fn run(
 
                     // If reached end of gate length between sequence steps
                     if clkn % div == (div * gatel as u32 / 100).clamp(1, div - 1) {
+                        let mut note_on_ = note_on_glob.get();
                         for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
-                            let mut note_on_ = note_on_glob.get();
                             if note_on_[part] {
                                 midi.send_note_off(*note).await;
                                 note_on_[part] = false;
-                                note_on_glob.set(note_on_);
                                 jack[part].set_low().await;
                             }
                             leds.unset(part, Led::Top);
                         }
+                        note_on_glob.set(note_on_);
                         // Accent jack
                         if accent_on_glob.get() {
                             accent_on_glob.set(false);
@@ -853,18 +854,22 @@ pub async fn run(
 }
 
 async fn reset_all_outputs(midi: crate::app::MidiOutput, leds: crate::app::Leds<4>, notes: [MidiNote; 3], jack: &[crate::app::GateJack; 4], note_on_glob: &Global<[bool; 3]>, accent_on_glob: &Global<bool>) {
+    let note_on_ = note_on_glob.get();
     for part in 0..K_NUM_PARTS {
-        join(
-            // Only send a MIDI note off if we think we have previously sent a note on
+        if note_on_[part] {
+            join(
+                // Only send a MIDI note off if we think we have previously sent a note on
             midi.send_note_off(notes[part]), 
             jack[part].set_low()).await;
+        } else {
+            jack[part].set_low().await;
+        }
         leds.unset(part, Led::Top);        
     }
     note_on_glob.set([false; K_NUM_PARTS]);
     jack[3].set_low().await;
     accent_on_glob.set(false);
     leds.unset(3, Led::Top);        
-
 }
 
 struct RefreshStateFromStorageContext<'a> {

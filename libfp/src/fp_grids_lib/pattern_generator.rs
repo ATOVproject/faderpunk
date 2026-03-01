@@ -159,6 +159,7 @@ impl PatternGenerator {
     /// Reset a running generator
     pub fn reset(&mut self) {
         self.step_ = 0;
+        self.sequence_step_ = 0;
         self.pulse_ = 0;
         self.euclidean_step = [0; K_NUM_PARTS];
         self.part_perturbation = [0; K_NUM_PARTS];
@@ -499,6 +500,7 @@ mod tests {
         let mut generator = PatternGenerator::default();
         generator.reset(); // Ensure reset initializes state correctly
         assert_eq!(0, generator.step_);
+        assert_eq!(0, generator.sequence_step_);
         assert_eq!(0, generator.pulse_);
         assert_eq!(true, generator.first_beat_);
         assert_eq!(true, generator.beat_);
