@@ -38,6 +38,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-hook-form": "^7.62.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.9.3",
     "semver": "^7.7.3",
     "zod": "^4.1.9",

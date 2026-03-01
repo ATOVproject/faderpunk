@@ -5,6 +5,7 @@ import { COLORS_CLASSES } from "../../utils/class-helpers";
 import { Icon } from "../Icon";
 import { AllColors } from "../../utils/types";
 import { H3, List } from "./Shared";
+import { Md } from "./Md";
 
 interface ArrowIconProps {
   className?: string;
@@ -42,7 +43,7 @@ export interface ManualAppData {
   color: AllColors;
   params?: string[];
   storage?: string[];
-  text: ReactNode;
+  text: string;
   channels: Omit<ChannelProps, "idx" | "color" | "singleChannel">[];
 }
 
@@ -60,9 +61,11 @@ const FunctionField = ({ color, title, description }: FunctionFieldProps) => (
         "border-b-1 px-2 py-0 font-semibold",
       )}
     >
-      {title}
+      <Md>{title}</Md>
     </div>
-    <div className="px-2 text-sm italic">{description}</div>
+    <div className="px-2 text-sm italic">
+      <Md>{description}</Md>
+    </div>
   </div>
 );
 
@@ -151,16 +154,19 @@ const Channel = ({
       />
     </div>
     <div className="row-start-4 pt-1 pb-4" style={{ gridColumn: idx + 3 }}>
-      <div className="px-2 text-sm italic">{ledTop}</div>
+      <div className="px-2 text-sm italic">
+        <Md>{ledTop}</Md>
+      </div>
       {ledTopPlusShift ? (
         <div className="px-2 text-sm italic">
           <span className="font-vox font-semibold">Shift:</span>{" "}
-          {ledTopPlusShift}
+          <Md>{ledTopPlusShift}</Md>
         </div>
       ) : null}
       {ledTopPlusFn ? (
         <div className="px-2 text-sm italic">
-          <span className="font-vox font-semibold">Fn:</span> {ledTopPlusFn}
+          <span className="font-vox font-semibold">Fn:</span>{" "}
+          <Md>{ledTopPlusFn}</Md>
         </div>
       ) : null}
     </div>
@@ -190,16 +196,19 @@ const Channel = ({
       </div>
     ) : null}
     <div className="row-start-9 pt-1" style={{ gridColumn: idx + 3 }}>
-      <div className="px-2 text-sm italic">{ledBottom}</div>
+      <div className="px-2 text-sm italic">
+        <Md>{ledBottom}</Md>
+      </div>
       {ledBottomPlusShift ? (
         <div className="px-4 text-sm italic">
           <span className="font-vox font-semibold">Shift:</span>{" "}
-          {ledBottomPlusShift}
+          <Md>{ledBottomPlusShift}</Md>
         </div>
       ) : null}
       {ledBottomPlusFn ? (
         <div className="px-4 text-sm italic">
-          <span className="font-vox font-semibold">Fn:</span> {ledBottomPlusFn}
+          <span className="font-vox font-semibold">Fn:</span>{" "}
+          <Md>{ledBottomPlusFn}</Md>
         </div>
       ) : null}
     </div>
@@ -286,7 +295,9 @@ export const ManualApp = ({ app }: Props) => {
           </List>
         </div>
       ) : null}
-      <p className="mb-4">{app.text}</p>
+      <p className="mb-4">
+        <Md>{app.text}</Md>
+      </p>
       <div
         className="inline-grid"
         style={{
