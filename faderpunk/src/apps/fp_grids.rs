@@ -767,7 +767,7 @@ pub async fn run(
                 let drum_mode_ = if storage.modify_and_save(|s| {
                     s.is_drum_mode = !s.is_drum_mode;
                     s.is_drum_mode
-                }) == true {
+                }) {
                     OutputMode::OutputModeDrums
                 } else {
                     OutputMode::OutputModeEuclidean
