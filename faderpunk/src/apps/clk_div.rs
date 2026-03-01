@@ -146,6 +146,7 @@ pub async fn run(
         params.query(|p| (p.midi_out, p.midi_channel, p.note, p.gatel as u32, p.color));
 
     let mut clock = app.use_clock();
+    let ticks = clock.get_ticker();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
@@ -161,8 +162,6 @@ pub async fn run(
     let jack = app.make_gate_jack(0, 4095).await;
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
-
-    let mut clkn: u32 = 0;
 
     let (res, mute, min, max) =
         storage.query(|s| (s.fader_saved, s.mute_saved, s.min_div, s.max_div));
@@ -186,7 +185,6 @@ pub async fn run(
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    clkn = 0;
                     midi.send_note_off(note).await;
                     note_on = false;
                     jack.set_low().await;
@@ -199,6 +197,7 @@ pub async fn run(
                 ClockEvent::Tick => {
                     let muted = glob_muted.get();
                     let div = div_glob.get();
+                    let clkn = ticks() as u32;
 
                     if clkn.is_multiple_of(div) && !muted {
                         jack.set_high().await;
@@ -240,8 +239,6 @@ pub async fn run(
                             leds.set(0, Led::Bottom, Color::Red, LED_BRIGHTNESS);
                         }
                     }
-
-                    clkn += 1;
                 }
                 _ => {}
             }
