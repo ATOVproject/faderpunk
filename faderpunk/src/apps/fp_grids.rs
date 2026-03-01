@@ -80,7 +80,7 @@
 //! | Jack 4  | Accent Out | N/A     | N/A  | 
 //! | Fader 4  | Chaos | Speed  | N/A  |
 //! | LED 4 Top | Accent output | Accent output | N/A
-//! | LED 4 Bottom | Chaos | Speed | N/A
+//! | LED 4 Bottom | Chaos | Speed (yellow = 1/16th notes) | N/A
 //! | Fn 4    | Mute Accent | Mode (Light Blue=Drums, Pink = Euclidean) | N/A |
 //! 
 //! ## Hardware Mapping in Euclidean
@@ -105,7 +105,7 @@
 //! | Jack 4  | Accent Out | N/A     | N/A  | 
 //! | Fader 4  | Chaos | Speed  | N/A  |
 //! | LED 4 Top | Accent output | Accent output | N/A
-//! | LED 4 Bottom | Chaos | Speed | N/A
+//! | LED 4 Bottom | Chaos | Speed (yellow = 1/16th notes) | N/A
 //! | Fn 4    | Mute Accent | Mode (Light Blue=Drums, Pink = Euclidean) | N/A |
 //! 
 //! ## App Configuration
@@ -144,8 +144,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::{App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage, ParamStore, SceneEvent };
 
-pub const CHANNELS: usize = 4;
-pub const PARAMS: usize = 9;
+pub const CHANNELS: usize = 4; // Number of used faderpunk channels
+pub const PARAMS: usize = 9;   // NUmber of app configuration parameters
+
+const DIV_SIXTEENTH_NOTE_COLOR: Color = Color::Yellow;
 
 // App configuration visible to the configurator
 pub static CONFIG: Config<PARAMS> = Config::new(
@@ -411,7 +413,6 @@ pub async fn run(
                             output_mode = output_mode_glob.get();
                             generator.set_output_mode(output_mode);
                             generator.reset();
-                            defmt::info!("New mode {}", if output_mode == OutputMode::OutputModeDrums { "DRUMS"} else {"EUCLIDEAN"});
                         }
 
                         // Get generator state and handle individual triggers
@@ -600,15 +601,16 @@ pub async fn run(
                                     // Convert fader value 0 .. 4095 to chaos 0 .. 255
                                     chaos_glob.set(scale_bits_12_8(new_value));
                                     storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
+                                    fader_led_value = new_value;
                                 },
                                 LatchLayer::Alt => {
                                     // Convert fader value 0 .. 4095 to "resolution" lookup array index
                                     div_glob.set(resolution[new_value as usize / 345]);
                                     storage.modify_and_save(|s| s.div_fader_saved = new_value);
+                                    fader_led_value = (new_value / 345) * 345;
                                 },
                                 _ => {}
                             }
-                            fader_led_value = new_value;
                         }
                     }
                     _ => {},
@@ -677,7 +679,11 @@ pub async fn run(
                         leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
                     },
                     LatchLayer::Alt => {
-                        leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value))); 
+                        if chan == 3 && div_glob.get() == 6 {
+                            leds.set(3, Led::Bottom, DIV_SIXTEENTH_NOTE_COLOR, Brightness::High);
+                        } else {
+                            leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value))); 
+                        }
                     },
                     _ => {},
                 };
@@ -688,7 +694,11 @@ pub async fn run(
                         leds.set(chan, Led::Bottom, led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
                     },
                     LatchLayer::Alt => {
-                        leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value)));
+                       if chan == 3 && div_glob.get() == 6 {
+                            leds.set(3, Led::Bottom, DIV_SIXTEENTH_NOTE_COLOR, Brightness::High);
+                        } else {
+                            leds.set(chan, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8(fader_led_value))); 
+                        }
                     },
                     _ => {}
                 }
@@ -786,7 +796,7 @@ pub async fn run(
             };
             if latch_active_layer != glob_latch_layer.get() {
                 glob_latch_layer.set(latch_active_layer);
-                update_fader_leds(storage, leds, led_color, alt_led_color, output_mode_glob.get(), latch_active_layer);
+                update_fader_leds(storage, leds, led_color, alt_led_color, output_mode_glob.get(), latch_active_layer, div_glob.get());
 
                 // Update Button LEDs
                 if latch_active_layer == LatchLayer::Main {
@@ -908,11 +918,11 @@ fn refresh_state_from_storage(storage: &ManagedStorage<Storage>, leds: crate::ap
     }
 
     // Set up bottom fader - value Leds
-    update_fader_leds(storage, leds, led_color, alt_led_color, output_mode_, globs.glob_latch_layer.get());
+    update_fader_leds(storage, leds, led_color, alt_led_color, output_mode_, globs.glob_latch_layer.get(), globs.div_glob.get());
 }
 
 /// Update bottom row of Fader Leds from fader values
-fn update_fader_leds(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, output_mode: OutputMode, latch_active_layer: LatchLayer) {
+fn update_fader_leds(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4>, led_color: Color, alt_led_color: Color, output_mode: OutputMode, latch_active_layer: LatchLayer, clock_resolution: u32) {
     // Initialise bottom Led fader value Leds
     match output_mode {
         OutputMode::OutputModeDrums => {
@@ -950,6 +960,14 @@ fn update_fader_leds(storage: &ManagedStorage<Storage>, leds: crate::app::Leds<4
                 },
                 _ => {}
             }
+        }
+    }
+    // Common Led values
+    if latch_active_layer == LatchLayer::Alt {
+        if clock_resolution == 6 {
+            leds.set(3, Led::Bottom, DIV_SIXTEENTH_NOTE_COLOR, Brightness::High)
+        } else {
+            leds.set(3, Led::Bottom, alt_led_color, Brightness::Custom(scale_bits_12_8((storage.query(|s| s.div_fader_saved ) / 345) * 345)));
         }
     }
 }
