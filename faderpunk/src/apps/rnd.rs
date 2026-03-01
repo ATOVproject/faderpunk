@@ -17,7 +17,7 @@ use crate::app::{
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, slew_2, split_unsigned_value},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
     Range, Value, APP_MAX_PARAMS,
 };
@@ -380,9 +380,6 @@ pub async fn run(
                     Color::Red,
                     Brightness::Custom((att / 16) as u8),
                 );
-                // if storage.query(|s: &Storage| s.clocked) {
-                //     leds.set(0, Led::Bottom, Color::Red, Brightness::High);
-                // }
             }
             if latch_active_layer == LatchLayer::Third {
                 leds.set(
@@ -419,8 +416,4 @@ pub async fn run(
         join5(fut1, fut2, fut3, scene_handler, timed_loop),
     )
     .await;
-}
-
-fn slew_2(prev: f32, input: u16, slew: u16) -> f32 {
-    (prev * slew as f32 + input as f32) / (slew + 1) as f32
 }
