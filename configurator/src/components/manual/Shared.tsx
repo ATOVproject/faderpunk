@@ -11,12 +11,16 @@ export const H2 = ({ children, id }: PropsWithChildren<HProps>) => (
   </h2>
 );
 
-export const H3 = ({ children }: PropsWithChildren<HProps>) => (
-  <h3 className="mt-6 mb-2 text-lg font-bold">{children}</h3>
+export const H3 = ({ children, id }: PropsWithChildren<HProps>) => (
+  <h3 className="mt-6 mb-2 text-lg font-bold" id={id}>
+    {children}
+  </h3>
 );
 
-export const H4 = ({ children }: PropsWithChildren<HProps>) => (
-  <h4 className="mt-6 mb-2 font-bold">{children}</h4>
+export const H4 = ({ children, id }: PropsWithChildren<HProps>) => (
+  <h4 className="mt-6 mb-2 font-bold" id={id}>
+    {children}
+  </h4>
 );
 
 export const H5 = ({ children }: PropsWithChildren<HProps>) => (
