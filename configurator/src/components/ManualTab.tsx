@@ -869,6 +869,113 @@ const apps: ManualAppData[] = [
       },
     ],
   },
+  {
+    appId: 46,
+    title: "FP-Grids",
+    description: "Emilie Gillet's renowned Mutable Instruments Grids topographic drum sequencer for the ATOV Faderpunk",
+    color: "Orange",
+    icon: "euclid",
+    params: ["MIDI mode", "MIDI channel", "MIDI Note 1", "MIDI Note 2", "MIDI Note 3", "MIDI Velocity", "MIDI velocity (Accent)", "Gate %", "Color"],
+    storage: ["Output Mode", "Drums Density", "Drums Map X & Y", "Euclidean Fill", "Euclidean Length", "Chaos", "Division", "Trigger Mutes"],
+    text: `
+Grids is described as a "topographic drum sequencer" - it generates a variety of drum patterns based on continuous interpolation through a "map" of patterns (Drum Mode) or using Euclidean algorithms (Euclidean Mode).  The original Mutable Instruments module manual is [here](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/manual/).
+
+* FP-Grids outputs CV gates (0V = off, 10V = on) and, optionally MIDI note on/off messages, with normal and accented velocity levels.  
+* The 4th channel provides a global accent CV gate that can be used for triggering other voices or envelopes. This combines the accents from the individual three drum voices in the original Grids firmware into a single mixed Accent signal.
+
+#### Drums Output Mode
+
+Generates patterns by interpolating through a 2D map of pre-analyzed drum patterns. Sequence length is always 32 steps
+
+* **Map X / Map Y:** Controls the position on the pattern map. Small changes typically result in related rhythmic variations.
+* **Density 1 / Density 2 / Density 3:** Controls the event density (fill) for each of the three main trigger outputs.
+* **Chaos Amount:** Controls the amount of randomness applied. When set to a high value, rolls / ghost notes will be randomly added to the pattern.
+
+#### Euclidean Output Mode
+
+Generates classic Euclidean rhythms for each of the three main trigger outputs independently.
+
+* **Length 1 / Length 2 / Length 3:** Sets the total number of steps in the sequence for each output (1-32).
+* **Fill 1 / Fill 2 / Fill 3:** Sets the number of triggers distributed as evenly as possible within the sequence length for each output (0-31). If fill is greater than length, it's capped at the length value (so trigger will emit on every step)
+* **Chaos Amount:** Controls the amount of random step-skipping/triggering.
+
+#### Patch Ideas
+
+* Try saving different Scenes with different Output Modes, then switching between scenes in a performance (sequence will reset on next step)
+* The grid sequencers can be reset rhythmically by patching an external trigger into one of the Faderpunk Aux Jacks (configured as a reset input).
+
+#### Acknowledgements
+
+* Original Concept & Code: Emilie Gillet (Mutable Instruments). The original Eurorack module source code can be found [here](https://github.com/pichenettes/eurorack/tree/master/grids).
+* Faderpunk Port: Richard Smith (Discord: phommed)
+* Special acknowledgement: [Disting NT "nt_grids" Port](https://github.com/thorinside/nt_grids/tree/main) by Neal Sanche (GitHub: Thorinside)
+
+#### Channels
+
+The faders function varys depending on the current output mode.  In the diagram below, the first fader description is for Drums mode, the second description is brackets is for the Euclidean Mode.
+
+`,
+    channels: [
+      {
+        jackTitle: "Trigger output 1",
+        jackDescription: "Bass drum sequenced gate output",
+        faderTitle: "Density 1 (Euclidean Fill 1)",
+        faderDescription:
+          "Control the drums note density (or Euclidean fill) from a sparse backbone to a frantic pattern",
+        faderPlusShiftTitle: "Map X (Euclidean Length 1)",
+        faderPlusShiftDescription: "Interpolating scan through drum map (Euclidean pattern length 1-32 steps)",
+        ledTop: "Gate output 1",
+        ledBottom: "Density 1 Amount (Euclidean Fill 1 Amount)",
+        ledBottomPlusShift: "Map X Amount",
+        fnTitle: "Mute 1",
+        fnDescription: "Mute trigger 1"
+      },
+      {
+        jackTitle: "Trigger output 2",
+        jackDescription: "Snare sequenced gate output",
+        faderTitle: "Density 2 (Euclidean Fill 2)",
+        faderDescription:
+          "Control the drums note density (or Euclidean fill) from a sparse backbone to a frantic pattern",
+        faderPlusShiftTitle: "Map Y (Euclidean Length 2)",
+        faderPlusShiftDescription: "Interpolating scan through drum map (Euclidean pattern length 1-32 steps)",
+        ledTop: "Gate output 2",
+        ledBottom: "Density 2 Amount (Euclidean Fill 2 Amount)",
+        ledBottomPlusShift: "Map Y Amount",
+        fnTitle: "Mute 2",
+        fnDescription: "Mute trigger 2"
+      },
+      {
+        jackTitle: "Trigger output 3",
+        jackDescription: "Hi Hat sequenced gate output",
+        faderTitle: "Density 3 (Euclidean Fill 3)",
+        faderDescription:
+          "Control the drums note density (or Euclidean fill) from a sparse backbone to a frantic pattern",
+        faderPlusShiftTitle: "(Euclidean Length 3)",
+        faderPlusShiftDescription: "(Euclidean pattern length 1-32 steps)",
+        ledTop: "Gate output 3",
+        ledBottom: "Density 3 Amount (Euclidean Fill 3 Amount)",
+        fnTitle: "Mute 3",
+        fnDescription: "Mute trigger 3"
+      },
+      {
+        jackTitle: "Accent gate output",
+        jackDescription: "Global accent gate output",
+        faderTitle: "Chaos",
+        faderDescription:
+          "Pattern randomisation and humanisation",
+        faderPlusShiftTitle: "Resolution",
+        faderPlusShiftDescription:
+          "Sets clock resolution: 32ndT, 32nd, 16thT, 16th (default), 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar",
+        ledTop: "Accent gate output",
+        ledBottom: "Chaos Amount",
+        ledBottomPlusShift: "Resolution in blue, 16th note shown in yellow",
+        fnTitle: "Accent Mute",
+        fnDescription: "Mute accent gate",
+        fnPlusShiftTitle: "Toggle Output Mode",
+        fnPlusShiftDescription: "Light Blue = Drums, Pink = Euclidean"
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
