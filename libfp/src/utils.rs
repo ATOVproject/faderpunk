@@ -119,6 +119,17 @@ pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f3
     }
 }
 
+pub fn slew_2(prev: f32, input: u16, slew: u16) -> f32 {
+    let target = input as f32;
+    let output = (prev * slew as f32 + target) / (slew + 1) as f32;
+
+    if (target - output).abs() < 10.0 {
+        target
+    } else {
+        output
+    }
+}
+
 /// Very short slew meant to avoid clicks
 pub fn clickless(prev: u16, input: u16) -> u16 {
     // Snap threshold: if the difference is small, jump to input

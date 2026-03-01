@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, clickless, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, clickless, slew_2, split_unsigned_value},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
@@ -245,7 +245,7 @@ pub async fn run(
         let mut latch = app.make_latch(fader.get_value());
         let mut main_layer_value = fader.get_value();
         let mut fad_val = 0;
-        let mut out = 0;
+        let mut out = 0.0;
         let mut last_out = 0;
 
         loop {
@@ -315,8 +315,7 @@ pub async fn run(
                 attenuated = 4095 - attenuated;
             }
             out = slew_2(out, attenuated, 3);
-
-            jack.set_value(out);
+            jack.set_value(out as u16);
 
             let midi_out = if muted {
                 if bipolar {
@@ -338,7 +337,7 @@ pub async fn run(
             match latch_active_layer {
                 LatchLayer::Main => {
                     if bipolar {
-                        let led1 = split_unsigned_value(out);
+                        let led1 = split_unsigned_value(out as u16);
                         leds.set(0, Led::Top, led_color, Brightness::Custom(led1[0]));
                         leds.set(0, Led::Bottom, led_color, Brightness::Custom(led1[1]));
                     } else {
@@ -467,16 +466,4 @@ pub async fn run(
         scene_handler,
     )
     .await;
-}
-
-pub fn slew_2(prev: u16, input: u16, slew: u16) -> u16 {
-    // Integer-based smoothing
-    let smoothed = ((prev as u32 * slew as u32 + input as u32) / (slew as u32 + 1)) as u16;
-
-    // Snap to target if close enough
-    if (smoothed as i32 - input as i32).abs() <= slew as i32 {
-        input
-    } else {
-        smoothed
-    }
 }

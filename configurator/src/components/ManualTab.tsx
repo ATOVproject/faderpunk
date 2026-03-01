@@ -817,6 +817,69 @@ const apps: ManualAppData[] = [
     ],
   },
   {
+    appId: 20,
+    title: "Random+",
+    description: "Random CC/CV with assignable CV input",
+    color: "Green",
+    icon: "random",
+    params: ["Bipolar", "MIDI Channel", "MIDI CC", "Send MIDI", "Color"],
+    storage: [
+      "Speed",
+      "Muted",
+      "Attenuation",
+      "Slew",
+      "Clocked",
+      "Input attenuation",
+      "Input mute",
+      "Input destination",
+    ],
+    text: `Random+ extends Random CC/CV with an assignable CV input lane for real-time modulation. Channel 1 handles CV input: Fader 1 sets attenuation and Button 1 mutes/unmutes the lane. Use **Shift + Button 1** to choose CV destination:
+
+- speed (yellow)
+- ext clock (pink)
+- slew (cyan)
+
+In speed mode, incoming CV offsets the speed setting. In free-running mode this changes the internal interval, and in clocked mode it offsets the selected timing-resolution index. In ext clock mode, new random values are generated only when a rising edge is detected (around 1V after attenuation/mute processing). In slew mode, incoming CV modulates transition smoothing.
+
+Channel 2 is the random output lane: Fader 2 sets base speed, **Shift + Fader 2** sets attenuation, and **Button 2 + Fader 2** sets slew. Use **Shift + short press** on Button 2 to mute/unmute output, and **Shift + long press** to toggle free-running versus clocked mode.
+
+Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC follows the same random output stream.`,
+    channels: [
+      {
+        jackTitle: "Input",
+        jackDescription: "-5V to 5V CV in",
+        faderTitle: "CV attenuation",
+        faderDescription: "Attenuates the incoming CV",
+        faderPlusShiftTitle: "",
+        faderPlusShiftDescription: "",
+        fnTitle: "CV input mute",
+        fnDescription: "Mutes/unmutes the CV lane",
+        fnPlusShiftTitle: "CV destination",
+        fnPlusShiftDescription: "Speed (yellow), ext clock (pink), slew (cyan)",
+        ledTop: "Positive input level indicator",
+        ledTopPlusShift: "Destination color on button",
+        ledBottom: "Negative input level indicator",
+      },
+      {
+        jackTitle: "Output",
+        jackDescription: "Random CV out (0–10V or -5V to +5V)",
+        faderTitle: "Speed",
+        faderDescription: "Sets base random speed",
+        faderPlusShiftTitle: "Attenuation",
+        faderPlusShiftDescription: "Reduces output range",
+        faderPlusFnTitle: "Slew",
+        faderPlusFnDescription: "Sets random transition smoothing",
+        fnTitle: "No direct action",
+        fnDescription: "",
+        fnPlusShiftTitle: "Mute / Clock mode",
+        fnPlusShiftDescription: "Short: mute, Long: toggle free/clocked",
+        ledTop: "Positive output level indicator",
+        ledTopPlusShift: "Attenuation level in red",
+        ledBottom: "Negative output level indicator",
+      },
+    ],
+  },
+  {
     appId: 22,
     title: "LFO+",
     description: "Multi shape LFO",
