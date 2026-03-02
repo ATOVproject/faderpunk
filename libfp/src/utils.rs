@@ -76,7 +76,7 @@ pub fn rescale_12bit_int(input: u16, min: u16, max: u16) -> u16 {
 }
 
 /// Clock divider resolution table for selectable division modes.
-pub fn resolution_for_mode(mode: usize) -> &'static [u32] {
+pub fn resolution_for_mode(mode: usize) -> &'static [u16] {
     match mode {
         0 => &[384, 192, 96, 48, 24, 12, 6, 3],
         1 => &[384, 192, 96, 48, 24, 16, 8, 4, 2],

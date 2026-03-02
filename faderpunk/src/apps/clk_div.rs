@@ -21,7 +21,7 @@ use crate::app::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 6;
 
-const LED_BRIGHTNESS: Brightness = Brightness::High;
+const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Clock Divider",
@@ -195,6 +195,8 @@ pub async fn run(
 
     let fut1 = async {
         let mut note_on = false;
+        let mut cached_div = div_glob.get();
+        let mut cached_gate_step = (cached_div * gatel / 100).clamp(1, cached_div - 1);
 
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
@@ -211,9 +213,13 @@ pub async fn run(
                 ClockEvent::Tick => {
                     let muted = glob_muted.get();
                     let div = div_glob.get();
+                    if div != cached_div {
+                        cached_div = div;
+                        cached_gate_step = (cached_div * gatel / 100).clamp(1, cached_div - 1);
+                    }
                     let clkn = ticks() as u32;
 
-                    if clkn.is_multiple_of(div) && !muted {
+                    if clkn.is_multiple_of(cached_div) && !muted {
                         jack.set_high().await;
                         if glob_latch_layer.get() == LatchLayer::Main {
                             if matches!(div, 2 | 4 | 8 | 16) {
@@ -226,7 +232,7 @@ pub async fn run(
                         note_on = true;
                     }
 
-                    if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
+                    if clkn % cached_div == cached_gate_step {
                         if note_on {
                             midi.send_note_off(note).await;
 
@@ -240,11 +246,13 @@ pub async fn run(
                     }
 
                     if glob_latch_layer.get() != LatchLayer::Main {
-                        if clkn % max_glob.get() == (max_glob.get() * gatel / 100).clamp(1, div - 1)
+                        if clkn % max_glob.get()
+                            == (max_glob.get() * gatel / 100).clamp(1, cached_div - 1)
                         {
                             leds.set(0, Led::Top, led_color, Brightness::Off);
                         }
-                        if clkn % min_glob.get() == (min_glob.get() * gatel / 100).clamp(1, div - 1)
+                        if clkn % min_glob.get()
+                            == (min_glob.get() * gatel / 100).clamp(1, cached_div - 1)
                         {
                             leds.set(0, Led::Bottom, led_color, Brightness::Off);
                         }
@@ -371,6 +379,6 @@ fn value_to_index(value: u16, len: usize) -> usize {
     ((value as usize * len) / 4096).min(len.saturating_sub(1))
 }
 
-fn value_to_resolution(value: u16, resolution: &[u32]) -> u32 {
-    resolution[value_to_index(value, resolution.len())]
+fn value_to_resolution(value: u16, resolution: &[u16]) -> u32 {
+    resolution[value_to_index(value, resolution.len())] as u32
 }
