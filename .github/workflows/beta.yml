@@ -1,14 +1,11 @@
 name: Beta Release
 on:
   workflow_dispatch:
-
 env:
   CARGO_TERM_COLOR: always
-
 permissions:
   contents: write
   pages: write
-
 jobs:
   prepare-beta:
     runs-on: ubuntu-latest
@@ -42,13 +39,12 @@ jobs:
           git push
           echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
           echo "faderpunk_version=$(grep '^version' faderpunk/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')" >> $GITHUB_OUTPUT
-
   build-picotool:
     needs: prepare-beta
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-beta.outputs.sha }}
       - name: Install dependencies
@@ -101,12 +97,11 @@ jobs:
         with:
           name: picotool-artifact
           path: picotool/build/picotool
-
   build-firmware:
     needs: prepare-beta
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-beta.outputs.sha }}
       - name: Install System Dependencies
@@ -125,7 +120,6 @@ jobs:
         with:
           name: firmware-artifact
           path: target/thumbv8m.main-none-eabihf/release/faderpunk
-
   package-firmware:
     needs: [prepare-beta, build-firmware, build-picotool]
     runs-on: ubuntu-latest
@@ -152,12 +146,11 @@ jobs:
         with:
           name: release-artifacts-firmware
           path: artifacts
-
   build-configurator:
     needs: prepare-beta
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-beta.outputs.sha }}
       - name: Setup Node.js
@@ -198,7 +191,6 @@ jobs:
         with:
           name: configurator-pages-artifact
           path: configurator/dist
-
   release:
     needs: [prepare-beta, package-firmware, build-configurator]
     runs-on: ubuntu-latest
@@ -223,18 +215,17 @@ jobs:
       - run: knope release --verbose
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   deploy-beta-configurator:
     needs: [prepare-beta, build-configurator]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare-beta.outputs.sha }}
           fetch-depth: 0
       - name: Checkout gh-pages branch
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: gh-pages
           path: gh-pages
