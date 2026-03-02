@@ -63,6 +63,27 @@ pub fn attenuate(signal: u16, level: u16) -> u16 {
     attenuated as u16
 }
 
+/// Rescale a 12-bit value (`0..=4095`) into a `min..=max` interval.
+pub fn rescale_12bit_int(input: u16, min: u16, max: u16) -> u16 {
+    let input = input.min(4095);
+
+    if min >= max {
+        return min;
+    }
+
+    let range = max - min;
+    min + attenuate(range, input)
+}
+
+/// Clock divider resolution table for selectable division modes.
+pub fn resolution_for_mode(mode: usize) -> &'static [u32] {
+    match mode {
+        0 => &[384, 192, 96, 48, 24, 12, 6, 3],
+        1 => &[384, 192, 96, 48, 24, 16, 8, 4, 2],
+        _ => &[384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2],
+    }
+}
+
 /// Use to attenuate 0-4095 representing a bipolar value
 pub fn attenuate_bipolar(signal: u16, level: u16) -> u16 {
     let center = 2048u32;

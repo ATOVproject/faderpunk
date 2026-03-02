@@ -736,9 +736,9 @@ const apps: ManualAppData[] = [
     description: "Simple clock divider",
     color: "Orange",
     icon: "note-box",
-    params: ["MIDI Channel", "MIDI Note", "GATE %", "Color"],
+    params: ["MIDI Channel", "MIDI Note", "GATE %", "Divisions", "Color"],
     storage: ["Division", "Muted", "Maximum division", "Minimum division"],
-    text: "This is a simple clock divider app that was suggested by youtuber and Discord member Synthdad. The app allows for a performative control of clock division/multiplication allowing for 'build ups and drops' for example. The maximum and minimum divisions can be user set using shift + fader and button + fader respectively. These are saved into the scenes allowing you to set different ranges depending on your needs. While setting divisions, LEDs indicate the selected type: orange for triplet divisions and blue for straight divisions.",
+    text: "This is a simple clock divider app that was suggested by youtuber and Discord member Synthdad. The app allows for a performative control of clock division/multiplication allowing for 'build ups and drops' for example. The maximum and minimum divisions can be user set using shift + fader and button + fader respectively. These are saved into the scenes allowing you to set different ranges depending on your needs. The **Divisions** parameter selects which divider set is available to the fader: **Straight**, **Triplets**, or **Both**.",
     channels: [
       {
         jackTitle: "Trigger out",
