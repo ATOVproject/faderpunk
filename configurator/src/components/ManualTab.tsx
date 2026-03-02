@@ -902,9 +902,66 @@ export const ManualTab = () => {
           </li>
           <li>
             <Link to="#interface">Interface</Link>
+            <List>
+              <li>
+                <Link to="#front-panel">Front Panel Overview</Link>
+              </li>
+              <li>
+                <Link to="#additional-controls">Additional Controls</Link>
+              </li>
+              <li>
+                <Link to="#global-parameters">Global Parameters Access</Link>
+              </li>
+              <li>
+                <Link to="#back-connectors">Back Connectors</Link>
+              </li>
+              <li>
+                <Link to="#internal-connectors">Internal Connectors</Link>
+              </li>
+              <li>
+                <Link to="#important-points">Important Points</Link>
+              </li>
+            </List>
           </li>
           <li>
             <Link to="#configurator">Configurator</Link>
+            <List>
+              <li>
+                <Link to="#compatible-browsers">Compatible Browsers</Link>
+              </li>
+              <li>
+                <Link to="#device-tab">Device Tab</Link>
+              </li>
+              <li>
+                <Link to="#apps-tab">Apps Tab</Link>
+              </li>
+              <li>
+                <Link to="#settings-tab">Settings Tab</Link>
+                <List>
+                  <li>
+                    <Link to="#settings-clock">Clock</Link>
+                  </li>
+                  <li>
+                    <Link to="#settings-quantizer">Quantizer</Link>
+                  </li>
+                  <li>
+                    <Link to="#settings-midi">MIDI</Link>
+                  </li>
+                  <li>
+                    <Link to="#settings-i2c">I²C</Link>
+                  </li>
+                  <li>
+                    <Link to="#settings-aux">AUX Jacks</Link>
+                  </li>
+                  <li>
+                    <Link to="#settings-misc">Miscellaneous</Link>
+                  </li>
+                  <li>
+                    <Link to="#settings-save-recall">Save & Recall Setup</Link>
+                  </li>
+                </List>
+              </li>
+            </List>
           </li>
           <li>
             <Link to="#apps">Apps</Link>
