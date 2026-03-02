@@ -14,118 +14,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // Based on the original Grids by Emilie Gillet.
-
-//! # FP-Grids
-//! 
-//! A port of Emilie Gillet's renowned Mutable Instruments Grids topographic drum sequencer for the ATOV Faderpunk
-//! 
-//! Grids is described as a "topographic drum sequencer" - it generates a variety of drum patterns based on continuous interpolation through a "map" of patterns (Drum Mode) or using Euclidean algorithms (Euclidean Mode).
-//! 
-//! The original Mutable Instruments module manual is [here](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/manual/)
-//! 
-//! ## Features
-//! 
-//! * **Two modes** - Switch between classic Drum map interpolation and Euclidean pattern generation.
-//! * **Four-channel Faderpunk app** - three trigger outputs and an additional global accent trigger output
-//! * **Global Clock** - uses the global Faderpunk clock
-//! * **Chaos** - Introduce controlled randomness to patterns.
-//! * **Scene Storage & Recall** - save dynamic state of generator and recall in Faderpunk scenes
-//! * **MIDI Output** - MIDI Note per drum trigger and accent
-//! * **Fader Memory** - Remembers mode-specific fader settings
-//!
-//! Gate output signal width is configured as a percentage of clock step width (unlike the original Grids)
-//! The Accent trigger will be muted if all three of the drum triggers are muted.
-//! 
-//! The sequencers can be reset rhythmically by patching in an external reset trigger (e.g. from a Pam's Pro Workout that is also synced to the Faderpunk) into one of the Faderpunk Aux Jacks (configured as a reset input). As at firmware v1.8, it's not posisble to self-patch 
-//! 
-//! ## Modes
-//! 
-//! ### 1. Drum Mode
-//! 
-//! Generates patterns by interpolating through a 2D map of pre-analyzed drum patterns. Sequence length is always 32 steps
-//! 
-//! * **Map X / Map Y:** Controls the position on the pattern map. Small changes typically result in related rhythmic variations.
-//! * **Density 1 / Density 2 / Density 3:** Controls the event density (fill) for each of the three main trigger outputs.
-//! * **Chaos Amount:** Controls the amount of randomness applied. When set to a high value, rolls / ghost notes will be randomly added to the pattern.
-//! 
-//! ### 2. Euclidean Mode
-//! 
-//! Generates classic Euclidean rhythms for each of the three main trigger outputs independently.
-//!
-//! * **Length 1 / Length 2 / Length 3:** Sets the total number of steps in the sequence for each output (1-32).
-//! * **Fill 1 / Fill 2 / Fill 3:** Sets the number of triggers distributed as evenly as possible within the sequence length for each output (0-31). If fill is greater than length, it's capped at the length value (so trigger will emit on every step)
-//! * **Chaos Amount:** Controls the amount of random step-skipping/triggering.
-//! 
-//! Try saving different Scenes with different Output Modes, then switching between scenes in a performance (sequence will reset on next step)
-//! 
-//! ## Hardware Mapping in Drum Mode
-//! 
-//! | Control | Function | + Shift | + Fn
-//! |---------|----------|---------|------|
-//! | Jack 1  | Kick Out | N/A     | N/A  | 
-//! | Fader 1  | Density 1 | Map X  | N/A  |
-//! | LED 1 Top | Gate output | Gate output | N/A
-//! | LED 1 Bottom | Density 1 | Map X | N/A
-//! | Fn 1    | Mute Trigger 1 | N/A | N/A |
-//! | Jack 2  | Snare Out | N/A     | N/A  | 
-//! | Fader 2  | Density 2 | Map Y  | N/A  |
-//! | LED 2 Top | Gate output | Gate output | N/A
-//! | LED 2 Bottom | Density 2 | Map Y | N/A
-//! | Fn 2    | Mute Trigger 2 | N/A | N/A |
-//! | Jack 3  | Hi-Hats Out | N/A     | N/A  | 
-//! | Fader 3  | Density 3 | N/A  | N/A  |
-//! | LED 3 Top | Gate output | Gate output | N/A
-//! | LED 3 Bottom | Density 3 | Chaos | N/A
-//! | Fn 3    | Mute Trigger 3 | N/A | N/A |
-//! | Jack 4  | Accent Out | N/A     | N/A  | 
-//! | Fader 4  | Chaos | Speed  | N/A  |
-//! | LED 4 Top | Accent output | Accent output | N/A
-//! | LED 4 Bottom | Chaos | Speed (yellow = 1/16th notes) | N/A
-//! | Fn 4    | Mute Accent | Mode (Light Blue=Drums, Pink = Euclidean) | N/A |
-//! 
-//! ## Hardware Mapping in Euclidean
-//! 
-//! | Control | Function | + Shift | + Fn
-//! |---------|----------|---------|------|
-//! | Jack 1  | Trigger 1 Out | N/A     | N/A  | 
-//! | Fader 1  | Fill 1 | Length 1  | N/A  |
-//! | LED 1 Top | Gate output | Gate output | N/A
-//! | LED 1 Bottom | Length 1 | Fill 2 | N/A
-//! | Fn 1    | Mute Trigger 1 | N/A | N/A |
-//! | Jack 2  | Trigger 2 Out | N/A     | N/A  | 
-//! | Fader 2  | Fill 2 | Length 2  | N/A  |
-//! | LED 2 Top | Gate output | Gate output | N/A
-//! | LED 2 Bottom | Length 2 | Fill 2 | N/A
-//! | Fn 2   | Mute Trigger 2 | N/A | N/A |
-//! | Jack 3  | Trigger 3 Out | N/A     | N/A  | 
-//! | Fader 3  | Fill 3 | Length 3  | N/A  |
-//! | LED 3 Top | Gate output | Gate output | N/A
-//! | LED 3 Bottom | Length 3 | Fill 3 | N/A
-//! | Fn 3    | Mute Trigger 3 | N/A | N/A |
-//! | Jack 4  | Accent Out | N/A     | N/A  | 
-//! | Fader 4  | Chaos | Speed  | N/A  |
-//! | LED 4 Top | Accent output | Accent output | N/A
-//! | LED 4 Bottom | Chaos | Speed (yellow = 1/16th notes) | N/A
-//! | Fn 4    | Mute Accent | Mode (Light Blue=Drums, Pink = Euclidean) | N/A |
-//! 
-//! ## App Configuration
-//! 
-//! * MIDI Channel
-//! * MIDI NOTE 1
-//! * MIDI NOTE 2
-//! * MIDI NOTE 3
-//! * MIDI Velocity
-//! * MIDI Velocity (Accent)
-//! * GATE %
-//! * Color
-//! * Midi device outs
-//! 
-//! ## Acknowledgements
-//! 
-//! * Original Concept & Code: Emilie Gillet (Mutable Instruments). The original Eurorack module source code can be found [here](https://github.com/pichenettes/eurorack/tree/master/grids).
-//! * Faderpunk Port: Richard Smith (GitHub: rjsmith)
-//! * Special acknowledgement: [Disting NT Port](https://github.com/thorinside/nt_grids/tree/main) by Neal Sanche (GitHub: Thorinside)
-//! 
+//
+// Acknowledgements
+// 
+// * Original Concept & Code: Emilie Gillet (Mutable Instruments). The original Eurorack module source code can be found [here](https://github.com/pichenettes/eurorack/tree/master/grids).
+// * Faderpunk Port: Richard Smith (GitHub: rjsmith)
+// * Special acknowledgement: [Disting NT Port](https://github.com/thorinside/nt_grids/tree/main) by Neal Sanche (GitHub: Thorinside)
+// 
 
 use embassy_futures::{
     join::{join, join5}, select::{select, select3}
