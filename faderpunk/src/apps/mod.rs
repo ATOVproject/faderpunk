@@ -19,4 +19,5 @@ register_apps!(
     18 => clk_div,
     19 => panner,
     22 => lfo_plus,
+    46 => fp_grids,
 );
