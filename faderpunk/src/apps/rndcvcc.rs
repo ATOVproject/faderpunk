@@ -134,6 +134,7 @@ pub async fn run(
         params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc));
 
     let mut clock = app.use_clock();
+    let ticks = clock.get_ticker();
     let rnd = app.use_die();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
@@ -157,8 +158,6 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-    let mut clkn = 0;
-
     let curve = Curve::Exponential;
     let fader_curve = Curve::Exponential;
 
@@ -178,14 +177,13 @@ pub async fn run(
     let fut1 = async {
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Reset => {
-                    clkn = 0;
-                }
+                ClockEvent::Reset => {}
                 ClockEvent::Tick => {
                     let muted = glob_muted.get();
-
+                    let clkn = ticks() as u32;
                     let div = div_glob.get();
-                    if clkn % div == 0 && !muted && storage.query(|s: &Storage| s.clocked) {
+                    if clkn.is_multiple_of(div) && !muted && storage.query(|s: &Storage| s.clocked)
+                    {
                         val_glob.set(rnd.roll());
 
                         let color = if !glob_muted.get() {
@@ -202,7 +200,10 @@ pub async fn run(
                         leds.set(0, Led::Button, color, Brightness::Mid);
                     }
 
-                    if clkn % div == 0 && storage.query(|s: &Storage| s.clocked) && buttons.is_shift_pressed() {
+                    if clkn.is_multiple_of(div)
+                        && storage.query(|s: &Storage| s.clocked)
+                        && buttons.is_shift_pressed()
+                    {
                         leds.set(0, Led::Bottom, Color::Red, Brightness::High);
                     }
                     if clkn % div == (div * 50 / 100).clamp(1, div - 1)
@@ -210,7 +211,6 @@ pub async fn run(
                     {
                         leds.unset(0, Led::Bottom);
                     }
-                    clkn += 1;
                 }
                 _ => {}
             }
