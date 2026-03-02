@@ -1,6 +1,5 @@
 import { type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from 'remark-gfm';
 
 interface MdProps {
   children: ReactNode;
@@ -13,7 +12,7 @@ export const Md = ({ children }: MdProps) => {
     <ReactMarkdown
       components={{
         p: ({ children }) => <>{children}</>,
-        h4: ({children}) => (
+        h4: ({ children }) => (
           <h4 className="mt-6 mb-2 font-bold">{children}</h4>
         ),
         strong: ({ children }) => (
@@ -42,6 +41,8 @@ export const Md = ({ children }: MdProps) => {
           </a>
         ),
       }}
-    >{children}</ReactMarkdown>
+    >
+      {children}
+    </ReactMarkdown>
   );
 };

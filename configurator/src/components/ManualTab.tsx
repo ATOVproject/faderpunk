@@ -872,11 +872,31 @@ const apps: ManualAppData[] = [
   {
     appId: 46,
     title: "FP-Grids",
-    description: "Emilie Gillet's renowned Mutable Instruments Grids topographic drum sequencer for the ATOV Faderpunk",
+    description:
+      "Emilie Gillet's renowned Mutable Instruments Grids topographic drum sequencer for the ATOV Faderpunk",
     color: "Orange",
     icon: "euclid",
-    params: ["MIDI mode", "MIDI channel", "MIDI Note 1", "MIDI Note 2", "MIDI Note 3", "MIDI Velocity", "MIDI velocity (Accent)", "Gate %", "Color"],
-    storage: ["Output Mode", "Drums Density", "Drums Map X & Y", "Euclidean Fill", "Euclidean Length", "Chaos", "Division", "Trigger Mutes"],
+    params: [
+      "MIDI mode",
+      "MIDI channel",
+      "MIDI Note 1",
+      "MIDI Note 2",
+      "MIDI Note 3",
+      "MIDI Velocity",
+      "MIDI velocity (Accent)",
+      "Gate %",
+      "Color",
+    ],
+    storage: [
+      "Output Mode",
+      "Drums Density",
+      "Drums Map X & Y",
+      "Euclidean Fill",
+      "Euclidean Length",
+      "Chaos",
+      "Division",
+      "Trigger Mutes",
+    ],
     text: `
 Grids is described as a "topographic drum sequencer" - it generates a variety of drum patterns based on continuous interpolation through a "map" of patterns (Drum Mode) or using Euclidean algorithms (Euclidean Mode).  The original Mutable Instruments module manual is [here](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/manual/).
 
@@ -923,12 +943,13 @@ The faders function varys depending on the current output mode.  In the diagram 
         faderDescription:
           "Control the drums note density (or Euclidean fill) from a sparse backbone to a frantic pattern",
         faderPlusShiftTitle: "Map X (Euclidean Length 1)",
-        faderPlusShiftDescription: "Interpolating scan through drum map (Euclidean pattern length 1-32 steps)",
+        faderPlusShiftDescription:
+          "Interpolating scan through drum map (Euclidean pattern length 1-32 steps)",
         ledTop: "Gate output 1",
         ledBottom: "Density 1 Amount (Euclidean Fill 1 Amount)",
         ledBottomPlusShift: "Map X Amount",
         fnTitle: "Mute 1",
-        fnDescription: "Mute trigger 1"
+        fnDescription: "Mute trigger 1",
       },
       {
         jackTitle: "Trigger output 2",
@@ -937,12 +958,13 @@ The faders function varys depending on the current output mode.  In the diagram 
         faderDescription:
           "Control the drums note density (or Euclidean fill) from a sparse backbone to a frantic pattern",
         faderPlusShiftTitle: "Map Y (Euclidean Length 2)",
-        faderPlusShiftDescription: "Interpolating scan through drum map (Euclidean pattern length 1-32 steps)",
+        faderPlusShiftDescription:
+          "Interpolating scan through drum map (Euclidean pattern length 1-32 steps)",
         ledTop: "Gate output 2",
         ledBottom: "Density 2 Amount (Euclidean Fill 2 Amount)",
         ledBottomPlusShift: "Map Y Amount",
         fnTitle: "Mute 2",
-        fnDescription: "Mute trigger 2"
+        fnDescription: "Mute trigger 2",
       },
       {
         jackTitle: "Trigger output 3",
@@ -955,14 +977,13 @@ The faders function varys depending on the current output mode.  In the diagram 
         ledTop: "Gate output 3",
         ledBottom: "Density 3 Amount (Euclidean Fill 3 Amount)",
         fnTitle: "Mute 3",
-        fnDescription: "Mute trigger 3"
+        fnDescription: "Mute trigger 3",
       },
       {
         jackTitle: "Accent gate output",
         jackDescription: "Global accent gate output",
         faderTitle: "Chaos",
-        faderDescription:
-          "Pattern randomisation and humanisation",
+        faderDescription: "Pattern randomisation and humanisation",
         faderPlusShiftTitle: "Resolution",
         faderPlusShiftDescription:
           "Sets clock resolution: 32ndT, 32nd, 16thT, 16th (default), 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar",
@@ -972,7 +993,7 @@ The faders function varys depending on the current output mode.  In the diagram 
         fnTitle: "Accent Mute",
         fnDescription: "Mute accent gate",
         fnPlusShiftTitle: "Toggle Output Mode",
-        fnPlusShiftDescription: "Light Blue = Drums, Pink = Euclidean"
+        fnPlusShiftDescription: "Light Blue = Drums, Pink = Euclidean",
       },
     ],
   },
