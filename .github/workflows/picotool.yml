@@ -10,7 +10,7 @@ jobs:
     steps:
       # Checkout your repository code
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       # Install dependencies for building picotool and pico-sdk
       - name: Install dependencies
