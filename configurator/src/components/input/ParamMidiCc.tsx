@@ -21,7 +21,7 @@ export const ParamMidiCc = ({
     {...register(`param-MidiCc-${paramIndex}`)}
     {...inputProps}
     min={0}
-    max={127}
+    max={16383}
     type="number"
     label={name}
   />
