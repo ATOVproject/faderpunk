@@ -35,8 +35,8 @@ use libfp::{
     fp_grids_lib::{OutputMode, PatternGenerator, PatternModeSettings, K_NUM_PARTS},
     latch::LatchLayer,
     utils::scale_bits_12_8,
-    AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param,
-    Value, APP_MAX_PARAMS,
+    AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiChannel, MidiNote, MidiOut,
+    Param, Value, APP_MAX_PARAMS,
 };
 
 use serde::{Deserialize, Serialize};
@@ -256,7 +256,7 @@ pub async fn run(
         app.make_gate_jack(2, 4095).await,
         app.make_gate_jack(3, 4095).await,
     ];
-    let resolution = [384u32, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
+    let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
     let div_glob = app.make_global(6); // = 1/16th note
     let glob_latch_layer = app.make_global(LatchLayer::Main);
     // use globs to track pattern generator parameter values, transformed from fader values
@@ -269,6 +269,8 @@ pub async fn run(
     let note_on_glob = app.make_global([false; K_NUM_PARTS]);
     let accent_on_glob = app.make_global(false);
     let output_mode_glob = app.make_global(OutputMode::OutputModeDrums);
+
+    let curve = Curve::Linear;
 
     refresh_state_from_storage(
         storage,
@@ -342,7 +344,7 @@ pub async fn run(
                             generator.reset();
                         }
 
-                        // Get generator state and handle individual triggers
+                        // Get generator state and handle individual triggersRefreshStateFromStorageContext
                         // State byte bits:
                         // 0: Trigger 1
                         // 1: Trigger 2
@@ -405,6 +407,14 @@ pub async fn run(
 
                         // Finally, progress pattern ready for evaluation on next clocked sequence step
                         generator.tick(true);
+
+                        if glob_latch_layer.get() == LatchLayer::Alt {
+                            if matches!(div, 2 | 4 | 8 | 16) {
+                                leds.set(3, Led::Bottom, Color::Orange, Brightness::High);
+                            } else {
+                                leds.set(3, Led::Bottom, Color::Blue, Brightness::High);
+                            }
+                        }
                     }
 
                     // If reached end of gate length between sequence steps
@@ -424,6 +434,9 @@ pub async fn run(
                             accent_on_glob.set(false);
                             jack[3].set_low().await;
                             leds.unset(3, Led::Top);
+                        }
+                        if glob_latch_layer.get() == LatchLayer::Alt {
+                            leds.set(3, Led::Bottom, Color::Blue, Brightness::Off);
                         }
                     }
                 }
@@ -558,9 +571,9 @@ pub async fn run(
                                     }
                                     LatchLayer::Alt => {
                                         // Convert fader value 0 .. 4095 to "resolution" lookup array index
-                                        div_glob.set(resolution[new_value as usize / 345]);
+                                        div_glob
+                                            .set(resolution[curve.at(new_value) as usize / 345]);
                                         storage.modify_and_save(|s| s.div_fader_saved = new_value);
-                                        fader_led_value = (new_value / 345) * 345;
                                     }
                                     _ => {}
                                 }
@@ -639,14 +652,7 @@ pub async fn run(
                             );
                         }
                         LatchLayer::Alt => {
-                            if chan == 3 && div_glob.get() == 6 {
-                                leds.set(
-                                    3,
-                                    Led::Bottom,
-                                    DIV_SIXTEENTH_NOTE_COLOR,
-                                    Brightness::High,
-                                );
-                            } else {
+                            if chan != 3 {
                                 leds.set(
                                     chan,
                                     Led::Bottom,
