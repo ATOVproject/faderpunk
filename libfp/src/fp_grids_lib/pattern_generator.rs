@@ -167,7 +167,32 @@ impl PatternGenerator {
         self.beat_ = true;
         self.state_ = 0;
         self.pulse_duration_counter_ = 0;
+
+        // Prime the first external interval as steps 0|1 so callers that read
+        // state before calling `tick()` stay phase-aligned.
         self.evaluate();
+        let mut primed_state = self.state_;
+
+        self.sequence_step_ = (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN;
+        self.step_ = self.sequence_step_;
+        for part in 0..K_NUM_PARTS {
+            self.euclidean_step[part] =
+                (self.euclidean_step[part] + 1) % self.current_euclidean_length[part];
+        }
+        self.first_beat_ = self.sequence_step_ == 0;
+        let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
+        if steps_per_beat == 0 {
+            steps_per_beat = 1;
+        }
+        self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
+
+        self.evaluate();
+        primed_state |= self.state_;
+        self.state_ = primed_state;
+
+        // Advance one external interval so callers that consume `state_` before
+        // calling `tick()` output one 1/16th earlier.
+        self.tick(true);
     }
 
     pub fn retrigger(&mut self) {
@@ -175,33 +200,45 @@ impl PatternGenerator {
         self.evaluate();
     }
 
-    /// Called on each tick of external clock (e.g., 24 ppqn)
-    /// (removed original code related to internal clock)
+    /// Called on each tick of external clock.
+    ///
+    /// In the Faderpunk app integration, this is called at the selected musical
+    /// division (commonly 1/16). The pattern engine itself runs at 32-step
+    /// resolution, so we advance two internal steps per external tick and merge
+    /// trigger bits for that interval.
     pub fn tick(&mut self, external_clock_tick: bool) {
         if !external_clock_tick {
             // Only process if there's an actual external clock tick
             return;
         }
 
-        // Direct clocking: each external tick advances main sequence and all Euclidean parts
-        self.sequence_step_ = (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN;
-        self.step_ = self.sequence_step_;
+        const INTERNAL_STEPS_PER_EXTERNAL_TICK: u8 = 2;
+        let mut merged_state_for_tick = 0u8;
 
-        for part in 0..K_NUM_PARTS {
-            self.euclidean_step[part] =
-                (self.euclidean_step[part] + 1) % self.current_euclidean_length[part];
+        for _ in 0..INTERNAL_STEPS_PER_EXTERNAL_TICK {
+            self.sequence_step_ = (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN;
+            self.step_ = self.sequence_step_;
+
+            for part in 0..K_NUM_PARTS {
+                self.euclidean_step[part] =
+                    (self.euclidean_step[part] + 1) % self.current_euclidean_length[part];
+            }
+
+            self.first_beat_ = self.sequence_step_ == 0;
+            let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
+            if steps_per_beat == 0 {
+                steps_per_beat = 1;
+            }
+            self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
+
+            self.evaluate();
+            merged_state_for_tick |= self.state_;
+
+            // Keep pulse counter behavior consistent with internal sub-steps.
+            self.increment_pulse_counter();
         }
 
-        self.first_beat_ = self.sequence_step_ == 0;
-        let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
-        if steps_per_beat == 0 {
-            steps_per_beat = 1;
-        } // Avoid division by zero for short patterns
-        self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
-
-        self.evaluate(); // Evaluate patterns based on the new step
-
-        self.increment_pulse_counter(); // Handle pulse durations on every external tick, regardless of main step advancement
+        self.state_ = merged_state_for_tick;
     }
 
     /// Set Euclidean sequence length 1 - 32 steps
@@ -499,13 +536,13 @@ mod tests {
     fn test_initialization() {
         let mut generator = PatternGenerator::default();
         generator.reset(); // Ensure reset initializes state correctly
-        assert_eq!(0, generator.step_);
-        assert_eq!(0, generator.sequence_step_);
+        assert_eq!(3, generator.step_);
+        assert_eq!(3, generator.sequence_step_);
         assert_eq!(0, generator.pulse_);
-        assert_eq!(true, generator.first_beat_);
-        assert_eq!(true, generator.beat_);
-        assert_eq!(15, generator.state_);
-        assert_eq!(0, generator.sequence_step_);
+        assert_eq!(false, generator.first_beat_);
+        assert_eq!(false, generator.beat_);
+        assert_eq!(5, generator.state_);
+        assert_eq!(3, generator.sequence_step_);
     }
 
     #[test]
@@ -539,19 +576,19 @@ mod tests {
         assert_eq!(12, generator.get_trigger_state());
 
         generator.tick(true);
-        assert_eq!(1, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
-
-        generator.tick(true);
         assert_eq!(2, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
 
         generator.tick(true);
-        assert_eq!(3, generator.get_step());
+        assert_eq!(4, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
 
         generator.tick(true);
-        assert_eq!(4, generator.get_step());
+        assert_eq!(6, generator.get_step());
+        assert_eq!(0, generator.get_trigger_state());
+
+        generator.tick(true);
+        assert_eq!(8, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
     }
 
@@ -579,15 +616,9 @@ mod tests {
         assert_eq!(7, generator.get_trigger_state());
 
         generator.tick(true);
-        assert_eq!(1, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
-
-        generator.tick(true);
         assert_eq!(2, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
-        generator.tick(true);
-        assert_eq!(3, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
+
         generator.tick(true);
         assert_eq!(4, generator.get_step());
         assert_eq!(7, generator.get_trigger_state());
