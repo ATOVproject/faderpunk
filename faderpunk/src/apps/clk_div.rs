@@ -7,8 +7,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
-    MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, utils::rescale_12bit_int, AppIcon, Brightness,
+    ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -18,7 +18,7 @@ use crate::app::{
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 5;
 
-const LED_BRIGHTNESS: Brightness = Brightness::High;
+const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Clock Divider",
@@ -181,6 +181,8 @@ pub async fn run(
 
     let fut1 = async {
         let mut note_on = false;
+        let mut cached_div = div_glob.get();
+        let mut cached_gate_step = (cached_div * gatel / 100).clamp(1, cached_div - 1);
 
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
@@ -197,9 +199,13 @@ pub async fn run(
                 ClockEvent::Tick => {
                     let muted = glob_muted.get();
                     let div = div_glob.get();
+                    if div != cached_div {
+                        cached_div = div;
+                        cached_gate_step = (cached_div * gatel / 100).clamp(1, cached_div - 1);
+                    }
                     let clkn = ticks() as u32;
 
-                    if clkn.is_multiple_of(div) && !muted {
+                    if clkn.is_multiple_of(cached_div) && !muted {
                         jack.set_high().await;
                         if glob_latch_layer.get() == LatchLayer::Main {
                             leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
@@ -208,7 +214,7 @@ pub async fn run(
                         note_on = true;
                     }
 
-                    if clkn % div == (div * gatel / 100).clamp(1, div - 1) {
+                    if clkn % cached_div == cached_gate_step {
                         if note_on {
                             midi.send_note_off(note).await;
 
@@ -222,11 +228,13 @@ pub async fn run(
                     }
 
                     if glob_latch_layer.get() != LatchLayer::Main {
-                        if clkn % max_glob.get() == (max_glob.get() * gatel / 100).clamp(1, div - 1)
+                        if clkn % max_glob.get()
+                            == (max_glob.get() * gatel / 100).clamp(1, cached_div - 1)
                         {
                             leds.set(0, Led::Top, led_color, Brightness::Off);
                         }
-                        if clkn % min_glob.get() == (min_glob.get() * gatel / 100).clamp(1, div - 1)
+                        if clkn % min_glob.get()
+                            == (min_glob.get() * gatel / 100).clamp(1, cached_div - 1)
                         {
                             leds.set(0, Led::Bottom, led_color, Brightness::Off);
                         }
@@ -347,18 +355,4 @@ pub async fn run(
     };
 
     join5(fut1, fut2, fut3, scene_handler, shift).await;
-}
-
-fn rescale_12bit_int(input: u16, min: u16, max: u16) -> u16 {
-    // Clamp input to 12-bit range
-    let input = input.min(4095);
-
-    // Handle edge case where min >= max
-    if min >= max {
-        return min;
-    }
-
-    // Rescale using integer math
-    let range = max - min;
-    min + (input as u32 * range as u32 / 4095) as u16
 }
