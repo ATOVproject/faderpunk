@@ -147,7 +147,7 @@ pub async fn run(
     let (bipolar, midi_out, midi_channel, delay, led_color) =
         params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.delay, p.color));
 
-    let midi = app.use_midi_output(midi_out, midi_channel);
+    let midi = app.use_midi_output(midi_out, midi_channel, false);
 
     let muted_glob = app.make_global(false);
 

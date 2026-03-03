@@ -202,7 +202,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, false);
     let i2c = app.use_i2c_output();
 
     let muted_glob = app.make_global(storage.query(|s| s.muted));

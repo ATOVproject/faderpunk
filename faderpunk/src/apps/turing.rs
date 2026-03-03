@@ -184,7 +184,7 @@ pub async fn run(
     let die = app.use_die();
     let quantizer = app.use_quantizer(range);
 
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let prob_glob = app.make_global(0);
 

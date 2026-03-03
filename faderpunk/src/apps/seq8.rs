@@ -160,10 +160,10 @@ pub async fn run(
     let led = app.use_leds();
 
     let midi = [
-        app.use_midi_output(midi_out, midi_chan1),
-        app.use_midi_output(midi_out, midi_chan2),
-        app.use_midi_output(midi_out, midi_chan3),
-        app.use_midi_output(midi_out, midi_chan4),
+        app.use_midi_output(midi_out, midi_chan1, false),
+        app.use_midi_output(midi_out, midi_chan2, false),
+        app.use_midi_output(midi_out, midi_chan3, false),
+        app.use_midi_output(midi_out, midi_chan4, false),
     ];
 
     let cv_out = [

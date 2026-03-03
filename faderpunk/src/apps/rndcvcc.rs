@@ -139,7 +139,7 @@ pub async fn run(
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, false);
     let range = if bipolar {
         Range::_Neg5_5V
     } else {

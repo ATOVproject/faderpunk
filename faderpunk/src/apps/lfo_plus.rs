@@ -169,7 +169,7 @@ pub async fn run(
     let leds = app.use_leds();
     let mut clk = app.use_clock();
 
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);
