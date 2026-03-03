@@ -12,12 +12,12 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{bits_7_16, clickless, scale_bits_7_12},
+    utils::{bits_7_16, clickless, scale_bits_14_12, scale_bits_7_12},
     AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiNote, Param, Range,
     Value, APP_MAX_PARAMS,
 };
 
-use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
+use crate::app::{App, AppMidiEvent, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 9;
@@ -423,7 +423,14 @@ pub async fn run(
     let midi_handler = async {
         let mut note_num: i32 = 0;
         loop {
-            match midi_in.wait_for_message().await {
+            match midi_in.wait_for_event().await {
+                AppMidiEvent::Nrpn { param, value } => {
+                    if mode == 0 && param == midi_cc.as_u16() {
+                        let val = scale_bits_14_12(value);
+                        offset_glob.set(val);
+                    }
+                }
+                AppMidiEvent::Message(msg) => match msg {
                 MidiMessage::Controller { controller, value } => {
                     if mode == 0 && controller == u7::from(midi_cc) {
                         let val = scale_bits_7_12(value);
@@ -537,6 +544,7 @@ pub async fn run(
                 }
 
                 _ => {}
+                } // AppMidiEvent::Message
             }
         }
     };
