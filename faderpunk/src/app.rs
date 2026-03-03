@@ -538,16 +538,6 @@ impl MidiInput {
         }
     }
 
-    /// Wait for the next NRPN message matching `param`. Returns 12-bit value (0-4095).
-    pub async fn wait_for_nrpn(&mut self, param: u16) -> u16 {
-        loop {
-            if let MidiEvent::Nrpn { channel, param: p, value } = self.next_event().await {
-                if channel == self.midi_channel && p == param {
-                    return scale_bits_14_12(value);
-                }
-            }
-        }
-    }
 }
 
 pub struct Global<T: Sized> {
