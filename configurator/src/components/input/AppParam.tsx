@@ -19,6 +19,7 @@ import { ParamMidiChannel } from "./ParamMidiChannel.tsx";
 import { ParamMidiIn } from "./ParamMidiIn.tsx";
 import { ParamMidiMode } from "./ParamMidiMode.tsx";
 import { ParamMidiNote } from "./ParamMidiNote.tsx";
+import { ParamMidiNrpn } from "./ParamMidiNrpn.tsx";
 import { ParamMidiOut } from "./ParamMidiOut.tsx";
 
 interface Props {
@@ -187,6 +188,15 @@ export const AppParam = ({
         <ParamMidiMode
           name="MIDI Mode"
           defaultValue={defaultValue as string}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "MidiNrpn": {
+      return (
+        <ParamMidiNrpn
+          defaultValue={defaultValue as boolean}
           paramIndex={paramIndex}
           register={register}
         />
