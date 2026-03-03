@@ -52,19 +52,27 @@ pub enum MidiEventSource {
 }
 
 #[derive(Clone, Copy)]
-pub struct MidiMsg {
-    event: LiveEvent<'static>,
-    target: MidiOut,
-    source: MidiEventSource,
+pub enum MidiMsg {
+    Live {
+        event: LiveEvent<'static>,
+        target: MidiOut,
+        source: MidiEventSource,
+    },
+    Nrpn {
+        channel: u4,
+        param: u16,
+        value: u16,
+        target: MidiOut,
+    },
 }
 
 impl MidiMsg {
     pub fn new(event: LiveEvent<'static>, target: MidiOut, source: MidiEventSource) -> Self {
-        Self {
-            event,
-            target,
-            source,
-        }
+        Self::Live { event, target, source }
+    }
+
+    pub fn nrpn(channel: u4, param: u16, value: u16, target: MidiOut) -> Self {
+        Self::Nrpn { channel, param, value, target }
     }
 }
 
@@ -279,46 +287,71 @@ pub async fn midi_out_task<'a>(
     loop {
         match select(midi_receiver.receive(), config_receiver.changed()).await {
             Either::First(midi_out_msg) => {
-                let (event, mut target, source) = match midi_out_msg {
-                    MidiOutEvent::Event(msg) => (msg.event, msg.target, Some(msg.source)),
-                    MidiOutEvent::Clock(msg) => (LiveEvent::Realtime(msg.event), msg.target, None),
-                };
+                match midi_out_msg {
+                    MidiOutEvent::Event(MidiMsg::Live { event, mut target, source }) => {
+                        // Disable targets where we have a strict THRU port or no output.
+                        // Only for local events; passthrough and clock are handled elsewhere.
+                        if let MidiEventSource::Local = source {
+                            for (i, disabled) in disabled_outs_for_local.iter().enumerate() {
+                                target.0[i] = target.0[i] && !disabled;
+                            }
+                        }
 
-                // Disable the targets where we have a strict THRU port or no midi output at all
-                // This is only for local events
-                // Passthrough and clock events are handled elsewhere
-                if let Some(MidiEventSource::Local) = source {
-                    for (i, disabled) in disabled_outs_for_local.iter().enumerate() {
-                        target.0[i] = target.0[i] && !disabled;
+                        let usb_fut = async {
+                            if let MidiOut([true, _, _]) = target {
+                                let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                            }
+                        };
+                        let out1_fut = async {
+                            if let MidiOut([_, true, _]) = target {
+                                let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
+                            }
+                        };
+                        let out2_fut = async {
+                            if let MidiOut([_, _, true]) = target {
+                                let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
+                            }
+                        };
+                        join3(usb_fut, out1_fut, out2_fut).await;
+                    }
+                    MidiOutEvent::Event(MidiMsg::Nrpn { channel, param, value, mut target }) => {
+                        use libfp::utils::scale_bits_12_14;
+                        for (i, disabled) in disabled_outs_for_local.iter().enumerate() {
+                            target.0[i] = target.0[i] && !disabled;
+                        }
+                        let value_14 = scale_bits_12_14(value);
+                        let ccs: [LiveEvent<'static>; 4] = [
+                            LiveEvent::Midi { channel, message: MidiMessage::Controller { controller: u7::new(99), value: u7::new((param >> 7) as u8) } },
+                            LiveEvent::Midi { channel, message: MidiMessage::Controller { controller: u7::new(98), value: u7::new((param & 0x7F) as u8) } },
+                            LiveEvent::Midi { channel, message: MidiMessage::Controller { controller: u7::new(6),  value: u7::new((value_14 >> 7) as u8) } },
+                            LiveEvent::Midi { channel, message: MidiMessage::Controller { controller: u7::new(38), value: u7::new((value_14 & 0x7F) as u8) } },
+                        ];
+                        for event in ccs {
+                            if let MidiOut([true, _, _]) = target { let _ = write_msg_to_usb(&mut usb_tx, event).await; }
+                            if let MidiOut([_, true, _]) = target { let _ = write_msg_to_uart1(&mut uart1_tx, event).await; }
+                            if let MidiOut([_, _, true]) = target { let _ = write_msg_to_uart0(&mut uart0_tx, event).await; }
+                        }
+                    }
+                    MidiOutEvent::Clock(msg) => {
+                        let event = LiveEvent::Realtime(msg.event);
+                        let usb_fut = async {
+                            if let MidiOut([true, _, _]) = msg.target {
+                                let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                            }
+                        };
+                        let out1_fut = async {
+                            if let MidiOut([_, true, _]) = msg.target {
+                                let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
+                            }
+                        };
+                        let out2_fut = async {
+                            if let MidiOut([_, _, true]) = msg.target {
+                                let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
+                            }
+                        };
+                        join3(usb_fut, out1_fut, out2_fut).await;
                     }
                 }
-
-                // TODO: Deal with backpressure as well (do it on core b maybe?)
-                // TODO: Do not try to send midi message to USB when not connected
-                // usb_tx.wait_connection().await;
-
-                // Usb
-                let usb_fut = async {
-                    if let MidiOut([true, _, _]) = target {
-                        let _ = write_msg_to_usb(&mut usb_tx, event).await;
-                    }
-                };
-
-                // Out1
-                let out1_fut = async {
-                    if let MidiOut([_, true, _]) = target {
-                        let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
-                    }
-                };
-
-                // Out2
-                let out2_fut = async {
-                    if let MidiOut([_, _, true]) = target {
-                        let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
-                    }
-                };
-
-                join3(usb_fut, out1_fut, out2_fut).await;
             }
             Either::Second(new_config) => {
                 disabled_outs_for_local = new_config.midi.outs.map(|c| {
