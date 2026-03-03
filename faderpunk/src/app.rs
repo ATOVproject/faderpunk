@@ -13,7 +13,7 @@ use portable_atomic::Ordering;
 use libfp::{
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
-    utils::{scale_bits_12_7, scale_bits_14_12},
+    utils::{scale_bits_12_14, scale_bits_12_7, scale_bits_14_12},
     Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
     Range, TakeoverMode,
 };
@@ -407,7 +407,6 @@ impl MidiOutput {
     /// Sends an NRPN value. `param` is 0-16383, `value` is 0-4095 (scaled to 14-bit internally).
     /// Caches the parameter number — skips CC 98/99 if the param number is unchanged.
     pub async fn send_nrpn(&self, param: u16, value: u16) {
-        use libfp::utils::scale_bits_12_14;
         let value_14 = scale_bits_12_14(value);
         let param_msb = u7::new((param >> 7) as u8);
         let param_lsb = u7::new((param & 0x7F) as u8);
