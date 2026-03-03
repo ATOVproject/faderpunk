@@ -1,4 +1,4 @@
-use core::cell::{Cell, RefCell};
+use core::cell::RefCell;
 
 use embassy_futures::select::{select, Either};
 use embassy_rp::clocks::RoscRng;
@@ -368,13 +368,13 @@ impl<const N: usize> I2cOutput<N> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct MidiOutput {
     start_channel: usize,
     midi_channel: u4,
     midi_out: MidiOut,
     midi_sender: AppMidiSender,
     nrpn_mode: bool,
-    last_nrpn_param: Cell<Option<u16>>,
 }
 
 impl MidiOutput {
@@ -391,7 +391,6 @@ impl MidiOutput {
             midi_out,
             midi_sender,
             nrpn_mode,
-            last_nrpn_param: Cell::new(None),
         }
     }
 
@@ -405,7 +404,6 @@ impl MidiOutput {
     }
 
     // Sends an NRPN value. `param` is 0-16383, `value` is 0-4095 (scaled to 14-bit internally).
-    // Caches the parameter number — skips CC 98/99 if the param number is unchanged.
     async fn send_nrpn(&self, param: u16, value: u16) {
         let value_14 = scale_bits_12_14(value);
         let param_msb = u7::new((param >> 7) as u8);
@@ -413,20 +411,16 @@ impl MidiOutput {
         let value_msb = u7::new((value_14 >> 7) as u8);
         let value_lsb = u7::new((value_14 & 0x7F) as u8);
 
-        if self.last_nrpn_param.get() != Some(param) {
-            self.send_midi_msg(MidiMessage::Controller {
-                controller: u7::new(99),
-                value: param_msb,
-            })
-            .await;
-            self.send_midi_msg(MidiMessage::Controller {
-                controller: u7::new(98),
-                value: param_lsb,
-            })
-            .await;
-            self.last_nrpn_param.set(Some(param));
-        }
-
+        self.send_midi_msg(MidiMessage::Controller {
+            controller: u7::new(99),
+            value: param_msb,
+        })
+        .await;
+        self.send_midi_msg(MidiMessage::Controller {
+            controller: u7::new(98),
+            value: param_lsb,
+        })
+        .await;
         self.send_midi_msg(MidiMessage::Controller {
             controller: u7::new(6),
             value: value_msb,
