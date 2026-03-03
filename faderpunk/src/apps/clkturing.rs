@@ -165,7 +165,7 @@ pub async fn run(
     let faders = app.use_faders();
     let leds = app.use_leds();
     let die = app.use_die();
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     // let mut prob_glob = app.make_global_with_store(0, StorageSlot::A);
     // let mut length_glob = app.make_global_with_store(15, StorageSlot::B);
