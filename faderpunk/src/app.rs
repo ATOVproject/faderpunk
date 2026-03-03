@@ -404,9 +404,9 @@ impl MidiOutput {
         self.midi_sender.send((self.start_channel, msg)).await;
     }
 
-    /// Sends an NRPN value. `param` is 0-16383, `value` is 0-4095 (scaled to 14-bit internally).
-    /// Caches the parameter number — skips CC 98/99 if the param number is unchanged.
-    pub async fn send_nrpn(&self, param: u16, value: u16) {
+    // Sends an NRPN value. `param` is 0-16383, `value` is 0-4095 (scaled to 14-bit internally).
+    // Caches the parameter number — skips CC 98/99 if the param number is unchanged.
+    async fn send_nrpn(&self, param: u16, value: u16) {
         let value_14 = scale_bits_12_14(value);
         let param_msb = u7::new((param >> 7) as u8);
         let param_lsb = u7::new((param & 0x7F) as u8);
