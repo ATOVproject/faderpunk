@@ -1,4 +1,5 @@
 pub mod buttons;
+pub mod input_handlers;
 pub mod calibration;
 pub mod clock;
 pub mod configure;
