@@ -144,7 +144,7 @@ pub async fn run(
     let fader = app.use_faders();
     let leds = app.use_leds();
 
-    let midi = app.use_midi_output(midi_out, midi_channel);
+    let midi = app.use_midi_output(midi_out, midi_channel, false);
 
     let muted_glob = app.make_global(false);
 
