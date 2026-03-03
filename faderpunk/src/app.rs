@@ -7,13 +7,13 @@ use embassy_time::Timer;
 use max11300::config::{
     ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES,
 };
-use midly::{live::LiveEvent, num::{u4, u7}, MidiMessage, PitchBend};
+use midly::{live::LiveEvent, num::u4, MidiMessage, PitchBend};
 use portable_atomic::Ordering;
 
 use libfp::{
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
-    utils::{scale_bits_12_14, scale_bits_12_7, scale_bits_14_12},
+    utils::{scale_bits_12_7, scale_bits_14_12},
     Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
     Range, TakeoverMode,
 };
@@ -403,41 +403,12 @@ impl MidiOutput {
         self.midi_sender.send((self.start_channel, msg)).await;
     }
 
-    // Sends an NRPN value. `param` is 0-16383, `value` is 0-4095 (scaled to 14-bit internally).
-    async fn send_nrpn(&self, param: u16, value: u16) {
-        let value_14 = scale_bits_12_14(value);
-        let param_msb = u7::new((param >> 7) as u8);
-        let param_lsb = u7::new((param & 0x7F) as u8);
-        let value_msb = u7::new((value_14 >> 7) as u8);
-        let value_lsb = u7::new((value_14 & 0x7F) as u8);
-
-        self.send_midi_msg(MidiMessage::Controller {
-            controller: u7::new(99),
-            value: param_msb,
-        })
-        .await;
-        self.send_midi_msg(MidiMessage::Controller {
-            controller: u7::new(98),
-            value: param_lsb,
-        })
-        .await;
-        self.send_midi_msg(MidiMessage::Controller {
-            controller: u7::new(6),
-            value: value_msb,
-        })
-        .await;
-        self.send_midi_msg(MidiMessage::Controller {
-            controller: u7::new(38),
-            value: value_lsb,
-        })
-        .await;
-    }
-
     /// Sends a MIDI CC message. In NRPN mode, sends as 14-bit NRPN instead.
     /// value is normalized to a range of 0-4095
     pub async fn send_cc(&self, cc: MidiCc, value: u16) {
         if self.nrpn_mode {
-            self.send_nrpn(cc.as_u16(), value).await;
+            let msg = MidiMsg::nrpn(self.midi_channel, cc.as_u16(), value, self.midi_out);
+            self.midi_sender.send((self.start_channel, msg)).await;
         } else {
             let msg = MidiMessage::Controller {
                 controller: cc.into(),
