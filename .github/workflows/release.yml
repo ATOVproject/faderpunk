@@ -227,7 +227,7 @@ jobs:
         with:
           name: release-artifacts-configurator
           path: artifacts
-      - uses: knope-dev/action@v2.1.0
+      - uses: knope-dev/action@v2.1.2
         with:
           version: 0.22.2
       - run: knope release --verbose
