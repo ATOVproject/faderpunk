@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.0 (2026-03-04)
+
+### Features
+
+- add LED feedback for straight/triplet division settings (#457)
+
+### Fixes
+
+- add public tick counter, reset delay (#449)
+
 ## 1.8.0 (2026-02-23)
 
 ### Features
