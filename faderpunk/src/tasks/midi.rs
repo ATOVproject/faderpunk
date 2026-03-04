@@ -67,11 +67,20 @@ pub enum MidiMsg {
 
 impl MidiMsg {
     pub fn new(event: LiveEvent<'static>, target: MidiOut, source: MidiEventSource) -> Self {
-        Self::Live { event, target, source }
+        Self::Live {
+            event,
+            target,
+            source,
+        }
     }
 
     pub fn nrpn(channel: u4, param: u16, value: u16, target: MidiOut) -> Self {
-        Self::Nrpn { channel, param, value, target }
+        Self::Nrpn {
+            channel,
+            param,
+            value,
+            target,
+        }
     }
 }
 
@@ -278,7 +287,11 @@ pub async fn midi_out_task<'a>(
         match select(midi_receiver.receive(), config_receiver.changed()).await {
             Either::First(midi_out_msg) => {
                 match midi_out_msg {
-                    MidiOutEvent::Event(MidiMsg::Live { event, mut target, source }) => {
+                    MidiOutEvent::Event(MidiMsg::Live {
+                        event,
+                        mut target,
+                        source,
+                    }) => {
                         // Disable targets where we have a strict THRU port or no output.
                         // Only for local events; passthrough and clock are handled elsewhere.
                         if let MidiEventSource::Local = source {
@@ -304,22 +317,57 @@ pub async fn midi_out_task<'a>(
                         };
                         join3(usb_fut, out1_fut, out2_fut).await;
                     }
-                    MidiOutEvent::Event(MidiMsg::Nrpn { channel, param, value, mut target }) => {
+                    MidiOutEvent::Event(MidiMsg::Nrpn {
+                        channel,
+                        param,
+                        value,
+                        mut target,
+                    }) => {
                         use libfp::utils::scale_bits_12_14;
                         for (i, disabled) in disabled_outs_for_local.iter().enumerate() {
                             target.0[i] = target.0[i] && !disabled;
                         }
                         let value_14 = scale_bits_12_14(value);
                         let ccs: [LiveEvent<'static>; 4] = [
-                            LiveEvent::Midi { channel, message: MidiMessage::Controller { controller: u7::new(99), value: u7::new((param >> 7) as u8) } },
-                            LiveEvent::Midi { channel, message: MidiMessage::Controller { controller: u7::new(98), value: u7::new((param & 0x7F) as u8) } },
-                            LiveEvent::Midi { channel, message: MidiMessage::Controller { controller: u7::new(6),  value: u7::new((value_14 >> 7) as u8) } },
-                            LiveEvent::Midi { channel, message: MidiMessage::Controller { controller: u7::new(38), value: u7::new((value_14 & 0x7F) as u8) } },
+                            LiveEvent::Midi {
+                                channel,
+                                message: MidiMessage::Controller {
+                                    controller: u7::new(99),
+                                    value: u7::new((param >> 7) as u8),
+                                },
+                            },
+                            LiveEvent::Midi {
+                                channel,
+                                message: MidiMessage::Controller {
+                                    controller: u7::new(98),
+                                    value: u7::new((param & 0x7F) as u8),
+                                },
+                            },
+                            LiveEvent::Midi {
+                                channel,
+                                message: MidiMessage::Controller {
+                                    controller: u7::new(6),
+                                    value: u7::new((value_14 >> 7) as u8),
+                                },
+                            },
+                            LiveEvent::Midi {
+                                channel,
+                                message: MidiMessage::Controller {
+                                    controller: u7::new(38),
+                                    value: u7::new((value_14 & 0x7F) as u8),
+                                },
+                            },
                         ];
                         for event in ccs {
-                            if let MidiOut([true, _, _]) = target { let _ = write_msg_to_usb(&mut usb_tx, event).await; }
-                            if let MidiOut([_, true, _]) = target { let _ = write_msg_to_uart1(&mut uart1_tx, event).await; }
-                            if let MidiOut([_, _, true]) = target { let _ = write_msg_to_uart0(&mut uart0_tx, event).await; }
+                            if let MidiOut([true, _, _]) = target {
+                                let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                            }
+                            if let MidiOut([_, true, _]) = target {
+                                let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
+                            }
+                            if let MidiOut([_, _, true]) = target {
+                                let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
+                            }
                         }
                     }
                     MidiOutEvent::Clock(msg) => {

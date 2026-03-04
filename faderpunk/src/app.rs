@@ -533,7 +533,11 @@ impl MidiInput {
                         return AppMidiEvent::Message(message);
                     }
                 }
-                MidiEvent::Nrpn { channel, param, value } => {
+                MidiEvent::Nrpn {
+                    channel,
+                    param,
+                    value,
+                } => {
                     if channel == self.midi_channel {
                         return AppMidiEvent::Nrpn {
                             param,
@@ -545,7 +549,6 @@ impl MidiInput {
             }
         }
     }
-
 }
 
 pub struct Global<T: Sized> {
