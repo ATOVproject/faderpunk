@@ -271,7 +271,11 @@ pub async fn run(
                         }
 
                         if buttons.is_button_pressed(0) && !buttons.is_shift_pressed() {
-                            leds.set(0, Led::Bottom, Color::Red, Brightness::High);
+                            if matches!(div, 2 | 4 | 8 | 16) {
+                                leds.set(0, Led::Bottom, Color::Orange, Brightness::High);
+                            } else {
+                                leds.set(0, Led::Bottom, Color::Blue, Brightness::High);
+                            }
                         }
                     }
                     if clkn % div == (div * gatel as usize / 100).clamp(1, div - 1) {

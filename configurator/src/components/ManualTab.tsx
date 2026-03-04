@@ -180,7 +180,7 @@ const apps: ManualAppData[] = [
       "Ranges",
       "Octaves",
     ],
-    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, and you can navigate between them using Shift + Buttons. The CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, and so on. MIDI channels for each sequencer can be set individually in the parameters. Faders are used to set note values, buttons define the gate pattern, and long button presses enable legato. Shift modifies settings for the selected sequencer: Shift + Fader 1 sets step length, Fader 2 sets gate length, Fader 3 selects octave, Fader 4 defines the sequence range (1–5 octaves), and Fader 5 sets the sequence resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th). Buttons are used to select pages, with two pages available per sequencer. The output of each sequencer is quantized to the scale set in the global quantizer.",
+    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, and you can navigate between them using Shift + Buttons. The CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, and so on. MIDI channels for each sequencer can be set individually in the parameters. Faders are used to set note values, buttons define the gate pattern, and long button presses enable legato. Shift modifies settings for the selected sequencer: Shift + Fader 1 sets step length, Fader 2 sets gate length, Fader 3 selects octave, Fader 4 defines the sequence range (1–5 octaves), and Fader 5 sets the sequence resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th). In Shift mode, resolution type is color-coded on sequence LEDs: orange for triplet divisions and blue for straight divisions. Buttons are used to select pages, with two pages available per sequencer. The output of each sequencer is quantized to the scale set in the global quantizer.",
     channels: [
       {
         jackTitle: "CV Output",
@@ -324,7 +324,7 @@ const apps: ManualAppData[] = [
       "Range",
     ],
     storage: ["Attenuation", "Length", "Register", "Resolution"],
-    text: "This app is inspired by the concept of a Turing machine as used in modular synthesizers—a type of probabilistic sequencer that generates evolving patterns based on controlled randomness. It can be set to send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. The fader controls the probability of bit flips: when fully down, the sequence loops without changes; when fully up, bit flips occur constantly and the sequence length doubles; in the middle, there’s a 50/50 chance of flipping, resulting in the most randomness. Holding Shift and pressing the button a number of times sets the sequence length—for example, holding Shift and pressing three times sets a 3-step sequence, which is applied upon releasing Shift. The output is quantized for both CV and MIDI notes according to the global quantizer. Parameters include MIDI channel, base note (lowest MIDI note the Turing machine can generate), gate percentage (MIDI only), and color. Main functions include using the fader to set probability, Shift + Fader to set range, Shift + Button to set sequence length, and Button + Fader to set clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th). All app state is stored in scenes, including the sequences themselves—making this, as far as we know, the only Turing machine with preset saving.",
+    text: "This app is inspired by the concept of a Turing machine as used in modular synthesizers—a type of probabilistic sequencer that generates evolving patterns based on controlled randomness. It can be set to send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. The fader controls the probability of bit flips: when fully down, the sequence loops without changes; when fully up, bit flips occur constantly and the sequence length doubles; in the middle, there’s a 50/50 chance of flipping, resulting in the most randomness. Holding Shift and pressing the button a number of times sets the sequence length—for example, holding Shift and pressing three times sets a 3-step sequence, which is applied upon releasing Shift. The output is quantized for both CV and MIDI notes according to the global quantizer. Parameters include MIDI channel, base note (lowest MIDI note the Turing machine can generate), gate percentage (MIDI only), and color. Main functions include using the fader to set probability, Shift + Fader to set range, Shift + Button to set sequence length, and Button + Fader to set clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th). While setting clock resolution, the bottom LED is orange for triplet divisions and blue for straight divisions. All app state is stored in scenes, including the sequences themselves—making this, as far as we know, the only Turing machine with preset saving.",
     channels: [
       {
         jackTitle: "Output",
@@ -395,7 +395,7 @@ const apps: ManualAppData[] = [
       "Muted",
       "Mode",
     ],
-    text: "This app is a Euclidean sequencer with two outputs: Jack 1 delivers the main Euclidean rhythm, while Jack 2 provides either an inverted version or an end-of-rhythm pulse. In inverted mode, if Output 1 sends a pulse, Output 2 does not—and vice versa. Send MIDI triggers, with MIDI channel and MIDI notes. Main functions include Fader 1 for sequence length and Fader 2 for number of beats (fill). Button 1 toggles semitone offset, Button 2 mutes the output. Shift + Fader 1 sets rotation, Shift + Fader 2 sets probability. Button + Fader 1 changes the sequencer speed with available resolutions: 32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar.",
+    text: "This app is a Euclidean sequencer with two outputs: Jack 1 delivers the main Euclidean rhythm, while Jack 2 provides either an inverted version or an end-of-rhythm pulse. In inverted mode, if Output 1 sends a pulse, Output 2 does not—and vice versa. Send MIDI triggers, with MIDI channel and MIDI notes. Main functions include Fader 1 for sequence length and Fader 2 for number of beats (fill). Button 1 toggles semitone offset, Button 2 mutes the output. Shift + Fader 1 sets rotation, Shift + Fader 2 sets probability. Button + Fader 1 changes the sequencer speed with available resolutions: 32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar. While setting speed, LED color indicates division type: orange for triplet divisions and blue for straight divisions.",
     channels: [
       {
         jackTitle: "Trigger 1 Out",
@@ -411,7 +411,7 @@ const apps: ManualAppData[] = [
         fnDescription: "Fn + Fader changes the sequencer speed",
         ledTop: "Trigger 1 activity",
         ledBottom: "",
-        ledBottomPlusFn: "Clock speed",
+        ledBottomPlusFn: "Clock speed (orange: triplet, blue: straight)",
       },
       {
         jackTitle: "Trigger 2 Out",
@@ -438,7 +438,7 @@ const apps: ManualAppData[] = [
     icon: "die",
     params: ["MIDI Channel", "MIDI NOTE", "GATE %", "Color"],
     storage: ["Probability", "Muted", "Resolution"],
-    text: "This app sends random trigger signals on clock. It can output MIDI notes and CV triggers. The fader sets the probability of a trigger occurring at each clock pulse. The button acts as a mute toggle. Shift + Fader sets the clock resolution, allowing for rhythmic variation.",
+    text: "This app sends random trigger signals on clock. It can output MIDI notes and CV triggers. The fader sets the probability of a trigger occurring at each clock pulse. The button acts as a mute toggle. Shift + Fader sets the clock resolution, allowing for rhythmic variation. While adjusting resolution, the bottom LED is orange for triplet divisions and blue for straight divisions.",
     channels: [
       {
         jackTitle: "Trigger Output",
@@ -454,6 +454,7 @@ const apps: ManualAppData[] = [
         fnPlusShiftDescription: "",
         ledTop: "Trigger activity indicator",
         ledBottom: "Flashes with clock",
+        ledBottomPlusShift: "Resolution type (orange: triplet, blue: straight)",
       },
     ],
   },
@@ -466,7 +467,7 @@ const apps: ManualAppData[] = [
     icon: "note",
     params: ["MIDI Channel", "Base note", "Span", "GATE %", "Out", "Color"],
     storage: ["Note", "Resolution", "Muted", "Clocked"],
-    text: "This app sends MIDI notes and V/Oct voltages in a 0–10V range. The outputted notes are filtered by the global quantizer. The note value is tied to the fader position, with the range set by the span parameter. In clocked mode, the button is a toggle and the app outputs notes on regular intervals set by Button + Fader. In direct mode, the MIDI notes are sent when the button is pressed. Main functions: Fader sets the note; Shift + Fader sets clock resolution; Shift + Button toggles mode—Bottom LED is flashing for clocked mode, off for direct mode.",
+    text: "This app sends MIDI notes and V/Oct voltages in a 0–10V range. The outputted notes are filtered by the global quantizer. The note value is tied to the fader position, with the range set by the span parameter. In clocked mode, the button is a toggle and the app outputs notes on regular intervals set by Button + Fader. In direct mode, the MIDI notes are sent when the button is pressed. Main functions: Fader sets the note; Shift + Fader sets clock resolution; Shift + Button toggles mode—Bottom LED is flashing for clocked mode, off for direct mode. Resolution type is color-coded as orange for triplet divisions and blue for straight divisions.",
     channels: [
       {
         jackTitle: "Output",
@@ -481,7 +482,7 @@ const apps: ManualAppData[] = [
         fnPlusShiftTitle: "Toggles between clocked and direct mode",
         fnPlusShiftDescription: "",
         ledTop: "Note output indicator",
-        ledBottom: "Flashes in clocked mode",
+        ledBottom: "Flashes in clocked mode (orange: triplet, blue: straight)",
       },
     ],
   },
@@ -737,7 +738,7 @@ const apps: ManualAppData[] = [
     icon: "note-box",
     params: ["MIDI Channel", "MIDI Note", "GATE %", "Color"],
     storage: ["Division", "Muted", "Maximum division", "Minimum division"],
-    text: "This is a simple clock divider app that was suggested by youtuber and Discord member Synthdad. The app allows for a performative control of clock division/multiplication allowing for 'build ups and drops' for example. The maximum and minimum divisions can be user set using shift + fader and button + fader respectively. These are saved into the scenes allowing you to set different ranges depending on your needs.",
+    text: "This is a simple clock divider app that was suggested by youtuber and Discord member Synthdad. The app allows for a performative control of clock division/multiplication allowing for 'build ups and drops' for example. The maximum and minimum divisions can be user set using shift + fader and button + fader respectively. These are saved into the scenes allowing you to set different ranges depending on your needs. While setting divisions, LEDs indicate the selected type: orange for triplet divisions and blue for straight divisions.",
     channels: [
       {
         jackTitle: "Trigger out",
@@ -751,8 +752,9 @@ const apps: ManualAppData[] = [
         fnDescription: "",
         fnPlusShiftTitle: "Mute",
         ledTop: "Trigger activity indicator",
-        ledTopPlusShift: "Maximum division",
-        ledBottomPlusShift: "Minimum division",
+        ledTopPlusShift: "Maximum division (orange: triplet, blue: straight)",
+        ledBottomPlusShift:
+          "Minimum division (orange: triplet, blue: straight)",
         ledBottom: "",
       },
     ],
