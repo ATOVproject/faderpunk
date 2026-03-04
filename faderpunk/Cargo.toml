@@ -38,7 +38,7 @@ cortex-m = { version = "0.7.7", features = ["inline-asm"] }
 cortex-m-rt = "0.7.5"
 critical-section = "1.2.0"
 defmt = "1.0.1"
-defmt-rtt = "1.0.0"
+defmt-rtt = "1.1.0"
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
 fm24v10 = "0.1.1"
