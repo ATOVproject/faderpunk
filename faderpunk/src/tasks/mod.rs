@@ -1,11 +1,11 @@
 pub mod buttons;
-pub mod input_handlers;
 pub mod calibration;
 pub mod clock;
 pub mod configure;
 pub mod fram;
 pub mod global_config;
 pub mod i2c;
+pub mod input_handlers;
 pub mod leds;
 pub mod max;
 pub mod midi;
