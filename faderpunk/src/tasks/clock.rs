@@ -30,8 +30,8 @@ use crate::{
 };
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
-// 16 apps
-const CLOCK_PUBSUB_SUBSCRIBERS: usize = 16;
+// 16 apps + 1 clock LED sync
+const CLOCK_PUBSUB_SUBSCRIBERS: usize = 17;
 // 3 Ext clocks, internal clock, midi
 const CLOCK_PUBSUB_PUBLISHERS: usize = 5;
 // Add a slight delay before the very first tick (to offset it to reset)
@@ -103,10 +103,13 @@ pub enum ClockEvent {
 }
 
 const INTERNAL_PPQN: u8 = 24;
+/// How long CLOCK_FLASH_HIGH stays true after each beat (ms).
+const CLOCK_FLASH_HIGH_MS: u64 = 80;
 
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(run_clock_sources(aux_inputs)).unwrap();
     spawner.spawn(run_clock_gatekeeper()).unwrap();
+    spawner.spawn(run_clock_led_sync()).unwrap();
 }
 
 async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
@@ -180,6 +183,39 @@ async fn analog_tick(aux_no: usize, trigger_len: u64) {
     MAX_TRIGGERS_GPO[gpo_index].store(2, Ordering::Relaxed);
     Timer::after_millis(trigger_len).await;
     MAX_TRIGGERS_GPO[gpo_index].store(1, Ordering::Relaxed);
+}
+
+#[embassy_executor::task]
+async fn run_clock_led_sync() {
+    use crate::tasks::leds::CLOCK_FLASH_HIGH;
+
+    let mut sub = CLOCK_PUBSUB.subscriber().unwrap();
+    let mut tick_count: u64 = 0;
+
+    loop {
+        match sub.next_message().await {
+            embassy_sync::pubsub::WaitResult::Message(event) => match event {
+                ClockEvent::Tick => {
+                    tick_count += 1;
+                    // Fire on the first tick of each quarter note (every 24 ppqn ticks).
+                    if tick_count % 24 == 1 {
+                        CLOCK_FLASH_HIGH.store(true, Ordering::Relaxed);
+                        Timer::after_millis(CLOCK_FLASH_HIGH_MS).await;
+                        CLOCK_FLASH_HIGH.store(false, Ordering::Relaxed);
+                    }
+                }
+                ClockEvent::Start | ClockEvent::Reset => {
+                    tick_count = 0;
+                    CLOCK_FLASH_HIGH.store(false, Ordering::Relaxed);
+                }
+                ClockEvent::Stop => {
+                    CLOCK_FLASH_HIGH.store(false, Ordering::Relaxed);
+                }
+            },
+            // Missed messages during the 80ms timer wait — skip and continue.
+            embassy_sync::pubsub::WaitResult::Lagged(_) => {}
+        }
+    }
 }
 
 #[embassy_executor::task]
