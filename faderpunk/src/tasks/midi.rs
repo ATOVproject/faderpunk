@@ -38,6 +38,7 @@ midly::stack_buffer! {
 const MIDI_CHANNEL_SIZE: usize = 16;
 const MIDI_APP_QUEUE_SIZE: usize = 16;
 const MIDI_PUBSUB_SIZE: usize = 64;
+const MIDI_BURST_PER_TICK: usize = 8;
 // Max apps
 const MIDI_PUBSUB_SUBS: usize = GLOBAL_CHANNELS;
 // Only one, from here
@@ -221,15 +222,24 @@ pub async fn midi_distributor() {
                     let _ = app_queues[start_channel].push_back(ev);
                 }
             }
-            // The 1ms throttle timer has fired, send one message.
+            // The throttle timer has fired, send a small burst.
             Either::Second(_) => {
-                // Find the next app with a message in its queue (round-robin)
-                for i in 0..16 {
-                    let app_idx = (last_app_id + 1 + i) % 16;
-                    if let Some(ev) = app_queues[app_idx].pop_front() {
-                        midi_out_sender.send(MidiOutEvent::Event(ev)).await;
-                        last_app_id = app_idx;
-                        break; // Stop after sending one message
+                for _ in 0..MIDI_BURST_PER_TICK {
+                    let mut sent = false;
+
+                    // Find the next app with a message in its queue (round-robin)
+                    for i in 0..16 {
+                        let app_idx = (last_app_id + 1 + i) % 16;
+                        if let Some(ev) = app_queues[app_idx].pop_front() {
+                            midi_out_sender.send(MidiOutEvent::Event(ev)).await;
+                            last_app_id = app_idx;
+                            sent = true;
+                            break;
+                        }
+                    }
+
+                    if !sent {
+                        break;
                     }
                 }
             }
