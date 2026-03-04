@@ -8,10 +8,12 @@ use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
 use libfp::{constants::CHAN_LED_MAP, ext::BrightnessExt};
 use libfp::{Brightness, Color, LED_BRIGHTNESS_RANGE};
-use portable_atomic::{AtomicBool, AtomicU8, Ordering};
+use portable_atomic::{AtomicU8, Ordering};
 use smart_leds::colors::BLACK;
 use smart_leds::{brightness, gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
+
+use crate::tasks::clock::METRONOME_HIGH;
 
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
@@ -19,8 +21,6 @@ const NUM_LEDS: usize = 50;
 const LED_OVERLAY_CHANNEL_SIZE: usize = 16;
 
 pub static LED_BRIGHTNESS: AtomicU8 = AtomicU8::new(LED_BRIGHTNESS_RANGE.end);
-pub static CLOCK_FLASH_HIGH: AtomicBool = AtomicBool::new(false);
-const CLOCK_FLASH_DIM: u8 = 30;
 
 static LED_SIGNALS: [Signal<CriticalSectionRawMutex, LedMsg>; NUM_LEDS] =
     [const { Signal::new() }; NUM_LEDS];
@@ -167,10 +167,10 @@ impl LedEffect {
                 result
             }
             LedEffect::ClockFlash { color, brightness } => {
-                if CLOCK_FLASH_HIGH.load(Ordering::Relaxed) {
+                if METRONOME_HIGH.load(Ordering::Relaxed) {
                     color.scale(*brightness)
                 } else {
-                    color.scale(CLOCK_FLASH_DIM)
+                    color.scale(Brightness::Low.into())
                 }
             }
             LedEffect::StaticFade {
@@ -277,7 +277,7 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
 
     startup_animation(&mut leds).await;
 
-    leds.base_layer[16] = LedEffect::Static {
+    leds.base_layer[16] = LedEffect::ClockFlash {
         color: Color::Pink.into(),
         brightness: Brightness::Mid.into(),
     };
