@@ -26,7 +26,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - uses: knope-dev/action@v2.1.0
+      - uses: knope-dev/action@v2.1.2
         with:
           version: 0.22.2
       - name: Prepare beta release
@@ -209,7 +209,7 @@ jobs:
         with:
           name: release-artifacts-configurator
           path: artifacts
-      - uses: knope-dev/action@v2.1.0
+      - uses: knope-dev/action@v2.1.2
         with:
           version: 0.22.2
       - run: knope release --verbose
