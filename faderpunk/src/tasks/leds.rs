@@ -20,6 +20,7 @@ const LED_OVERLAY_CHANNEL_SIZE: usize = 16;
 
 pub static LED_BRIGHTNESS: AtomicU8 = AtomicU8::new(LED_BRIGHTNESS_RANGE.end);
 pub static CLOCK_FLASH_HIGH: AtomicBool = AtomicBool::new(false);
+const CLOCK_FLASH_DIM: u8 = 30;
 
 static LED_SIGNALS: [Signal<CriticalSectionRawMutex, LedMsg>; NUM_LEDS] =
     [const { Signal::new() }; NUM_LEDS];
@@ -166,11 +167,10 @@ impl LedEffect {
                 result
             }
             LedEffect::ClockFlash { color, brightness } => {
-                const DIM: u8 = 30;
                 if CLOCK_FLASH_HIGH.load(Ordering::Relaxed) {
                     color.scale(*brightness)
                 } else {
-                    color.scale(DIM)
+                    color.scale(CLOCK_FLASH_DIM)
                 }
             }
             LedEffect::StaticFade {
