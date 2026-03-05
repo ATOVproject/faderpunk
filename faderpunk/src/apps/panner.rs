@@ -515,7 +515,7 @@ pub async fn run(
                 match latch_layer_glob.get() {
                     LatchLayer::Main => {
                         let out = output_glob.get();
-                        i2c.send_fader_value(0, out).await;
+                        i2c.send_fader_value(0, out, range).await;
                     }
                     LatchLayer::Alt => {
                         // Now we commit to storage
