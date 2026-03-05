@@ -39,7 +39,7 @@ const TICK_RESET_DELAY: u8 = 2;
 /// PPQN of the internal clock
 const INTERNAL_PPQN: u8 = 24;
 /// How long METRONOME_HIGH stays true after each beat (ms).
-const METRONOME_HIGH_MS: u64 = 80;
+const METRONOME_HIGH_MS: u64 = 25;
 
 pub static TICK_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub static METRONOME_HIGH: AtomicBool = AtomicBool::new(true);
@@ -204,10 +204,10 @@ async fn metronome() {
             }
             ClockEvent::Start | ClockEvent::Reset => {
                 tick_count = 0;
-                METRONOME_HIGH.store(false, Ordering::Relaxed);
+                METRONOME_HIGH.store(true, Ordering::Relaxed);
             }
             ClockEvent::Stop => {
-                METRONOME_HIGH.store(true, Ordering::Relaxed);
+                METRONOME_HIGH.store(false, Ordering::Relaxed);
             }
         }
     }

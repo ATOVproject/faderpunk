@@ -55,7 +55,7 @@ pub enum LedMode {
     FadeOut(Color),
     Flash(Color, Option<usize>),
     StaticFade(Color, u16),
-    ClockFlash(Color, Brightness),
+    ClockFlash(Color, Brightness, Brightness),
 }
 
 impl LedMode {
@@ -79,9 +79,10 @@ impl LedMode {
                 delay_ms,
                 elapsed_frames: 0,
             },
-            LedMode::ClockFlash(color, brightness) => LedEffect::ClockFlash {
+            LedMode::ClockFlash(color, brightness_high, brightness_low) => LedEffect::ClockFlash {
                 color: color.into(),
-                brightness: brightness.into(),
+                brightness_high: brightness_high.into(),
+                brightness_low: brightness_low.into(),
             },
         }
     }
@@ -110,7 +111,8 @@ enum LedEffect {
     },
     ClockFlash {
         color: RGB8,
-        brightness: u8,
+        brightness_high: u8,
+        brightness_low: u8,
     },
 }
 
@@ -166,11 +168,15 @@ impl LedEffect {
 
                 result
             }
-            LedEffect::ClockFlash { color, brightness } => {
+            LedEffect::ClockFlash {
+                color,
+                brightness_high,
+                brightness_low,
+            } => {
                 if METRONOME_HIGH.load(Ordering::Relaxed) {
-                    color.scale(*brightness)
+                    color.scale(*brightness_high)
                 } else {
-                    color.scale(Brightness::Low.into())
+                    color.scale(*brightness_low)
                 }
             }
             LedEffect::StaticFade {
@@ -279,7 +285,8 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
 
     leds.base_layer[16] = LedEffect::ClockFlash {
         color: Color::Pink.into(),
-        brightness: Brightness::Mid.into(),
+        brightness_high: Brightness::High.into(),
+        brightness_low: Brightness::Mid.into(),
     };
     leds.base_layer[17] = LedEffect::Static {
         color: Color::Yellow.into(),
