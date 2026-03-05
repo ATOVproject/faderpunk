@@ -22,7 +22,7 @@ use libfp::{
         DeviceStatus, ErrorCode, Response, WriteCommand, WriteReadCommand, MAX_MESSAGE_SIZE,
     },
     types::{RegressionValuesInput, RegressionValuesOutput},
-    I2cMode, I2C_ADDRESS_CALIBRATION,
+    I2cMode, Range, I2C_ADDRESS_CALIBRATION,
 };
 use postcard::{from_bytes, to_slice};
 
@@ -42,7 +42,7 @@ pub enum I2cFollowerMessage {
 }
 
 pub enum I2cLeaderMessage {
-    FaderValue(usize, u16),
+    FaderValue(usize, u16, Range),
 }
 
 const I2C_LEADER_CHANNEL_SIZE: usize = 16;
@@ -154,12 +154,21 @@ impl<'a> Compat16N<'a> {
         }
     }
 
-    async fn handle_fader_update(&mut self, chan: usize, value: u16) {
+    async fn handle_fader_update(&mut self, chan: usize, value: u16, range: Range) {
+        // Scale 12-bit fader value to II protocol range
+        // Unipolar (0-10V / 0-5V): 0-4095 -> 0-16383
+        // Bipolar (-5V to 5V): 0-4095 -> -8191 to 8191 (2047 = 0V)
+        let scaled: i16 = if range.is_bipolar() {
+            ((value as i32 - 2047) * 8191 / 2047) as i16
+        } else {
+            (value as i16) * 4
+        };
+
         // Send to ER-301 if present
         if self.devices.er301 {
             let cmd = er301::Commands::SetCv {
                 port: chan as u8,
-                value: value as i16,
+                value: scaled,
             };
             if let Ok(msg) = cmd.to_bytes(&mut self.buffer) {
                 if self.i2c.write(er301::ADDRESS, msg).await.is_err() {
@@ -176,7 +185,7 @@ impl<'a> Compat16N<'a> {
             let address = telexo::BASE_ADDRESS + device_index;
             let cmd = telexo::Commands::SetCv {
                 port,
-                value: value as i16,
+                value: scaled,
             };
 
             if let Ok(msg) = cmd.to_bytes(&mut self.buffer) {
@@ -334,7 +343,7 @@ async fn run_i2c_leader(mut i2c: i2c::I2c<'static, I2C0, Async>) {
     let mut compat16n = Compat16N::new(&mut i2c).await;
 
     loop {
-        let I2cLeaderMessage::FaderValue(chan, value) = I2C_LEADER_CHANNEL.receive().await;
-        compat16n.handle_fader_update(chan, value).await;
+        let I2cLeaderMessage::FaderValue(chan, value, range) = I2C_LEADER_CHANNEL.receive().await;
+        compat16n.handle_fader_update(chan, value, range).await;
     }
 }

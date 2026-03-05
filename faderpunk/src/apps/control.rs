@@ -317,6 +317,7 @@ pub async fn run(
             out = slew_2(out, attenuated, 3);
 
             jack.set_value(out);
+            output_glob.set(out);
 
             let midi_out = if muted {
                 if bipolar {
@@ -429,7 +430,7 @@ pub async fn run(
                     let out = output_glob.get();
                     // Send MIDI & I2C messages
 
-                    i2c.send_fader_value(0, out).await;
+                    i2c.send_fader_value(0, out, range).await;
                 }
                 LatchLayer::Alt => {
                     // Now we commit to storage
