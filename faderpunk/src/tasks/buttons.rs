@@ -8,14 +8,10 @@ use embassy_rp::peripherals::{
 };
 use embassy_rp::Peri;
 use embassy_time::Timer;
-use libfp::Color;
 use portable_atomic::{AtomicBool, Ordering};
 
-use crate::app::Led;
 use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
 use crate::tasks::clock::{TransportCmd, TRANSPORT_CMD_CHANNEL};
-
-use super::leds::{set_led_overlay_mode, LedMode};
 
 const LONG_PRESS_DURATION_MS: u64 = 500;
 
@@ -92,8 +88,6 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
             {
                 Either::First(_) => {
                     // Short press - Load scene
-                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(Color::Green, Some(2)))
-                        .await;
                     // TODO: experiment with using publish_immediate everywhere to prevent hanging
                     // subscribers
                     event_publisher
@@ -102,7 +96,6 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
                 }
                 Either::Second(_) => {
                     // Long press - Save scene
-                    set_led_overlay_mode(i, Led::Button, LedMode::Flash(Color::Red, Some(3))).await;
                     event_publisher
                         .publish(InputEvent::SaveScene(i as u8))
                         .await;
