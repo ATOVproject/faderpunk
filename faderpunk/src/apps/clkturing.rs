@@ -17,7 +17,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 7;
+pub const PARAMS: usize = 8;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing+",
@@ -48,6 +48,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
 })
 .add_param(Param::MidiNote { name: "Base note" })
+.add_param(Param::MidiNrpn)
 .add_param(Param::MidiOut);
 
 pub struct Params {
@@ -58,6 +59,7 @@ pub struct Params {
     midi_out: MidiOut,
     color: Color,
     range: Range,
+    nrpn: bool,
 }
 
 impl Default for Params {
@@ -70,6 +72,7 @@ impl Default for Params {
             midi_out: MidiOut::default(),
             color: Color::Pink,
             range: Range::_0_5V,
+            nrpn: false,
         }
     }
 }
@@ -86,7 +89,8 @@ impl AppParams for Params {
             color: Color::from_value(values[3]),
             range: Range::from_value(values[4]),
             midi_note: MidiNote::from_value(values[5]),
-            midi_out: MidiOut::from_value(values[6]),
+            nrpn: bool::from_value(values[6]),
+            midi_out: MidiOut::from_value(values[7]),
         })
     }
 
@@ -98,6 +102,7 @@ impl AppParams for Params {
         vec.push(self.color.into()).unwrap();
         vec.push(self.range.into()).unwrap();
         vec.push(self.midi_note.into()).unwrap();
+        vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec
     }
@@ -148,7 +153,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_mode, midi_cc, base_note, midi_out, midi_chan, led_color, range) =
+    let (midi_mode, midi_cc, base_note, midi_out, midi_chan, led_color, range, nrpn) =
         params.query(|p| {
             (
                 p.midi_mode,
@@ -158,6 +163,7 @@ pub async fn run(
                 p.midi_channel,
                 p.color,
                 p.range,
+                p.nrpn,
             )
         });
 
@@ -165,7 +171,7 @@ pub async fn run(
     let faders = app.use_faders();
     let leds = app.use_leds();
     let die = app.use_die();
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
 
     // let mut prob_glob = app.make_global_with_store(0, StorageSlot::A);
     // let mut length_glob = app.make_global_with_store(15, StorageSlot::B);

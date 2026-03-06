@@ -20,6 +20,7 @@ use heapless::{Deque, Vec};
 use midly::{
     io::Cursor,
     live::{LiveEvent, SystemCommon, SystemRealtime},
+    num::{u4, u7},
     stream::MidiStream,
     MidiMessage,
 };
@@ -51,18 +52,35 @@ pub enum MidiEventSource {
 }
 
 #[derive(Clone, Copy)]
-pub struct MidiMsg {
-    event: LiveEvent<'static>,
-    target: MidiOut,
-    source: MidiEventSource,
+pub enum MidiMsg {
+    Live {
+        event: LiveEvent<'static>,
+        target: MidiOut,
+        source: MidiEventSource,
+    },
+    Nrpn {
+        channel: u4,
+        param: u16,
+        value: u16,
+        target: MidiOut,
+    },
 }
 
 impl MidiMsg {
     pub fn new(event: LiveEvent<'static>, target: MidiOut, source: MidiEventSource) -> Self {
-        Self {
+        Self::Live {
             event,
             target,
             source,
+        }
+    }
+
+    pub fn nrpn(channel: u4, param: u16, value: u16, target: MidiOut) -> Self {
+        Self::Nrpn {
+            channel,
+            param,
+            value,
+            target,
         }
     }
 }
@@ -85,6 +103,12 @@ pub enum MidiOutEvent {
     Clock(MidiClockMsg),
 }
 
+#[derive(Clone, Copy)]
+pub enum MidiEvent {
+    Live(LiveEvent<'static>),
+    Nrpn { channel: u4, param: u16, value: u16 },
+}
+
 pub static MIDI_CHANNEL: Channel<CriticalSectionRawMutex, MidiOutEvent, MIDI_CHANNEL_SIZE> =
     Channel::new();
 
@@ -97,7 +121,7 @@ pub type AppMidiSender = Sender<'static, ThreadModeRawMutex, (usize, MidiMsg), M
 // Define the type once
 pub type MidiPubSubChannel = PubSubChannel<
     CriticalSectionRawMutex,
-    LiveEvent<'static>,
+    MidiEvent,
     MIDI_PUBSUB_SIZE,
     MIDI_PUBSUB_SUBS,
     MIDI_PUBSUB_SENDERS,
@@ -106,7 +130,7 @@ pub type MidiPubSubChannel = PubSubChannel<
 pub type MidiPubSubSubscriber = Subscriber<
     'static,
     CriticalSectionRawMutex,
-    LiveEvent<'static>,
+    MidiEvent,
     MIDI_PUBSUB_SIZE,
     MIDI_PUBSUB_SUBS,
     MIDI_PUBSUB_SENDERS,
@@ -115,7 +139,7 @@ pub type MidiPubSubSubscriber = Subscriber<
 pub type MidiPubSubPublisher = Publisher<
     'static,
     CriticalSectionRawMutex,
-    LiveEvent<'static>,
+    MidiEvent,
     MIDI_PUBSUB_SIZE,
     MIDI_PUBSUB_SUBS,
     MIDI_PUBSUB_SENDERS,
@@ -272,46 +296,110 @@ pub async fn midi_out_task<'a>(
     loop {
         match select(midi_receiver.receive(), config_receiver.changed()).await {
             Either::First(midi_out_msg) => {
-                let (event, mut target, source) = match midi_out_msg {
-                    MidiOutEvent::Event(msg) => (msg.event, msg.target, Some(msg.source)),
-                    MidiOutEvent::Clock(msg) => (LiveEvent::Realtime(msg.event), msg.target, None),
-                };
+                match midi_out_msg {
+                    MidiOutEvent::Event(MidiMsg::Live {
+                        event,
+                        mut target,
+                        source,
+                    }) => {
+                        // Disable targets where we have a strict THRU port or no output.
+                        // Only for local events; passthrough and clock are handled elsewhere.
+                        if let MidiEventSource::Local = source {
+                            for (i, disabled) in disabled_outs_for_local.iter().enumerate() {
+                                target.0[i] = target.0[i] && !disabled;
+                            }
+                        }
 
-                // Disable the targets where we have a strict THRU port or no midi output at all
-                // This is only for local events
-                // Passthrough and clock events are handled elsewhere
-                if let Some(MidiEventSource::Local) = source {
-                    for (i, disabled) in disabled_outs_for_local.iter().enumerate() {
-                        target.0[i] = target.0[i] && !disabled;
+                        let usb_fut = async {
+                            if let MidiOut([true, _, _]) = target {
+                                let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                            }
+                        };
+                        let out1_fut = async {
+                            if let MidiOut([_, true, _]) = target {
+                                let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
+                            }
+                        };
+                        let out2_fut = async {
+                            if let MidiOut([_, _, true]) = target {
+                                let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
+                            }
+                        };
+                        join3(usb_fut, out1_fut, out2_fut).await;
+                    }
+                    MidiOutEvent::Event(MidiMsg::Nrpn {
+                        channel,
+                        param,
+                        value,
+                        mut target,
+                    }) => {
+                        use libfp::utils::scale_bits_12_14;
+                        for (i, disabled) in disabled_outs_for_local.iter().enumerate() {
+                            target.0[i] = target.0[i] && !disabled;
+                        }
+                        let value_14 = scale_bits_12_14(value);
+                        let ccs: [LiveEvent<'static>; 4] = [
+                            LiveEvent::Midi {
+                                channel,
+                                message: MidiMessage::Controller {
+                                    controller: u7::new(99),
+                                    value: u7::new((param >> 7) as u8),
+                                },
+                            },
+                            LiveEvent::Midi {
+                                channel,
+                                message: MidiMessage::Controller {
+                                    controller: u7::new(98),
+                                    value: u7::new((param & 0x7F) as u8),
+                                },
+                            },
+                            LiveEvent::Midi {
+                                channel,
+                                message: MidiMessage::Controller {
+                                    controller: u7::new(6),
+                                    value: u7::new((value_14 >> 7) as u8),
+                                },
+                            },
+                            LiveEvent::Midi {
+                                channel,
+                                message: MidiMessage::Controller {
+                                    controller: u7::new(38),
+                                    value: u7::new((value_14 & 0x7F) as u8),
+                                },
+                            },
+                        ];
+                        for event in ccs {
+                            if let MidiOut([true, _, _]) = target {
+                                let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                            }
+                            if let MidiOut([_, true, _]) = target {
+                                let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
+                            }
+                            if let MidiOut([_, _, true]) = target {
+                                let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
+                            }
+                        }
+                    }
+                    MidiOutEvent::Clock(msg) => {
+                        let event = LiveEvent::Realtime(msg.event);
+                        let usb_fut = async {
+                            if let MidiOut([true, _, _]) = msg.target {
+                                let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                            }
+                        };
+                        let out1_fut = async {
+                            if let MidiOut([_, true, _]) = msg.target {
+                                let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
+                            }
+                        };
+                        let out2_fut = async {
+                            if let MidiOut([_, _, true]) = msg.target {
+                                let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
+                            }
+                        };
+                        join3(usb_fut, out1_fut, out2_fut).await;
                     }
                 }
-
-                // TODO: Deal with backpressure as well (do it on core b maybe?)
-                // TODO: Do not try to send midi message to USB when not connected
-                // usb_tx.wait_connection().await;
-
-                // Usb
-                let usb_fut = async {
-                    if let MidiOut([true, _, _]) = target {
-                        let _ = write_msg_to_usb(&mut usb_tx, event).await;
-                    }
-                };
-
-                // Out1
-                let out1_fut = async {
-                    if let MidiOut([_, true, _]) = target {
-                        let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
-                    }
-                };
-
-                // Out2
-                let out2_fut = async {
-                    if let MidiOut([_, _, true]) = target {
-                        let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
-                    }
-                };
-
-                join3(usb_fut, out1_fut, out2_fut).await;
             }
             Either::Second(new_config) => {
                 disabled_outs_for_local = new_config.midi.outs.map(|c| {
@@ -346,6 +434,8 @@ pub async fn midi_in_task<'a>(
     let mut uart_rx_buffer = [0u8; 64];
     let mut midi_stream = MidiStream::<MidiStreamBuffer>::default();
     let mut uart_events = Vec::<LiveEvent<'static>, 64>::new();
+    let mut usb_nrpn_trackers: [NrpnTracker; 16] = Default::default();
+    let mut din_nrpn_trackers: [NrpnTracker; 16] = Default::default();
 
     let config = config_receiver.get().await;
 
@@ -417,6 +507,7 @@ pub async fn midi_in_task<'a>(
                                 process_midi_event(
                                     &event,
                                     &usb_publisher,
+                                    &mut usb_nrpn_trackers,
                                     midi_passthru_from_usb,
                                     ClockSrc::MidiUsb,
                                     &clock_in_sender,
@@ -447,6 +538,7 @@ pub async fn midi_in_task<'a>(
                         process_midi_event(
                             event,
                             &din_publisher,
+                            &mut din_nrpn_trackers,
                             midi_passthru_from_din,
                             ClockSrc::MidiIn,
                             &clock_in_sender,
@@ -501,9 +593,73 @@ pub async fn midi_in_task<'a>(
     }
 }
 
+#[derive(Default)]
+struct NrpnTracker {
+    param_msb: Option<u8>,
+    param_lsb: Option<u8>,
+    value_msb: Option<u8>,
+}
+
+impl NrpnTracker {
+    /// Process a CC message. Returns Some(MidiEvent) if a complete NRPN message was assembled
+    /// or if a non-NRPN CC should be forwarded. Returns None if the CC was consumed as part of
+    /// an NRPN sequence.
+    fn process_cc(&mut self, channel: u4, controller: u7, value: u7) -> Option<MidiEvent> {
+        let cc = controller.as_int();
+        match cc {
+            99 => {
+                self.param_msb = Some(value.as_int());
+                self.value_msb = None;
+                None
+            }
+            98 => {
+                self.param_lsb = Some(value.as_int());
+                self.value_msb = None;
+                None
+            }
+            6 => {
+                if self.param_msb.is_some() && self.param_lsb.is_some() {
+                    self.value_msb = Some(value.as_int());
+                    None
+                } else {
+                    Some(MidiEvent::Live(LiveEvent::Midi {
+                        channel,
+                        message: MidiMessage::Controller { controller, value },
+                    }))
+                }
+            }
+            38 => {
+                if let Some(val_msb) = self.value_msb.take() {
+                    let param = ((self.param_msb.unwrap_or(0) as u16) << 7)
+                        | (self.param_lsb.unwrap_or(0) as u16);
+                    let nrpn_value = ((val_msb as u16) << 7) | (value.as_int() as u16);
+                    Some(MidiEvent::Nrpn {
+                        channel,
+                        param,
+                        value: nrpn_value,
+                    })
+                } else {
+                    Some(MidiEvent::Live(LiveEvent::Midi {
+                        channel,
+                        message: MidiMessage::Controller { controller, value },
+                    }))
+                }
+            }
+            _ => {
+                // Non-NRPN CC — pass through
+                Some(MidiEvent::Live(LiveEvent::Midi {
+                    channel,
+                    message: MidiMessage::Controller { controller, value },
+                }))
+            }
+        }
+    }
+}
+
 async fn process_midi_event(
     event: &LiveEvent<'_>,
     publisher: &MidiPubSubPublisher,
+    nrpn_trackers: &mut [NrpnTracker; 16],
     thru_targets: [bool; 3],
     clock_src: ClockSrc,
     clock_in_sender: &Sender<'static, ThreadModeRawMutex, ClockInEvent, 16>,
@@ -530,11 +686,29 @@ async fn process_midi_event(
             }
             _ => {}
         },
+        LiveEvent::Midi { channel, message } => {
+            let ev = event.to_static();
+            // Always pass raw event through for MIDI thru
+            midi_sender
+                .send(MidiOutEvent::Event(MidiMsg::new(
+                    ev,
+                    MidiOut(thru_targets),
+                    MidiEventSource::Passthrough,
+                )))
+                .await;
+            // Route CC through NRPN tracker
+            if let MidiMessage::Controller { controller, value } = message {
+                let tracker = &mut nrpn_trackers[channel.as_int() as usize];
+                if let Some(midi_event) = tracker.process_cc(*channel, *controller, *value) {
+                    publisher.publish_immediate(midi_event);
+                }
+            } else {
+                publisher.publish_immediate(MidiEvent::Live(ev));
+            }
+        }
         _ => {
             let ev = event.to_static();
-            // Send to apps
-            publisher.publish_immediate(ev);
-            // Pass through to relevant targets
+            publisher.publish_immediate(MidiEvent::Live(ev));
             midi_sender
                 .send(MidiOutEvent::Event(MidiMsg::new(
                     ev,

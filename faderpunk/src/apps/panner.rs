@@ -18,7 +18,7 @@ use libfp::{Config, Curve, Param, Range, Value};
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 9;
+pub const PARAMS: usize = 10;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Panner",
@@ -58,6 +58,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::bool {
     name: "Store state",
 })
+.add_param(Param::MidiNrpn)
 .add_param(Param::MidiOut);
 
 pub struct Params {
@@ -70,6 +71,7 @@ pub struct Params {
     on_release: bool,
     color: Color,
     save_state: bool,
+    nrpn: bool,
 }
 
 impl Default for Params {
@@ -84,6 +86,7 @@ impl Default for Params {
             on_release: false,
             color: Color::Blue,
             save_state: true,
+            nrpn: false,
         }
     }
 }
@@ -102,7 +105,8 @@ impl AppParams for Params {
             on_release: bool::from_value(values[5]),
             color: Color::from_value(values[6]),
             save_state: bool::from_value(values[7]),
-            midi_out: MidiOut::from_value(values[8]),
+            nrpn: bool::from_value(values[8]),
+            midi_out: MidiOut::from_value(values[9]),
         })
     }
 
@@ -116,6 +120,7 @@ impl AppParams for Params {
         vec.push(self.on_release.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.save_state.into()).unwrap();
+        vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec
     }
@@ -185,6 +190,7 @@ pub async fn run(
         range,
         led_color,
         save_state,
+        nrpn,
     ) = params.query(|p| {
         (
             p.curve,
@@ -196,13 +202,14 @@ pub async fn run(
             p.range,
             p.color,
             p.save_state,
+            p.nrpn,
         )
     });
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
     let i2c = app.use_i2c_output();
 
     let muted_glob = app.make_global(storage.query(|s| s.muted));

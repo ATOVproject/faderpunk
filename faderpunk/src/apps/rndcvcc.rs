@@ -23,7 +23,7 @@ use libfp::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 5;
 
 const LED_COLOR: Color = Color::Violet;
 
@@ -38,6 +38,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "MIDI Channel",
 })
 .add_param(Param::MidiCc { name: "MIDI CC" })
+.add_param(Param::MidiNrpn)
 .add_param(Param::MidiOut);
 
 pub struct Params {
@@ -45,6 +46,7 @@ pub struct Params {
     midi_channel: MidiChannel,
     midi_cc: MidiCc,
     midi_out: MidiOut,
+    nrpn: bool,
 }
 
 impl Default for Params {
@@ -54,6 +56,7 @@ impl Default for Params {
             midi_channel: MidiChannel::default(),
             midi_cc: MidiCc::from(32),
             midi_out: MidiOut::default(),
+            nrpn: false,
         }
     }
 }
@@ -67,7 +70,8 @@ impl AppParams for Params {
             bipolar: bool::from_value(values[0]),
             midi_channel: MidiChannel::from_value(values[1]),
             midi_cc: MidiCc::from_value(values[2]),
-            midi_out: MidiOut::from_value(values[3]),
+            nrpn: bool::from_value(values[3]),
+            midi_out: MidiOut::from_value(values[4]),
         })
     }
 
@@ -76,6 +80,7 @@ impl AppParams for Params {
         vec.push(self.bipolar.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
+        vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec
     }
@@ -130,8 +135,8 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (bipolar, midi_out, midi_chan, midi_cc) =
-        params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc));
+    let (bipolar, midi_out, midi_chan, midi_cc, nrpn) =
+        params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc, p.nrpn));
 
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
@@ -139,7 +144,7 @@ pub async fn run(
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
     let range = if bipolar {
         Range::_Neg5_5V
     } else {
