@@ -190,12 +190,10 @@ async fn main(spawner: Spawner) {
         return factory_reset().await;
     }
 
-    // Load calibration if there is no calibration data or
-    // when scene is pressed during startup
+    // Enter calibration mode if there is no calibration data or
+    // when scene is pressed during startup; otherwise preserve the saved mode
     if calibration_data.is_none() || is_scene_button_pressed() {
         global_config.i2c_mode = I2cMode::Calibration;
-    } else {
-        global_config.i2c_mode = I2cMode::Follower;
     }
 
     // Send off global config to all tasks that need it
