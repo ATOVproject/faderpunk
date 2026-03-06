@@ -893,6 +893,7 @@ const apps: ManualAppData[] = [
       "Drums Map X & Y",
       "Euclidean Fill",
       "Euclidean Length",
+      "Euclidean Offset",
       "Chaos",
       "Division",
       "Trigger Mutes",
@@ -915,9 +916,11 @@ Generates patterns by interpolating through a 2D map of pre-analyzed drum patter
 
 Generates classic Euclidean rhythms for each of the three main trigger outputs independently.
 
-* **Length 1 / Length 2 / Length 3:** Sets the total number of steps in the sequence for each output (1-32).
-* **Fill 1 / Fill 2 / Fill 3:** Sets the number of triggers distributed as evenly as possible within the sequence length for each output (0-31). If fill is greater than length, it's capped at the length value (so trigger will emit on every step)
+* **Length 1 / Length 2 / Length 3:** Sets the total number of steps in the sequence for each output (1-16).
+* **Fill 1 / Fill 2 / Fill 3:** Main faders set fill amount from 0 to the current Length for each channel (derived from length).
+* **Offset 1 / Offset 2 / Offset 3:** While holding Shift, press channel buttons 1-3 to rotate each Euclidean pattern.
 * **Chaos Amount:** Controls the amount of random step-skipping/triggering.
+* While Shift is held in Euclidean mode, channel buttons light pink to indicate offset control.
 
 #### Patch Ideas
 
@@ -941,43 +944,49 @@ The faders function varys depending on the current output mode.  In the diagram 
         jackDescription: "Bass drum sequenced gate output",
         faderTitle: "Density 1 (Euclidean Fill 1)",
         faderDescription:
-          "Control the drums note density (or Euclidean fill) from a sparse backbone to a frantic pattern",
+          "Control the drums note density (or Euclidean fill amount, derived from current Euclidean length)",
         faderPlusShiftTitle: "Map X (Euclidean Length 1)",
         faderPlusShiftDescription:
-          "Interpolating scan through drum map (Euclidean pattern length 1-32 steps)",
+          "Interpolating scan through drum map (Euclidean pattern length 1-16 steps)",
         ledTop: "Gate output 1",
         ledBottom: "Density 1 Amount (Euclidean Fill 1 Amount)",
         ledBottomPlusShift: "Map X Amount",
         fnTitle: "Mute 1",
         fnDescription: "Mute trigger 1",
+        fnPlusShiftTitle: "Euclidean Offset 1",
+        fnPlusShiftDescription: "Shift + Button 1 rotates Euclidean pattern 1",
       },
       {
         jackTitle: "Trigger output 2",
         jackDescription: "Snare sequenced gate output",
         faderTitle: "Density 2 (Euclidean Fill 2)",
         faderDescription:
-          "Control the drums note density (or Euclidean fill) from a sparse backbone to a frantic pattern",
+          "Control the drums note density (or Euclidean fill amount, derived from current Euclidean length)",
         faderPlusShiftTitle: "Map Y (Euclidean Length 2)",
         faderPlusShiftDescription:
-          "Interpolating scan through drum map (Euclidean pattern length 1-32 steps)",
+          "Interpolating scan through drum map (Euclidean pattern length 1-16 steps)",
         ledTop: "Gate output 2",
         ledBottom: "Density 2 Amount (Euclidean Fill 2 Amount)",
         ledBottomPlusShift: "Map Y Amount",
         fnTitle: "Mute 2",
         fnDescription: "Mute trigger 2",
+        fnPlusShiftTitle: "Euclidean Offset 2",
+        fnPlusShiftDescription: "Shift + Button 2 rotates Euclidean pattern 2",
       },
       {
         jackTitle: "Trigger output 3",
         jackDescription: "Hi Hat sequenced gate output",
         faderTitle: "Density 3 (Euclidean Fill 3)",
         faderDescription:
-          "Control the drums note density (or Euclidean fill) from a sparse backbone to a frantic pattern",
+          "Control the drums note density (or Euclidean fill amount, derived from current Euclidean length)",
         faderPlusShiftTitle: "(Euclidean Length 3)",
-        faderPlusShiftDescription: "(Euclidean pattern length 1-32 steps)",
+        faderPlusShiftDescription: "(Euclidean pattern length 1-16 steps)",
         ledTop: "Gate output 3",
         ledBottom: "Density 3 Amount (Euclidean Fill 3 Amount)",
         fnTitle: "Mute 3",
         fnDescription: "Mute trigger 3",
+        fnPlusShiftTitle: "Euclidean Offset 3",
+        fnPlusShiftDescription: "Shift + Button 3 rotates Euclidean pattern 3",
       },
       {
         jackTitle: "Accent gate output",

@@ -95,6 +95,7 @@ pub struct PatternGenerator {
     // step_counter: [u8; K_NUM_PARTS],                        // Generic step counter per part, used for Euclidean perturbation in original code
     part_perturbation: [u8; K_NUM_PARTS], // Randomness value applied per part in Drum mode
     euclidean_step: [u8; K_NUM_PARTS], // Current step for each Euclidean generator (0 to length-1)
+    euclidean_offset: [u8; K_NUM_PARTS], // Per-part Euclidean rotation offset (0 to length-1)
 
     state_: u8, // Holds the current trigger/accent state for the current tick for all parts + accent.
     step_: u8,  // Current step in the main 32-step sequence (0-31), synonymous with sequence_step_
@@ -247,7 +248,19 @@ impl PatternGenerator {
             return;
         }
         // Clamp length to 1 - 32
-        self.current_euclidean_length[channel] = length.clamp(1, 32);
+        let clamped_length = length.clamp(1, 32);
+        self.current_euclidean_length[channel] = clamped_length;
+        self.euclidean_offset[channel] %= clamped_length;
+    }
+
+    /// Set Euclidean sequence offset for one channel (phase rotation)
+    pub fn set_offset(&mut self, channel: usize, offset: u8) {
+        if channel > K_NUM_PARTS {
+            return;
+        }
+
+        let length = self.current_euclidean_length[channel].max(1);
+        self.euclidean_offset[channel] = offset % length;
     }
 
     /// fill_param_value is 0-255 from app
@@ -325,6 +338,7 @@ impl Default for PatternGenerator {
             ],
             current_euclidean_length: [16; K_NUM_PARTS], // Default to 16 steps for all parts in Euclidean mode
             fill: [8; K_NUM_PARTS], // Default fill: 8 steps (50% for a 16-step length)
+            euclidean_offset: [0; K_NUM_PARTS],
             random: Random::default(),
         }
     }
@@ -487,7 +501,8 @@ impl PatternGenerator {
             }
 
             let pattern_bits: u32 = LUT_RES_EUCLIDEAN[address as usize];
-            let current_step_in_part: u32 = self.euclidean_step[part] as u32; // Current step for this part (0 to length - 1)
+            let current_step_in_part: u32 =
+                ((self.euclidean_step[part] + self.euclidean_offset[part]) % length) as u32; // Current step for this part (0 to length - 1)
 
             if (pattern_bits >> current_step_in_part) & 1 == 1 {
                 self.state_ |= 1 << part; // Set trigger for part "part"
