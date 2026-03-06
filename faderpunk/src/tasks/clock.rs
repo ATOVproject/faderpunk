@@ -23,7 +23,7 @@ use libfp::{
 use crate::{
     state::{is_clock_running, update_state},
     tasks::{
-        max::MAX_TRIGGERS_GPO,
+        max::{MaxCmd, MAX_CHANNEL},
         midi::{MidiClockMsg, MidiOutEvent, MIDI_CHANNEL},
     },
     Spawner, GLOBAL_CONFIG_WATCH,
@@ -36,6 +36,8 @@ const CLOCK_PUBSUB_SUBSCRIBERS: usize = 16;
 const CLOCK_PUBSUB_PUBLISHERS: usize = 5;
 // Add a slight delay before the very first tick (to offset it to reset)
 const TICK_RESET_DELAY: u8 = 2;
+const ONE_BAR_DIVISION: u16 = 96;
+const LONG_DIVISIONS_DESC: [u16; 3] = [384, 192, ONE_BAR_DIVISION];
 
 pub static TICK_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -151,11 +153,12 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
 }
 
 async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &mut [u16; 3]) {
+    let mut pending_ticks: [Option<(usize, u16)>; 3] = [None, None, None];
+
     for (i, aux) in config.aux.iter().enumerate() {
         if let AuxJackMode::ClockOut(div) = aux {
             if counters[i] == 0 {
-                // TODO: Adjust trigger_len based on division?
-                spawner.spawn(analog_tick(i, 5)).unwrap();
+                pending_ticks[i] = Some((i, *div as u16));
             }
 
             counters[i] += 1;
@@ -164,22 +167,57 @@ async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &
             }
         }
     }
+
+    for long_div in LONG_DIVISIONS_DESC {
+        for (i, div) in pending_ticks.iter().flatten() {
+            if *div == long_div {
+                trigger_analog_tick(spawner, *i, 5);
+            }
+        }
+    }
+
+    for (i, div) in pending_ticks.iter().flatten() {
+        if *div < ONE_BAR_DIVISION {
+            // TODO: Adjust trigger_len based on division?
+            // Ignore if task pool is full - skip this tick rather than panic
+            trigger_analog_tick(spawner, *i, 5);
+        }
+    }
 }
 
 async fn send_analog_reset(spawner: &Spawner, config: &GlobalConfig) {
     for (i, aux) in config.aux.iter().enumerate() {
         if let AuxJackMode::ResetOut = aux {
             // Send reset pulse with longer duration (10ms)
-            spawner.spawn(analog_tick(i, 10)).unwrap();
+            // Ignore if task pool is full - skip this reset rather than panic
+            trigger_analog_tick(spawner, i, 10);
         }
     }
 }
-#[embassy_executor::task(pool_size = 6)]
-async fn analog_tick(aux_no: usize, trigger_len: u64) {
+
+fn trigger_analog_tick(spawner: &Spawner, aux_no: usize, trigger_len: u64) {
     let gpo_index = 17 + aux_no;
-    MAX_TRIGGERS_GPO[gpo_index].store(2, Ordering::Relaxed);
+
+    if spawner
+        .spawn(analog_tick_release(aux_no, trigger_len))
+        .is_ok()
+    {
+        // Queue high transitions in caller order for deterministic MAX writes.
+        MAX_CHANNEL
+            .sender()
+            .try_send((gpo_index, MaxCmd::GpoSetHigh))
+            .ok();
+    }
+}
+
+#[embassy_executor::task(pool_size = 12)]
+async fn analog_tick_release(aux_no: usize, trigger_len: u64) {
+    let gpo_index = 17 + aux_no;
     Timer::after_millis(trigger_len).await;
-    MAX_TRIGGERS_GPO[gpo_index].store(1, Ordering::Relaxed);
+    MAX_CHANNEL
+        .sender()
+        .send((gpo_index, MaxCmd::GpoSetLow))
+        .await;
 }
 
 #[embassy_executor::task]
