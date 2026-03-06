@@ -164,6 +164,8 @@ impl AppParams for Params {
 pub struct Storage {
     fader_saved: [u16; K_NUM_PARTS + 1],
     shift_fader_saved: [u16; K_NUM_PARTS],
+    #[serde(default)]
+    euclidean_offset_saved: [u8; K_NUM_PARTS],
     div_fader_saved: u16, // 0 - 4095 range, maps to index into 'resolution' clock div array (same as euclid.rs)
     mute_saved: [bool; K_NUM_PARTS + 1], // 3 triggers + accent
     is_drum_mode: bool,   // = true (Drums Mode), = false (Euclidean mode)
@@ -174,6 +176,7 @@ impl Default for Storage {
         Self {
             fader_saved: [2047, 2047, 2047, 0 /* zero chaos */],
             shift_fader_saved: [2047; K_NUM_PARTS],
+            euclidean_offset_saved: [0; K_NUM_PARTS],
             div_fader_saved: 3000,
             mute_saved: [false; K_NUM_PARTS + 1],
             is_drum_mode: true,
@@ -263,8 +266,9 @@ pub async fn run(
     let drums_density_glob = app.make_global([127u8; K_NUM_PARTS]); // 0 - 255 fill density
     let drums_map_x_glob = app.make_global(127u8); // 0 - 255 Map X
     let drums_map_y_glob = app.make_global(127u8); // 0 - 255 Map Y
-    let euclidean_length_glob = app.make_global([16u8; K_NUM_PARTS]); // 1 - 32 steps
-    let euclidean_fill_glob = app.make_global([8u8; K_NUM_PARTS]); // 0 - 31 fill
+    let euclidean_length_glob = app.make_global([16u8; K_NUM_PARTS]); // 1 - 16 steps
+    let euclidean_fill_glob = app.make_global([8u8; K_NUM_PARTS]); // 0 - 16 pulses (derived from length)
+    let euclidean_offset_glob = app.make_global([0u8; K_NUM_PARTS]);
     let chaos_glob = app.make_global(0u8);
     let note_on_glob = app.make_global([false; K_NUM_PARTS]);
     let accent_on_glob = app.make_global(false);
@@ -286,6 +290,7 @@ pub async fn run(
             drums_map_y_glob: &drums_map_y_glob,
             euclidean_length_glob: &euclidean_length_glob,
             euclidean_fill_glob: &euclidean_fill_glob,
+            euclidean_offset_glob: &euclidean_offset_glob,
             chaos_glob: &chaos_glob,
             output_mode_glob: &output_mode_glob,
         },
@@ -311,6 +316,7 @@ pub async fn run(
                 drums_map_y_glob: &drums_map_y_glob,
                 euclidean_length_glob: &euclidean_length_glob,
                 euclidean_fill_glob: &euclidean_fill_glob,
+                euclidean_offset_glob: &euclidean_offset_glob,
                 chaos_glob: &chaos_glob,
             },
         );
@@ -401,6 +407,7 @@ pub async fn run(
                                 drums_map_y_glob: &drums_map_y_glob,
                                 euclidean_length_glob: &euclidean_length_glob,
                                 euclidean_fill_glob: &euclidean_fill_glob,
+                                euclidean_offset_glob: &euclidean_offset_glob,
                                 chaos_glob: &chaos_glob,
                             },
                         );
@@ -600,20 +607,36 @@ pub async fn run(
                         if chan < K_NUM_PARTS {
                             match latch_layer {
                                 LatchLayer::Main => {
-                                    // Convert fader value 0..4095 to Euclidean fill parameter in range 0 .. 31
+                                    // Convert fader value 0..4095 to Euclidean fill parameter in range 0..length,
+                                    // where length is derived from the channel's ALT fader.
                                     let mut fill_ = euclidean_fill_glob.get();
-                                    fill_[chan] = (new_value / 128) as u8;
+                                    let length_value = storage.query(|s| s.shift_fader_saved[chan]);
+                                    let length = euclidean_length_from_fader(length_value);
+                                    fill_[chan] = euclidean_fill_from_fader(new_value, length);
                                     euclidean_fill_glob.set(fill_);
                                     storage.modify_and_save(|s| s.fader_saved[chan] = new_value);
                                     fader_led_value = new_value;
                                 }
                                 LatchLayer::Alt => {
-                                    // Convert fader value 0..4095 to Euclidean length parameter in range 1..32 (steps)
+                                    // Convert fader value 0..4095 to Euclidean length parameter in range 1..16 (steps)
                                     let mut length_ = euclidean_length_glob.get();
-                                    length_[chan] = ((new_value / 128) + 1) as u8;
+                                    let mapped_length = euclidean_length_from_fader(new_value);
+                                    length_[chan] = mapped_length;
                                     euclidean_length_glob.set(length_);
-                                    storage
-                                        .modify_and_save(|s| s.shift_fader_saved[chan] = new_value);
+
+                                    let mut offset_ = euclidean_offset_glob.get();
+                                    offset_[chan] %= mapped_length;
+                                    euclidean_offset_glob.set(offset_);
+
+                                    let mut fill_ = euclidean_fill_glob.get();
+                                    let stored_fill_value = storage.query(|s| s.fader_saved[chan]);
+                                    fill_[chan] =
+                                        euclidean_fill_from_fader(stored_fill_value, mapped_length);
+                                    euclidean_fill_glob.set(fill_);
+                                    storage.modify_and_save(|s| {
+                                        s.shift_fader_saved[chan] = new_value;
+                                        s.euclidean_offset_saved[chan] = offset_[chan];
+                                    });
                                     fader_led_value = new_value;
                                 }
                                 _ => {}
@@ -742,6 +765,14 @@ pub async fn run(
                         leds.set(part, Led::Button, led_color, Brightness::High);
                     }
                 }
+            } else if part < K_NUM_PARTS
+                && output_mode_glob.get() == OutputMode::OutputModeEuclidean
+            {
+                let mut offset_ = euclidean_offset_glob.get();
+                let length = euclidean_length_glob.get()[part].max(1);
+                offset_[part] = (offset_[part] + 1) % length;
+                euclidean_offset_glob.set(offset_);
+                storage.modify_and_save(|s| s.euclidean_offset_saved[part] = offset_[part]);
             } else if part == K_NUM_PARTS {
                 // shift + output mode toggle
                 let drum_mode_ = if storage.modify_and_save(|s| {
@@ -753,10 +784,27 @@ pub async fn run(
                     OutputMode::OutputModeEuclidean
                 };
                 output_mode_glob.set(drum_mode_);
-                if drum_mode_ == OutputMode::OutputModeDrums {
-                    leds.set(3, Led::Button, drums_btn_color, Brightness::High);
+                if glob_latch_layer.get() == LatchLayer::Alt {
+                    if drum_mode_ == OutputMode::OutputModeDrums {
+                        for part in 0..K_NUM_PARTS {
+                            leds.unset(part, Led::Button);
+                        }
+                        leds.set(3, Led::Button, drums_btn_color, Brightness::High);
+                    } else {
+                        for part in 0..K_NUM_PARTS {
+                            leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
+                        }
+                        leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                    }
                 } else {
-                    leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                    let mutes = storage.query(|s| s.mute_saved);
+                    for (part, mute_) in mutes.iter().enumerate().take(K_NUM_PARTS + 1) {
+                        if *mute_ {
+                            leds.unset(part, Led::Button);
+                        } else {
+                            leds.set(part, Led::Button, led_color, Brightness::High);
+                        }
+                    }
                 }
             }
         }
@@ -796,12 +844,15 @@ pub async fn run(
                         }
                     }
                 } else if latch_active_layer == LatchLayer::Alt {
-                    for part in 0..K_NUM_PARTS {
-                        leds.unset(part, Led::Button);
-                    }
                     if output_mode_glob.get() == OutputMode::OutputModeDrums {
+                        for part in 0..K_NUM_PARTS {
+                            leds.unset(part, Led::Button);
+                        }
                         leds.set(3, Led::Button, drums_btn_color, Brightness::High);
                     } else {
+                        for part in 0..K_NUM_PARTS {
+                            leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
+                        }
                         leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
                     }
                 }
@@ -828,6 +879,7 @@ pub async fn run(
                             drums_map_y_glob: &drums_map_y_glob,
                             euclidean_length_glob: &euclidean_length_glob,
                             euclidean_fill_glob: &euclidean_fill_glob,
+                            euclidean_offset_glob: &euclidean_offset_glob,
                             chaos_glob: &chaos_glob,
                             output_mode_glob: &output_mode_glob,
                         },
@@ -882,6 +934,7 @@ struct RefreshStateFromStorageContext<'a> {
     drums_map_y_glob: &'a Global<u8>,
     euclidean_length_glob: &'a Global<[u8; 3]>,
     euclidean_fill_glob: &'a Global<[u8; 3]>,
+    euclidean_offset_glob: &'a Global<[u8; 3]>,
     chaos_glob: &'a Global<u8>,
     output_mode_glob: &'a Global<OutputMode>,
 }
@@ -895,14 +948,16 @@ fn refresh_state_from_storage(
     resolution: [u32; 12],
     globs: &RefreshStateFromStorageContext,
 ) {
-    let (is_drum_mode_, faders_, shift_faders_, div_saved_) = storage.query(|s| {
-        (
-            s.is_drum_mode,
-            s.fader_saved,
-            s.shift_fader_saved,
-            s.div_fader_saved,
-        )
-    });
+    let (is_drum_mode_, faders_, shift_faders_, euclidean_offsets_, div_saved_) =
+        storage.query(|s| {
+            (
+                s.is_drum_mode,
+                s.fader_saved,
+                s.shift_fader_saved,
+                s.euclidean_offset_saved,
+                s.div_fader_saved,
+            )
+        });
     let output_mode_ = if is_drum_mode_ {
         OutputMode::OutputModeDrums
     } else {
@@ -925,14 +980,19 @@ fn refresh_state_from_storage(
             globs.chaos_glob.set(scale_bits_12_8(faders_[3]));
         }
         OutputMode::OutputModeEuclidean => {
-            let euclidean_fill_ = [faders_[0], faders_[1], faders_[2]];
-            globs
-                .euclidean_fill_glob
-                .set(euclidean_fill_.map(|v| (v / 128) as u8)); // 0 .. 31
             let euclidean_length_ = [shift_faders_[0], shift_faders_[1], shift_faders_[2]];
+            let mapped_euclidean_length_ = euclidean_length_.map(euclidean_length_from_fader);
             globs
-                .euclidean_length_glob
-                .set(euclidean_length_.map(|v| ((v / 128) + 1) as u8)); // 1 - 32
+                .euclidean_offset_glob
+                .set(core::array::from_fn(|part| {
+                    euclidean_offsets_[part] % mapped_euclidean_length_[part].max(1)
+                }));
+
+            let euclidean_fill_ = [faders_[0], faders_[1], faders_[2]];
+            globs.euclidean_fill_glob.set(core::array::from_fn(|part| {
+                euclidean_fill_from_fader(euclidean_fill_[part], mapped_euclidean_length_[part])
+            }));
+            globs.euclidean_length_glob.set(mapped_euclidean_length_);
             globs.div_glob.set(resolution[div_saved_ as usize / 345]);
             globs.chaos_glob.set(scale_bits_12_8(faders_[3]));
         }
@@ -1059,12 +1119,21 @@ fn update_fader_leds(
     }
 }
 
+fn euclidean_length_from_fader(value: u16) -> u8 {
+    ((value / 256) + 1) as u8
+}
+
+fn euclidean_fill_from_fader(value: u16, length: u8) -> u8 {
+    ((value as u32 * length as u32) / 4095) as u8
+}
+
 struct GeneratorUpdateContext<'a> {
     drums_density_glob: &'a Global<[u8; K_NUM_PARTS]>,
     drums_map_x_glob: &'a Global<u8>,
     drums_map_y_glob: &'a Global<u8>,
     euclidean_length_glob: &'a Global<[u8; K_NUM_PARTS]>,
     euclidean_fill_glob: &'a Global<[u8; K_NUM_PARTS]>,
+    euclidean_offset_glob: &'a Global<[u8; K_NUM_PARTS]>,
     chaos_glob: &'a Global<u8>,
 }
 
@@ -1090,7 +1159,9 @@ fn update_generator_from_parameters(
     generator.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].density =
         settings.euclidean_fill_glob.get();
     let length: [u8; K_NUM_PARTS] = settings.euclidean_length_glob.get();
+    let offset: [u8; K_NUM_PARTS] = settings.euclidean_offset_glob.get();
     for (part, length_) in length.iter().enumerate().take(K_NUM_PARTS) {
         generator.set_length(part, *length_);
+        generator.set_offset(part, offset[part]);
     }
 }
