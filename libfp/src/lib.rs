@@ -924,6 +924,21 @@ impl Range {
     pub fn is_bipolar(&self) -> bool {
         *self == Range::_Neg5_5V
     }
+
+    /// Converts a normalised jack signal value (in range 0 - 4095) to signed voltage value
+    /// e.g. convert from an InJack get_value() method call, or from a DAC output value
+    /// If Range 0-10V, output in range 0 - 4095
+    /// If Range 0-5V, output in range 0 - 2047
+    /// If Range -5 - 5V, output in range -2048 - 2047
+    /// Useful for simulating real-world voltage math (e.g. Precision Adders)
+    pub fn jack_value_to_voltage_value(&self, value: u16) -> i16 {
+        let value = value.clamp(0, 4095) as i16;
+        match self {
+            Range::_0_10V => value,
+            Range::_0_5V => value / 2,
+            Range::_Neg5_5V => value - 2048,
+        }
+    }
 }
 
 impl From<Range> for DACRANGE {

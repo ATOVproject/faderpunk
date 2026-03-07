@@ -19,4 +19,6 @@ register_apps!(
     18 => clk_div,
     19 => panner,
     22 => lfo_plus,
+    44 => cvcombine,
+    45 => gatecombine,
 );

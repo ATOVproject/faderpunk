@@ -242,11 +242,11 @@ async fn process_channel_values(
                 Mode::Mode3(_) => match MAX_TRIGGERS_GPO[i].load(Ordering::Relaxed) {
                     1 => {
                         max.gpo_set_low(port).await.unwrap();
-                        MAX_TRIGGERS_GPO[i].store(0, Ordering::Relaxed);
+                        MAX_TRIGGERS_GPO[i].store(3, Ordering::Relaxed);
                     }
                     2 => {
                         max.gpo_set_high(port).await.unwrap();
-                        MAX_TRIGGERS_GPO[i].store(0, Ordering::Relaxed);
+                        MAX_TRIGGERS_GPO[i].store(4, Ordering::Relaxed);
                     }
                     _ => {}
                 },

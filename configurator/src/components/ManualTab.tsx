@@ -871,6 +871,160 @@ const apps: ManualAppData[] = [
       },
     ],
   },
+  {
+    appId: 44,
+    title: "CV Combine",
+    description:
+      "Precision CV adder / combiner / quantizer of two outputs from other apps",
+    color: "Yellow",
+    icon: "knob-round",
+    params: [
+      "Enable Jack A",
+      "Jack A #",
+      "Enable Jack B",
+      "Jack B #",
+      "Color",
+      "Quantise enable",
+      "Range",
+      "Combine Mode",
+    ],
+    storage: [
+      "Jack A Mute",
+      "Jack B Mute",
+      "Quantize",
+      "CV offset enabled",
+      "CV offset",
+      "CV Offset divisor",
+    ],
+    text: `
+Combines the output voltages of up to two other specified output jacks belonging to other apps in the same layout.  It simulates the behaviour of Eurorack precision adder / CV math modules.
+
+* Two selected CV output jacks are sampled every millisecond, combined, optionally quantised, optionally applied a voltage offset, then finally re-scales the output signal to the required output voltage range.
+* If the final voltage value exceed the min and max of the output Range, the summed CV will be hardclipped to the min or max of the Range.
+* The fader sets an CV offset which is applied to the combined CV output after the quantiser.
+* By default, the offset is an effective range of -5V to + 5V, in steps of 1V. So if you are combining two v/o pitch signals, this shifts the post-quantized signal from -5 to +5 octaves. The bottom LED shows the level of the offset, with the midpoint (off) representing zero offset, fully lit (blue) representing +5V, and fully lit (red) representing -5V.
+* Shift + Fader sets a divisor for the offset (in range 1 at the bottom to 12 at the top) so you can use fractions of a volt as an offset. When the divisor is 12, and the CV is used for V/o pitch, the offset is in units of semitones.
+* The offset can be toggled on and off by Shift + long-pressing the button.
+* This app does not emit any MIDI events
+
+#### CV Combine Modes
+
+The app has 5 modes for combining the CV from the two sampled jacks:
+1. **A + B**: Sums the CV from the two jacks together,
+2. **A - B**: Subtracts the CV of the second jack from the first,
+3. **Max**: Outputs the higher of the two CVs,
+4. **Min**: Outputs the lower of the two CVs,
+5. **Average**: Outputs the average of the two CVs (if both channels active)
+
+#### Tip: Steevio Sequencing
+Replicate the magic sequencing techniques of the modular musician, Steevio!:
+1. Set up a "Sequencer" 8-channel app with two note patterns with different lengths and tempo (e.g. 5 and 7 steps).
+2. Place an "CV Combine" app somewhere else on the layout, configuring its "A" and "B" Jack channels to the first two "CV Output" jacks of the Sequencer (channels 1 & 3 on the Sequencer).
+3. Set the Combine's output range to 0-10V, turn on Quantize output (to match the fixed 0-10V output range of the Sequencer app).
+4. Play with the CV offset to change the played octave
+5. Patch the CV Combine output CV to your favourite V/O oscillator
+ 
+#### Tip: Muting 
+Mute and unmute the CV Combine's "A" and "B" channels to bring in either pattern
+ 
+#### Tip: Combine Modes
+Try out the different Combine Modes for different variations in how the two patterns interact. 
+ 
+#### Tip: Octave and semitone shifting
+* Add some octave shifts (+5 to -5 octave offsets) by moving the bipolar offset fader (no offset in the middle of its range)
+* Hold Shift and experiment with different offset divisors. 
+* With a divisor of 12 (fader at top of its range), the offset is in semitones
+
+#### Tip: Mix LFOs and Control CVs
+Configure the CV Combine to mix an LFO and a Control app together, or two LFOs set to different frequencies, for more complex modulation patterns.  Disable the quantizer in this case to preserve the smoothness of the LFO signal.
+ 
+#### Tip: Scene Switching
+Save different scene settings for a CV Combine app with different offsets or channel mutes, then switch betwen them during a performance.  If you also change the scene settings of the upstream CV generating apps, you can get some really interesting switched melodies and modulation.
+
+#### Acknowledgements.
+
+* Created by Richard Smith (Discord: Phommed)
+    `,
+    channels: [
+      {
+        jackTitle: "CV Output",
+        jackDescription: "Combined, quantized, offset CV signal",
+        faderTitle: "CV offset",
+        faderDescription: "Applies bipolar CV offset after the quantizer",
+        faderPlusShiftTitle: "Offset Divisor",
+        faderPlusShiftDescription:
+          "Divides offset per volt, from 1 (octaves) to 12 (semitones)",
+        fnTitle: "Mute & offset",
+        fnDescription: "Short Mute A input- Long Toggle offset",
+        fnPlusShiftTitle: "Mute",
+        fnPlusShiftDescription: "Mute B input",
+        ledTop: "CV output level",
+        ledTopPlusShift: "Offset divisor (1-12)",
+        ledBottom: "Offset",
+      },
+    ],
+  },
+  {
+    appId: 45,
+    title: "Gate Combine",
+    description: "Binary logic combination of two gate signals from other apps",
+    color: "Yellow",
+    icon: "knob-round",
+    params: [
+      "Enable Jack A",
+      "Jack A #",
+      "Enable Jack B",
+      "Jack B #",
+      "Color",
+      "Combine Mode",
+    ],
+    storage: ["Jack A Mute", "Jack B Mute", "Gate probability"],
+    text: `
+Combines two output gates or triggers from other apps into a single combined gate signal, using binary logic.  The combined gate signal is then passed through a probabilistic gate that is controlled by the app's fader:
+* If the combined signal goes high, and the probablistic gate allows it through, the output gate will go high, and stay high until the combined signal goes low, 
+* else the output will be low.
+
+
+#### Combine Modes
+
+Gate Combine has different binary logic modes to generate a separate gate signal from two gate signals that generated by other apps in the same Faderpunk layout:
+1. **OR**: Gate output is high if either A or B are high
+2. **AND**: Gate output is high only if A and B are both high
+3. **XOR**: Gate output is high only if one of A or B are high (but not both at the same time)
+4. **NOR**: Gate output is high only if both A and B are low
+5. **NAND**: Gate output is low if both A and B are high
+6. **XNOR**: Gate output is high if either A & B are both low or both high
+
+#### Tip: Combine clock-quantized drum triggers
+Combine the output gate or trigger signals from two other app channels (e.g. "Euclid" and "Random Trigger") using one of the
+combine modes and patch the output gate to a drum voice or envelope trigger.  It's a great way of creating more rhythms from
+a smaller number of trigger sources.
+
+#### Tip: Inverted Gate
+Configure input channel's A & B to the same gate signal (e.g. from a Euclid app), then use the NAND or NOR combine mode to
+get an inverted version of the original gate signal at the output, which can be used to trigger different voices or functions
+at the opposite time of the original gate (e.g. trigger an envelope that controls a VCA with a Bass voice)
+
+#### Acknowledgements.
+
+* Created by Richard Smith (Discord: Phommed)
+    `,
+    channels: [
+      {
+        jackTitle: "Gate out",
+        jackDescription: "Combined gate output signal",
+        faderTitle: "Gate chance",
+        faderDescription:
+          "Chance of firing new gate after the combine logic (0 - 100%)",
+        fnTitle: "Mute A",
+        fnDescription: "Mute A input",
+        fnPlusShiftTitle: "Mute B",
+        fnPlusShiftDescription: "Mute B input",
+        ledTop: "Gate output",
+        ledBottom: "Chance",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
