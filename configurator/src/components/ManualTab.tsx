@@ -964,11 +964,10 @@ Save different scene settings for a CV Combine app with different offsets or cha
       },
     ],
   },
- {
+  {
     appId: 45,
     title: "Gate Combine",
-    description:
-      "Binary logic combination of two gate signals from other apps",
+    description: "Binary logic combination of two gate signals from other apps",
     color: "Yellow",
     icon: "knob-round",
     params: [
@@ -979,11 +978,7 @@ Save different scene settings for a CV Combine app with different offsets or cha
       "Color",
       "Combine Mode",
     ],
-    storage: [
-      "Jack A Mute",
-      "Jack B Mute",
-      "Gate probability",
-    ],
+    storage: ["Jack A Mute", "Jack B Mute", "Gate probability"],
     text: `
 Combines two output gates or triggers from other apps into a single combined gate signal, using binary logic.  The combined gate signal is then passed through a probabilistic gate that is controlled by the app's fader:
 * If the combined signal goes high, and the probablistic gate allows it through, the output gate will go high, and stay high until the combined signal goes low, 
@@ -1019,7 +1014,8 @@ at the opposite time of the original gate (e.g. trigger an envelope that control
         jackTitle: "Gate out",
         jackDescription: "Combined gate output signal",
         faderTitle: "Gate chance",
-        faderDescription: "Chance of firing new gate after the combine logic (0 - 100%)",
+        faderDescription:
+          "Chance of firing new gate after the combine logic (0 - 100%)",
         fnTitle: "Mute A",
         fnDescription: "Mute A input",
         fnPlusShiftTitle: "Mute B",
@@ -1028,7 +1024,7 @@ at the opposite time of the original gate (e.g. trigger an envelope that control
         ledBottom: "Chance",
       },
     ],
-  },  
+  },
 ];
 
 export const ManualTab = () => {
