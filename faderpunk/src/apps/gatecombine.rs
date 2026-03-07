@@ -4,43 +4,9 @@
 //! The combined gate signal is then passed through a probabilistic gate that is controlled by the app's fader.
 //! If the combined signal goes high, and the probablistic gate allows it through, the output gate will go high,
 //! and stay high until the combined signal goes low, else the output will be low.
-//! 
-//! ## Combine Modes
-//! 
-//! Gate Combine has different binary logic modes to generate a separate gate signal from two gate signals that generated
-//! by other apps in the same Faderpunk layout:
-//! 
-//! 1. OR: Gate output is high if either A or B are high
-//! 2. AND: Gate output is high only if A and B are both high
-//! 3. XOR: Gate output is high only if one of A or B are high (but not both at the same time)
-//! 4. NOR: Gate output is high only if both A and B are low
-//! 5. NAND: Gate output is low if both A and B are high
-//! 6. XNOR: Gate output is high if either A & B are both low or both high
-//! 
-//! ## Hardware Mapping
-//! 
-//! | Control | Function | + Shift | + Fn
-//! |---------|----------|---------|------|
-//! | Jack 1  | Gate out   | N/A     | N/A  |
-//! | Fader 1 | Gate Probability   | N/A | N/A. | 
-//! | LED 1 Top | Gate output | N/A | N/A
-//! | LED 1 Bottom | Probability | N/A | N/A
-//! | Fn 1    | Toggle Channel A | Toggle Channel B| N/A |
-//! 
-//! ## Usage Tips
 //!
-//! ### Combine drum triggers
-//! Combine the output gate or trigger signals from two other app channels (e.g. "Euclid" and "Random Trigger") using one of the
-//! combine modes and patch the output gate to a drum voice or envelope trigger.  It's a great way of creating more rhythms from
-//! a smaller number of trigger sources.
+//! Created by Richard Smith (@phommed on Faderpunk Discord) in February 2026. 
 //! 
-//! ### Inverted Gate
-//! Configure input channel's A & B to the same gate signal (e.g. from a Euclid app), then use the NAND or NOR combine mode to
-//! get an inverted version of the original gate signal at the output, which can be used to trigger different voices or functions
-//!  at the opposite time of the original gate (e.g. trigger an envelope that controls a VCA with a Bass voice)
-//!
-
-
 use embassy_futures::{
     join::{join5}, select::{select, select3}
 };

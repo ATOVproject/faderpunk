@@ -2,11 +2,11 @@
 //! 
 //! Precision CV adder / combiner / quantizer of one or two other output variable CV jacks belonging to other apps
 //!
-//! Created by Richard Smith (@rjsmith on GitHub) in February 2026. 
-//! 
 //! This app is able to sum the output voltages of up to two other specified output jacks belonging to other apps in the same layout.
 //! It simulates the behaviour of Eurorack precision adder / CV math modules.
 //!
+//! Created by Richard Smith (@phommed on Faderpunk Discord) in February 2026. 
+//! 
 use embassy_futures::{
     join::{join5}, select::{select, select3}
 };
