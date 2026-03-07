@@ -215,6 +215,19 @@ pub async fn run(app: &App<CHANNELS>,
 
     let main_fut = async {
        
+        // Get output jack config to find the configured output CV Range
+        // Assume app config changes will re-spawn this app and re-execute this code.
+        let a_jack_config = if channel_a_enabled { 
+                    App::<CHANNELS>::get_out_jack_config(channel_a_safe).await
+            } else {
+                None
+            };
+        let b_jack_config = if channel_b_enabled { 
+                    App::<CHANNELS>::get_out_jack_config(channel_b_safe).await
+            } else {
+                None
+        };
+
        loop {
             app.delay_millis(1).await;
 
@@ -224,19 +237,6 @@ pub async fn run(app: &App<CHANNELS>,
             // Prevent feedback loops by disabling the possibility to sample from the same channel that the app is outputting on
             let channel_a_use =  channel_a_active && app.start_channel != channel_a_safe;
             let channel_b_use = channel_b_active && app.start_channel != channel_b_safe;
-
-            // Get output jack config to find the configured output CV Range
-            // TODO: Take this out of this fast loop
-            let a_jack_config = if channel_a_use { 
-                        App::<CHANNELS>::get_out_jack_config(channel_a_safe).await
-                } else {
-                    None
-                };
-            let b_jack_config = if channel_b_use { 
-                        App::<CHANNELS>::get_out_jack_config(channel_b_safe).await
-                } else {
-                    None
-                };
 
             // Get sampled jack values and transform to voltage values according to their individual configured CV Range. 
             // If channel not active, treat as zero. If jack config not found (e.g. app unplugged), also treat as zero.

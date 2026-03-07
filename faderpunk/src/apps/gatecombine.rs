@@ -26,6 +26,10 @@ pub const PARAMS: usize = 6;
 
 const LED_BRIGHTNESS: Brightness = Brightness::High;
 
+// Sampled input gate jack changed state must remain the same state for given number of milliseconds to change Gate Combine output
+// Intention is to smooth out micro-timing differences between sampled output gates, or when chaining successive Gate Combine apps  
+const LATCHED_GATE_CHANGE_MILLIS: u32 = 3;
+
 // App configuration visible to the configurator
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Gate Combine",
@@ -190,24 +194,34 @@ pub async fn run(app: &App<CHANNELS>,
         leds.set(0, Led::Button, led_color, Brightness::Mid);
     }
 
-    let mut old_gate_was_high = false;
+    let mut old_out_gate_was_high = false;
 
     let main_fut = async {
-       
-       loop {
+        
+        let mut gate_a_unchanged_counter = 0u32;
+        let mut gate_b_unchanged_counter = 0u32;
+        let mut last_gate_a_is_high = false;
+        let mut last_gate_b_is_high = false;
+        let mut latched_gate_a_is_high = false;
+        let mut latched_gate_b_is_high = false;
+
+        loop {
             app.delay_millis(1).await;
 
+            latched_gate_change(channel_a_safe, &mut gate_a_unchanged_counter, &mut last_gate_a_is_high, &mut latched_gate_a_is_high);
+            latched_gate_change(channel_b_safe, &mut gate_b_unchanged_counter, &mut last_gate_b_is_high, &mut latched_gate_b_is_high);
+            
             let channel_a_active = channel_a_enabled && !channel_a_mute_glob.get();
             let channel_b_active = channel_b_enabled && !channel_b_mute_glob.get();
             let channel_a_use =  channel_a_active && app.start_channel != channel_a_safe;
             let channel_b_use = channel_b_active && app.start_channel != channel_b_safe;
             let a_is_high  = if channel_a_use { 
-                    App::<CHANNELS>::get_out_global_gate_jack_is_high(channel_a_safe)
+                    latched_gate_a_is_high
                 } else {
                     false
                 };
             let b_is_high = if channel_b_use { 
-                    App::<CHANNELS>::get_out_global_gate_jack_is_high(channel_b_safe)
+                    latched_gate_b_is_high
                 } else {
                     false
                 };
@@ -236,7 +250,7 @@ pub async fn run(app: &App<CHANNELS>,
             // Apply probabilistic gate
                 
             let prob = storage.query(|s| s.prob_saved); // Get gate probability from fader 0 - 4095
-            if out_is_high && !old_gate_was_high {
+            if out_is_high && !old_out_gate_was_high {
                 // Combined output has just gone high.
 
                 let rand_val = die.roll();
@@ -247,7 +261,7 @@ pub async fn run(app: &App<CHANNELS>,
                 }
             }
 
-            old_gate_was_high = out_is_high;
+            old_out_gate_was_high = out_is_high;
 
             if out_is_high {
                 output.set_high().await;
@@ -371,4 +385,17 @@ pub async fn run(app: &App<CHANNELS>,
 
     join5(main_fut, fader_fut, btn_fut, shift_fut, scene_handler).await;
 
+}
+
+fn latched_gate_change(channel_safe: usize, gate_unchanged_counter: &mut u32, last_gate_is_high: &mut bool, latched_gate_is_high: &mut bool) {
+    let jack_is_now_high = App::<CHANNELS>::get_out_global_gate_jack_is_high(channel_safe);
+    if *last_gate_is_high == jack_is_now_high {
+        *gate_unchanged_counter += 1;
+    } else {
+        *last_gate_is_high = !*last_gate_is_high;
+        *gate_unchanged_counter = 0;
+    }
+    if *latched_gate_is_high != jack_is_now_high && *gate_unchanged_counter > LATCHED_GATE_CHANGE_MILLIS {
+        *latched_gate_is_high = jack_is_now_high;
+    }
 }
