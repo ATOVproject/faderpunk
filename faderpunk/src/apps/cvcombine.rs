@@ -6,70 +6,7 @@
 //! 
 //! This app is able to sum the output voltages of up to two other specified output jacks belonging to other apps in the same layout.
 //! It simulates the behaviour of Eurorack precision adder / CV math modules.
-//! 
-//! The app combines the one or two sampled CV output jacks together, optionally quantises the sum, optionally applies a voltage offset, then re-scales the output signal to the required output voltage range.
-//! 
-//! If the final voltage value exceed the min and max of the output Range, the summed CV will be hardclipped to the min or max of the Range.
-//! 
-//! This app does not output any MIDI events.
-//! 
-//! ## Combine Modes
-//! 
-//! The app has 5 "Combine Modes" for combining the CV from the two sampled jacks:
-//! 1. A + B + offset: Sums the CV from the two jacks together,
-//! 2. A - B + offset: Subtracts the CV of the second jack from the first,
-//! 3. Max + offset: Outputs the higher of the two CVs,
-//! 4. Min + offset: Outputs the lower of the two CVs,
-//! 5. Average + offset: Outputs the average of the two CVs (if both channels active)
-//! 
-//! ## Hardware Mapping
-//! 
-//! | Control | Function | + Shift | + Fn
-//! |---------|----------|---------|------|
-//! | Jack 1  | CV out   | N/A     | N/A  |
-//! | Fader 1 | Offset   | Divisor | N/A. | 
-//! | LED 1 Top | CV output level | Divisor | N/A
-//! | LED 1 Bottom | Offset (incl. divisor) | N/A | N/A
-//! | Fn 1    | Short press: Toggle Channel A, Long press: Toggle Offset | Short press: Toggle Channel B| N/A |
-//! 
-//! The fader sets an CV offset which is applied to the combined CV output after the quantiser.
-//! By default, the offset is an effective range of -5V to + 5V, in steps of 1V. So if you are combining two v/o pitch signals, this
-//! shifts the post-quantized signal from -5 to +5 octaves. The bottom LED shows the level of the offset, with the midpoint (off) representing zero offset, fully lit (blue) representing +5V, and fully lit (red) representing -5V.
 //!
-//! Shift + Fader sets a divisor for the offset (in range 1 at the bottom to 12 at the top) so you can use fractions of a volt as an offset. When the divisor is 12, and the CV is v/o pitch, the offset is in terms of semitones.
-//! 
-//! The offset can be toggled on and off by Shift + long-pressing the button.
-//! 
-//! ## Scene Storage
-//! The app saves the mute state of the two channels and the offset voltage and divisor in scenes.
-//! 
-//! ## Usage Tips
-//! 
-//! ### Steevio Sequencing
-//! Replicate the magic sequencing techniques of the Welsh modular musician, Steevio!:
-//! 1. Set up a "Sequencer" 8-channel app with two note patterns with different lengths and tempo (e.g. 5 and 7 steps).
-//! 2. Place an "CV Combine" app somewhere else on the layout, configuring its "A" and "B" Jack channels to the first two "CV Output" jacks of the Sequencer (channels 1 & 3 on the Sequencer).
-//! 3. Set the Combine's output range to 0-10V, turn on Quantize output (to match the fixed 0-10V output range of the Sequencer app).
-//! 
-//! ### Muting 
-//! Mute and unmute the CV Combine's "A" and "B" channels to bring in either pattern
-//! 
-//! ### Combine Modes
-//! Try out the different Combine Modes for different variations in how the two patterns interact. 
-//! 
-//! ### Octave and semitone shifting
-//! Add some octave shifts (+5 to -5 octave offsets) by moving the bipolar offset fader (no offset in the middle of its range)
-//! Hold Shift and experiment with different offset divisors. 
-//! With a divisor of 12 (fader at top of its range), the offset is in semitones
-//! 
-//! ### Mix LFOs and Control CVs
-//! Configure the CV Combine to mix an LFO and a Control app together, or two LFOs set to different frequencies, for more complex modulation patterns.
-//! (Disable the quantizer in this case to preserve the smoothness of the LFO signal)
-//! 
-//! ### Scene Switching
-//! Save different scene settings for a CV Combine app with different offsets or channel mutes, then switch betwen them during a performance.
-//! If you also change the scene settings of the upstream CV generating apps, you can get some really interesting switched melodies and modulation.
-//! 
 use embassy_futures::{
     join::{join5}, select::{select, select3}
 };
@@ -98,10 +35,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Yellow,
     AppIcon::KnobRound,
 )
-.add_param(Param::bool { name: "Enable Channel A" })
-.add_param(Param::i32 { name: "Channel A Jack", min: 1, max: GLOBAL_CHANNELS as i32 })
-.add_param(Param::bool { name: "Enable Channel B" })
-.add_param(Param::i32 { name: "Channel B Jack", min: 1, max: GLOBAL_CHANNELS as i32 })
+.add_param(Param::bool { name: "Enable Jack A" })
+.add_param(Param::i32 { name: "Jack A #", min: 1, max: GLOBAL_CHANNELS as i32 })
+.add_param(Param::bool { name: "Enable Jack B" })
+.add_param(Param::i32 { name: "Jack B #", min: 1, max: GLOBAL_CHANNELS as i32 })
 .add_param(Param::Color {
     name: "Color",
     variants: &[
