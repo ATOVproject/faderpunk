@@ -4,7 +4,7 @@ mod utils;
 
 // Re-export public module members
 pub use pattern_generator::{
-    Options, OutputBits, OutputMode, PatternGenerator, PatternGeneratorSettings,
+    DNB_NUM_PATTERNS, Options, OutputBits, OutputMode, PatternGenerator, PatternGeneratorSettings,
     PatternModeSettings,
 };
 
