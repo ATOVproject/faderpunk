@@ -24,8 +24,6 @@ use crate::fp_grids_lib::resources::{
 };
 use crate::fp_grids_lib::utils::{u8_mix, u8_u8_mul_shift8, Random};
 
-// TODO: Remove
-use log::{warn};
 /*
 * Terminology:
 *
@@ -935,7 +933,7 @@ impl PatternGenerator {
     }
 
     /// Generates a random variation of the current dnb pattern, mutates the self.current_dnb_pattern
-    fn generate_dnb_variation(&mut self) {
+    pub fn generate_dnb_variation(&mut self) {
         // Choose a random track (kick, snare, or ghost snare)
         let mut track = self.random.get_byte() % 3; // 0=kick, 1=snare, 2=ghost
         if track >= 2 {
