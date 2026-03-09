@@ -84,7 +84,7 @@ impl Default for Params {
             mode: 0,
             curve: Curve::Linear,
             midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(32),
+            midi_cc: MidiCc::default(),
             midi_note: MidiNote::from(36),
             midi_in: MidiIn::default(),
             bend_range: 12,

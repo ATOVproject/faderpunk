@@ -367,6 +367,15 @@ impl AppParamsAddress {
 }
 
 pub trait AppParams: Sized + Default + Send + Sync + 'static {
+    /// Returns the initial app parameters for a given physical start channel.
+    ///
+    /// By default this falls back to `Default`. Apps that need channel-aware
+    /// defaults (for example MIDI CC offsetting by channel) can override this.
+    fn default_for_app_channel(start_channel: usize) -> Self {
+        let _ = start_channel;
+        Self::default()
+    }
+
     fn from_values(values: &[Value]) -> Option<Self>;
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS>;
 }
@@ -382,6 +391,14 @@ impl<P: AppParams> ParamStore<P> {
         Self {
             app_id,
             inner: RefCell::new(P::default()),
+            layout_id,
+        }
+    }
+
+    pub fn new_with_start_channel(app_id: u8, layout_id: u8, start_channel: usize) -> Self {
+        Self {
+            app_id,
+            inner: RefCell::new(P::default_for_app_channel(start_channel)),
             layout_id,
         }
     }
