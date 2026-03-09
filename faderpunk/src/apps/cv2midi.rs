@@ -59,7 +59,7 @@ impl Default for Params {
         Self {
             bipolar: false,
             midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(32),
+            midi_cc: MidiCc::default(),
             midi_out: MidiOut::default(),
             color: Color::Violet,
         }
