@@ -40,22 +40,12 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::MidiCc { name: "MIDI CC" })
 .add_param(Param::MidiOut);
 
+#[derive(Default)]
 pub struct Params {
     bipolar: bool,
     midi_channel: MidiChannel,
     midi_cc: MidiCc,
     midi_out: MidiOut,
-}
-
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            bipolar: false,
-            midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(32),
-            midi_out: MidiOut::default(),
-        }
-    }
 }
 
 impl AppParams for Params {

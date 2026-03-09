@@ -72,7 +72,7 @@ impl Default for Params {
             range: Range::_Neg5_5V,
             midi_out: MidiOut([false, false, false]),
             midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(32),
+            midi_cc: MidiCc::default(),
             color_in: Color::Blue,
         }
     }

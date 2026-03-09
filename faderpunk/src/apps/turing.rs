@@ -74,7 +74,7 @@ impl Default for Params {
         Self {
             midi_mode: MidiMode::default(),
             midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(40),
+            midi_cc: MidiCc::default(),
             midi_note: MidiNote::from(36),
             midi_out: MidiOut::default(),
             gatel: 50,
