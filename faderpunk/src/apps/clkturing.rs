@@ -64,7 +64,7 @@ impl Default for Params {
     fn default() -> Self {
         Self {
             midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(38),
+            midi_cc: MidiCc::default(),
             midi_mode: MidiMode::default(),
             midi_note: MidiNote::from(36),
             midi_out: MidiOut::default(),
