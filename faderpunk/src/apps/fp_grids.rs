@@ -35,7 +35,7 @@
 //! | Fader 2  | Probability 2 | N/A  | N/A  |
 //! | LED 2 Top | Gate output | Gate output | N/A
 //! | LED 2 Bottom | Density 2 | N/A | N/A
-//! | Fn 2    | Mute Trigger 2 | N/A | N/A |
+//! | Fn 2    | Mute Trigger 2 | Restore DnB Pattern | N/A |
 //! | Jack 3  | Hi-Hats Out | N/A     | N/A  | 
 //! | Fader 3  | DnB Pattern (1-12) | N/A  | N/A  |
 //! | LED 3 Top | Gate output | Gate output | N/A
@@ -44,9 +44,15 @@
 //! | Jack 4  | Ghost Out | N/A     | N/A  | 
 //! | Fader 4  | Probability Ghost | Speed  | N/A  |
 //! | LED 4 Top | Ghost output | Ghost output | N/A
-//! | LED 4 Bottom | Probability Ghost | Speed (yellow = 1/16th notes) | N/A
+//! | LED 4 Bottom | Probability Ghost | N/A | N/A
 //! | Fn 4    | Mute Ghost | Mode (Light Blue=Drums, Pink = Euclidean, Sand = DnB) | N/A |
-
+//!
+//! DnB mode ignores the app's clock division, instead set according to the selected DnB pattern
+//! MIDI Note for Ghost Snare = Midi Note for Trigegr 3 + one semitone
+//!
+//! TODO: Why doesnt it start sequencing sometimes?
+//! TODO: Why does it lose the first beats after starting? Because of the generator.reset() behaviour ? 
+//! 
 use embassy_futures::{
     join::{join, join5},
     select::{select, select3},
@@ -302,7 +308,8 @@ pub async fn run(
     let curve = Curve::Linear;
     let dnb_pattern_glob = app.make_global(0); // Patterns 0 - 11
     let dnb_vary_pattern_glob = app.make_global(false); // Signals if DnB pattern should be varied
-
+    let dnb_reset_pattern_glob = app.make_global(false); // Signals if DnB pattern should be reset to base state
+    
     refresh_state_from_storage(
         storage,
         leds,
@@ -332,7 +339,9 @@ pub async fn run(
 
         let mut output_mode = output_mode_glob.get();
         let mut dnb_pattern = dnb_pattern_glob.get();
-        
+        let ghost_note = notes[2].clone().transpose(1);
+        let ghost_velocity = (midi_velocity - (midi_velocity / 4)).clamp(1, 127);
+
         let mut generator = PatternGenerator::default();
         generator.set_seed(die.roll());
         generator.set_output_mode(output_mode);
@@ -362,17 +371,23 @@ pub async fn run(
                     generator.set_output_mode(output_mode);
                     generator.reset();
                     dnb_vary_pattern_glob.set(false);
+                    dnb_reset_pattern_glob.set(false);
                 }
                 ClockEvent::Stop => {
                     // Prevent hanging notes / gate CVs if clock is stopped
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
                     dnb_vary_pattern_glob.set(false);
+                    dnb_reset_pattern_glob.set(false);
 
                 }
                 ClockEvent::Tick => {
                     let muted = storage.query(|s| s.mute_saved);
-                    let div = div_glob.get();
+                    let div = if output_mode == OutputMode::OutputModeDnB {
+                        generator.get_dnb_24ppqn_pattern_division()
+                    } else {
+                        div_glob.get()
+                    };
                     let clkn = ticks() as u32;
                     // If we have reached the next sequence step
                     if clkn.is_multiple_of(div) {
@@ -392,6 +407,10 @@ pub async fn run(
                                 dnb_vary_pattern_glob.toggle();
                                 generator.generate_dnb_variation();
                             }
+                            if dnb_reset_pattern_glob.get() {
+                                dnb_reset_pattern_glob.toggle();
+                                generator.reset_dnb_pattern_to_base();
+                            }
                         }
 
                         // Get generator state and handle individual triggersRefreshStateFromStorageContext
@@ -399,10 +418,10 @@ pub async fn run(
                         // 0: Trigger 1
                         // 1: Trigger 2
                         // 2: Trigger 3
-                        // 3: Global accent
+                        // 3: Global accent (or Ghost Snare in DnB mode)
                         let state = generator.get_trigger_state();
                         let is_accent = state & (1 << 3) > 0;
-                        let velocity_ = if is_accent {
+                        let velocity_ = if output_mode == OutputMode::OutputModeDnB || !is_accent {
                             midi_velocity
                         } else {
                             accent_velocity
@@ -440,6 +459,10 @@ pub async fn run(
                             jack[3].set_high().await;
                             accent_on_glob.set(true);
                             leds.set(3, Led::Top, led_color, Brightness::High);
+                            if output_mode == OutputMode::OutputModeDnB {
+                                // Send Ghost Snare MIDI out, use next MIDI note up from Trigger 3
+                                midi.send_note_on(ghost_note, ghost_velocity).await;    
+                            }
                         }
 
                         // Update generator with parameter changes
@@ -462,13 +485,12 @@ pub async fn run(
 
                         if glob_latch_layer.get() == LatchLayer::Alt {
                             if matches!(div, 2 | 4 | 8 | 16) {
-                                leds.set(3, Led::Bottom, Color::Orange, Brightness::High);
-                            } else {
-                                leds.set(3, Led::Bottom, Color::Blue, Brightness::High);
-                            }
-                            if div == 6 {
+                                leds.set(3, Led::Bottom, Color::Orange, Brightness::Mid);
+                            } else if div == 6 {
                                 // Highlight 1/16th note default
                                 leds.set(3, Led::Bottom, Color::Yellow, Brightness::High);
+                            } else {
+                                leds.set(3, Led::Bottom, Color::Blue, Brightness::Mid);
                             }
                         }
                     }
@@ -490,6 +512,9 @@ pub async fn run(
                             accent_on_glob.set(false);
                             jack[3].set_low().await;
                             leds.unset(3, Led::Top);
+                            if output_mode == OutputMode::OutputModeDnB {
+                                midi.send_note_off(ghost_note).await;
+                            }
                         }
                         if glob_latch_layer.get() == LatchLayer::Alt {
                             leds.set(3, Led::Bottom, Color::Blue, Brightness::Off);
@@ -769,22 +794,13 @@ pub async fn run(
                                 latch_layer,
                                 target_value,
                             ) {
-                                match latch_layer {
-                                    LatchLayer::Main => {
-                                       // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
-                                        let mut drums_density = drums_density_glob.get();
-                                        drums_density[2] = scale_bits_12_8(new_value);
-                                        drums_density_glob.set(drums_density);
-                                        storage
-                                            .modify_and_save(|s| s.fader_saved[chan] = new_value);
-                                     }
-                                    LatchLayer::Alt => {
-                                        // Convert fader value 0 .. 4095 to "resolution" lookup array index
-                                        div_glob
-                                            .set(resolution[curve.at(new_value) as usize / 345]);
-                                        storage.modify_and_save(|s| s.div_fader_saved = new_value);
-                                    }
-                                    _ => {}
+                                if latch_layer == LatchLayer::Main {
+                                    // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
+                                    let mut drums_density = drums_density_glob.get();
+                                    drums_density[2] = scale_bits_12_8(new_value);
+                                    drums_density_glob.set(drums_density);
+                                    storage
+                                        .modify_and_save(|s| s.fader_saved[chan] = new_value);
                                 }
                             }
                         }
@@ -848,7 +864,12 @@ pub async fn run(
                             leds.set(
                                 chan,
                                 Led::Bottom,
-                                led_color,
+                                if chan == 2 {
+                                    // Distinguish DnB pattern selector fader value from density faders
+                                    alt_led_color
+                                } else {
+                                    led_color
+                                },
                                 Brightness::Custom(scale_bits_12_8(fader_led_value)),
                             );
                         }
@@ -925,6 +946,8 @@ pub async fn run(
             } else if part == 0 && output_mode_glob.get() == OutputMode::OutputModeDnB {
                 // DnB pattern will be varied on next sequencer step
                 dnb_vary_pattern_glob.set(true);
+            } else if part == 1 && output_mode_glob.get() == OutputMode::OutputModeDnB {
+                dnb_reset_pattern_glob.set(true);
             } else if part == K_NUM_PARTS {
                 // shift + output mode toggle
                 let drum_mode_ = match storage.modify_and_save(|s| {
@@ -1163,7 +1186,6 @@ fn refresh_state_from_storage(
             globs
                 .drums_density_glob
                 .set(drums_density_.map(scale_bits_12_8));
-            globs.div_glob.set(resolution[div_saved_ as usize / 345]);
             globs.dnb_pattern_glob.set(scale_bits_12_8(faders_[2]));
         }
     }
@@ -1272,7 +1294,11 @@ fn update_fader_leds(
                     leds.set(
                         chan,
                         Led::Bottom,
-                        led_color,
+                        if chan == 2 {
+                            alt_led_color
+                        } else {
+                            led_color
+                        },
                         Brightness::Custom(scale_bits_12_8(*fader_)),
                     );
                 }
@@ -1286,8 +1312,8 @@ fn update_fader_leds(
             _ => {}
         },
     }
-    // Common Led values
-    if latch_active_layer == LatchLayer::Alt {
+    // Other Led values
+    if output_mode != OutputMode::OutputModeDnB && latch_active_layer == LatchLayer::Alt {
         if clock_resolution == 6 {
             leds.set(3, Led::Bottom, DIV_SIXTEENTH_NOTE_COLOR, Brightness::High)
         } else {

@@ -1096,6 +1096,13 @@ impl Add<MidiNote> for MidiNote {
     }
 }
 
+impl MidiNote {
+    /// Transpose a MidiNote by +/- semitones
+    pub fn transpose(&mut self, semitones: i8) -> Self {
+        Self((self.0 as i8 + semitones).clamp(0,127) as u8)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
 #[repr(u8)]
 pub enum MidiMode {

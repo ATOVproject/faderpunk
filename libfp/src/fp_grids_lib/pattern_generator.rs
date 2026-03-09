@@ -203,6 +203,15 @@ impl PatternGenerator {
         self.current_dnb_pattern = self.base_dnb_pattern;
     }
 
+    /// Required per-step 24ppqn clock division for current DnB pattern
+    pub fn get_dnb_24ppqn_pattern_division(&self) -> u32 {
+        match self.current_dnb_pattern.steps {
+            16 | 32 => 6, // 1/16th notes, the only 32-step DnB pattern is supposed to be 2 bars long
+            24 => 4, // 1/16th note triplets
+            _ => 6
+        }
+    }
+
     /// Reset a running generator, but doesn't change pattern
     pub fn reset(&mut self) {
         self.step_ = 0;
@@ -272,7 +281,11 @@ impl PatternGenerator {
         let mut merged_state_for_tick = 0u8;
 
         for _ in 0..internal_steps_per_external_tick {
-            self.sequence_step_ = (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN;
+            self.sequence_step_ = if self.options_.output_mode == OutputMode::OutputModeDnB {
+                (self.sequence_step_ + 1) % self.current_dnb_pattern.steps
+            } else {
+                (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN
+            };
             self.step_ = self.sequence_step_;
 
             for part in 0..K_NUM_PARTS {
@@ -600,7 +613,7 @@ impl PatternGenerator {
     }
 
     fn evaluate_dnb(&mut self) {
-        if self.step_ == 0 && self.pulse_ == 0 {
+        if self.first_beat_ && self.pulse_ == 0 {
             // At start of pattern sequence
             if self.pattern_change_queued && self.queued_pattern_id >= 0 {
                 // Change pattern sequence if change is queued
