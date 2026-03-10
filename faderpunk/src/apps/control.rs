@@ -224,7 +224,6 @@ pub async fn run(
     let i2c = app.use_i2c_output();
 
     let muted_glob = app.make_global(storage.query(|s| s.muted));
-    let output_glob = app.make_global(0);
     let latch_layer_glob = app.make_global(LatchLayer::Main);
 
     if muted_glob.get() {
@@ -331,6 +330,7 @@ pub async fn run(
             };
             if last_out != (midi_out as u32 * 127) / 4095 {
                 midi.send_cc(midi_cc, midi_out).await;
+                i2c.send_fader_value(0, out, range).await;
             }
             last_out = (midi_out as u32 * 127) / 4095;
 
@@ -420,23 +420,10 @@ pub async fn run(
         }
     };
 
-    let fader_event_handler = async {
+    let save_handler = async {
         loop {
-            fader.wait_for_any_change().await;
-
-            match latch_layer_glob.get() {
-                LatchLayer::Main => {
-                    let out = output_glob.get();
-                    // Send MIDI & I2C messages
-
-                    i2c.send_fader_value(0, out).await;
-                }
-                LatchLayer::Alt => {
-                    // Now we commit to storage
-                    storage.save().await;
-                }
-                LatchLayer::Third => {}
-            }
+            app.delay_secs(1).await;
+            storage.save().await;
         }
     };
 
@@ -460,13 +447,7 @@ pub async fn run(
         }
     };
 
-    join4(
-        main_loop,
-        button_handler,
-        fader_event_handler,
-        scene_handler,
-    )
-    .await;
+    join4(main_loop, button_handler, save_handler, scene_handler).await;
 }
 
 pub fn slew_2(prev: u16, input: u16, slew: u16) -> u16 {
