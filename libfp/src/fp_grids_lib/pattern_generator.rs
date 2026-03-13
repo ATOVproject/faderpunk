@@ -230,28 +230,28 @@ impl PatternGenerator {
         // Prime the first external interval as steps 0|1 so callers that read
         // state before calling `tick()` stay phase-aligned.
         self.evaluate();
-        let mut primed_state = self.state_;
+        // let mut primed_state = self.state_;
 
-        self.sequence_step_ = (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN;
-        self.step_ = self.sequence_step_;
-        for part in 0..K_NUM_PARTS {
-            self.euclidean_step[part] =
-                (self.euclidean_step[part] + 1) % self.current_euclidean_length[part];
-        }
-        self.first_beat_ = self.sequence_step_ == 0;
-        let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
-        if steps_per_beat == 0 {
-            steps_per_beat = 1;
-        }
-        self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
+        // self.sequence_step_ = (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN;
+        // self.step_ = self.sequence_step_;
+        // for part in 0..K_NUM_PARTS {
+        //     self.euclidean_step[part] =
+        //         (self.euclidean_step[part] + 1) % self.current_euclidean_length[part];
+        // }
+        // self.first_beat_ = self.sequence_step_ == 0;
+        // let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
+        // if steps_per_beat == 0 {
+        //     steps_per_beat = 1;
+        // }
+        // self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
 
-        self.evaluate();
-        primed_state |= self.state_;
-        self.state_ = primed_state;
+        // self.evaluate();
+        // primed_state |= self.state_;
+        // self.state_ = primed_state;
 
-        // Advance one external interval so callers that consume `state_` before
-        // calling `tick()` output one 1/16th earlier.
-        self.tick(true);
+        // // Advance one external interval so callers that consume `state_` before
+        // // calling `tick()` output one 1/16th earlier.
+        // self.tick(true);
     }
 
     pub fn retrigger(&mut self) {
@@ -275,7 +275,7 @@ impl PatternGenerator {
             if self.options_.output_mode == OutputMode::OutputModeDnB {
                 1
             } else {
-                2
+                1
             };
 
         let mut merged_state_for_tick = 0u8;
