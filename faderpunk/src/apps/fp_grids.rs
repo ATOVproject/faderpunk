@@ -363,6 +363,7 @@ pub async fn run(
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
+                    defmt::info!("[{}] Clock reset!", ticks());
                     output_mode = output_mode_glob.get();
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
@@ -374,6 +375,7 @@ pub async fn run(
                     dnb_reset_pattern_glob.set(false);
                 }
                 ClockEvent::Stop => {
+                    defmt::info!("[{}] Clock stop", ticks());
                     // Prevent hanging notes / gate CVs if clock is stopped
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
@@ -381,16 +383,25 @@ pub async fn run(
                     dnb_reset_pattern_glob.set(false);
 
                 }
+                ClockEvent::Start => {
+                    defmt::info!("[{}] Clock start", ticks());
+                    generator.reset();
+                    // Ensure initial DnB pattern is generated at start of sequence
+                    if output_mode == OutputMode::OutputModeDnB {
+                        generator.queue_dnb_pattern_change(dnb_pattern_glob.get());
+                    }
+                }
                 ClockEvent::Tick => {
                     let muted = storage.query(|s| s.mute_saved);
-                    let div = if output_mode == OutputMode::OutputModeDnB {
-                        generator.get_dnb_24ppqn_pattern_division()
-                    } else {
-                        div_glob.get()
+                    let div = match output_mode {
+                        OutputMode::OutputModeDrums => 3,     // Grids Drum mode expects 1/32nd ticks
+                        OutputMode::OutputModeEuclidean => 6, // Modified Grids Euclidean to use 1 bar of 1/16th steps
+                        OutputMode::OutputModeDnB => generator.get_dnb_24ppqn_pattern_division()
                     };
+                    
                     let clkn = ticks() as u32;
-                    // If we have reached the next sequence step
-                    if clkn.is_multiple_of(div) {
+                    // If we have reached the next sequence step, or on the first step
+                    if clkn == 1 || clkn.is_multiple_of(div) {
                         // If output mode has changed since last step, change generator mode and reset the sequence
                         if output_mode_glob.get() != output_mode {
                             output_mode = output_mode_glob.get();
@@ -419,7 +430,9 @@ pub async fn run(
                         // 1: Trigger 2
                         // 2: Trigger 3
                         // 3: Global accent (or Ghost Snare in DnB mode)
+                        generator.retrigger();
                         let state = generator.get_trigger_state();
+                        defmt::info!("[{}] Step: {}, BD {}, SN {}, HH {} ", clkn, generator.get_step(), state & (1 << 0) > 0, state & (1 << 1) > 0, state & (1 << 2) > 0);
                         let is_accent = state & (1 << 3) > 0;
                         let velocity_ = if output_mode == OutputMode::OutputModeDnB || !is_accent {
                             midi_velocity
