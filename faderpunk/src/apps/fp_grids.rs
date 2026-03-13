@@ -42,7 +42,7 @@
 //! | LED 3 Bottom | DnB Pattern (1-12) | N/A | N/A
 //! | Fn 3    | Mute Trigger 3 | N/A | N/A |
 //! | Jack 4  | Ghost Out | N/A     | N/A  | 
-//! | Fader 4  | Probability Ghost | Speed  | N/A  |
+//! | Fader 4  | Probability Ghost | N/A  | N/A  |
 //! | LED 4 Top | Ghost output | Ghost output | N/A
 //! | LED 4 Bottom | Probability Ghost | N/A | N/A
 //! | Fn 4    | Mute Ghost | Mode (Light Blue=Drums, Pink = Euclidean, Sand = DnB) | N/A |
@@ -761,7 +761,7 @@ pub async fn run(
                                 target_value,
                             ) {
                                 if latch_layer == LatchLayer::Main {
-                                    // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
+                                    // Convert fader value 0 .. 4095 12-bit to BD/Snare density 0 .. 255 8 - bit
                                     let mut drums_density = drums_density_glob.get();
                                     drums_density[chan] = scale_bits_12_8(new_value);
                                     drums_density_glob.set(drums_density);
@@ -799,7 +799,6 @@ pub async fn run(
                         3 => {
                             let target_value = match latch_layer {
                                 LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
-                                LatchLayer::Alt => storage.query(|s| s.div_fader_saved),
                                 _ => 0,
                             };
                             if let Some(new_value) = latch[chan].update(
@@ -808,7 +807,7 @@ pub async fn run(
                                 target_value,
                             ) {
                                 if latch_layer == LatchLayer::Main {
-                                    // Convert fader value 0 .. 4095 12-bit to Drums density 0 .. 255 8 - bit
+                                    // Convert fader value 0 .. 4095 12-bit to Ghost Snare density 0 .. 255 8 - bit
                                     let mut drums_density = drums_density_glob.get();
                                     drums_density[2] = scale_bits_12_8(new_value);
                                     drums_density_glob.set(drums_density);
@@ -951,6 +950,7 @@ pub async fn run(
             } else if part < K_NUM_PARTS
                 && output_mode_glob.get() == OutputMode::OutputModeEuclidean
             {
+                // Update Euclidean parameters from fader movement
                 let mut offset_ = euclidean_offset_glob.get();
                 let length = euclidean_length_glob.get()[part].max(1);
                 offset_[part] = (offset_[part] + 1) % length;
@@ -960,6 +960,7 @@ pub async fn run(
                 // DnB pattern will be varied on next sequencer step
                 dnb_vary_pattern_glob.set(true);
             } else if part == 1 && output_mode_glob.get() == OutputMode::OutputModeDnB {
+                // DnB pattern will be reset to base pattern on next sequencer step
                 dnb_reset_pattern_glob.set(true);
             } else if part == K_NUM_PARTS {
                 // shift + output mode toggle
@@ -982,9 +983,14 @@ pub async fn run(
                             leds.set(3, Led::Button, drums_btn_color, Brightness::High);
                         },
                         OutputMode::OutputModeEuclidean => {
+                            for part in 0..K_NUM_PARTS {
+                                leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
+                            }
                             leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
                         },
                         OutputMode::OutputModeDnB => {
+                            leds.set(0, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.set(1, Led::Button, dnb_btn_color, Brightness::High);
                             leds.set(3, Led::Button, dnb_btn_color, Brightness::High);
                         }
                         
@@ -1038,16 +1044,25 @@ pub async fn run(
                         }
                     }
                 } else if latch_active_layer == LatchLayer::Alt {
-                    if output_mode_glob.get() == OutputMode::OutputModeDrums {
-                        for part in 0..K_NUM_PARTS {
-                            leds.unset(part, Led::Button);
-                        }
-                        leds.set(3, Led::Button, drums_btn_color, Brightness::High);
-                    } else {
-                        for part in 0..K_NUM_PARTS {
-                            leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
-                        }
-                        leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                    match output_mode_glob.get() {
+                       OutputMode::OutputModeDrums => {
+                            for part in 0..K_NUM_PARTS {
+                                leds.unset(part, Led::Button);
+                            }
+                            leds.set(3, Led::Button, drums_btn_color, Brightness::High);
+                       } 
+                       OutputMode::OutputModeEuclidean => {
+                            for part in 0..K_NUM_PARTS {
+                                leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
+                            }
+                            leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                       }
+                       OutputMode::OutputModeDnB => {
+                            leds.set(0, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.set(1, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.unset(2, Led::Button);
+                            leds.set(3, Led::Button, dnb_btn_color, Brightness::High);
+                       }
                     }
                 }
             }
