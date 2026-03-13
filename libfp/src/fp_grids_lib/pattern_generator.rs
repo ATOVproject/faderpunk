@@ -247,7 +247,11 @@ impl PatternGenerator {
         }
 
         // Direct clocking: each external tick advances main sequence and all Euclidean parts
-        self.sequence_step_ = (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN;
+        self.sequence_step_ = if self.options_.output_mode == OutputMode::OutputModeDnB {
+            (self.sequence_step_ + 1) % self.current_dnb_pattern.steps
+        } else {
+            (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN
+        };
         self.step_ = self.sequence_step_;
 
         for part in 0..K_NUM_PARTS {

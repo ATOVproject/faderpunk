@@ -391,11 +391,12 @@ pub async fn run(
                         generator.queue_dnb_pattern_change(dnb_pattern_glob.get());
                     }
                 }
+                // Assume always 24PPQN
                 ClockEvent::Tick => {
                     let muted = storage.query(|s| s.mute_saved);
                     let div = match output_mode {
-                        OutputMode::OutputModeDrums => 3,     // Grids Drum mode expects 1/32nd ticks
-                        OutputMode::OutputModeEuclidean => 6, // Modified Grids Euclidean to use 1 bar of 1/16th steps
+                        OutputMode::OutputModeDrums => 3,     // Grids Drum mode fixed to 1/32nd ticks
+                        OutputMode::OutputModeEuclidean => div_glob.get(), // Modified Grids Euclidean can use any division, default 1/16th
                         OutputMode::OutputModeDnB => generator.get_dnb_24ppqn_pattern_division()
                     };
                     
@@ -534,7 +535,6 @@ pub async fn run(
                         }
                     }
                 }
-                _ => {}
             }
         }
     };
