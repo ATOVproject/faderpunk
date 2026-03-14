@@ -283,6 +283,7 @@ async fn run_clock_gatekeeper() {
                         if is_running
                             || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
                         {
+                            // Relies on AtomicU64 wrapping on overflow MAX + 1 to ensure first reported TICK_COUNTER after a Clock::Start is always 0
                             TICK_COUNTER.fetch_add(1, Ordering::Relaxed);
                             clock_publisher.publish(ClockEvent::Tick).await;
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
