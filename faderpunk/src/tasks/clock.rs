@@ -244,6 +244,7 @@ async fn run_clock_gatekeeper() {
                         if is_running
                             || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
                         {
+                            // Relies on AtomicU64 wrapping on overflow MAX + 1 to ensure first reported TICK_COUNTER after a Clock::Start is always 0
                             TICK_COUNTER.fetch_add(1, Ordering::Relaxed);
                             clock_publisher.publish(ClockEvent::Tick).await;
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
@@ -258,7 +259,7 @@ async fn run_clock_gatekeeper() {
                     }
                     // (Re-)start the clock. Full phase reset
                     ClockInEvent::Start(_) => {
-                        TICK_COUNTER.store(0, Ordering::Relaxed);
+                        TICK_COUNTER.store(u64::MAX, Ordering::Relaxed);
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
@@ -274,7 +275,7 @@ async fn run_clock_gatekeeper() {
                     }
                     // Reset the phase without affecting the run state
                     ClockInEvent::Reset(_) => {
-                        TICK_COUNTER.store(0, Ordering::Relaxed);
+                        TICK_COUNTER.store(u64::MAX, Ordering::Relaxed);
                         clock_publisher.publish(ClockEvent::Reset).await;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
