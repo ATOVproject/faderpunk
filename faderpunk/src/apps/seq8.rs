@@ -510,6 +510,7 @@ pub async fn run(
                         if clockn.is_multiple_of(clockres[n]) {
                             let clkindex =
                                 (clockn / clockres[n] % seq_length[n] as usize) + (n * 16);
+
                             midi[n].send_note_off(lastnote[n]).await;
                             if gateseq[clkindex] {
                                 let seq = seq_glob.get();
@@ -534,7 +535,9 @@ pub async fn run(
                                 gate_out[n].set_low().await;
                             }
                         }
-                        if (clockn - gatelength1[n] as usize).is_multiple_of(clockres[n]) {
+                        if clockn >= gatelength1[n] as usize
+                            && (clockn - gatelength1[n] as usize).is_multiple_of(clockres[n])
+                        {
                             let clkindex =
                                 (((clockn - 1) / clockres[n]) % seq_length[n] as usize) + (n * 16);
                             if gateseq[clkindex] && !legato_seq[clkindex] {
