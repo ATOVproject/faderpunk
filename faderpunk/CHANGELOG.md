@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.8.1 (2026-03-15)
+
+### Fixes
+
+- fix hanging notes when pausing clock (#448)
+- add public tick counter, reset delay (#449)
+- fix jitter issue (#468)
+- make analog ticks more resilient (#458)
+
 ## 1.8.0 (2026-02-23)
 
 ### Features
