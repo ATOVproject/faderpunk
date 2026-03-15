@@ -24,7 +24,7 @@ use crate::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
         clock::{ClockSubscriber, CLOCK_PUBSUB, TICK_COUNTER},
         global_config::get_global_config,
-        i2c::{I2cLeaderMessage, I2cLeaderSender, I2C_CONNECTED},
+        i2c::{I2cLeaderMessage, I2cLeaderSender},
         leds::{set_led_mode, LedMode, LedMsg},
         max::{
             MaxCmd, MaxSender, MAX_TRIGGERS_GPO, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
@@ -356,12 +356,10 @@ impl<const N: usize> I2cOutput<N> {
         }
     }
 
-    pub async fn send_fader_value(&self, chan: usize, value: u16) {
-        if I2C_CONNECTED.load(Ordering::Relaxed) {
-            let chan = chan.clamp(0, N - 1);
-            let msg = I2cLeaderMessage::FaderValue(self.start_channel + chan, value);
-            self.i2c_sender.send(msg).await;
-        }
+    pub async fn send_fader_value(&self, chan: usize, value: u16, range: Range) {
+        let chan = chan.clamp(0, N - 1);
+        let msg = I2cLeaderMessage::FaderValue(self.start_channel + chan, value, range);
+        self.i2c_sender.send(msg).await;
     }
 }
 
