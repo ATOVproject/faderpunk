@@ -21,7 +21,38 @@
 // * Faderpunk Port: Richard Smith (GitHub: rjsmith)
 // * Special acknowledgement: [Disting NT Port](https://github.com/thorinside/nt_grids/tree/main) by Neal Sanche (GitHub: Thorinside)
 //
-
+// Layout for Easter Egg DnB mode
+// ==============================
+//
+//! | Control | Function | + Shift | + Fn
+//! |---------|----------|---------|------|
+//! | Jack 1  | Kick Out | N/A     | N/A  | 
+//! | Fader 1  | Probability Kick | N/A  | N/A  |
+//! | LED 1 Top | Gate output | Gate output | N/A
+//! | LED 1 Bottom | Density Kick | N/A | N/A
+//! | Fn 1    | Mute Trigger 1 | Vary DnB Pattern | N/A |
+//! | Jack 2  | Snare Out | N/A     | N/A  | 
+//! | Fader 2  | Probability 2 | N/A  | N/A  |
+//! | LED 2 Top | Gate output | Gate output | N/A
+//! | LED 2 Bottom | Density 2 | N/A | N/A
+//! | Fn 2    | Mute Trigger 2 | Restore DnB Pattern | N/A |
+//! | Jack 3  | Hi-Hats Out | N/A     | N/A  | 
+//! | Fader 3  | DnB Pattern (1-12) | N/A  | N/A  |
+//! | LED 3 Top | Gate output | Gate output | N/A
+//! | LED 3 Bottom | DnB Pattern (1-12) | N/A | N/A
+//! | Fn 3    | Mute Trigger 3 | N/A | N/A |
+//! | Jack 4  | Ghost Out | N/A     | N/A  | 
+//! | Fader 4  | Probability Ghost | N/A  | N/A  |
+//! | LED 4 Top | Ghost output | Ghost output | N/A
+//! | LED 4 Bottom | Probability Ghost | N/A | N/A
+//! | Fn 4    | Mute Ghost | Mode (Light Blue=Drums, Pink = Euclidean, Sand = DnB) | N/A |
+//!
+//! DnB mode ignores the app's clock division, instead set according to the selected DnB pattern
+//! MIDI Note for Ghost Snare = Midi Note for Trigegr 3 + one semitone
+//!
+//! TODO: Why doesnt it start sequencing sometimes?
+//! TODO: Why does it lose the first beats after starting? Because of the generator.reset() behaviour ? 
+//! 
 use embassy_futures::{
     join::{join, join5},
     select::{select, select3},
@@ -31,12 +62,7 @@ use enum_ordinalize::Ordinalize;
 use heapless::Vec;
 
 use libfp::{
-    ext::FromValue,
-    fp_grids_lib::{OutputMode, PatternGenerator, PatternModeSettings, K_NUM_PARTS},
-    latch::LatchLayer,
-    utils::scale_bits_12_8,
-    AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiChannel, MidiNote, MidiOut,
-    Param, Value, APP_MAX_PARAMS,
+    APP_MAX_PARAMS, AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiChannel, MidiNote, MidiOut, Param, Value, ext::FromValue, fp_grids_lib::{DNB_NUM_PATTERNS, K_NUM_PARTS, OutputMode, PatternGenerator, PatternModeSettings, SequencerState}, latch::LatchLayer, utils::scale_bits_12_8
 };
 
 use serde::{Deserialize, Serialize};
@@ -168,7 +194,10 @@ pub struct Storage {
     euclidean_offset_saved: [u8; K_NUM_PARTS],
     div_fader_saved: u16, // 0 - 4095 range, maps to index into 'resolution' clock div array (same as euclid.rs)
     mute_saved: [bool; K_NUM_PARTS + 1], // 3 triggers + accent
-    is_drum_mode: bool,   // = true (Drums Mode), = false (Euclidean mode)
+    drum_mode: u8, // 0 = Drums Mode, 1 = Euclidean mode, 2 = DnB Mode
+    generator_state: SequencerState, // Internal generator state, use to restore after app re-spawn
+    note_on: [bool; K_NUM_PARTS],
+    accent_on: bool,
 }
 
 impl Default for Storage {
@@ -179,7 +208,10 @@ impl Default for Storage {
             euclidean_offset_saved: [0; K_NUM_PARTS],
             div_fader_saved: 3000,
             mute_saved: [false; K_NUM_PARTS + 1],
-            is_drum_mode: true,
+            drum_mode: 0,
+            generator_state: SequencerState::default(),
+            note_on: [false; K_NUM_PARTS],
+            accent_on: false,
         }
     }
 }
@@ -247,6 +279,7 @@ pub async fn run(
 
     let drums_btn_color = Color::LightBlue;
     let euclidean_btn_color = Color::Pink;
+    let dnb_btn_color = Color::Sand;
 
     let midi_velocity = ((velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
     let accent_velocity = ((accent_velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
@@ -273,9 +306,11 @@ pub async fn run(
     let note_on_glob = app.make_global([false; K_NUM_PARTS]);
     let accent_on_glob = app.make_global(false);
     let output_mode_glob = app.make_global(OutputMode::OutputModeDrums);
-
     let curve = Curve::Linear;
-
+    let dnb_pattern_glob = app.make_global(0); // Patterns 0 - 11
+    let dnb_vary_pattern_glob = app.make_global(false); // Signals if DnB pattern should be varied
+    let dnb_reset_pattern_glob = app.make_global(false); // Signals if DnB pattern should be reset to base state
+    
     refresh_state_from_storage(
         storage,
         leds,
@@ -293,6 +328,7 @@ pub async fn run(
             euclidean_offset_glob: &euclidean_offset_glob,
             chaos_glob: &chaos_glob,
             output_mode_glob: &output_mode_glob,
+            dnb_pattern_glob: &dnb_pattern_glob,
         },
     );
 
@@ -303,6 +339,9 @@ pub async fn run(
         let ticks = clock.get_ticker();
 
         let mut output_mode = output_mode_glob.get();
+        let mut dnb_pattern = dnb_pattern_glob.get();
+        let ghost_note = notes[2].clone().transpose(1);
+        let ghost_velocity = (midi_velocity - (midi_velocity / 4)).clamp(1, 127);
 
         let mut generator = PatternGenerator::default();
         generator.set_seed(die.roll());
@@ -318,12 +357,26 @@ pub async fn run(
                 euclidean_fill_glob: &euclidean_fill_glob,
                 euclidean_offset_glob: &euclidean_offset_glob,
                 chaos_glob: &chaos_glob,
+                dnb_pattern_glob: &dnb_pattern_glob,
             },
         );
-        generator.reset();
+        let (gen_state_, restored_note_on_, restored_accent_on_) = storage.query(|s| (s.generator_state, s.note_on, s.accent_on));
+        defmt::info!("restoring sequence step {}", gen_state_.sequence_step);
+        generator.restore(gen_state_);
+        // Decide if need to send MIDI note off events after a re-spawn, assume MIDI notes have not changed since last restore
+        for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
+            if restored_note_on_[part] {
+                 midi.send_note_off(*note).await;
+            }
+        }
+        if output_mode == OutputMode::OutputModeDnB && restored_accent_on_ {               
+            midi.send_note_off(ghost_note).await;    
+        }
+
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
+                    defmt::info!("[{}] Clock reset!", ticks());
                     output_mode = output_mode_glob.get();
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
@@ -331,17 +384,37 @@ pub async fn run(
                     generator.set_seed(die.roll());
                     generator.set_output_mode(output_mode);
                     generator.reset();
+                    dnb_vary_pattern_glob.set(false);
+                    dnb_reset_pattern_glob.set(false);
                 }
                 ClockEvent::Stop => {
+                    defmt::info!("[{}] Clock stop", ticks());
                     // Prevent hanging notes / gate CVs if clock is stopped
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
+                    dnb_vary_pattern_glob.set(false);
+                    dnb_reset_pattern_glob.set(false);
+
                 }
+                ClockEvent::Start => {
+                    defmt::info!("[{}] Clock start", ticks());
+                    generator.reset();
+                    // Ensure initial DnB pattern is generated at start of sequence
+                    if output_mode == OutputMode::OutputModeDnB {
+                        generator.queue_dnb_pattern_change(dnb_pattern_glob.get());
+                    }
+                }
+                // Assume always 24PPQN
                 ClockEvent::Tick => {
                     let muted = storage.query(|s| s.mute_saved);
-                    let div = div_glob.get();
+                    let div = match output_mode {
+                        OutputMode::OutputModeDrums => 3,     // Grids Drum mode fixed to 1/32nd ticks
+                        OutputMode::OutputModeEuclidean => div_glob.get(), // Modified Grids Euclidean can use any division, default 1/16th
+                        OutputMode::OutputModeDnB => generator.get_dnb_24ppqn_pattern_division()
+                    };
+                    
                     let clkn = ticks() as u32;
-                    // If we have reached the next sequence step
+                    // If we have reached the next sequence step, or on the first step
                     if clkn.is_multiple_of(div) {
                         // If output mode has changed since last step, change generator mode and reset the sequence
                         if output_mode_glob.get() != output_mode {
@@ -349,16 +422,33 @@ pub async fn run(
                             generator.set_output_mode(output_mode);
                             generator.reset();
                         }
+                        // If DnB pattern has changed since last step, queue pattern change for start of next pattern sequence
+                        if output_mode == OutputMode::OutputModeDnB {
+                            if dnb_pattern_glob.get() != dnb_pattern {
+                                dnb_pattern = dnb_pattern_glob.get();
+                                generator.queue_dnb_pattern_change(dnb_pattern);
+                            }
+                            if dnb_vary_pattern_glob.get() {
+                                dnb_vary_pattern_glob.toggle();
+                                generator.generate_dnb_variation();
+                            }
+                            if dnb_reset_pattern_glob.get() {
+                                dnb_reset_pattern_glob.toggle();
+                                generator.reset_dnb_pattern_to_base();
+                            }
+                        }
 
                         // Get generator state and handle individual triggersRefreshStateFromStorageContext
                         // State byte bits:
                         // 0: Trigger 1
                         // 1: Trigger 2
                         // 2: Trigger 3
-                        // 3: Global accent
+                        // 3: Global accent (or Ghost Snare in DnB mode)
+                        generator.retrigger();
                         let state = generator.get_trigger_state();
+                        defmt::info!("[{}] Step: {}, BD {}, SN {}, HH {} ", clkn, generator.get_step(), state & (1 << 0) > 0, state & (1 << 1) > 0, state & (1 << 2) > 0);
                         let is_accent = state & (1 << 3) > 0;
-                        let velocity_ = if is_accent {
+                        let velocity_ = if output_mode == OutputMode::OutputModeDnB || !is_accent {
                             midi_velocity
                         } else {
                             accent_velocity
@@ -396,6 +486,10 @@ pub async fn run(
                             jack[3].set_high().await;
                             accent_on_glob.set(true);
                             leds.set(3, Led::Top, led_color, Brightness::High);
+                            if output_mode == OutputMode::OutputModeDnB {
+                                // Send Ghost Snare MIDI out, use next MIDI note up from Trigger 3
+                                midi.send_note_on(ghost_note, ghost_velocity).await;    
+                            }
                         }
 
                         // Update generator with parameter changes
@@ -409,17 +503,28 @@ pub async fn run(
                                 euclidean_fill_glob: &euclidean_fill_glob,
                                 euclidean_offset_glob: &euclidean_offset_glob,
                                 chaos_glob: &chaos_glob,
+                                dnb_pattern_glob: &dnb_pattern_glob,
                             },
                         );
 
                         // Finally, progress pattern ready for evaluation on next clocked sequence step
                         generator.tick(true);
 
+                        // Save generator state in case app is re-spawned
+                        storage.modify_and_save(|s| {
+                            s.generator_state = generator.get_sequencer_state();
+                            s.note_on = note_on_glob.get();
+                            s.accent_on = accent_on_glob.get();
+                        });
+
                         if glob_latch_layer.get() == LatchLayer::Alt {
                             if matches!(div, 2 | 4 | 8 | 16) {
-                                leds.set(3, Led::Bottom, Color::Orange, Brightness::High);
+                                leds.set(3, Led::Bottom, Color::Orange, Brightness::Mid);
+                            } else if div == 6 {
+                                // Highlight 1/16th note default
+                                leds.set(3, Led::Bottom, Color::Yellow, Brightness::High);
                             } else {
-                                leds.set(3, Led::Bottom, Color::Blue, Brightness::High);
+                                leds.set(3, Led::Bottom, Color::Blue, Brightness::Mid);
                             }
                         }
                     }
@@ -441,13 +546,15 @@ pub async fn run(
                             accent_on_glob.set(false);
                             jack[3].set_low().await;
                             leds.unset(3, Led::Top);
+                            if output_mode == OutputMode::OutputModeDnB {
+                                midi.send_note_off(ghost_note).await;
+                            }
                         }
                         if glob_latch_layer.get() == LatchLayer::Alt {
                             leds.set(3, Led::Bottom, Color::Blue, Brightness::Off);
                         }
                     }
                 }
-                _ => {}
             }
         }
     };
@@ -660,6 +767,79 @@ pub async fn run(
                         }
                     }
                 }
+                OutputMode::OutputModeDnB => {
+                    match chan {
+                        0 | 1  => {
+                            let target_value = match latch_layer {
+                                LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                                LatchLayer::Alt => storage.query(|s| s.shift_fader_saved[chan]),
+                                _ => 0,
+                            };
+                            if let Some(new_value) = latch[chan].update(
+                                faders.get_value_at(chan),
+                                latch_layer,
+                                target_value,
+                            ) {
+                                if latch_layer == LatchLayer::Main {
+                                    // Convert fader value 0 .. 4095 12-bit to BD/Snare density 0 .. 255 8 - bit
+                                    let mut drums_density = drums_density_glob.get();
+                                    drums_density[chan] = scale_bits_12_8(new_value);
+                                    drums_density_glob.set(drums_density);
+                                    storage
+                                        .modify_and_save(|s| s.fader_saved[chan] = new_value);
+                                    
+                                };
+                                fader_led_value = new_value;
+                            }
+                        }
+                        2 => {
+                            let target_value = match latch_layer {
+                                LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                                _ => 0,
+                            };
+                            if let Some(new_value) = latch[chan].update(
+                                faders.get_value_at(chan),
+                                latch_layer,
+                                target_value,
+                            ) {
+                                match latch_layer {
+                                    LatchLayer::Main => {
+                                        // Convert fader value 0 .. 4095 12-bit to DnB Pattern Id
+                                        dnb_pattern_glob.set(scale_bits_12_8(new_value) / DNB_NUM_PATTERNS);
+                                        storage
+                                            .modify_and_save(|s| s.fader_saved[chan] = new_value);
+                                    }
+                                    _ => {
+                                        // NB: used single-match for consistency with code in other channels
+                                    }
+                                };
+                                fader_led_value = new_value;
+                            }
+                        }
+                        3 => {
+                            let target_value = match latch_layer {
+                                LatchLayer::Main => storage.query(|s| s.fader_saved[chan]),
+                                _ => 0,
+                            };
+                            if let Some(new_value) = latch[chan].update(
+                                faders.get_value_at(chan),
+                                latch_layer,
+                                target_value,
+                            ) {
+                                if latch_layer == LatchLayer::Main {
+                                    // Convert fader value 0 .. 4095 12-bit to Ghost Snare density 0 .. 255 8 - bit
+                                    let mut drums_density = drums_density_glob.get();
+                                    drums_density[2] = scale_bits_12_8(new_value);
+                                    drums_density_glob.set(drums_density);
+                                    storage
+                                        .modify_and_save(|s| s.fader_saved[chan] = new_value);
+                                }
+                            }
+                        }
+                        _ => {}
+                    };
+
+                }
             };
 
             // Update fader-derived Leds
@@ -709,6 +889,28 @@ pub async fn run(
                         }
                     }
                     _ => {}
+                }
+                OutputMode::OutputModeDnB => {
+                    match latch_layer {
+                        LatchLayer::Main => {
+                            leds.set(
+                                chan,
+                                Led::Bottom,
+                                if chan == 2 {
+                                    // Distinguish DnB pattern selector fader value from density faders
+                                    alt_led_color
+                                } else {
+                                    led_color
+                                },
+                                Brightness::Custom(scale_bits_12_8(fader_led_value)),
+                            );
+                        }
+                        LatchLayer::Alt => {
+                            leds.unset(chan, Led::Bottom);
+                        }
+                        _ => {}
+                    };
+
                 },
             }
         }
@@ -768,34 +970,52 @@ pub async fn run(
             } else if part < K_NUM_PARTS
                 && output_mode_glob.get() == OutputMode::OutputModeEuclidean
             {
+                // Update Euclidean parameters from fader movement
                 let mut offset_ = euclidean_offset_glob.get();
                 let length = euclidean_length_glob.get()[part].max(1);
                 offset_[part] = (offset_[part] + 1) % length;
                 euclidean_offset_glob.set(offset_);
                 storage.modify_and_save(|s| s.euclidean_offset_saved[part] = offset_[part]);
+            } else if part == 0 && output_mode_glob.get() == OutputMode::OutputModeDnB {
+                // DnB pattern will be varied on next sequencer step
+                dnb_vary_pattern_glob.set(true);
+            } else if part == 1 && output_mode_glob.get() == OutputMode::OutputModeDnB {
+                // DnB pattern will be reset to base pattern on next sequencer step
+                dnb_reset_pattern_glob.set(true);
             } else if part == K_NUM_PARTS {
                 // shift + output mode toggle
-                let drum_mode_ = if storage.modify_and_save(|s| {
-                    s.is_drum_mode = !s.is_drum_mode;
-                    s.is_drum_mode
+                let drum_mode_ = match storage.modify_and_save(|s| {
+                    s.drum_mode = (s.drum_mode + 1) % 3; // Increment and fold to range 0, 1, 2
+                    s.drum_mode
                 }) {
-                    OutputMode::OutputModeDrums
-                } else {
-                    OutputMode::OutputModeEuclidean
+                    0 => OutputMode::OutputModeDrums,
+                    1 => OutputMode::OutputModeEuclidean,
+                    2 => OutputMode::OutputModeDnB,
+                    _ => OutputMode::OutputModeDrums
                 };
                 output_mode_glob.set(drum_mode_);
                 if glob_latch_layer.get() == LatchLayer::Alt {
-                    if drum_mode_ == OutputMode::OutputModeDrums {
-                        for part in 0..K_NUM_PARTS {
-                            leds.unset(part, Led::Button);
-                        }
-                        leds.set(3, Led::Button, drums_btn_color, Brightness::High);
-                    } else {
-                        for part in 0..K_NUM_PARTS {
-                            leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
-                        }
-                        leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                    for part in 0..K_NUM_PARTS {
+                        leds.unset(part, Led::Button);
                     }
+                    match drum_mode_ {
+                        OutputMode::OutputModeDrums => {
+                            leds.set(3, Led::Button, drums_btn_color, Brightness::High);
+                        },
+                        OutputMode::OutputModeEuclidean => {
+                            for part in 0..K_NUM_PARTS {
+                                leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
+                            }
+                            leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                        },
+                        OutputMode::OutputModeDnB => {
+                            leds.set(0, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.set(1, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.set(3, Led::Button, dnb_btn_color, Brightness::High);
+                        }
+                        
+                    }
+      
                 } else {
                     let mutes = storage.query(|s| s.mute_saved);
                     for (part, mute_) in mutes.iter().enumerate().take(K_NUM_PARTS + 1) {
@@ -844,16 +1064,25 @@ pub async fn run(
                         }
                     }
                 } else if latch_active_layer == LatchLayer::Alt {
-                    if output_mode_glob.get() == OutputMode::OutputModeDrums {
-                        for part in 0..K_NUM_PARTS {
-                            leds.unset(part, Led::Button);
-                        }
-                        leds.set(3, Led::Button, drums_btn_color, Brightness::High);
-                    } else {
-                        for part in 0..K_NUM_PARTS {
-                            leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
-                        }
-                        leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                    match output_mode_glob.get() {
+                       OutputMode::OutputModeDrums => {
+                            for part in 0..K_NUM_PARTS {
+                                leds.unset(part, Led::Button);
+                            }
+                            leds.set(3, Led::Button, drums_btn_color, Brightness::High);
+                       } 
+                       OutputMode::OutputModeEuclidean => {
+                            for part in 0..K_NUM_PARTS {
+                                leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
+                            }
+                            leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                       }
+                       OutputMode::OutputModeDnB => {
+                            leds.set(0, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.set(1, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.unset(2, Led::Button);
+                            leds.set(3, Led::Button, dnb_btn_color, Brightness::High);
+                       }
                     }
                 }
             }
@@ -882,6 +1111,7 @@ pub async fn run(
                             euclidean_offset_glob: &euclidean_offset_glob,
                             chaos_glob: &chaos_glob,
                             output_mode_glob: &output_mode_glob,
+                            dnb_pattern_glob: &dnb_pattern_glob,
                         },
                     );
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
@@ -937,6 +1167,7 @@ struct RefreshStateFromStorageContext<'a> {
     euclidean_offset_glob: &'a Global<[u8; 3]>,
     chaos_glob: &'a Global<u8>,
     output_mode_glob: &'a Global<OutputMode>,
+    dnb_pattern_glob: &'a Global<u8>,
 }
 
 /// Update in-memory globals from scene-stored data
@@ -948,21 +1179,23 @@ fn refresh_state_from_storage(
     resolution: [u32; 12],
     globs: &RefreshStateFromStorageContext,
 ) {
-    let (is_drum_mode_, faders_, shift_faders_, euclidean_offsets_, div_saved_) =
+    let (drum_mode_, faders_, shift_faders_, euclidean_offsets_, div_saved_) =
         storage.query(|s| {
             (
-                s.is_drum_mode,
+                s.drum_mode,
                 s.fader_saved,
                 s.shift_fader_saved,
                 s.euclidean_offset_saved,
                 s.div_fader_saved,
             )
         });
-    let output_mode_ = if is_drum_mode_ {
-        OutputMode::OutputModeDrums
-    } else {
-        OutputMode::OutputModeEuclidean
+    let output_mode_ = match drum_mode_ {
+        0 => OutputMode::OutputModeDrums,
+        1 => OutputMode::OutputModeEuclidean,
+        2 => OutputMode::OutputModeDnB,
+        _ => OutputMode::OutputModeDrums
     };
+
     globs.output_mode_glob.set(output_mode_);
     match output_mode_ {
         OutputMode::OutputModeDrums => {
@@ -995,6 +1228,13 @@ fn refresh_state_from_storage(
             globs.euclidean_length_glob.set(mapped_euclidean_length_);
             globs.div_glob.set(resolution[div_saved_ as usize / 345]);
             globs.chaos_glob.set(scale_bits_12_8(faders_[3]));
+        }
+        OutputMode::OutputModeDnB => {
+            let drums_density_ = [faders_[0], faders_[1], faders_[3]];
+            globs
+                .drums_density_glob
+                .set(drums_density_.map(scale_bits_12_8));
+            globs.dnb_pattern_glob.set(scale_bits_12_8(faders_[2]));
         }
     }
 
@@ -1092,18 +1332,36 @@ fn update_fader_leds(
                         Brightness::Custom(scale_bits_12_8(*shift_fader_)),
                     );
                 }
-                leds.set(
-                    3,
-                    Led::Bottom,
-                    alt_led_color,
-                    Brightness::Custom(scale_bits_12_8(storage.query(|s| s.div_fader_saved))),
-                );
+            }
+            _ => {}
+        }
+        OutputMode::OutputModeDnB => match latch_active_layer {
+            LatchLayer::Main => {
+                let faders_ = storage.query(|s| s.fader_saved);
+                for (chan, fader_) in faders_.iter().enumerate().take(K_NUM_PARTS + 1) {
+                    leds.set(
+                        chan,
+                        Led::Bottom,
+                        if chan == 2 {
+                            alt_led_color
+                        } else {
+                            led_color
+                        },
+                        Brightness::Custom(scale_bits_12_8(*fader_)),
+                    );
+                }
+            }
+            LatchLayer::Alt => {
+                let shift_faders_ = storage.query(|s| s.shift_fader_saved);
+                for (chan, _) in shift_faders_.iter().enumerate().take(K_NUM_PARTS) {
+                    leds.unset(chan, Led::Bottom);
+                }
             }
             _ => {}
         },
     }
-    // Common Led values
-    if latch_active_layer == LatchLayer::Alt {
+    // Other Led values
+    if output_mode != OutputMode::OutputModeDnB && latch_active_layer == LatchLayer::Alt {
         if clock_resolution == 6 {
             leds.set(3, Led::Bottom, DIV_SIXTEENTH_NOTE_COLOR, Brightness::High)
         } else {
@@ -1135,6 +1393,7 @@ struct GeneratorUpdateContext<'a> {
     euclidean_fill_glob: &'a Global<[u8; K_NUM_PARTS]>,
     euclidean_offset_glob: &'a Global<[u8; K_NUM_PARTS]>,
     chaos_glob: &'a Global<u8>,
+    dnb_pattern_glob: &'a Global<u8>,
 }
 
 /// Update a PatternGenerator options from the app instance's managed parameters
@@ -1164,4 +1423,10 @@ fn update_generator_from_parameters(
         generator.set_length(part, *length_);
         generator.set_offset(part, offset[part]);
     }
+    generator.settings_[OutputMode::OutputModeDnB.ordinal() as usize].options =
+        PatternModeSettings::DnB { pattern: settings.dnb_pattern_glob.get()
+    };
+    generator.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density =
+        settings.drums_density_glob.get();
+
 }

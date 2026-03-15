@@ -14,8 +14,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // Based on the original Grids by Emilie Gillet.
-
+//
+// DnB sequencer ported from https://github.com/thorinside/dnb_seq
+//
 use enum_ordinalize::Ordinalize;
+use serde::{Deserialize, Serialize};
 
 use crate::fp_grids_lib::resources::{
     DRUM_MAP, K_NUM_PARTS, K_NUM_STEPS_PER_PATTERN, LUT_RES_EUCLIDEAN, LUT_RES_EUCLIDEAN_SIZE,
@@ -37,12 +40,13 @@ const K_PULSE_DURATION: u8 = 8; // 8 ticks of the main 24 ppqn clock
 pub enum PatternModeSettings {
     Drums { x: u8, y: u8, randomness: u8 },
     Euclidean { chaos_amount: u8 },
+    DnB { pattern: u8 },
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct PatternGeneratorSettings {
     pub options: PatternModeSettings,
-    /// In Drums mode, 0-255, in Euclidean 1-16
+    /// In Drums & DnB mode, 0-255, in Euclidean 1-16
     pub density: [u8; K_NUM_PARTS],
 }
 
@@ -50,6 +54,7 @@ pub struct PatternGeneratorSettings {
 pub enum OutputMode {
     OutputModeEuclidean,
     OutputModeDrums,
+    OutputModeDnB,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -81,10 +86,57 @@ impl OutputBits {
     }
 }
 
+pub const DNB_MAX_STEPS: usize = 32;
+pub const DNB_NUM_PATTERNS: u8 = 12;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct DnbDrumPattern {
+    pub kick: [bool; DNB_MAX_STEPS],
+    pub snare: [bool; DNB_MAX_STEPS],
+    pub hihat: [bool; DNB_MAX_STEPS],
+    pub has_ghost: bool,
+    pub ghost_snare: [bool; DNB_MAX_STEPS],
+    pub steps: u8, // Num steps in the pattern
+}
+impl Default for DnbDrumPattern {
+    fn default() -> Self {
+        Self {
+            kick: [false; DNB_MAX_STEPS],
+            snare: [false; DNB_MAX_STEPS],
+            hihat: [false; DNB_MAX_STEPS],
+            has_ghost: false,
+            ghost_snare: [false; DNB_MAX_STEPS],
+            steps: 16,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct SequencerState {
+    pub sequence_step: u8,
+    pub euclidean_step: [u8; K_NUM_PARTS],
+    pub pulse: u8,
+    pub pulse_duration_counter: u16,
+    pub current_dnb_pattern: DnbDrumPattern, 
+    pub base_dnb_pattern: DnbDrumPattern,
+}
+impl Default for SequencerState {
+    fn default() -> Self {
+        Self {
+            sequence_step: 0,
+            euclidean_step: [0; K_NUM_PARTS],
+            pulse: 0,
+            pulse_duration_counter: 0,
+            base_dnb_pattern: DnbDrumPattern::default(),
+            current_dnb_pattern: DnbDrumPattern::default(),
+        }
+    }
+}
+
 // Core Grids pattern generator state and logic
 #[derive(Debug, Clone, Copy)]
 pub struct PatternGenerator {
-    pub settings_: [PatternGeneratorSettings; 2], // Index 0 for Euclidean, 1 for Drums
+    pub settings_: [PatternGeneratorSettings; 3], // Index 0 for Euclidean, 1 for Drums, 2 for DnB
     pub options_: Options,
 
     chaos_globally_enabled_: bool, // Master switch for chaos effects
@@ -92,7 +144,6 @@ pub struct PatternGenerator {
     // Internal state variables
     current_euclidean_length: [u8; K_NUM_PARTS], // Active length for each Euclidean part
     fill: [u8; K_NUM_PARTS], // Calculated number of active steps for Euclidean parts, based on density
-    // step_counter: [u8; K_NUM_PARTS],                        // Generic step counter per part, used for Euclidean perturbation in original code
     part_perturbation: [u8; K_NUM_PARTS], // Randomness value applied per part in Drum mode
     euclidean_step: [u8; K_NUM_PARTS], // Current step for each Euclidean generator (0 to length-1)
     euclidean_offset: [u8; K_NUM_PARTS], // Per-part Euclidean rotation offset (0 to length-1)
@@ -112,6 +163,13 @@ pub struct PatternGenerator {
 
     // Random number generator
     random: Random,
+
+    // Easter Egg DnB pattern generator
+    current_dnb_pattern: DnbDrumPattern, // Currently playing pattern
+    base_dnb_pattern: DnbDrumPattern,    // The original, unmodified pattern
+    queued_pattern_id: i8,               // -1 = no pattern change queued
+    pattern_change_queued: bool,         // = true if pending pattern change queued for next bar
+    // NB: Hi hat always trieggers when pattern is active (no automated muting)
 }
 
 // Public API
@@ -124,6 +182,18 @@ impl PatternGenerator {
     /// Returns step in current sequence 0 - 31
     pub fn get_step(&self) -> u8 {
         self.step_
+    }
+    
+    /// Returns internal generator seqauencer state to be stored in an app's ManagedStorage so it can be restored later after a re-spwan
+    pub fn get_sequencer_state(&self) -> SequencerState {
+        SequencerState { 
+            sequence_step: self.sequence_step_, 
+            euclidean_step: self.euclidean_step,
+            pulse: self.pulse_,
+            pulse_duration_counter: self.pulse_duration_counter_,
+            base_dnb_pattern: self.base_dnb_pattern,
+            current_dnb_pattern: self.current_dnb_pattern,
+        }
     }
     pub fn is_gate_mode_active(&self) -> bool {
         self.options_.gate_mode
@@ -157,7 +227,27 @@ impl PatternGenerator {
         self.random.seed(seed);
     }
 
-    /// Reset a running generator
+    /// Queue up DnB pattern change on next bar (ie when first_beat_ = true)
+    pub fn queue_dnb_pattern_change(&mut self, new_pattern: u8) {
+        self.queued_pattern_id = new_pattern.clamp(0, DNB_NUM_PATTERNS - 1) as i8;
+        self.pattern_change_queued = true;
+    }
+
+    /// Reset DnB pattern to default
+    pub fn reset_dnb_pattern_to_base(&mut self) {
+        self.current_dnb_pattern = self.base_dnb_pattern;
+    }
+
+    /// Required per-step 24ppqn clock division for current DnB pattern
+    pub fn get_dnb_24ppqn_pattern_division(&self) -> u32 {
+        match self.current_dnb_pattern.steps {
+            16 | 32 => 6, // 1/16th notes, the only 32-step DnB pattern is supposed to be 2 bars long
+            24 => 4, // 1/16th note triplets
+            _ => 6
+        }
+    }
+
+    /// Reset a running generator, but doesn't change pattern
     pub fn reset(&mut self) {
         self.step_ = 0;
         self.sequence_step_ = 0;
@@ -168,32 +258,31 @@ impl PatternGenerator {
         self.beat_ = true;
         self.state_ = 0;
         self.pulse_duration_counter_ = 0;
-
-        // Prime the first external interval as steps 0|1 so callers that read
-        // state before calling `tick()` stay phase-aligned.
+        self.current_dnb_pattern = self.base_dnb_pattern;
+        self.queued_pattern_id = -1;
+        self.pattern_change_queued = false;
         self.evaluate();
-        let mut primed_state = self.state_;
+    }
 
-        self.sequence_step_ = (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN;
+    /// Restore the internal state of a running generator with supplied sequencer state
+    pub fn restore(&mut self, sequencer_state: SequencerState) {
+        self.sequence_step_ = sequencer_state.sequence_step;
+        self.euclidean_step = sequencer_state.euclidean_step;
+        self.pulse_ = sequencer_state.pulse;
+        self.pulse_duration_counter_ = sequencer_state.pulse_duration_counter;
         self.step_ = self.sequence_step_;
-        for part in 0..K_NUM_PARTS {
-            self.euclidean_step[part] =
-                (self.euclidean_step[part] + 1) % self.current_euclidean_length[part];
-        }
+
         self.first_beat_ = self.sequence_step_ == 0;
         let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
         if steps_per_beat == 0 {
             steps_per_beat = 1;
-        }
+        } // Avoid division by zero for short patterns
         self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
 
-        self.evaluate();
-        primed_state |= self.state_;
-        self.state_ = primed_state;
-
-        // Advance one external interval so callers that consume `state_` before
-        // calling `tick()` output one 1/16th earlier.
-        self.tick(true);
+        self.base_dnb_pattern = sequencer_state.base_dnb_pattern;
+        self.current_dnb_pattern = sequencer_state.current_dnb_pattern;
+        self.queued_pattern_id = -1;
+        self.pattern_change_queued = false;
     }
 
     pub fn retrigger(&mut self) {
@@ -202,44 +291,40 @@ impl PatternGenerator {
     }
 
     /// Called on each tick of external clock.
+    /// 
+    /// For Drums Mode, this should be fixed to 1/32nd steps
+    /// For Euclidean mode, should be in 1/16th steps by default
+    /// For DnB mode, it depends on the selected DnB pattern #steps
     ///
-    /// In the Faderpunk app integration, this is called at the selected musical
-    /// division (commonly 1/16). The pattern engine itself runs at 32-step
-    /// resolution, so we advance two internal steps per external tick and merge
-    /// trigger bits for that interval.
     pub fn tick(&mut self, external_clock_tick: bool) {
-        if !external_clock_tick {
+         if !external_clock_tick {
             // Only process if there's an actual external clock tick
             return;
         }
 
-        const INTERNAL_STEPS_PER_EXTERNAL_TICK: u8 = 2;
-        let mut merged_state_for_tick = 0u8;
+        // Direct clocking: each external tick advances main sequence and all Euclidean parts
+        self.sequence_step_ = if self.options_.output_mode == OutputMode::OutputModeDnB {
+            (self.sequence_step_ + 1) % self.current_dnb_pattern.steps
+        } else {
+            (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN
+        };
+        self.step_ = self.sequence_step_;
 
-        for _ in 0..INTERNAL_STEPS_PER_EXTERNAL_TICK {
-            self.sequence_step_ = (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN;
-            self.step_ = self.sequence_step_;
-
-            for part in 0..K_NUM_PARTS {
-                self.euclidean_step[part] =
-                    (self.euclidean_step[part] + 1) % self.current_euclidean_length[part];
-            }
-
-            self.first_beat_ = self.sequence_step_ == 0;
-            let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
-            if steps_per_beat == 0 {
-                steps_per_beat = 1;
-            }
-            self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
-
-            self.evaluate();
-            merged_state_for_tick |= self.state_;
-
-            // Keep pulse counter behavior consistent with internal sub-steps.
-            self.increment_pulse_counter();
+        for part in 0..K_NUM_PARTS {
+            self.euclidean_step[part] =
+                (self.euclidean_step[part] + 1) % self.current_euclidean_length[part];
         }
 
-        self.state_ = merged_state_for_tick;
+        self.first_beat_ = self.sequence_step_ == 0;
+        let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
+        if steps_per_beat == 0 {
+            steps_per_beat = 1;
+        } // Avoid division by zero for short patterns
+        self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
+
+        self.evaluate(); // Evaluate patterns based on the new step
+
+        self.increment_pulse_counter(); // Handle pulse durations on every external tick, regardless of main step advancement
     }
 
     /// Set Euclidean sequence length 1 - 32 steps
@@ -335,11 +420,22 @@ impl Default for PatternGenerator {
                     },
                     density: [255, 255, 255], // Full density BD/SD/HH by default
                 },
+                // Default settings for DnB mode
+                PatternGeneratorSettings {
+                    options: PatternModeSettings::DnB {
+                        pattern: 0, // Two-step
+                    },
+                    density: [255, 255, 255], // Full chaos kick / snare / ghost snare by default
+                },
             ],
             current_euclidean_length: [16; K_NUM_PARTS], // Default to 16 steps for all parts in Euclidean mode
             fill: [8; K_NUM_PARTS], // Default fill: 8 steps (50% for a 16-step length)
             euclidean_offset: [0; K_NUM_PARTS],
             random: Random::default(),
+            base_dnb_pattern: DnbDrumPattern::default(),
+            current_dnb_pattern: DnbDrumPattern::default(),
+            queued_pattern_id: -1,
+            pattern_change_queued: false,
         }
     }
 }
@@ -395,6 +491,7 @@ impl PatternGenerator {
         match self.options_.output_mode {
             OutputMode::OutputModeDrums => self.evaluate_drums(),
             OutputMode::OutputModeEuclidean => self.evaluate_euclidean(),
+            OutputMode::OutputModeDnB => self.evaluate_dnb(),
         }
     }
 
@@ -524,9 +621,406 @@ impl PatternGenerator {
                     // Lower probability of flip for subtlety
                     self.state_ ^= 1 << part;
                 }
-                // Introduce randomn accents if chaos amount is high
+                // Introduce random accents if chaos amount is high
                 if chaos > 192 && self.random.get_word().is_multiple_of(16) {
                     self.state_ |= OutputBits::OutputBitAccent.to_bitmask();
+                }
+            }
+        }
+    }
+
+    fn evaluate_dnb(&mut self) {
+        if self.first_beat_ && self.pulse_ == 0 {
+            // At start of pattern sequence
+            if self.pattern_change_queued && self.queued_pattern_id >= 0 {
+                // Change pattern sequence if change is queued
+                self.generate_dnb_pattern(self.queued_pattern_id as u8);
+                self.queued_pattern_id = -1;
+                self.pattern_change_queued = false;
+            }
+        }
+
+        let current_step_in_pattern = self.step_ as usize;
+        let mut new_state_for_tick = 0u8; // Accumulates trigger and accent bits for the current tick
+        if self.current_dnb_pattern.kick[current_step_in_pattern]
+            && self.random.get_byte() < self.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density[0]
+        {
+            new_state_for_tick |= 1 << 0;
+        }
+        if self.current_dnb_pattern.snare[current_step_in_pattern]
+            && self.random.get_byte() < self.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density[1]
+        {
+            new_state_for_tick |= 1 << 1;
+        }
+        if self.current_dnb_pattern.hihat[current_step_in_pattern] {
+            // Hi-hat always triggers (no probability control)
+            new_state_for_tick |= 1 << 2;
+        }
+        if self.current_dnb_pattern.ghost_snare[current_step_in_pattern]
+            && self.random.get_byte() < self.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density[2]
+        {
+            new_state_for_tick |= 1 << 3;
+        }
+        self.state_ = new_state_for_tick; // Update the main trigger state for the current tick
+    }
+
+    /// Creates a DnB pattern based on an ID
+    fn generate_dnb_pattern(&mut self, pattern_id: u8) {
+        let mut p = DnbDrumPattern::default();
+        match pattern_id {
+            0 => {
+                // Two-step
+                p.kick = [
+                    true, false, false, false, false, false, false, false, false, false, true,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, true, false, false, false, false, false, false,
+                    false, true, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            1 => {
+                // Delayed Two-Step
+                p.kick = [
+                    true, false, false, false, false, false, false, false, false, false, true,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, true, false, false, false, false, false, false,
+                    false, false, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            2 => {
+                // Steppa
+                p.has_ghost = true;
+                p.kick = [
+                    true, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, true, false, false, false, false, false, true,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.ghost_snare = [
+                    false, false, false, false, false, false, false, true, false, true, false,
+                    false, false, true, false, true, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            3 => {
+                // Extended Steppa
+                // @phommed - added and transcribed from Stranjah https://youtu.be/zXGz-M1Fo3g?t=661
+                p.has_ghost = true;
+                p.kick = [
+                    true, false, true, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, true, false, false, true, false, false, true, false, false, true,
+                    false, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.ghost_snare = [
+                    false, false, false, true, true, false, true, true, false, true, true, false,
+                    true, true, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            4 => {
+                // Stompa
+                p.has_ghost = true;
+                p.kick = [
+                    true, false, false, false, false, false, false, false, true, false, false,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, true, false, false, false, false, false, true,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.ghost_snare = [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, true, false, true, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            5 => {
+                // Dance Hall
+                p.kick = [
+                    true, false, false, false, false, false, true, false, false, false, false,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, true, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            6 => {
+                // Dimension UK (double length)
+                p.steps = 32;
+                p.kick = [
+                    true, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, false, false, false, true, false,
+                ];
+                p.snare = [
+                    false, false, false, false, true, false, false, false, true, false, false,
+                    false, true, false, false, false, true, false, false, false, true, false,
+                    false, false, true, false, false, false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, true, false, true, false,
+                ];
+            }
+            7 => {
+                // Halftime
+                p.kick = [
+                    true, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, false, false, false, false, true, false, false,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            8 => {
+                // Triplet Two-Step
+                p.steps = 24;
+                p.kick = [
+                    true, false, false, false, false, false, true, false, false, false, false,
+                    false, true, false, false, false, false, false, true, false, false, false,
+                    false, false, /* end */
+                    false, false, false, false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, false, false, true, false, false, false, false,
+                    false, false, false, false, false, false, false, true, false, false, false,
+                    false, false, /* end */
+                    false, false, false, false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, true, false, true, false, true, false, true,
+                    false, /* end */
+                    false, false, false, false, false, false, false, false,
+                ];
+            }
+            9 => {
+                // Amen Break
+                p.has_ghost = true;
+                p.kick = [
+                    true, false, false, false, false, false, false, false, false, false, true,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, true, false, false, true, false, true, false,
+                    false, true, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.ghost_snare = [
+                    false, false, false, false, false, false, true, false, false, false, false,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            10 => {
+                // Neurofunk
+                p.has_ghost = true;
+                p.kick = [
+                    true, false, false, false, false, true, false, false, true, false, false,
+                    false, false, true, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, true, false, false, false, false, false, false,
+                    false, true, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, true, true, false, true, false, true, false, true, true,
+                    true, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.ghost_snare = [
+                    false, false, false, true, false, false, false, false, false, false, false,
+                    true, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            11 => {
+                // Footwork
+                // @phommed - added and transcribed from Stranjah https://youtu.be/zXGz-M1Fo3g?t=846
+                p.kick = [
+                    true, false, false, true, false, false, true, false, true, false, false, true,
+                    false, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.snare = [
+                    false, false, false, false, false, false, false, false, true, false, false,
+                    false, false, false, false, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+                p.hihat = [
+                    true, false, true, false, true, false, true, false, true, false, true, false,
+                    true, false, true, false, /* end */
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false,
+                ];
+            }
+            _ => {}
+        }
+        self.base_dnb_pattern = p;
+        self.current_dnb_pattern = p;
+    }
+
+    /// Generates a random variation of the current dnb pattern, mutates the self.current_dnb_pattern
+    pub fn generate_dnb_variation(&mut self) {
+        // Choose a random track (kick, snare, or ghost snare)
+        let mut track = self.random.get_byte() % 3; // 0=kick, 1=snare, 2=ghost
+        if track >= 2 {
+            track = 3; // Map 2 to ghost snare (index 3)
+        }
+
+        // Find a position that has a hit in the base pattern
+        let (base_track, matched) = match track {
+            0 => {
+                // Kick
+                (self.base_dnb_pattern.kick, true)
+            }
+            1 => {
+                // Snare
+                (self.base_dnb_pattern.snare, true)
+            }
+            3 => {
+                // Ghost Snare
+                if self.current_dnb_pattern.has_ghost {
+                    (self.base_dnb_pattern.ghost_snare, true)
+                } else {
+                    ([false; DNB_MAX_STEPS], false)
+                }
+            }
+            _ => ([false; DNB_MAX_STEPS], false),
+        };
+        if matched {
+            // Find a position that has a hit in the base pattern
+            let mut attempts = 0;
+            let mut position = 0usize;
+            let mut found_hit = false;
+
+            while attempts < self.base_dnb_pattern.steps && !found_hit {
+                position = (self.random.get_byte() % self.base_dnb_pattern.steps)
+                    .clamp(0, DNB_MAX_STEPS as u8 - 1) as usize;
+                if base_track[position] {
+                    found_hit = true;
+                }
+                attempts += 1;
+            }
+
+            // Toggle the hit in the current pattern
+            if found_hit {
+                match track {
+                    0 => {
+                        self.current_dnb_pattern.kick[position] =
+                            !self.current_dnb_pattern.kick[position];
+                    }
+                    1 => {
+                        self.current_dnb_pattern.snare[position] =
+                            !self.current_dnb_pattern.snare[position];
+                    }
+                    3 => {
+                        self.current_dnb_pattern.ghost_snare[position] =
+                            !self.current_dnb_pattern.ghost_snare[position];
+                    }
+                    _ => {}
                 }
             }
         }
@@ -551,13 +1045,15 @@ mod tests {
     fn test_initialization() {
         let mut generator = PatternGenerator::default();
         generator.reset(); // Ensure reset initializes state correctly
-        assert_eq!(3, generator.step_);
-        assert_eq!(3, generator.sequence_step_);
+        assert_eq!(0, generator.step_);
+        assert_eq!(0, generator.sequence_step_);
         assert_eq!(0, generator.pulse_);
-        assert_eq!(false, generator.first_beat_);
-        assert_eq!(false, generator.beat_);
-        assert_eq!(5, generator.state_);
-        assert_eq!(3, generator.sequence_step_);
+        assert_eq!(true, generator.first_beat_);
+        assert_eq!(true, generator.beat_);
+        assert_eq!(15, generator.state_);
+        assert_eq!(0, generator.sequence_step_);
+        assert_eq!(16, generator.base_dnb_pattern.steps);
+        assert_eq!(16, generator.current_dnb_pattern.steps);
     }
 
     #[test]
@@ -591,19 +1087,19 @@ mod tests {
         assert_eq!(12, generator.get_trigger_state());
 
         generator.tick(true);
+        assert_eq!(1, generator.get_step());
+        assert_eq!(0, generator.get_trigger_state());
+
+        generator.tick(true);
         assert_eq!(2, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
 
         generator.tick(true);
+        assert_eq!(3, generator.get_step());
+        assert_eq!(0, generator.get_trigger_state());
+
+        generator.tick(true);
         assert_eq!(4, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
-
-        generator.tick(true);
-        assert_eq!(6, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
-
-        generator.tick(true);
-        assert_eq!(8, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
     }
 
@@ -631,11 +1127,44 @@ mod tests {
         assert_eq!(7, generator.get_trigger_state());
 
         generator.tick(true);
-        assert_eq!(2, generator.get_step());
+        assert_eq!(1, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
 
         generator.tick(true);
+        assert_eq!(2, generator.get_step());
+        assert_eq!(0, generator.get_trigger_state());
+        generator.tick(true);
+        assert_eq!(3, generator.get_step());
+        assert_eq!(0, generator.get_trigger_state());
+        generator.tick(true);
         assert_eq!(4, generator.get_step());
         assert_eq!(7, generator.get_trigger_state());
+    }
+
+    #[test]
+    fn test_evaluate_dnb() {
+        init_logger();
+        let mut generator: PatternGenerator = PatternGenerator::default();
+        generator.set_seed(0xFFF1);
+        generator.options_.output_mode = OutputMode::OutputModeDnB;
+        generator.settings_[OutputMode::OutputModeDnB.ordinal() as usize].options = 
+            PatternModeSettings::DnB { pattern: 0 };
+        generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].density =
+            [255; K_NUM_PARTS];
+        generator.queue_dnb_pattern_change(0);
+        
+        generator.evaluate();
+        assert_eq!(0, generator.get_step());
+        assert_eq!(5 /* hi-hat and kick */, generator.get_trigger_state());
+        generator.tick(true);
+        assert_eq!(1, generator.get_step());
+        assert_eq!(0, generator.get_trigger_state());
+
+        generator.queue_dnb_pattern_change(2);
+        generator.reset();
+        generator.evaluate();
+        assert_eq!(0, generator.get_step());
+        assert_eq!(5 /* hi-hat and kick */, generator.get_trigger_state());
+
     }
 }
