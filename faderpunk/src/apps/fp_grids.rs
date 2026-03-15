@@ -62,12 +62,7 @@ use enum_ordinalize::Ordinalize;
 use heapless::Vec;
 
 use libfp::{
-    ext::FromValue,
-    fp_grids_lib::{DNB_NUM_PATTERNS, OutputMode, PatternGenerator, PatternModeSettings, K_NUM_PARTS},
-    latch::LatchLayer,
-    utils::scale_bits_12_8,
-    AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiChannel, MidiNote, MidiOut,
-    Param, Value, APP_MAX_PARAMS,
+    APP_MAX_PARAMS, AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiChannel, MidiNote, MidiOut, Param, Value, ext::FromValue, fp_grids_lib::{DNB_NUM_PATTERNS, K_NUM_PARTS, OutputMode, PatternGenerator, PatternModeSettings, SequencerState}, latch::LatchLayer, utils::scale_bits_12_8
 };
 
 use serde::{Deserialize, Serialize};
@@ -200,6 +195,9 @@ pub struct Storage {
     div_fader_saved: u16, // 0 - 4095 range, maps to index into 'resolution' clock div array (same as euclid.rs)
     mute_saved: [bool; K_NUM_PARTS + 1], // 3 triggers + accent
     drum_mode: u8, // 0 = Drums Mode, 1 = Euclidean mode, 2 = DnB Mode
+    generator_state: SequencerState, // Internal generator state, use to restore after app re-spawn
+    note_on: [bool; K_NUM_PARTS],
+    accent_on: bool,
 }
 
 impl Default for Storage {
@@ -211,6 +209,9 @@ impl Default for Storage {
             div_fader_saved: 3000,
             mute_saved: [false; K_NUM_PARTS + 1],
             drum_mode: 0,
+            generator_state: SequencerState::default(),
+            note_on: [false; K_NUM_PARTS],
+            accent_on: false,
         }
     }
 }
@@ -359,7 +360,19 @@ pub async fn run(
                 dnb_pattern_glob: &dnb_pattern_glob,
             },
         );
-        generator.reset();
+        let (gen_state_, restored_note_on_, restored_accent_on_) = storage.query(|s| (s.generator_state, s.note_on, s.accent_on));
+        defmt::info!("restoring sequence step {}", gen_state_.sequence_step);
+        generator.restore(gen_state_);
+        // Decide if need to send MIDI note off events after a re-spawn, assume MIDI notes have not changed since last restore
+        for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
+            if restored_note_on_[part] {
+                 midi.send_note_off(*note).await;
+            }
+        }
+        if output_mode == OutputMode::OutputModeDnB && restored_accent_on_ {               
+            midi.send_note_off(ghost_note).await;    
+        }
+
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
@@ -496,6 +509,13 @@ pub async fn run(
 
                         // Finally, progress pattern ready for evaluation on next clocked sequence step
                         generator.tick(true);
+
+                        // Save generator state in case app is re-spawned
+                        storage.modify_and_save(|s| {
+                            s.generator_state = generator.get_sequencer_state();
+                            s.note_on = note_on_glob.get();
+                            s.accent_on = accent_on_glob.get();
+                        });
 
                         if glob_latch_layer.get() == LatchLayer::Alt {
                             if matches!(div, 2 | 4 | 8 | 16) {

@@ -18,6 +18,7 @@
 // DnB sequencer ported from https://github.com/thorinside/dnb_seq
 //
 use enum_ordinalize::Ordinalize;
+use serde::{Deserialize, Serialize};
 
 use crate::fp_grids_lib::resources::{
     DRUM_MAP, K_NUM_PARTS, K_NUM_STEPS_PER_PATTERN, LUT_RES_EUCLIDEAN, LUT_RES_EUCLIDEAN_SIZE,
@@ -88,7 +89,7 @@ impl OutputBits {
 pub const DNB_MAX_STEPS: usize = 32;
 pub const DNB_NUM_PATTERNS: u8 = 12;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DnbDrumPattern {
     pub kick: [bool; DNB_MAX_STEPS],
     pub snare: [bool; DNB_MAX_STEPS],
@@ -106,6 +107,28 @@ impl Default for DnbDrumPattern {
             has_ghost: false,
             ghost_snare: [false; DNB_MAX_STEPS],
             steps: 16,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct SequencerState {
+    pub sequence_step: u8,
+    pub euclidean_step: [u8; K_NUM_PARTS],
+    pub pulse: u8,
+    pub pulse_duration_counter: u16,
+    pub current_dnb_pattern: DnbDrumPattern, 
+    pub base_dnb_pattern: DnbDrumPattern,
+}
+impl Default for SequencerState {
+    fn default() -> Self {
+        Self {
+            sequence_step: 0,
+            euclidean_step: [0; K_NUM_PARTS],
+            pulse: 0,
+            pulse_duration_counter: 0,
+            base_dnb_pattern: DnbDrumPattern::default(),
+            current_dnb_pattern: DnbDrumPattern::default(),
         }
     }
 }
@@ -159,6 +182,18 @@ impl PatternGenerator {
     /// Returns step in current sequence 0 - 31
     pub fn get_step(&self) -> u8 {
         self.step_
+    }
+    
+    /// Returns internal generator seqauencer state to be stored in an app's ManagedStorage so it can be restored later after a re-spwan
+    pub fn get_sequencer_state(&self) -> SequencerState {
+        SequencerState { 
+            sequence_step: self.sequence_step_, 
+            euclidean_step: self.euclidean_step,
+            pulse: self.pulse_,
+            pulse_duration_counter: self.pulse_duration_counter_,
+            base_dnb_pattern: self.base_dnb_pattern,
+            current_dnb_pattern: self.current_dnb_pattern,
+        }
     }
     pub fn is_gate_mode_active(&self) -> bool {
         self.options_.gate_mode
@@ -227,6 +262,27 @@ impl PatternGenerator {
         self.queued_pattern_id = -1;
         self.pattern_change_queued = false;
         self.evaluate();
+    }
+
+    /// Restore the internal state of a running generator with supplied sequencer state
+    pub fn restore(&mut self, sequencer_state: SequencerState) {
+        self.sequence_step_ = sequencer_state.sequence_step;
+        self.euclidean_step = sequencer_state.euclidean_step;
+        self.pulse_ = sequencer_state.pulse;
+        self.pulse_duration_counter_ = sequencer_state.pulse_duration_counter;
+        self.step_ = self.sequence_step_;
+
+        self.first_beat_ = self.sequence_step_ == 0;
+        let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
+        if steps_per_beat == 0 {
+            steps_per_beat = 1;
+        } // Avoid division by zero for short patterns
+        self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
+
+        self.base_dnb_pattern = sequencer_state.base_dnb_pattern;
+        self.current_dnb_pattern = sequencer_state.current_dnb_pattern;
+        self.queued_pattern_id = -1;
+        self.pattern_change_queued = false;
     }
 
     pub fn retrigger(&mut self) {
