@@ -1,5 +1,3 @@
-use core::sync::atomic::AtomicBool;
-
 use defmt::{error, info};
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{self, Async};
@@ -22,7 +20,7 @@ use libfp::{
         DeviceStatus, ErrorCode, Response, WriteCommand, WriteReadCommand, MAX_MESSAGE_SIZE,
     },
     types::{RegressionValuesInput, RegressionValuesOutput},
-    I2cMode, I2C_ADDRESS_CALIBRATION,
+    I2cMode, Range, I2C_ADDRESS_CALIBRATION,
 };
 use postcard::{from_bytes, to_slice};
 
@@ -42,13 +40,11 @@ pub enum I2cFollowerMessage {
 }
 
 pub enum I2cLeaderMessage {
-    FaderValue(usize, u16),
+    FaderValue(usize, u16, Range),
 }
 
 const I2C_LEADER_CHANNEL_SIZE: usize = 16;
 const I2C_FOLLOWER_CHANNEL_SIZE: usize = 8;
-
-pub static I2C_CONNECTED: AtomicBool = AtomicBool::new(false);
 
 pub static I2C_LEADER_CHANNEL: Channel<
     CriticalSectionRawMutex,
@@ -118,28 +114,25 @@ struct Compat16N<'a> {
     i2c: &'a mut i2c::I2c<'static, I2C0, Async>,
     devices: DiscoveredDevices,
     buffer: [u8; 8],
-    errors: usize,
 }
 
 impl<'a> Compat16N<'a> {
     async fn new(i2c: &'a mut i2c::I2c<'static, I2C0, Async>) -> Self {
-        // Scan for i2c devices
+        // Scan for known i2c devices using 1-byte read probes
         let mut devices = DiscoveredDevices::default();
+        let mut probe_buf = [0u8; 1];
 
         for addr in 8..=120 {
-            if i2c.write(addr, &[]).await.is_ok() {
+            if i2c.read(addr, &mut probe_buf).await.is_ok() {
                 match addr {
                     ansible::ADDRESS => {
                         devices.ansible = true;
-                        I2C_CONNECTED.store(true, Ordering::Relaxed);
                     }
                     er301::ADDRESS => {
                         devices.er301 = true;
-                        I2C_CONNECTED.store(true, Ordering::Relaxed);
                     }
                     a if (telexo::BASE_ADDRESS..telexo::BASE_ADDRESS + 8).contains(&a) => {
                         devices.txo = true;
-                        I2C_CONNECTED.store(true, Ordering::Relaxed);
                     }
                     _ => {}
                 }
@@ -150,21 +143,20 @@ impl<'a> Compat16N<'a> {
             i2c,
             devices,
             buffer: [0u8; 8],
-            errors: 0,
         }
     }
 
-    async fn handle_fader_update(&mut self, chan: usize, value: u16) {
-        // Send to ER-301 if present
+    async fn handle_fader_update(&mut self, chan: usize, value: u16, _range: Range) {
+        let scaled: i16 = (value as u32 * 16383 / 4095) as i16;
+
         if self.devices.er301 {
             let cmd = er301::Commands::SetCv {
                 port: chan as u8,
-                value: value as i16,
+                value: scaled,
             };
             if let Ok(msg) = cmd.to_bytes(&mut self.buffer) {
                 if self.i2c.write(er301::ADDRESS, msg).await.is_err() {
                     error!("I2C write to ER-301 failed");
-                    self.errors += 1;
                 }
             }
         }
@@ -176,13 +168,12 @@ impl<'a> Compat16N<'a> {
             let address = telexo::BASE_ADDRESS + device_index;
             let cmd = telexo::Commands::SetCv {
                 port,
-                value: value as i16,
+                value: scaled,
             };
 
             if let Ok(msg) = cmd.to_bytes(&mut self.buffer) {
                 if self.i2c.write(address, msg).await.is_err() {
                     error!("I2C write to TXo (addr 0x{:02X}) failed", address);
-                    self.errors += 1;
                 }
             }
         }
@@ -195,15 +186,8 @@ impl<'a> Compat16N<'a> {
             if let Ok(msg) = cmd.to_bytes(&mut self.buffer) {
                 if self.i2c.write(ansible::ADDRESS, msg).await.is_err() {
                     error!("I2C write to Ansible failed");
-                    self.errors += 1;
                 }
             }
-        }
-
-        // If we accumulate a lot of errors, we assume that the i2c device was removed.
-        // Disable sending messages
-        if self.errors >= I2C_LEADER_CHANNEL_SIZE {
-            I2C_CONNECTED.store(false, Ordering::Relaxed);
         }
     }
 }
@@ -334,7 +318,7 @@ async fn run_i2c_leader(mut i2c: i2c::I2c<'static, I2C0, Async>) {
     let mut compat16n = Compat16N::new(&mut i2c).await;
 
     loop {
-        let I2cLeaderMessage::FaderValue(chan, value) = I2C_LEADER_CHANNEL.receive().await;
-        compat16n.handle_fader_update(chan, value).await;
+        let I2cLeaderMessage::FaderValue(chan, value, range) = I2C_LEADER_CHANNEL.receive().await;
+        compat16n.handle_fader_update(chan, value, range).await;
     }
 }
