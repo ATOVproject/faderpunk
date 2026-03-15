@@ -13,7 +13,7 @@ use portable_atomic::Ordering;
 use libfp::{
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
-    utils::scale_bits_12_7,
+    utils::{scale_bits_12_7, scale_bits_14_12},
     Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
     Range, TakeoverMode,
 };
@@ -29,7 +29,10 @@ use crate::{
         max::{
             MaxCmd, MaxSender, MAX_TRIGGERS_GPO, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
         },
-        midi::{AppMidiSender, MidiEventSource, MidiMsg, MidiPubSubChannel, MidiPubSubSubscriber},
+        midi::{
+            AppMidiSender, MidiEvent, MidiEventSource, MidiMsg, MidiPubSubChannel,
+            MidiPubSubSubscriber,
+        },
     },
     QUANTIZER,
 };
@@ -371,6 +374,7 @@ pub struct MidiOutput {
     midi_channel: u4,
     midi_out: MidiOut,
     midi_sender: AppMidiSender,
+    nrpn_mode: bool,
 }
 
 impl MidiOutput {
@@ -379,12 +383,14 @@ impl MidiOutput {
         start_channel: usize,
         midi_channel: u4,
         midi_sender: AppMidiSender,
+        nrpn_mode: bool,
     ) -> Self {
         Self {
             start_channel,
             midi_channel,
             midi_out,
             midi_sender,
+            nrpn_mode,
         }
     }
 
@@ -397,14 +403,19 @@ impl MidiOutput {
         self.midi_sender.send((self.start_channel, msg)).await;
     }
 
-    /// Sends a MIDI CC message.
+    /// Sends a MIDI CC message. In NRPN mode, sends as 14-bit NRPN instead.
     /// value is normalized to a range of 0-4095
     pub async fn send_cc(&self, cc: MidiCc, value: u16) {
-        let msg = MidiMessage::Controller {
-            controller: cc.into(),
-            value: scale_bits_12_7(value),
-        };
-        self.send_midi_msg(msg).await;
+        if self.nrpn_mode {
+            let msg = MidiMsg::nrpn(self.midi_channel, cc.as_u16(), value, self.midi_out);
+            self.midi_sender.send((self.start_channel, msg)).await;
+        } else {
+            let msg = MidiMessage::Controller {
+                controller: cc.into(),
+                value: scale_bits_12_7(value),
+            };
+            self.send_midi_msg(msg).await;
+        }
     }
 
     /// Sends a MIDI NoteOn message.
@@ -448,6 +459,11 @@ impl MidiOutput {
     }
 }
 
+pub enum AppMidiEvent {
+    Message(MidiMessage),
+    Nrpn { param: u16, value: u16 },
+}
+
 pub struct MidiInput {
     midi_channel: u4,
     din_sub: Option<MidiPubSubSubscriber>,
@@ -479,29 +495,57 @@ impl MidiInput {
         }
     }
 
+    async fn next_event(&mut self) -> MidiEvent {
+        match (&mut self.din_sub, &mut self.usb_sub) {
+            (Some(din), None) => din.next_message_pure().await,
+            (None, Some(usb)) => usb.next_message_pure().await,
+            (Some(din), Some(usb)) => {
+                match select(din.next_message_pure(), usb.next_message_pure()).await {
+                    Either::First(evt) => evt,
+                    Either::Second(evt) => evt,
+                }
+            }
+            (None, None) => {
+                core::future::pending::<()>().await;
+                unreachable!()
+            }
+        }
+    }
+
+    /// Wait for the next standard MIDI message on this channel (skips NRPN events).
     pub async fn wait_for_message(&mut self) -> MidiMessage {
         loop {
-            // Determine which future to await based on active subscribers
-            let event = match (&mut self.din_sub, &mut self.usb_sub) {
-                (Some(din), None) => din.next_message_pure().await,
-                (None, Some(usb)) => usb.next_message_pure().await,
-                (Some(din), Some(usb)) => {
-                    match select(din.next_message_pure(), usb.next_message_pure()).await {
-                        Either::First(evt) => evt,
-                        Either::Second(evt) => evt,
-                    }
-                }
-                (None, None) => {
-                    core::future::pending::<()>().await;
-                    unreachable!()
-                }
-            };
-
-            // Common filtering logic
-            if let LiveEvent::Midi { channel, message } = event {
+            let event = self.next_event().await;
+            if let MidiEvent::Live(LiveEvent::Midi { channel, message }) = event {
                 if channel == self.midi_channel {
                     return message;
                 }
+            }
+        }
+    }
+
+    /// Wait for any MIDI event (standard message or NRPN) on this channel.
+    pub async fn wait_for_event(&mut self) -> AppMidiEvent {
+        loop {
+            match self.next_event().await {
+                MidiEvent::Live(LiveEvent::Midi { channel, message }) => {
+                    if channel == self.midi_channel {
+                        return AppMidiEvent::Message(message);
+                    }
+                }
+                MidiEvent::Nrpn {
+                    channel,
+                    param,
+                    value,
+                } => {
+                    if channel == self.midi_channel {
+                        return AppMidiEvent::Nrpn {
+                            param,
+                            value: scale_bits_14_12(value),
+                        };
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -744,12 +788,18 @@ impl<const N: usize> App<N> {
         )
     }
 
-    pub fn use_midi_output(&self, midi_out: MidiOut, midi_channel: MidiChannel) -> MidiOutput {
+    pub fn use_midi_output(
+        &self,
+        midi_out: MidiOut,
+        midi_channel: MidiChannel,
+        nrpn_mode: bool,
+    ) -> MidiOutput {
         MidiOutput::new(
             midi_out,
             self.start_channel,
             midi_channel.into(),
             self.midi_sender,
+            nrpn_mode,
         )
     }
 

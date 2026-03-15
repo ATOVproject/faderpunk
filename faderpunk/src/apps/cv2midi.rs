@@ -16,7 +16,7 @@ use libfp::{ext::FromValue, Config, Param, Range, Value};
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 6;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
@@ -44,6 +44,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
+.add_param(Param::MidiNrpn)
 .add_param(Param::MidiOut);
 
 pub struct Params {
@@ -52,6 +53,7 @@ pub struct Params {
     midi_cc: MidiCc,
     midi_out: MidiOut,
     color: Color,
+    nrpn: bool,
 }
 
 impl Default for Params {
@@ -62,6 +64,7 @@ impl Default for Params {
             midi_cc: MidiCc::from(32),
             midi_out: MidiOut::default(),
             color: Color::Violet,
+            nrpn: false,
         }
     }
 }
@@ -76,7 +79,8 @@ impl AppParams for Params {
             midi_channel: MidiChannel::from_value(values[1]),
             midi_cc: MidiCc::from_value(values[2]),
             color: Color::from_value(values[3]),
-            midi_out: MidiOut::from_value(values[4]),
+            nrpn: bool::from_value(values[4]),
+            midi_out: MidiOut::from_value(values[5]),
         })
     }
 
@@ -86,6 +90,7 @@ impl AppParams for Params {
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec
     }
@@ -137,14 +142,14 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (bipolar, midi_out, midi_channel, midi_cc, led_color) =
-        params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc, p.color));
+    let (bipolar, midi_out, midi_channel, midi_cc, led_color, nrpn) =
+        params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc, p.color, p.nrpn));
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
 
-    let midi = app.use_midi_output(midi_out, midi_channel);
+    let midi = app.use_midi_output(midi_out, midi_channel, nrpn);
 
     let muted_glob = app.make_global(false);
 

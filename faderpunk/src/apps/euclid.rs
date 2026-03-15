@@ -174,7 +174,7 @@ pub async fn run(
         )
     });
 
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
@@ -266,7 +266,11 @@ pub async fn run(
                         }
 
                         if glob_latch_layer.get() == LatchLayer::Third {
-                            leds.set(0, Led::Bottom, Color::Red, Brightness::Mid);
+                            if matches!(div, 2 | 4 | 8 | 16) {
+                                leds.set(0, Led::Bottom, Color::Orange, Brightness::High);
+                            } else {
+                                leds.set(0, Led::Bottom, Color::Blue, Brightness::High);
+                            }
                         }
                     }
 

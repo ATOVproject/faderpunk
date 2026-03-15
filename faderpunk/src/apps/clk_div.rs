@@ -151,7 +151,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let leds = app.use_leds();
 
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let glob_muted = app.make_global(false);
     let div_glob = app.make_global(6);
@@ -202,7 +202,11 @@ pub async fn run(
                     if clkn.is_multiple_of(div) && !muted {
                         jack.set_high().await;
                         if glob_latch_layer.get() == LatchLayer::Main {
-                            leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
+                            if matches!(div, 2 | 4 | 8 | 16) {
+                                leds.set(0, Led::Bottom, Color::Orange, Brightness::High);
+                            } else {
+                                leds.set(0, Led::Bottom, Color::Blue, Brightness::High);
+                            }
                         }
                         midi.send_note_on(note, 4095).await;
                         note_on = true;

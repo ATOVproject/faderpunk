@@ -160,10 +160,10 @@ pub async fn run(
     let led = app.use_leds();
 
     let midi = [
-        app.use_midi_output(midi_out, midi_chan1),
-        app.use_midi_output(midi_out, midi_chan2),
-        app.use_midi_output(midi_out, midi_chan3),
-        app.use_midi_output(midi_out, midi_chan4),
+        app.use_midi_output(midi_out, midi_chan1, false),
+        app.use_midi_output(midi_out, midi_chan2, false),
+        app.use_midi_output(midi_out, midi_chan3, false),
+        app.use_midi_output(midi_out, midi_chan4, false),
     ];
 
     let cv_out = [
@@ -396,10 +396,16 @@ pub async fn run(
                     if n >= seq_length[page / 2] {
                         bright = Brightness::Off;
                     }
-                    if n < 8 {
-                        led.set(n as usize, Led::Top, Color::Red, bright)
+
+                    let led_color = if matches!(clockres[page / 2], 2 | 4 | 8 | 16) {
+                        Color::Orange
                     } else {
-                        led.set(n as usize - 8, Led::Bottom, Color::Red, bright)
+                        Color::Blue
+                    };
+                    if n < 8 {
+                        led.set(n as usize, Led::Top, led_color, bright)
+                    } else {
+                        led.set(n as usize - 8, Led::Bottom, led_color, bright)
                     }
                 }
             }
