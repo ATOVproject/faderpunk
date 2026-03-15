@@ -94,11 +94,17 @@ pub enum TransportCmd {
     Toggle,
 }
 
+/// Events emitted by the clock task and received via [`Clock::wait_for_event`].
 #[derive(Clone, Copy)]
 pub enum ClockEvent {
+    /// Clock pulse triggering at the set PPQN division.
+    /// Tick counter reports the number of 24ppqn ticks since the last reset.
     Tick,
+    /// The clock has started or resumed playback (no phase reset).
     Start,
+    /// The clock has stopped. No phase reset; notes/gates should be silenced.
     Stop,
+    /// A full phase reset. The next tick counter value will be `0`.
     Reset,
 }
 
@@ -258,7 +264,7 @@ async fn run_clock_gatekeeper() {
                     }
                     // (Re-)start the clock. Full phase reset
                     ClockInEvent::Start(_) => {
-                        TICK_COUNTER.store(0, Ordering::Relaxed);
+                        TICK_COUNTER.store(u64::MAX, Ordering::Relaxed);
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
@@ -274,7 +280,7 @@ async fn run_clock_gatekeeper() {
                     }
                     // Reset the phase without affecting the run state
                     ClockInEvent::Reset(_) => {
-                        TICK_COUNTER.store(0, Ordering::Relaxed);
+                        TICK_COUNTER.store(u64::MAX, Ordering::Relaxed);
                         clock_publisher.publish(ClockEvent::Reset).await;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
