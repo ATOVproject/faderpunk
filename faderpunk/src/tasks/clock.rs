@@ -161,7 +161,8 @@ async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &
         if let AuxJackMode::ClockOut(div) = aux {
             if counters[i] == 0 {
                 // TODO: Adjust trigger_len based on division?
-                spawner.spawn(analog_tick(i, 5)).unwrap();
+                // Ignore if task pool is full - skip this tick rather than panic
+                spawner.spawn(analog_tick(i, 5)).ok();
             }
 
             counters[i] += 1;
@@ -176,11 +177,12 @@ async fn send_analog_reset(spawner: &Spawner, config: &GlobalConfig) {
     for (i, aux) in config.aux.iter().enumerate() {
         if let AuxJackMode::ResetOut = aux {
             // Send reset pulse with longer duration (10ms)
-            spawner.spawn(analog_tick(i, 10)).unwrap();
+            // Ignore if task pool is full - skip this reset rather than panic
+            spawner.spawn(analog_tick(i, 10)).ok();
         }
     }
 }
-#[embassy_executor::task(pool_size = 6)]
+#[embassy_executor::task(pool_size = 12)]
 async fn analog_tick(aux_no: usize, trigger_len: u64) {
     let gpo_index = 17 + aux_no;
     MAX_TRIGGERS_GPO[gpo_index].store(2, Ordering::Relaxed);
