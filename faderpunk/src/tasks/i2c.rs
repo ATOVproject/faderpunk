@@ -146,17 +146,9 @@ impl<'a> Compat16N<'a> {
         }
     }
 
-    async fn handle_fader_update(&mut self, chan: usize, value: u16, range: Range) {
-        // Scale 12-bit fader value to II protocol range
-        // Unipolar (0-10V / 0-5V): 0-4095 -> 0-16383
-        // Bipolar (-5V to 5V): 0-4095 -> -8191 to 8191 (2047 = 0V)
-        let scaled: i16 = if range.is_bipolar() {
-            ((value as i32 - 2047) * 8191 / 2047) as i16
-        } else {
-            (value as i16) * 4
-        };
+    async fn handle_fader_update(&mut self, chan: usize, value: u16, _range: Range) {
+        let scaled: i16 = (value as u32 * 16383 / 4095) as i16;
 
-        // Send to ER-301 if present
         if self.devices.er301 {
             let cmd = er301::Commands::SetCv {
                 port: chan as u8,
