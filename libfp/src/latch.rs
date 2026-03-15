@@ -41,6 +41,7 @@ pub struct AnalogLatch {
     active_layer: LatchLayer,
     is_latched: bool,
     prev_value: u16,
+    last_emitted_value: u16,
     prev_target: u16,
     jitter_tolerance: u16,
     mode: TakeoverMode,
@@ -69,6 +70,7 @@ impl AnalogLatch {
             active_layer: LatchLayer::Main,
             is_latched: true,
             prev_value: initial_value,
+            last_emitted_value: initial_value,
             prev_target: initial_value,
             jitter_tolerance,
             mode,
@@ -148,108 +150,122 @@ impl AnalogLatch {
 
         let mut new_value = None;
 
+        let is_absolute_edge = value == 0 || value == 4095;
+        if is_absolute_edge && value != self.last_emitted_value {
+            self.is_latched = true;
+            new_value = Some(value);
+        }
+
         // Mode-specific behavior
-        match self.mode {
-            TakeoverMode::Jump => {
-                // Jump mode: always return fader value if it moved beyond jitter tolerance
-                if !self.values_equal(value, self.prev_value) {
-                    new_value = Some(value);
-                }
-            }
-            TakeoverMode::Pickup => {
-                // Pickup mode: existing crossover detection logic
-                if self.is_latched {
-                    // Fader is in control. If it moves beyond jitter tolerance, the value changes.
-                    if !self.values_equal(value, self.prev_value) {
-                        new_value = Some(value);
-                    }
-                } else {
-                    // Fader is not in control. Check for crossover.
-                    // We consider it crossed if we've passed through or reached the target
-                    let has_crossed = (self.prev_value..=value)
-                        .contains(&active_layer_target_value)
-                        || (value..=self.prev_value).contains(&active_layer_target_value)
-                        || self.values_equal(value, active_layer_target_value);
-
-                    if has_crossed {
-                        // Crossover detected! Latch and report the new value.
-                        self.is_latched = true;
+        if new_value.is_none() {
+            match self.mode {
+                TakeoverMode::Jump => {
+                    // Jump mode: always return fader value if it moved beyond jitter tolerance
+                    if !self.values_equal(value, self.last_emitted_value) {
                         new_value = Some(value);
                     }
                 }
-            }
-            TakeoverMode::Scale => {
-                // Scale mode: gradually converge value toward fader position
-                if self.is_latched {
-                    // Already synced, move 1:1
-                    if !self.values_equal(value, self.prev_value) {
-                        new_value = Some(value);
-                    }
-                } else {
-                    // Not synced yet - calculate delta-based movement
-                    let fader_delta = value as i32 - self.prev_value as i32;
+                TakeoverMode::Pickup => {
+                    // Pickup mode: existing crossover detection logic
+                    if self.is_latched {
+                        // Fader is in control. If it moves beyond jitter tolerance, the value changes.
+                        if !self.values_equal(value, self.last_emitted_value) {
+                            new_value = Some(value);
+                        }
+                    } else {
+                        // Fader is not in control. Check for crossover.
+                        // We consider it crossed if we've passed through or reached the target
+                        let has_crossed = (self.prev_value..=value)
+                            .contains(&active_layer_target_value)
+                            || (value..=self.prev_value).contains(&active_layer_target_value)
+                            || self.values_equal(value, active_layer_target_value);
 
-                    // Only process if fader actually moved
-                    if fader_delta != 0 {
-                        let current_value_i32 = active_layer_target_value as i32;
-                        let fader_pos = value as i32;
-
-                        // Check if both are at the same boundary (both at min or max)
-                        if (current_value_i32 == 0 && fader_pos == 0)
-                            || (current_value_i32 == 4095 && fader_pos == 4095)
-                        {
-                            // Both at same boundary, latch immediately
+                        if has_crossed {
+                            // Crossover detected! Latch and report the new value.
                             self.is_latched = true;
                             new_value = Some(value);
-                        } else {
-                            // Scale the delta based on whether the fader is moving toward
-                            // or away from the current value.
-                            let fader_dir = fader_delta.signum();
-                            let dir_to_current =
-                                (current_value_i32 - self.prev_value as i32).signum();
-                            let moving_toward = dir_to_current != 0 && dir_to_current == fader_dir;
-                            let scaled_delta_base = if moving_toward {
-                                fader_delta / 2 // Moving toward current, converge gently
-                            } else {
-                                fader_delta * 2 // Moving away, converge aggressively
-                            };
+                        }
+                    }
+                }
+                TakeoverMode::Scale => {
+                    // Scale mode: gradually converge value toward fader position
+                    if self.is_latched {
+                        // Already synced, move 1:1
+                        if !self.values_equal(value, self.last_emitted_value) {
+                            new_value = Some(value);
+                        }
+                    } else {
+                        // Not synced yet - calculate delta-based movement
+                        let fader_delta = value as i32 - self.prev_value as i32;
 
-                            // Apply remaining runway factor so convergence accelerates near edges.
-                            // Factor grows from 1x (middle of range) up to ~2x (at the edge).
-                            let range = 4095i32;
-                            let remaining_runway = if fader_delta > 0 {
-                                range - fader_pos
-                            } else {
-                                fader_pos
-                            };
-                            let runway_factor_num = range * RUNWAY_GAIN_DEN
-                                + (range - remaining_runway) * (RUNWAY_GAIN_NUM - RUNWAY_GAIN_DEN);
-                            let scaled_delta =
-                                scaled_delta_base * runway_factor_num / (range * RUNWAY_GAIN_DEN);
+                        // Only process if fader actually moved
+                        if fader_delta != 0 {
+                            let current_value_i32 = active_layer_target_value as i32;
+                            let fader_pos = value as i32;
 
-                            // Apply scaled delta to current value
-                            let new_current_value =
-                                (current_value_i32 + scaled_delta).clamp(0, 4095) as u16;
-
-                            // Check if we've crossed (current crossed fader position)
-                            let crossed = (current_value_i32 <= fader_pos
-                                && new_current_value as i32 >= fader_pos)
-                                || (current_value_i32 >= fader_pos
-                                    && new_current_value as i32 <= fader_pos)
-                                || self.values_equal(new_current_value, value);
-
-                            if crossed {
-                                // Crossed! Latch and return fader value
+                            // Check if both are at the same boundary (both at min or max)
+                            if (current_value_i32 == 0 && fader_pos == 0)
+                                || (current_value_i32 == 4095 && fader_pos == 4095)
+                            {
+                                // Both at same boundary, latch immediately
                                 self.is_latched = true;
                                 new_value = Some(value);
                             } else {
-                                // Still approaching, return scaled value
-                                new_value = Some(new_current_value);
+                                // Scale the delta based on whether the fader is moving toward
+                                // or away from the current value.
+                                let fader_dir = fader_delta.signum();
+                                let dir_to_current =
+                                    (current_value_i32 - self.prev_value as i32).signum();
+                                let moving_toward =
+                                    dir_to_current != 0 && dir_to_current == fader_dir;
+                                let scaled_delta_base = if moving_toward {
+                                    fader_delta / 2 // Moving toward current, converge gently
+                                } else {
+                                    fader_delta * 2 // Moving away, converge aggressively
+                                };
+
+                                // Apply remaining runway factor so convergence accelerates near edges.
+                                // Factor grows from 1x (middle of range) up to ~2x (at the edge).
+                                let range = 4095i32;
+                                let remaining_runway = if fader_delta > 0 {
+                                    range - fader_pos
+                                } else {
+                                    fader_pos
+                                };
+                                let runway_factor_num = range * RUNWAY_GAIN_DEN
+                                    + (range - remaining_runway)
+                                        * (RUNWAY_GAIN_NUM - RUNWAY_GAIN_DEN);
+                                let scaled_delta = scaled_delta_base * runway_factor_num
+                                    / (range * RUNWAY_GAIN_DEN);
+
+                                // Apply scaled delta to current value
+                                let new_current_value =
+                                    (current_value_i32 + scaled_delta).clamp(0, 4095) as u16;
+
+                                // Check if we've crossed (current crossed fader position)
+                                let crossed = (current_value_i32 <= fader_pos
+                                    && new_current_value as i32 >= fader_pos)
+                                    || (current_value_i32 >= fader_pos
+                                        && new_current_value as i32 <= fader_pos)
+                                    || self.values_equal(new_current_value, value);
+
+                                if crossed {
+                                    // Crossed! Latch and return fader value
+                                    self.is_latched = true;
+                                    new_value = Some(value);
+                                } else {
+                                    // Still approaching, return scaled value
+                                    new_value = Some(new_current_value);
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+
+        if let Some(emitted_value) = new_value {
+            self.last_emitted_value = emitted_value;
         }
 
         self.prev_value = value;
@@ -300,6 +316,28 @@ mod tests {
         let result = latch.update(104, LatchLayer::Main, 100);
         assert_eq!(result, Some(104));
         assert!(latch.is_latched());
+    }
+
+    #[test]
+    fn test_slow_movement_accumulates_against_last_emitted_value() {
+        let mut latch = AnalogLatch::with_tolerance(100, 3, TakeoverMode::Pickup);
+
+        assert_eq!(latch.update(101, LatchLayer::Main, 100), None);
+        assert_eq!(latch.update(102, LatchLayer::Main, 100), None);
+        assert_eq!(latch.update(103, LatchLayer::Main, 100), None);
+        assert_eq!(latch.update(104, LatchLayer::Main, 100), Some(104));
+    }
+
+    #[test]
+    fn test_abs_min_edge_always_applies() {
+        let mut latch = AnalogLatch::with_tolerance(10, 16, TakeoverMode::Pickup);
+        assert_eq!(latch.update(0, LatchLayer::Main, 10), Some(0));
+    }
+
+    #[test]
+    fn test_abs_max_edge_always_applies() {
+        let mut latch = AnalogLatch::with_tolerance(4088, 16, TakeoverMode::Pickup);
+        assert_eq!(latch.update(4095, LatchLayer::Main, 4088), Some(4095));
     }
 
     #[test]
