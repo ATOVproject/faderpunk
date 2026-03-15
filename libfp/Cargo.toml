@@ -7,7 +7,7 @@ license = "GPL-3.0"
 
 [dependencies]
 embassy-time = "0.4.0"
-heapless = "0.7.17"
+heapless = "0.9.1"
 libm = "0.2.15"
 max11300 = "0.5.1"
 midly = { version = "0.5.3", default-features = false }
