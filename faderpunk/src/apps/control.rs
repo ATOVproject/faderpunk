@@ -330,7 +330,7 @@ pub async fn run(
             };
             if last_out != (midi_out as u32 * 127) / 4095 {
                 midi.send_cc(midi_cc, midi_out).await;
-                i2c.send_fader_value(0, out, range).await;
+                i2c.send_fader_value(0, out, range);
             }
             last_out = (midi_out as u32 * 127) / 4095;
 

@@ -356,10 +356,12 @@ impl<const N: usize> I2cOutput<N> {
         }
     }
 
-    pub async fn send_fader_value(&self, chan: usize, value: u16, range: Range) {
+    pub fn send_fader_value(&self, chan: usize, value: u16, range: Range) {
         let chan = chan.clamp(0, N - 1);
         let msg = I2cLeaderMessage::FaderValue(self.start_channel + chan, value, range);
-        self.i2c_sender.send(msg).await;
+        // Use try_send to avoid blocking the caller if the I2C channel is full.
+        // Dropping occasional updates is fine — the next update will send the current value.
+        let _ = self.i2c_sender.try_send(msg);
     }
 }
 
