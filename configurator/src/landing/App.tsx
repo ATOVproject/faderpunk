@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { compare, major, minor } from "semver";
 
+import { useLatestFirmwareVersion } from "../useLatestFirmwareVersion";
+
 const FADERPUNK_VENDOR_ID = 0xf569;
 const FADERPUNK_PRODUCT_ID = 0x1;
-const FIRMWARE_LATEST_VERSION = __FIRMWARE_LATEST_VERSION__;
-const VERSION_PATH = `/${major(FIRMWARE_LATEST_VERSION)}.${minor(FIRMWARE_LATEST_VERSION)}/`;
+
+function versionPath(version: string) {
+  return `/${major(version)}.${minor(version)}/`;
+}
 
 type State =
   | { status: "idle" }
@@ -19,14 +23,17 @@ type State =
 
 export default function App() {
   const [state, setState] = useState<State>({ status: "idle" });
+  const latestVersion = useLatestFirmwareVersion();
   const webUsbSupported = !!navigator.usb;
 
   // Redirect hash routes to the versioned deployment
   useEffect(() => {
     if (window.location.hash) {
-      window.location.replace(VERSION_PATH + window.location.hash);
+      window.location.replace(
+        versionPath(latestVersion) + window.location.hash,
+      );
     }
-  }, []);
+  }, [latestVersion]);
 
   async function connectAndRedirect() {
     setState({ status: "connecting" });
@@ -57,7 +64,7 @@ export default function App() {
       // Determine target path for the matching configurator
       let configuratorPath: string;
 
-      if (compare(deviceVersion, FIRMWARE_LATEST_VERSION) > 0) {
+      if (compare(deviceVersion, latestVersion) > 0) {
         // Device version is newer than latest stable → beta
         configuratorPath = "/beta/";
       } else if (compare(deviceVersion, "1.7.0") < 0) {
@@ -68,7 +75,7 @@ export default function App() {
       }
 
       // Firmware is outdated → show update choice
-      if (compare(deviceVersion, FIRMWARE_LATEST_VERSION) < 0) {
+      if (compare(deviceVersion, latestVersion) < 0) {
         setState({
           status: "update-available",
           currentVersion: deviceVersion,
@@ -142,13 +149,13 @@ export default function App() {
 
         <div className="mt-4 flex items-center justify-between gap-4">
           <a
-            href={VERSION_PATH + "#/troubleshooting"}
+            href={versionPath(latestVersion) + "#/troubleshooting"}
             className="cursor-pointer text-center text-gray-400 underline hover:text-[#d4d4d8]"
           >
             Trouble connecting?
           </a>
           <a
-            href={VERSION_PATH + "#/about"}
+            href={versionPath(latestVersion) + "#/about"}
             className="cursor-pointer text-center text-gray-400 underline hover:text-[#d4d4d8]"
           >
             What is this?
@@ -177,14 +184,15 @@ export default function App() {
               </span>
               . Version{" "}
               <span className="text-pink-fp font-semibold">
-                v{FIRMWARE_LATEST_VERSION}
+                v{latestVersion}
               </span>{" "}
               is available.
             </p>
             <div className="flex justify-center gap-3">
               <button
                 onClick={() => {
-                  window.location.href = VERSION_PATH + "#/update";
+                  window.location.href =
+                    versionPath(latestVersion) + "#/update";
                 }}
                 className="cursor-pointer rounded-sm bg-white px-6 py-2 text-xs font-semibold text-black transition-opacity hover:opacity-90"
               >

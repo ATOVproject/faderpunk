@@ -290,12 +290,37 @@ jobs:
           # Restore CNAME
           cp temp-preserve/CNAME gh-pages/CNAME 2>/dev/null || true
 
+          # Update version.json with latest firmware version
+          FP_VERSION="${{ needs.detect-changes.outputs.faderpunk_version }}"
+          echo "{\"firmware\":\"${FP_VERSION}\"}" > gh-pages/version.json
+
           cd gh-pages
           git checkout gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -m "Deploy configurator v${VERSION} and update landing page" || echo "No changes"
+          git push origin gh-pages
+
+  # --- Update version.json on GitHub Pages (for landing page runtime check) ---
+  update-version-json:
+    needs: [detect-changes, release]
+    if: needs.detect-changes.outputs.faderpunk == 'true' && needs.detect-changes.outputs.configurator != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+      - name: Write version.json
+        run: |
+          echo '{"firmware":"${{ needs.detect-changes.outputs.faderpunk_version }}"}' > version.json
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git commit -m "Update firmware version to v${{ needs.detect-changes.outputs.faderpunk_version }}" || echo "No changes"
           git push origin gh-pages
 
   # --- Publish libfp to crates.io ---
