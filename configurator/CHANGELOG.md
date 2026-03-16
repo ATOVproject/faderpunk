@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.5 (2026-03-16)
+
+### Fixes
+
+- get the actual latest firmware version
+
 ## 1.8.4 (2026-03-15)
 
 ### Fixes
