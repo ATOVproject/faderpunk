@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.2 (2026-03-16)
+
+### Fixes
+
+- use try_send for i2c messages
+
 ## 1.8.1 (2026-03-15)
 
 ### Fixes
