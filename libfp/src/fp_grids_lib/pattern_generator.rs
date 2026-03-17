@@ -117,7 +117,7 @@ pub struct SequencerState {
     pub euclidean_step: [u8; K_NUM_PARTS],
     pub pulse: u8,
     pub pulse_duration_counter: u16,
-    pub current_dnb_pattern: DnbDrumPattern, 
+    pub current_dnb_pattern: DnbDrumPattern,
     pub base_dnb_pattern: DnbDrumPattern,
 }
 impl Default for SequencerState {
@@ -169,7 +169,7 @@ pub struct PatternGenerator {
     base_dnb_pattern: DnbDrumPattern,    // The original, unmodified pattern
     queued_pattern_id: i8,               // -1 = no pattern change queued
     pattern_change_queued: bool,         // = true if pending pattern change queued for next bar
-    // NB: Hi hat always trieggers when pattern is active (no automated muting)
+                                         // NB: Hi hat always trieggers when pattern is active (no automated muting)
 }
 
 // Public API
@@ -183,11 +183,11 @@ impl PatternGenerator {
     pub fn get_step(&self) -> u8 {
         self.step_
     }
-    
+
     /// Returns internal generator seqauencer state to be stored in an app's ManagedStorage so it can be restored later after a re-spwan
     pub fn get_sequencer_state(&self) -> SequencerState {
-        SequencerState { 
-            sequence_step: self.sequence_step_, 
+        SequencerState {
+            sequence_step: self.sequence_step_,
             euclidean_step: self.euclidean_step,
             pulse: self.pulse_,
             pulse_duration_counter: self.pulse_duration_counter_,
@@ -242,8 +242,8 @@ impl PatternGenerator {
     pub fn get_dnb_24ppqn_pattern_division(&self) -> u32 {
         match self.current_dnb_pattern.steps {
             16 | 32 => 6, // 1/16th notes, the only 32-step DnB pattern is supposed to be 2 bars long
-            24 => 4, // 1/16th note triplets
-            _ => 6
+            24 => 4,      // 1/16th note triplets
+            _ => 6,
         }
     }
 
@@ -291,13 +291,13 @@ impl PatternGenerator {
     }
 
     /// Called on each tick of external clock.
-    /// 
+    ///
     /// For Drums Mode, this should be fixed to 1/32nd steps
     /// For Euclidean mode, should be in 1/16th steps by default
     /// For DnB mode, it depends on the selected DnB pattern #steps
     ///
     pub fn tick(&mut self, external_clock_tick: bool) {
-         if !external_clock_tick {
+        if !external_clock_tick {
             // Only process if there's an actual external clock tick
             return;
         }
@@ -643,12 +643,14 @@ impl PatternGenerator {
         let current_step_in_pattern = self.step_ as usize;
         let mut new_state_for_tick = 0u8; // Accumulates trigger and accent bits for the current tick
         if self.current_dnb_pattern.kick[current_step_in_pattern]
-            && self.random.get_byte() < self.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density[0]
+            && self.random.get_byte()
+                < self.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density[0]
         {
             new_state_for_tick |= 1 << 0;
         }
         if self.current_dnb_pattern.snare[current_step_in_pattern]
-            && self.random.get_byte() < self.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density[1]
+            && self.random.get_byte()
+                < self.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density[1]
         {
             new_state_for_tick |= 1 << 1;
         }
@@ -657,7 +659,8 @@ impl PatternGenerator {
             new_state_for_tick |= 1 << 2;
         }
         if self.current_dnb_pattern.ghost_snare[current_step_in_pattern]
-            && self.random.get_byte() < self.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density[2]
+            && self.random.get_byte()
+                < self.settings_[OutputMode::OutputModeDnB.ordinal() as usize].density[2]
         {
             new_state_for_tick |= 1 << 3;
         }
@@ -1147,12 +1150,12 @@ mod tests {
         let mut generator: PatternGenerator = PatternGenerator::default();
         generator.set_seed(0xFFF1);
         generator.options_.output_mode = OutputMode::OutputModeDnB;
-        generator.settings_[OutputMode::OutputModeDnB.ordinal() as usize].options = 
+        generator.settings_[OutputMode::OutputModeDnB.ordinal() as usize].options =
             PatternModeSettings::DnB { pattern: 0 };
         generator.settings_[OutputMode::OutputModeDrums.ordinal() as usize].density =
             [255; K_NUM_PARTS];
         generator.queue_dnb_pattern_change(0);
-        
+
         generator.evaluate();
         assert_eq!(0, generator.get_step());
         assert_eq!(5 /* hi-hat and kick */, generator.get_trigger_state());
@@ -1165,6 +1168,5 @@ mod tests {
         generator.evaluate();
         assert_eq!(0, generator.get_step());
         assert_eq!(5 /* hi-hat and kick */, generator.get_trigger_state());
-
     }
 }

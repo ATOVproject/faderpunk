@@ -49,9 +49,6 @@
 //!
 //! DnB mode ignores the app's clock division, instead set according to the selected DnB pattern
 //! MIDI Note for Ghost Snare = Midi Note for Trigegr 3 + one semitone
-//!
-//! TODO: Why doesnt it start sequencing sometimes?
-//! TODO: Why does it lose the first beats after starting? Because of the generator.reset() behaviour ? 
 //! 
 use embassy_futures::{
     join::{join, join5},
@@ -361,7 +358,7 @@ pub async fn run(
             },
         );
         let (gen_state_, restored_note_on_, restored_accent_on_) = storage.query(|s| (s.generator_state, s.note_on, s.accent_on));
-        defmt::info!("restoring sequence step {}", gen_state_.sequence_step);
+        // defmt::info!("restoring sequence step {}", gen_state_.sequence_step);
         generator.restore(gen_state_);
         // Decide if need to send MIDI note off events after a re-spawn, assume MIDI notes have not changed since last restore
         for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
@@ -376,7 +373,7 @@ pub async fn run(
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    defmt::info!("[{}] Clock reset!", ticks());
+                    // defmt::info!("[{}] Clock reset!", ticks());
                     output_mode = output_mode_glob.get();
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
@@ -388,7 +385,7 @@ pub async fn run(
                     dnb_reset_pattern_glob.set(false);
                 }
                 ClockEvent::Stop => {
-                    defmt::info!("[{}] Clock stop", ticks());
+                    // defmt::info!("[{}] Clock stop", ticks());
                     // Prevent hanging notes / gate CVs if clock is stopped
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
@@ -397,7 +394,7 @@ pub async fn run(
 
                 }
                 ClockEvent::Start => {
-                    defmt::info!("[{}] Clock start", ticks());
+                    // defmt::info!("[{}] Clock start", ticks());
                     generator.reset();
                     // Ensure initial DnB pattern is generated at start of sequence
                     if output_mode == OutputMode::OutputModeDnB {
@@ -446,7 +443,7 @@ pub async fn run(
                         // 3: Global accent (or Ghost Snare in DnB mode)
                         generator.retrigger();
                         let state = generator.get_trigger_state();
-                        defmt::info!("[{}] Step: {}, BD {}, SN {}, HH {} ", clkn, generator.get_step(), state & (1 << 0) > 0, state & (1 << 1) > 0, state & (1 << 2) > 0);
+                        // defmt::info!("[{}] Step: {}, BD {}, SN {}, HH {} ", clkn, generator.get_step(), state & (1 << 0) > 0, state & (1 << 1) > 0, state & (1 << 2) > 0);
                         let is_accent = state & (1 << 3) > 0;
                         let velocity_ = if output_mode == OutputMode::OutputModeDnB || !is_accent {
                             midi_velocity
