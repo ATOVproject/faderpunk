@@ -27,7 +27,7 @@ static LED_SIGNALS: [Signal<CriticalSectionRawMutex, LedMsg>; NUM_LEDS] =
 
 static LED_OVERLAY_CHANNEL: Channel<
     CriticalSectionRawMutex,
-    (usize, LedMode),
+    (usize, Option<LedMode>),
     LED_OVERLAY_CHANNEL_SIZE,
 > = Channel::new();
 
@@ -267,7 +267,12 @@ pub fn set_led_mode(channel: usize, position: Led, msg: LedMsg) {
 
 pub async fn set_led_overlay_mode(channel: usize, position: Led, mode: LedMode) {
     let no = get_no(channel, position);
-    LED_OVERLAY_CHANNEL.send((no, mode)).await;
+    LED_OVERLAY_CHANNEL.send((no, Some(mode))).await;
+}
+
+pub async fn clear_led_overlay(channel: usize, position: Led) {
+    let no = get_no(channel, position);
+    LED_OVERLAY_CHANNEL.send((no, None)).await;
 }
 
 #[embassy_executor::task]
@@ -326,7 +331,10 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
         }
 
         while let Ok((no, mode)) = LED_OVERLAY_CHANNEL.try_receive() {
-            leds.overlay_layer[no] = mode.into_effect();
+            leds.overlay_layer[no] = match mode {
+                Some(m) => m.into_effect(),
+                None => LedEffect::Off,
+            };
         }
 
         leds.process().await;
