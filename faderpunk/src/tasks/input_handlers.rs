@@ -1,10 +1,13 @@
 use embassy_executor::Spawner;
 use libfp::{Brightness, Color, Key, Note};
+use portable_atomic::{AtomicU8, Ordering};
 
 use crate::app::Led;
 use crate::events::{InputEvent, EVENT_PUBSUB};
 use crate::tasks::global_config::get_global_config;
 use crate::tasks::leds::{clear_led_overlay, set_led_overlay_mode, LedMode};
+
+static LAST_SCENE: AtomicU8 = AtomicU8::new(u8::MAX);
 
 const SCALE_LED_FIRST_CHANNEL: usize = 3;
 const SCALE_LED_LAST_CHANNEL: usize = SCALE_LED_FIRST_CHANNEL + SCALE_LED_COUNT;
@@ -27,6 +30,7 @@ async fn run_input_handlers() {
     loop {
         match subscriber.next_message_pure().await {
             InputEvent::LoadScene(scene) => {
+                LAST_SCENE.store(scene, Ordering::Relaxed);
                 set_led_overlay_mode(
                     scene as usize,
                     Led::Button,
@@ -45,10 +49,23 @@ async fn run_input_handlers() {
             InputEvent::SceneButtonDown => {
                 let config = get_global_config();
                 show_scale_keyboard(config.quantizer.key, config.quantizer.tonic).await;
+                let last = LAST_SCENE.load(Ordering::Relaxed);
+                if last < NUM_CHANNELS as u8 {
+                    set_led_overlay_mode(
+                        last as usize,
+                        Led::Button,
+                        LedMode::Static(Color::Green, Brightness::Mid),
+                    )
+                    .await;
+                }
             }
             InputEvent::SceneButtonUp => {
                 for i in 0..NUM_CHANNELS {
                     clear_led_overlay(i, Led::Bottom).await;
+                }
+                let last = LAST_SCENE.load(Ordering::Relaxed);
+                if last < NUM_CHANNELS as u8 {
+                    clear_led_overlay(last as usize, Led::Button).await;
                 }
             }
             _ => {}
