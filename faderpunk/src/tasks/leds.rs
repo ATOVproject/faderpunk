@@ -13,6 +13,8 @@ use smart_leds::colors::BLACK;
 use smart_leds::{brightness, gamma, SmartLedsWriteAsync, RGB8};
 use ws2812_async::{Grb, Ws2812};
 
+use crate::tasks::clock::METRONOME_HIGH;
+
 const REFRESH_RATE: u64 = 60;
 const T: u64 = 1000 / REFRESH_RATE;
 const NUM_LEDS: usize = 50;
@@ -53,6 +55,7 @@ pub enum LedMode {
     FadeOut(Color),
     Flash(Color, Option<usize>),
     StaticFade(Color, u16),
+    ClockFlash(Color, Brightness, Brightness),
 }
 
 impl LedMode {
@@ -75,6 +78,11 @@ impl LedMode {
                 color: color.into(),
                 delay_ms,
                 elapsed_frames: 0,
+            },
+            LedMode::ClockFlash(color, brightness_high, brightness_low) => LedEffect::ClockFlash {
+                color: color.into(),
+                brightness_high: brightness_high.into(),
+                brightness_low: brightness_low.into(),
             },
         }
     }
@@ -100,6 +108,11 @@ enum LedEffect {
         color: RGB8,
         delay_ms: u16,
         elapsed_frames: u64,
+    },
+    ClockFlash {
+        color: RGB8,
+        brightness_high: u8,
+        brightness_low: u8,
     },
 }
 
@@ -154,6 +167,17 @@ impl LedEffect {
                 }
 
                 result
+            }
+            LedEffect::ClockFlash {
+                color,
+                brightness_high,
+                brightness_low,
+            } => {
+                if METRONOME_HIGH.load(Ordering::Relaxed) {
+                    color.scale(*brightness_high)
+                } else {
+                    color.scale(*brightness_low)
+                }
             }
             LedEffect::StaticFade {
                 color,
@@ -259,9 +283,10 @@ async fn run_leds(spi1: Spi<'static, SPI1, Async>) {
 
     startup_animation(&mut leds).await;
 
-    leds.base_layer[16] = LedEffect::Static {
+    leds.base_layer[16] = LedEffect::ClockFlash {
         color: Color::Pink.into(),
-        brightness: Brightness::Mid.into(),
+        brightness_high: Brightness::High.into(),
+        brightness_low: Brightness::Mid.into(),
     };
     leds.base_layer[17] = LedEffect::Static {
         color: Color::Yellow.into(),

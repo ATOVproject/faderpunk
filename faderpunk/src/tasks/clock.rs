@@ -14,7 +14,7 @@ use embassy_sync::{
 };
 use embassy_time::{Duration, Instant, Timer};
 use midly::live::SystemRealtime;
-use portable_atomic::{AtomicU64, Ordering};
+use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use libfp::{
     utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig, MidiOut, MidiOutConfig,
@@ -30,14 +30,19 @@ use crate::{
 };
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
-// 16 apps
-const CLOCK_PUBSUB_SUBSCRIBERS: usize = 16;
+// 16 apps + 1 metronome
+const CLOCK_PUBSUB_SUBSCRIBERS: usize = 17;
 // 3 Ext clocks, internal clock, midi
 const CLOCK_PUBSUB_PUBLISHERS: usize = 5;
 // Add a slight delay before the very first tick (to offset it to reset)
 const TICK_RESET_DELAY: u8 = 2;
+/// PPQN of the internal clock
+const INTERNAL_PPQN: u8 = 24;
+/// How long METRONOME_HIGH stays true after each beat (ms).
+const METRONOME_HIGH_MS: u64 = 25;
 
 pub static TICK_COUNTER: AtomicU64 = AtomicU64::new(0);
+pub static METRONOME_HIGH: AtomicBool = AtomicBool::new(true);
 
 type AuxInputs = (
     Peri<'static, PIN_1>,
@@ -108,11 +113,10 @@ pub enum ClockEvent {
     Reset,
 }
 
-const INTERNAL_PPQN: u8 = 24;
-
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(run_clock_sources(aux_inputs)).unwrap();
     spawner.spawn(run_clock_gatekeeper()).unwrap();
+    spawner.spawn(metronome()).unwrap();
 }
 
 async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
@@ -188,6 +192,33 @@ async fn analog_tick(aux_no: usize, trigger_len: u64) {
     MAX_TRIGGERS_GPO[gpo_index].store(2, Ordering::Relaxed);
     Timer::after_millis(trigger_len).await;
     MAX_TRIGGERS_GPO[gpo_index].store(1, Ordering::Relaxed);
+}
+
+#[embassy_executor::task]
+async fn metronome() {
+    let mut sub = CLOCK_PUBSUB.subscriber().unwrap();
+    let mut tick_count: u64 = 0;
+
+    loop {
+        match sub.next_message_pure().await {
+            ClockEvent::Tick => {
+                tick_count += 1;
+                // Fire on the first tick of each quarter note (every 24 ppqn ticks).
+                if tick_count % 24 == 1 {
+                    METRONOME_HIGH.store(true, Ordering::Relaxed);
+                    Timer::after_millis(METRONOME_HIGH_MS).await;
+                    METRONOME_HIGH.store(false, Ordering::Relaxed);
+                }
+            }
+            ClockEvent::Start | ClockEvent::Reset => {
+                tick_count = 0;
+                METRONOME_HIGH.store(true, Ordering::Relaxed);
+            }
+            ClockEvent::Stop => {
+                METRONOME_HIGH.store(false, Ordering::Relaxed);
+            }
+        }
+    }
 }
 
 #[embassy_executor::task]
