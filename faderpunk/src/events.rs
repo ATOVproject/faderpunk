@@ -11,6 +11,10 @@ pub enum InputEvent {
     FaderChange(usize),
     LoadScene(u8),
     SaveScene(u8),
+    SceneButtonDown,
+    SceneButtonUp,
+    ShiftButtonDown,
+    ShiftButtonUp,
 }
 
 const EVENT_PUBSUB_SIZE: usize = 64;
