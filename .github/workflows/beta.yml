@@ -13,7 +13,7 @@ jobs:
       sha: ${{ steps.commit.outputs.sha }}
       faderpunk_version: ${{ steps.commit.outputs.faderpunk_version }}
     steps:
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.APP_ID }}
