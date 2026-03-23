@@ -106,9 +106,19 @@ async fn show_scale_keyboard(key: Key, tonic: Note) {
 
     // Mute channels outside the scale keyboard
     for ch in 0..SCALE_LED_FIRST_CHANNEL {
-        set_led_overlay_mode(ch, Led::Bottom, LedMode::Static(Color::White, Brightness::Off)).await;
+        set_led_overlay_mode(
+            ch,
+            Led::Bottom,
+            LedMode::Static(Color::White, Brightness::Off),
+        )
+        .await;
     }
     for ch in SCALE_LED_LAST_CHANNEL..NUM_CHANNELS {
-        set_led_overlay_mode(ch, Led::Bottom, LedMode::Static(Color::White, Brightness::Off)).await;
+        set_led_overlay_mode(
+            ch,
+            Led::Bottom,
+            LedMode::Static(Color::White, Brightness::Off),
+        )
+        .await;
     }
 }
