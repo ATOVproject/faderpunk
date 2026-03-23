@@ -17,6 +17,16 @@ pub fn scale_bits_7_12(value: u7) -> u16 {
     ((value.as_int() as u32 * 4095) / 127) as u16
 }
 
+/// Scale from 4095 (12-bit) to 16383 (14-bit)
+pub fn scale_bits_12_14(value: u16) -> u16 {
+    ((value as u32 * 16383) / 4095) as u16
+}
+
+/// Scale from 16383 (14-bit) to 4095 (12-bit)
+pub fn scale_bits_14_12(value: u16) -> u16 {
+    ((value as u32 * 4095) / 16383) as u16
+}
+
 /// Convert u7 into u16
 pub fn bits_7_16(value: u7) -> u16 {
     value.as_int() as u16

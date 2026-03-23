@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 7;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "LFO+",
@@ -37,7 +37,6 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Range",
     variants: &[Range::_0_10V, Range::_Neg5_5V],
 })
-.add_param(Param::MidiOut)
 .add_param(Param::MidiChannel {
     name: "MIDI Channel",
 })
@@ -54,7 +53,9 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
-});
+})
+.add_param(Param::MidiNrpn)
+.add_param(Param::MidiOut);
 
 pub struct Params {
     speed_mult: usize,
@@ -63,6 +64,7 @@ pub struct Params {
     midi_channel: MidiChannel,
     midi_cc: MidiCc,
     color_in: Color,
+    nrpn: bool,
 }
 
 impl Default for Params {
@@ -74,6 +76,7 @@ impl Default for Params {
             midi_channel: MidiChannel::default(),
             midi_cc: MidiCc::from(32),
             color_in: Color::Blue,
+            nrpn: false,
         }
     }
 }
@@ -83,10 +86,11 @@ impl AppParams for Params {
         Some(Self {
             speed_mult: usize::from_value(values[0]),
             range: Range::from_value(values[1]),
-            midi_out: MidiOut::from_value(values[2]),
-            midi_channel: MidiChannel::from_value(values[3]),
-            midi_cc: MidiCc::from_value(values[4]),
-            color_in: Color::from_value(values[5]),
+            midi_channel: MidiChannel::from_value(values[2]),
+            midi_cc: MidiCc::from_value(values[3]),
+            color_in: Color::from_value(values[4]),
+            nrpn: bool::from_value(values[5]),
+            midi_out: MidiOut::from_value(values[6]),
         })
     }
 
@@ -94,10 +98,11 @@ impl AppParams for Params {
         let mut vec = Vec::new();
         vec.push(self.speed_mult.into()).unwrap();
         vec.push(self.range.into()).unwrap();
-        vec.push(self.midi_out.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.color_in.into()).unwrap();
+        vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
         vec
     }
 }
@@ -156,8 +161,8 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (range, midi_out, midi_chan, midi_cc, color_in) =
-        params.query(|p| (p.range, p.midi_out, p.midi_channel, p.midi_cc, p.color_in));
+    let (range, midi_out, midi_chan, midi_cc, color_in, nrpn) =
+        params.query(|p| (p.range, p.midi_out, p.midi_channel, p.midi_cc, p.color_in, p.nrpn));
 
     let speed_mult = 2u32.pow(params.query(|p| p.speed_mult).min(31) as u32);
 
@@ -169,7 +174,7 @@ pub async fn run(
     let leds = app.use_leds();
     let mut clk = app.use_clock();
 
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
 
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);

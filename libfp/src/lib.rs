@@ -711,6 +711,7 @@ pub enum Param {
         name: &'static str,
     },
     MidiOut,
+    MidiNrpn,
 }
 
 #[allow(non_camel_case_types)]
@@ -731,6 +732,7 @@ pub enum Value {
     MidiMode(MidiMode),
     MidiNote(MidiNote),
     MidiOut(MidiOut),
+    MidiNrpn(bool),
 }
 
 impl From<Curve> for Value {
@@ -955,7 +957,13 @@ impl FromValue for Range {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
-pub struct MidiCc(u8);
+pub struct MidiCc(u16);
+
+impl MidiCc {
+    pub fn as_u16(&self) -> u16 {
+        self.0
+    }
+}
 
 impl FromValue for MidiCc {
     fn from_value(value: Value) -> Self {
@@ -968,13 +976,25 @@ impl FromValue for MidiCc {
 
 impl From<u8> for MidiCc {
     fn from(value: u8) -> Self {
-        Self(value.min(127))
+        Self(value as u16)
+    }
+}
+
+impl From<u16> for MidiCc {
+    fn from(value: u16) -> Self {
+        Self(value.min(16383))
+    }
+}
+
+impl From<i32> for MidiCc {
+    fn from(value: i32) -> Self {
+        Self((value.clamp(0, 16383)) as u16)
     }
 }
 
 impl From<MidiCc> for u7 {
     fn from(value: MidiCc) -> Self {
-        u7::from_int_lossy(value.0)
+        u7::from_int_lossy(value.0 as u8)
     }
 }
 

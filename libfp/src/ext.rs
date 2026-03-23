@@ -25,6 +25,7 @@ impl FromValue for bool {
     fn from_value(value: Value) -> Self {
         match value {
             Value::bool(i) => i,
+            Value::MidiNrpn(b) => b,
             _ => Self::default(),
         }
     }
