@@ -26,9 +26,12 @@ use midly::{
 
 use libfp::{ClockSrc, MidiIn, MidiOut, MidiOutConfig, MidiOutMode, GLOBAL_CHANNELS};
 
-use crate::tasks::{
-    clock::{ClockInEvent, CLOCK_IN_CHANNEL},
-    global_config::GLOBAL_CONFIG_WATCH,
+use crate::{
+    events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB},
+    tasks::{
+        clock::{ClockInEvent, CLOCK_IN_CHANNEL},
+        global_config::GLOBAL_CONFIG_WATCH,
+    },
 };
 
 midly::stack_buffer! {
@@ -341,6 +344,7 @@ pub async fn midi_in_task<'a>(
     let midi_sender = MIDI_CHANNEL.sender();
     let din_publisher = MIDI_DIN_PUBSUB.publisher().unwrap();
     let usb_publisher = MIDI_USB_PUBSUB.publisher().unwrap();
+    let event_publisher = EVENT_PUBSUB.publisher().unwrap();
 
     let mut usb_rx_buf = [0; 64];
     let mut uart_rx_buffer = [0u8; 64];
@@ -421,6 +425,7 @@ pub async fn midi_in_task<'a>(
                                     ClockSrc::MidiUsb,
                                     &clock_in_sender,
                                     &midi_sender,
+                                    &event_publisher,
                                 )
                                 .await;
                             }
@@ -451,6 +456,7 @@ pub async fn midi_in_task<'a>(
                             ClockSrc::MidiIn,
                             &clock_in_sender,
                             &midi_sender,
+                            &event_publisher,
                         )
                         .await;
                     }
@@ -508,6 +514,7 @@ async fn process_midi_event(
     clock_src: ClockSrc,
     clock_in_sender: &Sender<'static, ThreadModeRawMutex, ClockInEvent, 16>,
     midi_sender: &Sender<'static, CriticalSectionRawMutex, MidiOutEvent, 16>,
+    event_publisher: &EventPubSubPublisher,
 ) {
     match event {
         LiveEvent::Realtime(msg) => match msg {
@@ -530,6 +537,28 @@ async fn process_midi_event(
             }
             _ => {}
         },
+        LiveEvent::Midi { message, .. } => {
+            // Check for program change 0-15 and trigger scene load
+            if let MidiMessage::ProgramChange { program } = message {
+                let program_num = program.as_int();
+                if program_num <= 15 {
+                    event_publisher.publish_immediate(InputEvent::LoadScene(program_num));
+                }
+            }
+
+            // Continue with normal MIDI processing
+            let ev = event.to_static();
+            // Send to apps
+            publisher.publish_immediate(ev);
+            // Pass through to relevant targets
+            midi_sender
+                .send(MidiOutEvent::Event(MidiMsg::new(
+                    ev,
+                    MidiOut(thru_targets),
+                    MidiEventSource::Passthrough,
+                )))
+                .await;
+        }
         _ => {
             let ev = event.to_static();
             // Send to apps

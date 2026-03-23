@@ -204,6 +204,8 @@ async fn main(spawner: Spawner) {
 
     tasks::leds::start_leds(&spawner, spi1).await;
 
+    tasks::input_handlers::start_input_handlers(&spawner).await;
+
     tasks::max::start_max(&spawner, spi0, p.PIO0, mux_pins, p.PIN_17, calibration_data).await;
 
     tasks::i2c::start_i2c(&spawner, p.I2C0, p.PIN_21, p.PIN_20).await;
