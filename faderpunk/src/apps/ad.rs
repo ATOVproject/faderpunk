@@ -36,16 +36,6 @@ pub struct Params {
     midi_channel: MidiChannel,
     retrigger: bool,
 }
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            midi_in: MidiIn([false, false]),
-            midi_channel: MidiChannel::default(),
-            retrigger: false,
-        }
-    }
-}
-
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         Some(Self {
@@ -89,7 +79,11 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id);
+    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id, Params {
+        midi_in: MidiIn([false, false]),
+        midi_channel: MidiChannel::default(),
+        retrigger: false,
+    });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;

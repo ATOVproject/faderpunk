@@ -366,7 +366,7 @@ impl AppParamsAddress {
     }
 }
 
-pub trait AppParams: Sized + Default + Send + Sync + 'static {
+pub trait AppParams: Sized + Send + Sync + 'static {
     fn from_values(values: &[Value]) -> Option<Self>;
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS>;
 }
@@ -378,10 +378,10 @@ pub struct ParamStore<P: AppParams> {
 }
 
 impl<P: AppParams> ParamStore<P> {
-    pub fn new(app_id: u8, layout_id: u8) -> Self {
+    pub fn new(app_id: u8, layout_id: u8, initial: P) -> Self {
         Self {
             app_id,
-            inner: RefCell::new(P::default()),
+            inner: RefCell::new(initial),
             layout_id,
         }
     }
