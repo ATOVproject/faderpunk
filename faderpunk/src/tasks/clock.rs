@@ -358,6 +358,7 @@ async fn run_unified_clock_engine() {
     let config = config_receiver.get().await;
     let mut is_running = is_clock_running().await;
     let mut current_tick_duration = bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
+    let mut last_tick_at = Instant::now();
     let mut next_tick_at = Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
     let mut last_pulse: Option<Instant> = None;
     let mut delta_history: [Duration; HISTORY_SIZE] = [Duration::from_ticks(0); HISTORY_SIZE];
@@ -417,6 +418,7 @@ async fn run_unified_clock_engine() {
                         // Switching to internal: recalculate tick duration from BPM
                         current_tick_duration =
                             bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
+                        last_tick_at = Instant::now();
                     }
                 } else if config.clock.clock_src == ClockSrc::Internal {
                     // BPM change while on internal source
@@ -424,21 +426,9 @@ async fn run_unified_clock_engine() {
                     let new_tick_duration =
                         bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
 
-                    // Proportionally rescale next_tick_at for smooth BPM transition
+                    // Recompute next tick from the grid anchor to avoid drift
                     if old_tick_duration != new_tick_duration && is_running {
-                        let now = Instant::now();
-                        if let Some(time_until_next_tick) = next_tick_at.checked_duration_since(now)
-                        {
-                            if old_tick_duration.as_ticks() > 0 {
-                                let new_time_until_next_tick_ticks =
-                                    (time_until_next_tick.as_ticks() as u128
-                                        * new_tick_duration.as_ticks() as u128)
-                                        / old_tick_duration.as_ticks() as u128;
-                                let new_time_until_next_tick =
-                                    Duration::from_ticks(new_time_until_next_tick_ticks as u64);
-                                next_tick_at = now + new_time_until_next_tick;
-                            }
-                        }
+                        next_tick_at = last_tick_at + new_tick_duration;
                     }
 
                     current_tick_duration = new_tick_duration;
@@ -461,8 +451,9 @@ async fn run_unified_clock_engine() {
 
                 if is_running != next_is_running {
                     if next_is_running {
+                        last_tick_at = Instant::now();
                         next_tick_at =
-                            Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
+                            last_tick_at + Duration::from_millis(TICK_RESET_DELAY as u64);
                         clock_in_sender
                             .send(ClockInEvent::Start(ClockSrc::Internal))
                             .await;
@@ -546,8 +537,9 @@ async fn run_unified_clock_engine() {
             // Arm 4: Timer fired
             Either4::Fourth(_) => {
                 if config.clock.clock_src == ClockSrc::Internal && is_running {
-                    // Internal tick: advance schedule and send
-                    next_tick_at += current_tick_duration;
+                    // Internal tick: advance grid anchor and schedule next
+                    last_tick_at = next_tick_at;
+                    next_tick_at = last_tick_at + current_tick_duration;
                     clock_in_sender
                         .send(ClockInEvent::Tick(ClockSrc::Internal))
                         .await;
