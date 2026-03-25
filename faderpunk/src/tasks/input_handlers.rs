@@ -47,8 +47,25 @@ async fn run_input_handlers() {
                 .await;
             }
             InputEvent::SceneButtonDown => {
+                // Suppress all app LEDs to create a "settings page"
+                for i in 0..NUM_CHANNELS {
+                    set_led_overlay_mode(
+                        i,
+                        Led::Top,
+                        LedMode::Static(Color::White, Brightness::Off),
+                    )
+                    .await;
+                    set_led_overlay_mode(
+                        i,
+                        Led::Button,
+                        LedMode::Static(Color::White, Brightness::Off),
+                    )
+                    .await;
+                }
+
                 let config = get_global_config();
                 show_scale_keyboard(config.quantizer.key, config.quantizer.tonic).await;
+
                 let last = LAST_SCENE.load(Ordering::Relaxed);
                 if last < NUM_CHANNELS as u8 {
                     set_led_overlay_mode(
@@ -61,11 +78,9 @@ async fn run_input_handlers() {
             }
             InputEvent::SceneButtonUp => {
                 for i in 0..NUM_CHANNELS {
+                    clear_led_overlay(i, Led::Top).await;
                     clear_led_overlay(i, Led::Bottom).await;
-                }
-                let last = LAST_SCENE.load(Ordering::Relaxed);
-                if last < NUM_CHANNELS as u8 {
-                    clear_led_overlay(last as usize, Led::Button).await;
+                    clear_led_overlay(i, Led::Button).await;
                 }
             }
             _ => {}
@@ -73,7 +88,7 @@ async fn run_input_handlers() {
     }
 }
 
-async fn show_scale_keyboard(key: Key, tonic: Note) {
+pub async fn show_scale_keyboard(key: Key, tonic: Note) {
     let mask = key.as_u16_key();
     let tonic_offset = tonic as usize;
 
@@ -88,18 +103,15 @@ async fn show_scale_keyboard(key: Key, tonic: Note) {
             Color::White
         };
 
-        let brightness = if in_scale {
+        let brightness = if semitone == tonic_offset {
             Brightness::High
+        } else if in_scale {
+            Brightness::Mid
         } else {
             Brightness::Low
         };
 
-        // Tonic (root note) pulses with the clock to stand out
-        let mode = if semitone == tonic_offset {
-            LedMode::ClockFlash(color, Brightness::High, Brightness::Low)
-        } else {
-            LedMode::Static(color, brightness)
-        };
+        let mode = LedMode::Static(color, brightness);
 
         set_led_overlay_mode(SCALE_LED_FIRST_CHANNEL + semitone, Led::Bottom, mode).await;
     }
