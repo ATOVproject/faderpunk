@@ -9,6 +9,8 @@ use portable_atomic::Ordering;
 use crate::app::Led;
 use crate::layout::FORCE_RESPAWN_SIGNAL;
 use crate::storage::store_global_config;
+use crate::tasks::buttons::is_scene_button_pressed;
+use crate::tasks::input_handlers::show_scale_keyboard;
 use crate::tasks::leds::{set_led_overlay_mode, LedMode, LED_BRIGHTNESS};
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
 use crate::QUANTIZER;
@@ -190,7 +192,9 @@ async fn global_config_change() {
         {
             let mut quantizer = QUANTIZER.get().lock().await;
             quantizer.set_scale(config.quantizer.key, config.quantizer.tonic);
-            if config.quantizer.key != old.quantizer.key {
+            if is_scene_button_pressed() {
+                show_scale_keyboard(config.quantizer.key, config.quantizer.tonic).await;
+            } else if config.quantizer.key != old.quantizer.key {
                 let color = Color::from(config.quantizer.key as usize);
                 set_led_overlay_mode(
                     QUANTIZER_KEY_FADER,
