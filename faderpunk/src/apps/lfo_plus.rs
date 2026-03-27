@@ -67,20 +67,6 @@ pub struct Params {
     nrpn: bool,
 }
 
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            speed_mult: 0,
-            range: Range::_Neg5_5V,
-            midi_out: MidiOut([false, false, false]),
-            midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(32),
-            color_in: Color::Blue,
-            nrpn: false,
-        }
-    }
-}
-
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         Some(Self {
@@ -136,7 +122,19 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id);
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            speed_mult: 0,
+            range: Range::_Neg5_5V,
+            midi_out: MidiOut([false, false, false]),
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(32u8.saturating_add(app.start_channel as u8)),
+            color_in: Color::Blue,
+            nrpn: false,
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
@@ -161,8 +159,16 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (range, midi_out, midi_chan, midi_cc, color_in, nrpn) =
-        params.query(|p| (p.range, p.midi_out, p.midi_channel, p.midi_cc, p.color_in, p.nrpn));
+    let (range, midi_out, midi_chan, midi_cc, color_in, nrpn) = params.query(|p| {
+        (
+            p.range,
+            p.midi_out,
+            p.midi_channel,
+            p.midi_cc,
+            p.color_in,
+            p.nrpn,
+        )
+    });
 
     let speed_mult = 2u32.pow(params.query(|p| p.speed_mult).min(31) as u32);
 

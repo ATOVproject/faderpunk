@@ -84,26 +84,6 @@ pub struct Params {
     nrpn: bool,
 }
 
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            curve: Curve::Linear,
-            range: Range::_0_10V,
-            midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(32),
-            midi_out: MidiOut::default(),
-            on_release: false,
-            invert: false,
-            color: Color::Violet,
-            save_state: true,
-            button_mode: 0,
-            button_ch: MidiChannel::default(),
-            button_cc: MidiCc::from(33),
-            nrpn: false,
-        }
-    }
-}
-
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         if values.len() < PARAMS {
@@ -166,7 +146,26 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id);
+    let ch = app.start_channel as u8;
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            curve: Curve::Linear,
+            range: Range::_0_10V,
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(32u8.saturating_add(ch)),
+            midi_out: MidiOut::default(),
+            on_release: false,
+            invert: false,
+            color: Color::Violet,
+            save_state: true,
+            button_mode: 0,
+            button_ch: MidiChannel::default(),
+            button_cc: MidiCc::from(48u8.saturating_add(ch)),
+            nrpn: false,
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;

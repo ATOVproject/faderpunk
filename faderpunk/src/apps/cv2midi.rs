@@ -56,19 +56,6 @@ pub struct Params {
     nrpn: bool,
 }
 
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            bipolar: false,
-            midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(32),
-            midi_out: MidiOut::default(),
-            color: Color::Violet,
-            nrpn: false,
-        }
-    }
-}
-
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         if values.len() < PARAMS {
@@ -117,7 +104,18 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id);
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            bipolar: false,
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(32u8.saturating_add(app.start_channel as u8)),
+            midi_out: MidiOut::default(),
+            color: Color::Violet,
+            nrpn: false,
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
@@ -142,8 +140,16 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (bipolar, midi_out, midi_channel, midi_cc, led_color, nrpn) =
-        params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc, p.color, p.nrpn));
+    let (bipolar, midi_out, midi_channel, midi_cc, led_color, nrpn) = params.query(|p| {
+        (
+            p.bipolar,
+            p.midi_out,
+            p.midi_channel,
+            p.midi_cc,
+            p.color,
+            p.nrpn,
+        )
+    });
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
