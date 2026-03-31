@@ -1,5 +1,5 @@
 use embassy_executor::Spawner;
-use libfp::{Brightness, Color, Key, Note};
+use libfp::{Brightness, Color, GlobalConfig, Key, Note};
 use portable_atomic::{AtomicU8, Ordering};
 
 use crate::app::Led;
@@ -9,10 +9,13 @@ use crate::tasks::leds::{clear_led_overlay, set_led_overlay_mode, LedMode};
 
 static LAST_SCENE: AtomicU8 = AtomicU8::new(u8::MAX);
 
-const SCALE_LED_FIRST_CHANNEL: usize = 3;
+const SCALE_LED_FIRST_CHANNEL: usize = 2;
 const SCALE_LED_LAST_CHANNEL: usize = SCALE_LED_FIRST_CHANNEL + SCALE_LED_COUNT;
 const SCALE_LED_COUNT: usize = 12;
 const NUM_CHANNELS: usize = 16;
+const QUANTIZER_KEY_FADER: usize = 3;
+const QUANTIZER_TONIC_FADER: usize = 4;
+const BPM_FADER: usize = 15;
 
 /// Piano black-key pattern: C=white, C#=black, D=white, D#=black, E=white,
 /// F=white, F#=black, G=white, G#=black, A=white, A#=black, B=white
@@ -30,11 +33,19 @@ async fn run_input_handlers() {
     loop {
         match subscriber.next_message_pure().await {
             InputEvent::LoadScene(scene) => {
-                LAST_SCENE.store(scene, Ordering::Relaxed);
+                let old = LAST_SCENE.swap(scene, Ordering::Relaxed);
+                if old < NUM_CHANNELS as u8 && old != scene {
+                    set_led_overlay_mode(
+                        old as usize,
+                        Led::Button,
+                        LedMode::Static(Color::White, Brightness::Off),
+                    )
+                    .await;
+                }
                 set_led_overlay_mode(
                     scene as usize,
                     Led::Button,
-                    LedMode::Flash(Color::Green, Some(2)),
+                    LedMode::FlashThenStatic(Color::Green, 2, Color::Green, Brightness::Mid),
                 )
                 .await;
             }
@@ -42,7 +53,7 @@ async fn run_input_handlers() {
                 set_led_overlay_mode(
                     scene as usize,
                     Led::Button,
-                    LedMode::Flash(Color::Red, Some(3)),
+                    LedMode::FlashThenStatic(Color::Red, 3, Color::White, Brightness::Off),
                 )
                 .await;
             }
@@ -65,6 +76,7 @@ async fn run_input_handlers() {
 
                 let config = get_global_config();
                 show_scale_keyboard(config.quantizer.key, config.quantizer.tonic).await;
+                show_config_top_leds(&config).await;
 
                 let last = LAST_SCENE.load(Ordering::Relaxed);
                 if last < NUM_CHANNELS as u8 {
@@ -133,4 +145,29 @@ pub async fn show_scale_keyboard(key: Key, tonic: Note) {
         )
         .await;
     }
+}
+
+pub async fn show_config_top_leds(config: &GlobalConfig) {
+    let key_color = Color::from(config.quantizer.key as usize);
+    set_led_overlay_mode(
+        QUANTIZER_KEY_FADER,
+        Led::Top,
+        LedMode::Static(key_color, Brightness::High),
+    )
+    .await;
+
+    let tonic_color = Color::from(config.quantizer.tonic as usize);
+    set_led_overlay_mode(
+        QUANTIZER_TONIC_FADER,
+        Led::Top,
+        LedMode::Static(tonic_color, Brightness::High),
+    )
+    .await;
+
+    set_led_overlay_mode(
+        BPM_FADER,
+        Led::Top,
+        LedMode::ClockFlash(Color::White, Brightness::High, Brightness::Low),
+    )
+    .await;
 }
