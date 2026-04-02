@@ -296,35 +296,32 @@ impl PatternGenerator {
     /// For Euclidean mode, should be in 1/16th steps by default
     /// For DnB mode, it depends on the selected DnB pattern #steps
     ///
-    pub fn tick(&mut self, external_clock_tick: bool) {
-        if !external_clock_tick {
-            // Only process if there's an actual external clock tick
-            return;
-        }
+    pub fn tick(&mut self, clkn: u32, div: u32) {
+        // Derive the sequence step from the absolute clock tick count divided by the clock division,
+        // so the generator stays in sync with ticks() rather than tracking its own independent counter.
+        let step_count = clkn / div;
 
-        // Direct clocking: each external tick advances main sequence and all Euclidean parts
         self.sequence_step_ = if self.options_.output_mode == OutputMode::OutputModeDnB {
-            (self.sequence_step_ + 1) % self.current_dnb_pattern.steps
+            (step_count % self.current_dnb_pattern.steps as u32) as u8
         } else {
-            (self.sequence_step_ + 1) % K_NUM_STEPS_PER_PATTERN
+            (step_count % K_NUM_STEPS_PER_PATTERN as u32) as u8
         };
         self.step_ = self.sequence_step_;
 
         for part in 0..K_NUM_PARTS {
             self.euclidean_step[part] =
-                (self.euclidean_step[part] + 1) % self.current_euclidean_length[part];
+                (step_count % self.current_euclidean_length[part] as u32) as u8;
         }
 
         self.first_beat_ = self.sequence_step_ == 0;
         let mut steps_per_beat = K_NUM_STEPS_PER_PATTERN / 4;
         if steps_per_beat == 0 {
             steps_per_beat = 1;
-        } // Avoid division by zero for short patterns
+        }
         self.beat_ = self.sequence_step_.is_multiple_of(steps_per_beat);
 
-        self.evaluate(); // Evaluate patterns based on the new step
-
-        self.increment_pulse_counter(); // Handle pulse durations on every external tick, regardless of main step advancement
+        self.evaluate();
+        self.increment_pulse_counter();
     }
 
     /// Set Euclidean sequence length 1 - 32 steps
@@ -1089,19 +1086,19 @@ mod tests {
         assert_eq!(0, generator.get_step());
         assert_eq!(12, generator.get_trigger_state());
 
-        generator.tick(true);
+        generator.tick(1, 1);
         assert_eq!(1, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
 
-        generator.tick(true);
+        generator.tick(2, 1);
         assert_eq!(2, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
 
-        generator.tick(true);
+        generator.tick(3, 1);
         assert_eq!(3, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
 
-        generator.tick(true);
+        generator.tick(4, 1);
         assert_eq!(4, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
     }
@@ -1129,17 +1126,17 @@ mod tests {
         generator.evaluate();
         assert_eq!(7, generator.get_trigger_state());
 
-        generator.tick(true);
+        generator.tick(1, 1);
         assert_eq!(1, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
 
-        generator.tick(true);
+        generator.tick(2, 1);
         assert_eq!(2, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
-        generator.tick(true);
+        generator.tick(3, 1);
         assert_eq!(3, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
-        generator.tick(true);
+        generator.tick(4, 1);
         assert_eq!(4, generator.get_step());
         assert_eq!(7, generator.get_trigger_state());
     }
@@ -1159,7 +1156,7 @@ mod tests {
         generator.evaluate();
         assert_eq!(0, generator.get_step());
         assert_eq!(5 /* hi-hat and kick */, generator.get_trigger_state());
-        generator.tick(true);
+        generator.tick(1, 1);
         assert_eq!(1, generator.get_step());
         assert_eq!(0, generator.get_trigger_state());
 
@@ -1168,5 +1165,34 @@ mod tests {
         generator.evaluate();
         assert_eq!(0, generator.get_step());
         assert_eq!(5 /* hi-hat and kick */, generator.get_trigger_state());
+    }
+
+    #[test]
+    fn test_tick_with_division() {
+        // Verify that step is derived from absolute_tick/div, not from a local counter.
+        // With div=3, every 3rd absolute tick corresponds to one sequence step.
+        let mut generator: PatternGenerator = PatternGenerator::default();
+        generator.set_seed(0xFFF1);
+        generator.options_.output_mode = OutputMode::OutputModeEuclidean;
+
+        // tick=3, div=3 → step 1
+        generator.tick(3, 3);
+        assert_eq!(1, generator.get_step());
+
+        // tick=6, div=3 → step 2
+        generator.tick(6, 3);
+        assert_eq!(2, generator.get_step());
+
+        // tick=9, div=3 → step 3
+        generator.tick(9, 3);
+        assert_eq!(3, generator.get_step());
+
+        // tick=0, div=3 → step 0 (absolute position, not relative advance)
+        generator.tick(0, 3);
+        assert_eq!(0, generator.get_step());
+
+        // tick=15, div=3 → step_count=5
+        generator.tick(15, 3);
+        assert_eq!(5 % K_NUM_STEPS_PER_PATTERN as u32, generator.get_step() as u32);
     }
 }
