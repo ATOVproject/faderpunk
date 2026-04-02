@@ -13,6 +13,7 @@ const SCALE_LED_FIRST_CHANNEL: usize = 2;
 const SCALE_LED_LAST_CHANNEL: usize = SCALE_LED_FIRST_CHANNEL + SCALE_LED_COUNT;
 const SCALE_LED_COUNT: usize = 12;
 const NUM_CHANNELS: usize = 16;
+const LED_BRIGHTNESS_FADER: usize = 0;
 const QUANTIZER_KEY_FADER: usize = 3;
 const QUANTIZER_TONIC_FADER: usize = 4;
 const BPM_FADER: usize = 15;
@@ -148,11 +149,18 @@ pub async fn show_scale_keyboard(key: Key, tonic: Note) {
 }
 
 pub async fn show_config_top_leds(config: &GlobalConfig) {
+    set_led_overlay_mode(
+        LED_BRIGHTNESS_FADER,
+        Led::Top,
+        LedMode::Static(Color::White, Brightness::Mid),
+    )
+    .await;
+
     let key_color = Color::from(config.quantizer.key as usize);
     set_led_overlay_mode(
         QUANTIZER_KEY_FADER,
         Led::Top,
-        LedMode::Static(key_color, Brightness::High),
+        LedMode::Static(key_color, Brightness::Mid),
     )
     .await;
 
@@ -160,7 +168,7 @@ pub async fn show_config_top_leds(config: &GlobalConfig) {
     set_led_overlay_mode(
         QUANTIZER_TONIC_FADER,
         Led::Top,
-        LedMode::Static(tonic_color, Brightness::High),
+        LedMode::Static(tonic_color, Brightness::Mid),
     )
     .await;
 
