@@ -812,7 +812,7 @@ impl<const N: usize> App<N> {
 
         loop {
             match subscriber.next_message_pure().await {
-                InputEvent::LoadScene(scene) => {
+                InputEvent::LoadSceneFromButton(scene) | InputEvent::LoadSceneFromMidi(scene) => {
                     return SceneEvent::LoadScene(scene);
                 }
                 InputEvent::SaveScene(scene) => {

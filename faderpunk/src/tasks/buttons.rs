@@ -91,7 +91,7 @@ async fn process_button(i: usize, mut button: Input<'_>, event_publisher: &Event
                     // TODO: experiment with using publish_immediate everywhere to prevent hanging
                     // subscribers
                     event_publisher
-                        .publish(InputEvent::LoadScene(i as u8))
+                        .publish(InputEvent::LoadSceneFromButton(i as u8))
                         .await;
                 }
                 Either::Second(_) => {

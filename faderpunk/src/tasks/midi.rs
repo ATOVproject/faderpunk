@@ -699,7 +699,7 @@ async fn process_midi_event(
             if let MidiMessage::ProgramChange { program } = message {
                 let program_num = program.as_int();
                 if program_num <= 15 {
-                    event_publisher.publish_immediate(InputEvent::LoadScene(program_num));
+                    event_publisher.publish_immediate(InputEvent::LoadSceneFromMidi(program_num));
                 }
             }
 
