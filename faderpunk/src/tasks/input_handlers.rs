@@ -4,7 +4,6 @@ use portable_atomic::{AtomicU8, Ordering};
 
 use crate::app::Led;
 use crate::events::{InputEvent, EVENT_PUBSUB};
-use crate::tasks::buttons::is_scene_button_pressed;
 use crate::tasks::global_config::get_global_config;
 use crate::tasks::leds::{clear_led_overlay, set_led_overlay_mode, LedMode};
 
@@ -34,29 +33,32 @@ async fn run_input_handlers() {
     let mut subscriber = EVENT_PUBSUB.subscriber().unwrap();
     loop {
         match subscriber.next_message_pure().await {
-            InputEvent::LoadScene(scene) => {
+            InputEvent::LoadSceneFromButton(scene) => {
                 let old = LAST_SCENE.swap(scene, Ordering::Relaxed);
-                let held = is_scene_button_pressed();
                 if old < NUM_CHANNELS as u8 && old != scene {
-                    if held {
-                        set_led_overlay_mode(
-                            old as usize,
-                            Led::Button,
-                            LedMode::Static(Color::White, Brightness::Off),
-                        )
-                        .await;
-                    } else {
-                        clear_led_overlay(old as usize, Led::Button).await;
-                    }
+                    set_led_overlay_mode(
+                        old as usize,
+                        Led::Button,
+                        LedMode::Static(Color::White, Brightness::Off),
+                    )
+                    .await;
                 }
                 set_led_overlay_mode(
                     scene as usize,
                     Led::Button,
-                    if held {
-                        LedMode::FlashThenStatic(Color::Green, 2, Color::Green, Brightness::Mid)
-                    } else {
-                        LedMode::Flash(Color::Green, Some(2))
-                    },
+                    LedMode::FlashThenStatic(Color::Green, 2, Color::Green, Brightness::Mid),
+                )
+                .await;
+            }
+            InputEvent::LoadSceneFromMidi(scene) => {
+                let old = LAST_SCENE.swap(scene, Ordering::Relaxed);
+                if old < NUM_CHANNELS as u8 && old != scene {
+                    clear_led_overlay(old as usize, Led::Button).await;
+                }
+                set_led_overlay_mode(
+                    scene as usize,
+                    Led::Button,
+                    LedMode::Flash(Color::Green, Some(2)),
                 )
                 .await;
             }
