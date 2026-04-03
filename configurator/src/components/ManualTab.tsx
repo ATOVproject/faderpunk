@@ -846,7 +846,14 @@ const apps: ManualAppData[] = [
     description: "Random CC/CV with assignable CV input",
     color: "Green",
     icon: "random",
-    params: ["Bipolar", "MIDI Channel", "MIDI CC", "Send MIDI", "Color", "NRPN"],
+    params: [
+      "Bipolar",
+      "MIDI Channel",
+      "MIDI CC",
+      "Send MIDI",
+      "Color",
+      "NRPN",
+    ],
     storage: [
       "Speed",
       "Muted",

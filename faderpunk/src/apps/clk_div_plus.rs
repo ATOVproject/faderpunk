@@ -13,7 +13,10 @@ use crate::app::{
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate_bipolar, rescale_12bit_int, resolution_for_mode, split_unsigned_value},
+    utils::{
+        attenuate_bipolar, rescale_12bit_int, resolution_for_mode, resolution_with_input_offset,
+        split_unsigned_value, value_to_resolution,
+    },
     AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param,
     Range, Value, APP_MAX_PARAMS,
 };
@@ -255,7 +258,7 @@ pub async fn run(
 
                     let clkn = ticks() as u32;
                     let muted = glob_muted.get();
-                    let div_u32 = div_glob.get() as u32;
+                    let div_u32 = div_glob.get();
                     let gate_step = (div_u32 * gatel / 100).clamp(1, div_u32.saturating_sub(1));
                     let latch_layer = glob_latch_layer.get();
 
@@ -279,10 +282,10 @@ pub async fn run(
                     }
 
                     if latch_layer != LatchLayer::Main {
-                        if clkn.is_multiple_of(max_glob.get() as u32) {
+                        if clkn.is_multiple_of(max_glob.get()) {
                             leds.set(1, Led::Top, Color::Red, LED_BRIGHTNESS);
                         }
-                        if clkn.is_multiple_of(min_glob.get() as u32) {
+                        if clkn.is_multiple_of(min_glob.get()) {
                             leds.set(1, Led::Bottom, Color::Red, LED_BRIGHTNESS);
                         }
                     }
@@ -570,10 +573,10 @@ pub async fn run(
                     }
 
                     if latch_layer != LatchLayer::Main {
-                        if ext_clkn.is_multiple_of(max_glob.get() as u32) {
+                        if ext_clkn.is_multiple_of(max_glob.get()) {
                             leds.set(1, Led::Top, Color::Red, LED_BRIGHTNESS);
                         }
-                        if ext_clkn.is_multiple_of(min_glob.get() as u32) {
+                        if ext_clkn.is_multiple_of(min_glob.get()) {
                             leds.set(1, Led::Bottom, Color::Red, LED_BRIGHTNESS);
                         }
                     }
@@ -620,18 +623,3 @@ fn should_trigger_ext_tick(in_val: u16, ext_input_high: &mut bool, cooldown: &mu
     false
 }
 
-fn value_to_index(value: u16, len: usize) -> usize {
-    ((value as usize * len) / 4096).min(len.saturating_sub(1))
-}
-
-fn value_to_resolution(value: u16, resolution: &[u16]) -> u16 {
-    resolution[value_to_index(value, resolution.len())]
-}
-
-fn resolution_with_input_offset(base: u16, in_val: u16, resolution: &[u16]) -> u16 {
-    let base_index = value_to_index(base, resolution.len()) as i32;
-    let max_offset = ((resolution.len() as i32 - 1) / 2).max(1);
-    let offset = ((in_val as i32 - 2047) * max_offset / 2047).clamp(-max_offset, max_offset);
-    let index = (base_index + offset).clamp(0, (resolution.len() - 1) as i32) as usize;
-    resolution[index]
-}

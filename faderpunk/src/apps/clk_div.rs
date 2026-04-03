@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{rescale_12bit_int, resolution_for_mode},
+    utils::{rescale_12bit_int, resolution_for_mode, value_to_resolution},
     AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param,
     Value, APP_MAX_PARAMS,
 };
@@ -116,14 +116,18 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id, Params {
-        midi_channel: MidiChannel::default(),
-        midi_out: MidiOut([false, false, false]),
-        note: MidiNote::from(32),
-        gatel: 50,
-        division_mode: 2,
-        color: Color::Cyan,
-    });
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            midi_channel: MidiChannel::default(),
+            midi_out: MidiOut([false, false, false]),
+            note: MidiNote::from(32),
+            gatel: 50,
+            division_mode: 2,
+            color: Color::Cyan,
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
@@ -373,12 +377,4 @@ pub async fn run(
     };
 
     join5(fut1, fut2, fut3, scene_handler, shift).await;
-}
-
-fn value_to_index(value: u16, len: usize) -> usize {
-    ((value as usize * len) / 4096).min(len.saturating_sub(1))
-}
-
-fn value_to_resolution(value: u16, resolution: &[u16]) -> u32 {
-    resolution[value_to_index(value, resolution.len())] as u32
 }

@@ -84,6 +84,25 @@ pub fn resolution_for_mode(mode: usize) -> &'static [u16] {
     }
 }
 
+/// Map a 12-bit value to an index into a slice of the given length.
+pub fn value_to_index(value: u16, len: usize) -> usize {
+    ((value as usize * len) / 4096).min(len.saturating_sub(1))
+}
+
+/// Map a 12-bit value to a resolution from the given table.
+pub fn value_to_resolution(value: u16, resolution: &[u16]) -> u32 {
+    resolution[value_to_index(value, resolution.len())] as u32
+}
+
+/// Map a 12-bit value to a resolution, offset by a bipolar CV input.
+pub fn resolution_with_input_offset(base: u16, in_val: u16, resolution: &[u16]) -> u32 {
+    let base_index = value_to_index(base, resolution.len()) as i32;
+    let max_offset = ((resolution.len() as i32 - 1) / 2).max(1);
+    let offset = ((in_val as i32 - 2047) * max_offset / 2047).clamp(-max_offset, max_offset);
+    let index = (base_index + offset).clamp(0, (resolution.len() - 1) as i32) as usize;
+    resolution[index] as u32
+}
+
 /// Use to attenuate 0-4095 representing a bipolar value
 pub fn attenuate_bipolar(signal: u16, level: u16) -> u16 {
     let center = 2048u32;
