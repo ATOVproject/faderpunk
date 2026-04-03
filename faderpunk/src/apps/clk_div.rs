@@ -7,8 +7,11 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
-    MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
+    ext::FromValue,
+    latch::LatchLayer,
+    utils::{rescale_12bit_int, resolution_for_mode},
+    AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param,
+    Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -16,7 +19,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 6;
 
 const LED_BRIGHTNESS: Brightness = Brightness::High;
 
@@ -34,6 +37,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "GATE %",
     min: 1,
     max: 100,
+})
+.add_param(Param::Enum {
+    name: "Divisions",
+    variants: &["Straight", "Triplets", "Both"],
 })
 .add_param(Param::Color {
     name: "Color",
@@ -55,6 +62,7 @@ pub struct Params {
     midi_out: MidiOut,
     note: MidiNote,
     gatel: i32,
+    division_mode: usize,
     color: Color,
 }
 
@@ -63,12 +71,14 @@ impl AppParams for Params {
         if values.len() < PARAMS {
             return None;
         }
+
         Some(Self {
             midi_channel: MidiChannel::from_value(values[0]),
             note: MidiNote::from_value(values[1]),
             gatel: i32::from_value(values[2]),
-            color: Color::from_value(values[3]),
-            midi_out: MidiOut::from_value(values[4]),
+            division_mode: usize::from_value(values[3]),
+            color: Color::from_value(values[4]),
+            midi_out: MidiOut::from_value(values[5]),
         })
     }
 
@@ -77,6 +87,7 @@ impl AppParams for Params {
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.note.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
+        vec.push(self.division_mode.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec
@@ -110,6 +121,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         midi_out: MidiOut([false, false, false]),
         note: MidiNote::from(32),
         gatel: 50,
+        division_mode: 2,
         color: Color::Cyan,
     });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -136,8 +148,16 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_out, midi_chan, note, gatel, led_color) =
-        params.query(|p| (p.midi_out, p.midi_channel, p.note, p.gatel as u32, p.color));
+    let (midi_out, midi_chan, note, gatel, division_mode, led_color) = params.query(|p| {
+        (
+            p.midi_out,
+            p.midi_channel,
+            p.note,
+            p.gatel as u32,
+            p.division_mode,
+            p.color,
+        )
+    });
 
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
@@ -148,23 +168,23 @@ pub async fn run(
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let glob_muted = app.make_global(false);
-    let div_glob = app.make_global(6);
-    let max_glob = app.make_global(6);
-    let min_glob = app.make_global(6);
+    let div_glob = app.make_global(6_u32);
+    let max_glob = app.make_global(6_u32);
+    let min_glob = app.make_global(6_u32);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let jack = app.make_gate_jack(0, 4095).await;
 
-    let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
+    let resolution = resolution_for_mode(division_mode);
 
     let (res, mute, min, max) =
         storage.query(|s| (s.fader_saved, s.mute_saved, s.min_div, s.max_div));
 
-    min_glob.set(resolution[min as usize / 345]);
-    max_glob.set(resolution[max as usize / 345]);
+    min_glob.set(value_to_resolution(min, resolution));
+    max_glob.set(value_to_resolution(max, resolution));
 
     glob_muted.set(mute);
-    div_glob.set(resolution[res as usize / 345]);
+    div_glob.set(value_to_resolution(res, resolution));
     if mute {
         leds.unset(0, Led::Button);
         leds.unset(0, Led::Top);
@@ -285,18 +305,18 @@ pub async fn run(
                             storage.query(|s| s.min_div),
                             storage.query(|s| s.max_div),
                         );
-                        div_glob.set(resolution[val as usize / 345]);
+                        div_glob.set(value_to_resolution(val, resolution));
                         storage.modify_and_save(|s| s.fader_saved = new_value);
                     }
                     LatchLayer::Alt => {
                         let min = storage.query(|s| s.min_div);
                         storage.modify_and_save(|s| s.max_div = new_value.max(min));
-                        max_glob.set(resolution[new_value.min(max) as usize / 345]);
+                        max_glob.set(value_to_resolution(new_value.min(max), resolution));
                     }
                     LatchLayer::Third => {
                         let max = storage.query(|s| s.max_div);
                         storage.modify_and_save(|s| s.min_div = new_value.min(max));
-                        min_glob.set(resolution[new_value.min(max) as usize / 345]);
+                        min_glob.set(value_to_resolution(new_value.min(max), resolution));
                     }
                 }
             }
@@ -311,7 +331,7 @@ pub async fn run(
                     let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_saved));
 
                     glob_muted.set(mute);
-                    div_glob.set(resolution[res as usize / 345]);
+                    div_glob.set(value_to_resolution(res, resolution));
                     if mute {
                         leds.unset(0, Led::Button);
                         jack.set_low().await;
@@ -347,16 +367,10 @@ pub async fn run(
     join5(fut1, fut2, fut3, scene_handler, shift).await;
 }
 
-fn rescale_12bit_int(input: u16, min: u16, max: u16) -> u16 {
-    // Clamp input to 12-bit range
-    let input = input.min(4095);
+fn value_to_index(value: u16, len: usize) -> usize {
+    ((value as usize * len) / 4096).min(len.saturating_sub(1))
+}
 
-    // Handle edge case where min >= max
-    if min >= max {
-        return min;
-    }
-
-    // Rescale using integer math
-    let range = max - min;
-    min + (input as u32 * range as u32 / 4095) as u16
+fn value_to_resolution(value: u16, resolution: &[u32]) -> u32 {
+    resolution[value_to_index(value, resolution.len())]
 }
