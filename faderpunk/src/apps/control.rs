@@ -250,7 +250,7 @@ pub async fn run(
         let mut latch = app.make_latch(fader.get_value());
         let mut main_layer_value = fader.get_value();
         let mut fad_val = 0;
-        let mut out = 0.0;
+        let mut out: u16 = 0;
         let mut last_out = 0;
 
         loop {
@@ -319,8 +319,8 @@ pub async fn run(
             if inverted {
                 attenuated = 4095 - attenuated;
             }
-            out = slew_2(out, attenuated, 3);
-            jack.set_value(out as u16);
+            out = slew_2(out, attenuated, 3, 10);
+            jack.set_value(out);
 
             let midi_out = if muted {
                 if bipolar {
@@ -343,7 +343,7 @@ pub async fn run(
             match latch_active_layer {
                 LatchLayer::Main => {
                     if bipolar {
-                        let led1 = split_unsigned_value(out as u16);
+                        let led1 = split_unsigned_value(out);
                         leds.set(0, Led::Top, led_color, Brightness::Custom(led1[0]));
                         leds.set(0, Led::Bottom, led_color, Brightness::Custom(led1[1]));
                     } else {

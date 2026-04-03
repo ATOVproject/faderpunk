@@ -316,8 +316,8 @@ pub async fn run(
     };
 
     let timed_loop = async {
-        let mut out = 0.;
-        let mut last_out = 0;
+        let mut out: u16 = 0;
+        let mut last_out: u16 = 0;
         let mut count: u32 = 0;
         loop {
             app.delay_millis(1).await;
@@ -344,24 +344,25 @@ pub async fn run(
                     out,
                     jackval,
                     fader_curve.at(storage.query(|s| s.slew_saved)),
+                    10,
                 )
             } else if range.is_bipolar() {
-                2047.0
+                2047
             } else {
-                0.0
+                0
             };
 
-            output.set_value(out as u16);
+            output.set_value(out);
 
-            if last_out / 32 != out as u16 / 32 {
-                midi.send_cc(midi_cc, out as u16).await;
+            if last_out / 32 != out / 32 {
+                midi.send_cc(midi_cc, out).await;
             }
-            last_out = out as u16;
+            last_out = out;
 
             if latch_active_layer == LatchLayer::Main {
                 let color = glob_button_color.get();
                 if range.is_bipolar() {
-                    let ledj = split_unsigned_value(out as u16);
+                    let ledj = split_unsigned_value(out);
                     leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
                     leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
                 } else {

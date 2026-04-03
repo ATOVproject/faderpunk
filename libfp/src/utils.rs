@@ -150,14 +150,13 @@ pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f3
     }
 }
 
-pub fn slew_2(prev: f32, input: u16, slew: u16) -> f32 {
-    let target = input as f32;
-    let output = (prev * slew as f32 + target) / (slew + 1) as f32;
+pub fn slew_2(prev: u16, input: u16, slew: u16, snap: i32) -> u16 {
+    let smoothed = ((prev as u32 * slew as u32 + input as u32) / (slew as u32 + 1)) as u16;
 
-    if (target - output).abs() < 10.0 {
-        target
+    if (smoothed as i32 - input as i32).abs() < snap {
+        input
     } else {
-        output
+        smoothed
     }
 }
 

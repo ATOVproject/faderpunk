@@ -19,7 +19,7 @@ use libfp::{
 };
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 6;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Random+",
@@ -32,6 +32,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "MIDI Channel",
 })
 .add_param(Param::MidiCc { name: "MIDI CC" })
+.add_param(Param::MidiNrpn)
 .add_param(Param::MidiOut)
 .add_param(Param::Color {
     name: "Color",
@@ -51,20 +52,9 @@ pub struct Params {
     bipolar: bool,
     midi_channel: MidiChannel,
     midi_cc: MidiCc,
+    nrpn: bool,
     midi_out: MidiOut,
     color: Color,
-}
-
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            bipolar: false,
-            midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::from(32),
-            midi_out: MidiOut::default(),
-            color: Color::Green,
-        }
-    }
 }
 
 impl AppParams for Params {
@@ -76,8 +66,9 @@ impl AppParams for Params {
             bipolar: bool::from_value(values[0]),
             midi_channel: MidiChannel::from_value(values[1]),
             midi_cc: MidiCc::from_value(values[2]),
-            midi_out: MidiOut::from_value(values[3]),
-            color: Color::from_value(values[4]),
+            nrpn: bool::from_value(values[3]),
+            midi_out: MidiOut::from_value(values[4]),
+            color: Color::from_value(values[5]),
         })
     }
 
@@ -86,6 +77,7 @@ impl AppParams for Params {
         vec.push(self.bipolar.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
+        vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec
@@ -122,7 +114,18 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id);
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            bipolar: false,
+            midi_channel: MidiChannel::default(),
+            midi_cc: MidiCc::from(32u8.saturating_add(app.start_channel as u8)),
+            nrpn: false,
+            midi_out: MidiOut::default(),
+            color: Color::Green,
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
@@ -147,15 +150,15 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (bipolar, midi_out, midi_chan, midi_cc, led_color) =
-        params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc, p.color));
+    let (bipolar, midi_out, midi_chan, midi_cc, nrpn, led_color) =
+        params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc, p.nrpn, p.color));
 
     let mut clock = app.use_clock();
     let rnd = app.use_die();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
-    let midi = app.use_midi_output(midi_out, midi_chan);
+    let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
     let range = if bipolar {
         Range::_Neg5_5V
     } else {
@@ -383,8 +386,8 @@ pub async fn run(
     };
 
     let timed_loop = async {
-        let mut out = 0.;
-        let mut last_out = 0;
+        let mut out: u16 = 0;
+        let mut last_out: u16 = 0;
         let mut count: u32 = 0;
         let mut oldinputval = 0;
         loop {
@@ -448,19 +451,19 @@ pub async fn run(
             };
 
             out = if !storage.query(|s: &Storage| s.mute_save) {
-                slew_2(out, jackval, fader_curve.at(slew))
+                slew_2(out, jackval, fader_curve.at(slew), 10)
             } else if bipolar {
-                2047.0
+                2047
             } else {
-                0.0
+                0
             };
 
-            output.set_value(out as u16);
+            output.set_value(out);
 
-            if last_out / 32 != out as u16 / 32 {
-                midi.send_cc(midi_cc, out as u16).await;
+            if last_out / 32 != out / 32 {
+                midi.send_cc(midi_cc, out).await;
             }
-            last_out = out as u16;
+            last_out = out;
 
             if latch_active_layer == LatchLayer::Main {
                 if storage.query(|s| s.in_mute) {
@@ -472,7 +475,7 @@ pub async fn run(
                 let rnd_color = glob_button_color.get();
 
                 if bipolar {
-                    let ledj = split_unsigned_value(out as u16);
+                    let ledj = split_unsigned_value(out);
                     leds.set(1, Led::Top, rnd_color, Brightness::Custom(ledj[0]));
                     leds.set(1, Led::Bottom, rnd_color, Brightness::Custom(ledj[1]));
                 } else {
