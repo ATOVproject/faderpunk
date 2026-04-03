@@ -345,6 +345,7 @@ pub async fn run(
 
         let mut output_mode = output_mode_glob.get();
         let mut dnb_pattern = dnb_pattern_glob.get();
+        let mut tick_origin = ticks() as u32;
         let ghost_note = notes[2].clone().transpose(1);
         let ghost_velocity = (midi_velocity - (midi_velocity / 4)).clamp(1, 127);
 
@@ -385,6 +386,7 @@ pub async fn run(
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     // defmt::info!("[{}] Clock reset!", ticks());
+                    tick_origin = ticks() as u32;
                     output_mode = output_mode_glob.get();
                     reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
@@ -405,6 +407,7 @@ pub async fn run(
                 }
                 ClockEvent::Start => {
                     // defmt::info!("[{}] Clock start", ticks());
+                    tick_origin = ticks() as u32;
                     generator.reset();
                     // Ensure initial DnB pattern is generated at start of sequence
                     if output_mode == OutputMode::OutputModeDnB {
@@ -420,7 +423,7 @@ pub async fn run(
                         OutputMode::OutputModeDnB => generator.get_dnb_24ppqn_pattern_division(),
                     };
 
-                    let clkn = ticks() as u32;
+                    let clkn = (ticks() as u32).wrapping_sub(tick_origin);
                     // If we have reached the next sequence step, or on the first step
                     if clkn.is_multiple_of(div) {
                         // If output mode has changed since last step, change generator mode and reset the sequence
@@ -1373,7 +1376,8 @@ fn update_fader_leds(
 }
 
 fn euclidean_length_from_fader(value: u16) -> u8 {
-    ((value / 256) + 1) as u8
+    // Same as euclid.rs: fader * 15 / 4095 + 1 → 1..16
+    (value as u32 * 15 / 4095) as u8 + 1
 }
 
 fn euclidean_fill_from_fader(value: u16, length: u8) -> u8 {

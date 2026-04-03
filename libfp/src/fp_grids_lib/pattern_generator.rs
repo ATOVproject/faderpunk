@@ -20,9 +20,8 @@
 use enum_ordinalize::Ordinalize;
 use serde::{Deserialize, Serialize};
 
-use crate::fp_grids_lib::resources::{
-    DRUM_MAP, K_NUM_PARTS, K_NUM_STEPS_PER_PATTERN, LUT_RES_EUCLIDEAN, LUT_RES_EUCLIDEAN_SIZE,
-};
+use crate::fp_grids_lib::resources::{DRUM_MAP, K_NUM_PARTS, K_NUM_STEPS_PER_PATTERN};
+use crate::constants::BJORKLUND_PATTERNS;
 use crate::fp_grids_lib::utils::{u8_mix, u8_u8_mul_shift8, Random};
 
 /*
@@ -566,61 +565,38 @@ impl PatternGenerator {
     }
 
     fn evaluate_euclidean(&mut self) {
-        self.state_ = 0; // Clear previous state
+        self.state_ = 0;
+
+        let chaos = match self.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].options
+        {
+            PatternModeSettings::Euclidean { chaos_amount } => chaos_amount,
+            _ => 0,
+        };
+
         for part in 0..K_NUM_PARTS {
-            let length = self.current_euclidean_length[part];
+            let length = self.current_euclidean_length[part].max(2);
+            let beats = self.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].density
+                [part]
+                .min(length);
 
-            if length == 0 {
-                continue;
+            // Look up Bjorklund pattern: index = (steps - 2) * 33 + beats
+            let index = (length as usize - 2) * 33 + beats as usize;
+            let pattern_bits = BJORKLUND_PATTERNS.get(index).copied().unwrap_or(0);
+
+            let pos = (self.euclidean_step[part] + self.euclidean_offset[part]) % length;
+            if (pattern_bits >> pos) & 1 == 1 {
+                self.state_ |= 1 << part;
             }
 
-            let fill_param_value =
-                self.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].density[part]; // 0 - 16 from app parameter
-
-            // Revised logic for density_for_lut:
-            // It should represent the desired number of fills/events.
-            // Clamp to current length and max LUT density index (31).
-            let mut desired_fills = fill_param_value;
-            if desired_fills > length {
-                desired_fills = length;
-            }
-            if desired_fills > 31 {
-                desired_fills = 31; // Assuming LUT density part is 0-31
-            }
-            let density_for_lut = desired_fills;
-
-            let mut address: u16 = (length as u16 - 1) * 32 + density_for_lut as u16;
-            if address >= LUT_RES_EUCLIDEAN_SIZE as u16 {
-                address = 0; // Should not happen with valid length / density
-            }
-
-            let pattern_bits: u32 = LUT_RES_EUCLIDEAN[address as usize];
-            let current_step_in_part: u32 =
-                ((self.euclidean_step[part] + self.euclidean_offset[part]) % length) as u32; // Current step for this part (0 to length - 1)
-
-            if (pattern_bits >> current_step_in_part) & 1 == 1 {
-                self.state_ |= 1 << part; // Set trigger for part "part"
-            }
-
-            // Chaos perturbation for Euclidean mode - simplified from original Grids.
-            // May need refinement for more nuanced behavior.
-            let chaos =
-                match self.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].options {
-                    PatternModeSettings::Euclidean { chaos_amount } => chaos_amount,
-                    _ => 0,
-                };
-            if self.chaos_globally_enabled_
-                && chaos > 0
-                && self.random.get_word() % 256 < chaos as u16
-            {
-                // Randomly flip the state of this part for chaos effect
-                if self.random.get_word().is_multiple_of(8) {
-                    // Lower probability of flip for subtlety
-                    self.state_ ^= 1 << part;
-                }
-                // Introduce random accents if chaos amount is high
-                if chaos > 192 && self.random.get_word().is_multiple_of(16) {
-                    self.state_ |= OutputBits::OutputBitAccent.to_bitmask();
+            // Chaos: probabilistically flip this beat, with accent injection at high chaos
+            if self.chaos_globally_enabled_ && chaos > 0 {
+                if (self.random.get_word() % 256) < chaos as u16 {
+                    if self.random.get_word().is_multiple_of(8) {
+                        self.state_ ^= 1 << part;
+                    }
+                    if chaos > 192 && self.random.get_word().is_multiple_of(16) {
+                        self.state_ |= OutputBits::OutputBitAccent.to_bitmask();
+                    }
                 }
             }
         }
@@ -1105,40 +1081,49 @@ mod tests {
 
     #[test]
     fn test_evaluate_euclidean() {
-        init_logger(); // Logs will now be visible
+        init_logger();
 
         let mut generator: PatternGenerator = PatternGenerator::default();
-        generator.set_seed(0xFFF1);
         generator.options_.output_mode = OutputMode::OutputModeEuclidean;
         generator.options_.gate_mode = true;
         generator.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].options =
             PatternModeSettings::Euclidean { chaos_amount: 0 };
-        generator.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].density =
-            [31; K_NUM_PARTS];
 
+        // E(3,8): density=3 beats in 8 steps → Bjorklund index 6*33+3=201 → value=73 (0b01001001)
+        // fires at steps 0, 3, 6
         for part in 0..K_NUM_PARTS {
-            let length = 8;
-            generator.set_length(part, length);
-            let fill_density_param = 31;
-            generator.set_fill(part, fill_density_param);
+            generator.set_length(part, 8);
         }
+        generator.settings_[OutputMode::OutputModeEuclidean.ordinal() as usize].density =
+            [3; K_NUM_PARTS];
 
         generator.evaluate();
-        assert_eq!(7, generator.get_trigger_state());
+        assert_eq!(0, generator.get_step());
+        assert_eq!(7, generator.get_trigger_state()); // step 0: all 3 parts fire
 
         generator.tick(1, 1);
         assert_eq!(1, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
+        assert_eq!(0, generator.get_trigger_state()); // step 1: no fire
 
         generator.tick(2, 1);
         assert_eq!(2, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
+        assert_eq!(0, generator.get_trigger_state()); // step 2: no fire
+
         generator.tick(3, 1);
         assert_eq!(3, generator.get_step());
-        assert_eq!(0, generator.get_trigger_state());
+        assert_eq!(7, generator.get_trigger_state()); // step 3: all fire
+
         generator.tick(4, 1);
         assert_eq!(4, generator.get_step());
-        assert_eq!(7, generator.get_trigger_state());
+        assert_eq!(0, generator.get_trigger_state()); // step 4: no fire
+
+        generator.tick(6, 1);
+        assert_eq!(6, generator.get_step());
+        assert_eq!(7, generator.get_trigger_state()); // step 6: all fire
+
+        generator.tick(7, 1);
+        assert_eq!(7, generator.get_step());
+        assert_eq!(0, generator.get_trigger_state()); // step 7: no fire
     }
 
     #[test]
