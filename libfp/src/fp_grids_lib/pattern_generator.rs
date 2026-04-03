@@ -1176,6 +1176,9 @@ mod tests {
 
         // tick=15, div=3 → step_count=5
         generator.tick(15, 3);
-        assert_eq!(5 % K_NUM_STEPS_PER_PATTERN as u32, generator.get_step() as u32);
+        assert_eq!(
+            5 % K_NUM_STEPS_PER_PATTERN as u32,
+            generator.get_step() as u32
+        );
     }
 }
