@@ -9,7 +9,7 @@ use embassy_futures::{
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
-    constants::BJORKLUND_PATTERNS, ext::FromValue, latch::LatchLayer, AppIcon, Brightness,
+    ext::FromValue, latch::LatchLayer, utils::euclidean_at, AppIcon, Brightness,
     ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
@@ -233,7 +233,7 @@ pub async fn run(
 
                     if clkn.is_multiple_of(div) {
                         if !muted {
-                            if euclidean_filter(
+                            if euclidean_at(
                                 num_beat_glob.get(),
                                 num_step_glob.get(),
                                 rotation_glob.get(),
@@ -499,31 +499,3 @@ pub async fn run(
     join5(fut1, fut2, fut3, scene_handler, shift).await;
 }
 
-/// Rotate left a u32 pattern within a given bit width
-fn rotl32(value: u32, width: u8, rotation: u8) -> u32 {
-    let rotation = rotation % width;
-    ((value << rotation) | (value >> (width - rotation))) & ((1 << width) - 1)
-}
-
-/// Get the Euclidean pattern as a u32
-fn euclidean_pattern(num_steps: u8, num_beats: u8, rotation: u8, padding: u8) -> u32 {
-    let steps = num_steps.max(2);
-    let beats = num_beats.min(steps);
-    let index = ((steps - 2) as usize) * 33 + beats as usize;
-
-    let mut pattern = BJORKLUND_PATTERNS.get(index).copied().unwrap_or(0);
-
-    if rotation > 0 {
-        let rot = rotation % (steps + padding);
-        pattern = rotl32(pattern, steps + padding, rot);
-    }
-
-    pattern
-}
-
-/// Check if there's a beat at a given clock position
-fn euclidean_filter(num_steps: u8, num_beats: u8, rotation: u8, clock: u32) -> bool {
-    let pattern = euclidean_pattern(num_steps, num_beats, rotation, 0);
-    let pos = (clock % num_steps as u32) as u8;
-    (pattern & (1 << pos)) != 0
-}

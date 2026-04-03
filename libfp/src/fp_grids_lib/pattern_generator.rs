@@ -21,8 +21,8 @@ use enum_ordinalize::Ordinalize;
 use serde::{Deserialize, Serialize};
 
 use crate::fp_grids_lib::resources::{DRUM_MAP, K_NUM_PARTS, K_NUM_STEPS_PER_PATTERN};
-use crate::constants::BJORKLUND_PATTERNS;
 use crate::fp_grids_lib::utils::{u8_mix, u8_u8_mul_shift8, Random};
+use crate::utils::euclidean_pattern;
 
 /*
 * Terminology:
@@ -579,11 +579,9 @@ impl PatternGenerator {
                 [part]
                 .min(length);
 
-            // Look up Bjorklund pattern: index = (steps - 2) * 33 + beats
-            let index = (length as usize - 2) * 33 + beats as usize;
-            let pattern_bits = BJORKLUND_PATTERNS.get(index).copied().unwrap_or(0);
-
-            let pos = (self.euclidean_step[part] + self.euclidean_offset[part]) % length;
+            let offset = self.euclidean_offset[part];
+            let pattern_bits = euclidean_pattern(length, beats, offset, 0);
+            let pos = self.euclidean_step[part] % length;
             if (pattern_bits >> pos) & 1 == 1 {
                 self.state_ |= 1 << part;
             }
