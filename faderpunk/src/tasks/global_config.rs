@@ -2,14 +2,15 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, watch::Watch};
 use embassy_time::Timer;
-use libfp::{AuxJackMode, Color, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
+use libfp::{AuxJackMode, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
 use max11300::config::{ConfigMode0, ConfigMode3, Mode};
 use portable_atomic::Ordering;
 
-use crate::app::Led;
 use crate::layout::FORCE_RESPAWN_SIGNAL;
 use crate::storage::store_global_config;
-use crate::tasks::leds::{set_led_overlay_mode, LedMode, LED_BRIGHTNESS};
+use crate::tasks::buttons::is_scene_button_pressed;
+use crate::tasks::input_handlers::{show_config_top_leds, show_scale_keyboard};
+use crate::tasks::leds::LED_BRIGHTNESS;
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
 use crate::QUANTIZER;
 
@@ -190,22 +191,9 @@ async fn global_config_change() {
         {
             let mut quantizer = QUANTIZER.get().lock().await;
             quantizer.set_scale(config.quantizer.key, config.quantizer.tonic);
-            if config.quantizer.key != old.quantizer.key {
-                let color = Color::from(config.quantizer.key as usize);
-                set_led_overlay_mode(
-                    QUANTIZER_KEY_FADER,
-                    Led::Button,
-                    LedMode::StaticFade(color, 2000),
-                )
-                .await;
-            } else {
-                let color = Color::from(config.quantizer.tonic as usize);
-                set_led_overlay_mode(
-                    QUANTIZER_TONIC_FADER,
-                    Led::Button,
-                    LedMode::StaticFade(color, 2000),
-                )
-                .await;
+            if is_scene_button_pressed() {
+                show_scale_keyboard(config.quantizer.key, config.quantizer.tonic).await;
+                show_config_top_leds(&config).await;
             }
         }
         if config.led_brightness != old.led_brightness {

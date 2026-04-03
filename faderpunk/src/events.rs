@@ -9,8 +9,13 @@ pub enum InputEvent {
     ButtonUp(usize),
     ButtonLongPress(usize),
     FaderChange(usize),
-    LoadScene(u8),
+    LoadSceneFromButton(u8),
+    LoadSceneFromMidi(u8),
     SaveScene(u8),
+    SceneButtonDown,
+    SceneButtonUp,
+    ShiftButtonDown,
+    ShiftButtonUp,
 }
 
 const EVENT_PUBSUB_SIZE: usize = 64;
