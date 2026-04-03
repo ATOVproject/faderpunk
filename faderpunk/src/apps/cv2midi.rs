@@ -26,7 +26,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Violet,
     AppIcon::NoteGrid,
 )
-.add_param(Param::bool { name: "Bipolar" })
+.add_param(Param::Range {
+    name: "Range",
+    variants: &[Range::_0_10V, Range::_Neg5_5V],
+})
 .add_param(Param::MidiChannel {
     name: "MIDI Channel",
 })
@@ -48,7 +51,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::MidiOut);
 
 pub struct Params {
-    bipolar: bool,
+    range: Range,
     midi_channel: MidiChannel,
     midi_cc: MidiCc,
     midi_out: MidiOut,
@@ -62,7 +65,7 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            bipolar: bool::from_value(values[0]),
+            range: Range::from_value(values[0]),
             midi_channel: MidiChannel::from_value(values[1]),
             midi_cc: MidiCc::from_value(values[2]),
             color: Color::from_value(values[3]),
@@ -73,7 +76,7 @@ impl AppParams for Params {
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
-        vec.push(self.bipolar.into()).unwrap();
+        vec.push(self.range.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.color.into()).unwrap();
@@ -108,7 +111,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         app.app_id,
         app.layout_id,
         Params {
-            bipolar: false,
+            range: Range::_0_10V,
             midi_channel: MidiChannel::default(),
             midi_cc: MidiCc::from(32u8.saturating_add(app.start_channel as u8)),
             midi_out: MidiOut::default(),
@@ -140,9 +143,9 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (bipolar, midi_out, midi_channel, midi_cc, led_color, nrpn) = params.query(|p| {
+    let (range, midi_out, midi_channel, midi_cc, led_color, nrpn) = params.query(|p| {
         (
-            p.bipolar,
+            p.range,
             p.midi_out,
             p.midi_channel,
             p.midi_cc,
@@ -169,11 +172,7 @@ pub async fn run(
         leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
     }
 
-    let input = if bipolar {
-        app.make_in_jack(0, Range::_Neg5_5V).await
-    } else {
-        app.make_in_jack(0, Range::_0_10V).await
-    };
+    let input = app.make_in_jack(0, range).await;
 
     let fut1 = async {
         let mut old_midi = 0;
@@ -184,7 +183,7 @@ pub async fn run(
                 glob_latch_layer.set(LatchLayer::from(buttons.is_shift_pressed()));
 
             let input_val = if !muted_glob.get() {
-                if !bipolar {
+                if !range.is_bipolar() {
                     (attenuate(input.get_value() * 2, storage.query(|s| s.att_saved))
                         + storage.query(|s| s.offset_saved))
                     .clamp(0, 4095)
@@ -193,13 +192,13 @@ pub async fn run(
                         + (storage.query(|s| s.offset_saved) as i16 - 2047))
                         .clamp(0, 4095) as u16
                 }
-            } else if bipolar {
+            } else if range.is_bipolar() {
                 2047
             } else {
                 0
             };
             if latch_active_layer == LatchLayer::Main {
-                if bipolar {
+                if range.is_bipolar() {
                     let led1 = split_unsigned_value(input_val);
                     leds.set(0, Led::Top, led_color, Brightness::Custom(led1[0]));
                     leds.set(0, Led::Bottom, led_color, Brightness::Custom(led1[1]));
