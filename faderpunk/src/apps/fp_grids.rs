@@ -21,34 +21,86 @@
 // * Faderpunk Port: Richard Smith (GitHub: rjsmith)
 // * Special acknowledgement: [Disting NT Port](https://github.com/thorinside/nt_grids/tree/main) by Neal Sanche (GitHub: Thorinside)
 //
-// Layout for Easter Egg DnB mode
-// ==============================
+// Layout
+// ======
 //
-//! | Control | Function | + Shift | + Fn
-//! |---------|----------|---------|------|
-//! | Jack 1  | Kick Out | N/A     | N/A  |
-//! | Fader 1  | Probability Kick | N/A  | N/A  |
-//! | LED 1 Top | Gate output | Gate output | N/A
-//! | LED 1 Bottom | Density Kick | N/A | N/A
-//! | Fn 1    | Mute Trigger 1 | Vary DnB Pattern | N/A |
-//! | Jack 2  | Snare Out | N/A     | N/A  |
-//! | Fader 2  | Probability 2 | N/A  | N/A  |
-//! | LED 2 Top | Gate output | Gate output | N/A
-//! | LED 2 Bottom | Density 2 | N/A | N/A
-//! | Fn 2    | Mute Trigger 2 | Restore DnB Pattern | N/A |
-//! | Jack 3  | Hi-Hats Out | N/A     | N/A  |
-//! | Fader 3  | DnB Pattern (1-12) | N/A  | N/A  |
-//! | LED 3 Top | Gate output | Gate output | N/A
-//! | LED 3 Bottom | DnB Pattern (1-12) | N/A | N/A
-//! | Fn 3    | Mute Trigger 3 | N/A | N/A |
-//! | Jack 4  | Ghost Out | N/A     | N/A  |
-//! | Fader 4  | Probability Ghost | N/A  | N/A  |
-//! | LED 4 Top | Ghost output | Ghost output | N/A
-//! | LED 4 Bottom | Probability Ghost | N/A | N/A
-//! | Fn 4    | Mute Ghost | Mode (Light Blue=Drums, Pink = Euclidean, Sand = DnB) | N/A |
+//! ## Drums Mode
 //!
-//! DnB mode ignores the app's clock division, instead set according to the selected DnB pattern
-//! MIDI Note for Ghost Snare = Midi Note for Trigegr 3 + one semitone
+//! | Control      | Main                  | + Shift (Alt)         |
+//! |--------------|-----------------------|-----------------------|
+//! | Jack 1       | Trigger 1 (BD) Out    |                       |
+//! | Fader 1      | BD Density            | Drums Map X           |
+//! | LED 1 Top    | Gate active           |                       |
+//! | LED 1 Bottom | BD Density            |                       |
+//! | Fn 1         | Mute Trigger 1        |                       |
+//! | Jack 2       | Trigger 2 (SD) Out    |                       |
+//! | Fader 2      | SD Density            | Drums Map Y           |
+//! | LED 2 Top    | Gate active           |                       |
+//! | LED 2 Bottom | SD Density            |                       |
+//! | Fn 2         | Mute Trigger 2        |                       |
+//! | Jack 3       | Trigger 3 (HH) Out    |                       |
+//! | Fader 3      | HH Density            |                       |
+//! | LED 3 Top    | Gate active           |                       |
+//! | LED 3 Bottom | HH Density            |                       |
+//! | Fn 3         | Mute Trigger 3        |                       |
+//! | Jack 4       | Accent Out            |                       |
+//! | Fader 4      | Chaos / Randomness    | Clock Division        |
+//! | LED 4 Top    | Accent active         |                       |
+//! | LED 4 Bottom | Chaos level           |                       |
+//! | Fn 4         | Mute Accent           | Cycle output mode     |
+//!
+//! ## Euclidean Mode
+//!
+//! | Control      | Main                  | + Shift (Alt)         |
+//! |--------------|-----------------------|-----------------------|
+//! | Jack 1       | Euclidean Ch1 Out     |                       |
+//! | Fader 1      | Fill (beats, 0–length)| Length (steps, 1–16)  |
+//! | LED 1 Top    | Gate active           |                       |
+//! | LED 1 Bottom | Fill level            |                       |
+//! | Fn 1         | Mute Ch1              | Advance offset Ch1    |
+//! | Jack 2       | Euclidean Ch2 Out     |                       |
+//! | Fader 2      | Fill Ch2              | Length Ch2            |
+//! | LED 2 Top    | Gate active           |                       |
+//! | LED 2 Bottom | Fill level            |                       |
+//! | Fn 2         | Mute Ch2              | Advance offset Ch2    |
+//! | Jack 3       | Euclidean Ch3 Out     |                       |
+//! | Fader 3      | Fill Ch3              | Length Ch3            |
+//! | LED 3 Top    | Gate active           |                       |
+//! | LED 3 Bottom | Fill level            |                       |
+//! | Fn 3         | Mute Ch3              | Advance offset Ch3    |
+//! | Jack 4       | Accent Out            |                       |
+//! | Fader 4      | Chaos / Randomness    | Clock Division        |
+//! | LED 4 Top    | Accent active         |                       |
+//! | LED 4 Bottom | Chaos level           |                       |
+//! | Fn 4         | Mute Accent           | Cycle output mode     |
+//!
+//! ## DnB Mode (Easter Egg)
+//!
+//! | Control      | Main                  | + Shift (Alt)         |
+//! |--------------|-----------------------|-----------------------|
+//! | Jack 1       | Kick Out              |                       |
+//! | Fader 1      | Kick probability      |                       |
+//! | LED 1 Top    | Gate active           |                       |
+//! | LED 1 Bottom | Kick probability      |                       |
+//! | Fn 1         | Mute Kick             | Vary DnB pattern      |
+//! | Jack 2       | Snare Out             |                       |
+//! | Fader 2      | Snare probability     |                       |
+//! | LED 2 Top    | Gate active           |                       |
+//! | LED 2 Bottom | Snare probability     |                       |
+//! | Fn 2         | Mute Snare            | Restore DnB pattern   |
+//! | Jack 3       | Hi-Hat Out            |                       |
+//! | Fader 3      | Pattern select (1–12) |                       |
+//! | LED 3 Top    | Gate active           |                       |
+//! | LED 3 Bottom | Pattern select        |                       |
+//! | Fn 3         | Mute Hi-Hat           |                       |
+//! | Jack 4       | Ghost Snare Out       |                       |
+//! | Fader 4      | Ghost probability     |                       |
+//! | LED 4 Top    | Ghost active          |                       |
+//! | LED 4 Bottom | Ghost probability     |                       |
+//! | Fn 4         | Mute Ghost            | Cycle output mode     |
+//!
+//! DnB mode uses a fixed clock division set by the selected pattern (ignores Fader 4 Alt).
+//! MIDI Note for Ghost Snare = MIDI Note 2 (same as Trigger 2 / Snare).
 //!
 use embassy_futures::{
     join::{join, join5},
@@ -346,7 +398,7 @@ pub async fn run(
         let mut output_mode = output_mode_glob.get();
         let mut dnb_pattern = dnb_pattern_glob.get();
         let mut tick_origin = ticks() as u32;
-        let ghost_note = notes[2].clone().transpose(1);
+        let ghost_note = notes[1].clone();
         let ghost_velocity = (midi_velocity - (midi_velocity / 4)).clamp(1, 127);
 
         let mut generator = PatternGenerator::default();

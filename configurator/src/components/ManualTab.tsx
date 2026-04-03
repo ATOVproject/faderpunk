@@ -1054,16 +1054,17 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
       "Chaos",
       "Division",
       "Trigger Mutes",
+      "DnB Pattern",
     ],
     text: `
 Grids is described as a "topographic drum sequencer" - it generates a variety of drum patterns based on continuous interpolation through a "map" of patterns (Drum Mode) or using Euclidean algorithms (Euclidean Mode).  The original Mutable Instruments module manual is [here](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/manual/).
 
-* FP-Grids outputs CV gates (0V = off, 10V = on) and, optionally MIDI note on/off messages, with normal and accented velocity levels.  
+* FP-Grids outputs CV gates (0V = off, 10V = on) and, optionally MIDI note on/off messages, with normal and accented velocity levels.
 * The 4th channel provides a global accent CV gate that can be used for triggering other voices or envelopes. This combines the accents from the individual three drum voices in the original Grids firmware into a single mixed Accent signal.
 
 #### Drums Output Mode
 
-Generates patterns by interpolating through a 2D map of pre-analyzed drum patterns. Sequence length is always 32 steps
+Generates patterns by interpolating through a 2D map of pre-analyzed drum patterns. Sequence length is always 32 steps at 1/32nd note resolution.
 
 * **Map X / Map Y:** Controls the position on the pattern map. Small changes typically result in related rhythmic variations.
 * **Density 1 / Density 2 / Density 3:** Controls the event density (fill) for each of the three main trigger outputs.
@@ -1073,16 +1074,28 @@ Generates patterns by interpolating through a 2D map of pre-analyzed drum patter
 
 Generates classic Euclidean rhythms for each of the three main trigger outputs independently.
 
-* **Length 1 / Length 2 / Length 3:** Sets the total number of steps in the sequence for each output (1-16).
-* **Fill 1 / Fill 2 / Fill 3:** Main faders set fill amount from 0 to the current Length for each channel (derived from length).
-* **Offset 1 / Offset 2 / Offset 3:** While holding Shift, press channel buttons 1-3 to rotate each Euclidean pattern.
-* **Chaos Amount:** Controls the amount of random step-skipping/triggering.
+* **Length 1 / Length 2 / Length 3:** Sets the total number of steps in the sequence for each output (1-16). Set with Shift + Fader.
+* **Fill 1 / Fill 2 / Fill 3:** Main faders set the number of active beats from 0 to the current Length for each channel.
+* **Offset 1 / Offset 2 / Offset 3:** While holding Shift, press channel buttons 1-3 to rotate each Euclidean pattern by one step.
+* **Chaos Amount:** Controls the probability of randomly flipping a beat on or off each step.
+* **Clock Division:** Shift + Fader 4 sets the step resolution (default 1/16th note).
 * While Shift is held in Euclidean mode, channel buttons light pink to indicate offset control.
+
+#### DnB Mode (Easter Egg)
+
+A drum and bass pattern generator with 12 preset kick/snare/hi-hat patterns and probabilistic triggering. Cycle through output modes with Shift + Button 4 until the LED shows sand/amber.
+
+* **Kick / Snare / Ghost Snare:** Faders 1, 2, and 4 set the trigger probability for each voice (0 = never, full = always).
+* **Pattern select:** Fader 3 selects one of 12 DnB patterns. The pattern changes take effect at the start of the next bar.
+* **Vary pattern:** Shift + Button 1 randomly mutates the current pattern.
+* **Restore pattern:** Shift + Button 2 restores the pattern to the last selected base pattern.
+* Clock division is set automatically by the selected pattern — Fader 4 Alt (resolution) has no effect in this mode.
+* The Ghost Snare uses the same MIDI note as Trigger 2 (Snare), at a reduced velocity.
 
 #### Patch Ideas
 
-* Try saving different Scenes with different Output Modes, then switching between scenes in a performance (sequence will reset on next step)
-* The grid sequencers can be reset rhythmically by patching an external trigger into one of the Faderpunk Aux Jacks (configured as a reset input).
+* Try saving different Scenes with different Output Modes, then switching between scenes in a performance (sequence will reset on next step).
+* The sequencers can be reset rhythmically by patching an external trigger into one of the Faderpunk Aux Jacks (configured as a reset input).
 
 #### Acknowledgements
 
@@ -1092,74 +1105,81 @@ Generates classic Euclidean rhythms for each of the three main trigger outputs i
 
 #### Channels
 
-The faders function varys depending on the current output mode.  In the diagram below, the first fader description is for Drums mode, the second description is brackets is for the Euclidean Mode.
+Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are shown where they differ.
 
 `,
     channels: [
       {
         jackTitle: "Trigger output 1",
-        jackDescription: "Bass drum sequenced gate output",
-        faderTitle: "Density 1 (Euclidean Fill 1)",
+        jackDescription: "Bass drum / Euclidean Ch1 / Kick gate output",
+        faderTitle: "Density 1 / Fill 1 / Kick Probability",
         faderDescription:
-          "Control the drums note density (or Euclidean fill amount, derived from current Euclidean length)",
-        faderPlusShiftTitle: "Map X (Euclidean Length 1)",
+          "Drums: note density for trigger 1. Euclidean: fill amount (0 to current length). DnB: kick trigger probability.",
+        faderPlusShiftTitle: "Map X / Euclidean Length 1",
         faderPlusShiftDescription:
-          "Interpolating scan through drum map (Euclidean pattern length 1-16 steps)",
+          "Drums: interpolating scan through drum map X axis. Euclidean: pattern length 1-16 steps. DnB: no function.",
         ledTop: "Gate output 1",
-        ledBottom: "Density 1 Amount (Euclidean Fill 1 Amount)",
-        ledBottomPlusShift: "Map X Amount",
+        ledBottom: "Density / Fill / Probability level",
+        ledBottomPlusShift: "Map X amount",
         fnTitle: "Mute 1",
         fnDescription: "Mute trigger 1",
-        fnPlusShiftTitle: "Euclidean Offset 1",
-        fnPlusShiftDescription: "Shift + Button 1 rotates Euclidean pattern 1",
+        fnPlusShiftTitle: "Euclidean Offset 1 / Vary DnB Pattern",
+        fnPlusShiftDescription:
+          "Euclidean: Shift + Button 1 rotates pattern 1 by one step. DnB: Shift + Button 1 randomly varies the current pattern.",
       },
       {
         jackTitle: "Trigger output 2",
-        jackDescription: "Snare sequenced gate output",
-        faderTitle: "Density 2 (Euclidean Fill 2)",
+        jackDescription: "Snare / Euclidean Ch2 / Snare gate output",
+        faderTitle: "Density 2 / Fill 2 / Snare Probability",
         faderDescription:
-          "Control the drums note density (or Euclidean fill amount, derived from current Euclidean length)",
-        faderPlusShiftTitle: "Map Y (Euclidean Length 2)",
+          "Drums: note density for trigger 2. Euclidean: fill amount (0 to current length). DnB: snare trigger probability.",
+        faderPlusShiftTitle: "Map Y / Euclidean Length 2",
         faderPlusShiftDescription:
-          "Interpolating scan through drum map (Euclidean pattern length 1-16 steps)",
+          "Drums: interpolating scan through drum map Y axis. Euclidean: pattern length 1-16 steps. DnB: no function.",
         ledTop: "Gate output 2",
-        ledBottom: "Density 2 Amount (Euclidean Fill 2 Amount)",
-        ledBottomPlusShift: "Map Y Amount",
+        ledBottom: "Density / Fill / Probability level",
+        ledBottomPlusShift: "Map Y amount",
         fnTitle: "Mute 2",
         fnDescription: "Mute trigger 2",
-        fnPlusShiftTitle: "Euclidean Offset 2",
-        fnPlusShiftDescription: "Shift + Button 2 rotates Euclidean pattern 2",
+        fnPlusShiftTitle: "Euclidean Offset 2 / Restore DnB Pattern",
+        fnPlusShiftDescription:
+          "Euclidean: Shift + Button 2 rotates pattern 2 by one step. DnB: Shift + Button 2 restores the pattern to the base.",
       },
       {
         jackTitle: "Trigger output 3",
-        jackDescription: "Hi Hat sequenced gate output",
-        faderTitle: "Density 3 (Euclidean Fill 3)",
+        jackDescription: "Hi-Hat / Euclidean Ch3 / Hi-Hat gate output",
+        faderTitle: "Density 3 / Fill 3 / DnB Pattern Select",
         faderDescription:
-          "Control the drums note density (or Euclidean fill amount, derived from current Euclidean length)",
-        faderPlusShiftTitle: "(Euclidean Length 3)",
-        faderPlusShiftDescription: "(Euclidean pattern length 1-16 steps)",
+          "Drums: note density for trigger 3. Euclidean: fill amount (0 to current length). DnB: selects one of 12 patterns (change takes effect at next bar).",
+        faderPlusShiftTitle: "Euclidean Length 3",
+        faderPlusShiftDescription:
+          "Euclidean: pattern length 1-16 steps. Drums / DnB: no function.",
         ledTop: "Gate output 3",
-        ledBottom: "Density 3 Amount (Euclidean Fill 3 Amount)",
+        ledBottom: "Density / Fill / Pattern number",
         fnTitle: "Mute 3",
         fnDescription: "Mute trigger 3",
         fnPlusShiftTitle: "Euclidean Offset 3",
-        fnPlusShiftDescription: "Shift + Button 3 rotates Euclidean pattern 3",
+        fnPlusShiftDescription:
+          "Euclidean: Shift + Button 3 rotates pattern 3 by one step. Drums / DnB: no function.",
       },
       {
-        jackTitle: "Accent gate output",
-        jackDescription: "Global accent gate output",
-        faderTitle: "Chaos",
-        faderDescription: "Pattern randomisation and humanisation",
+        jackTitle: "Accent / Ghost Snare gate output",
+        jackDescription:
+          "Global accent gate output (Drums / Euclidean) or Ghost Snare gate output (DnB)",
+        faderTitle: "Chaos / Ghost Probability",
+        faderDescription:
+          "Drums / Euclidean: pattern randomisation and humanisation. DnB: ghost snare trigger probability.",
         faderPlusShiftTitle: "Resolution",
         faderPlusShiftDescription:
-          "Sets clock resolution: 32ndT, 32nd, 16thT, 16th (default), 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar",
-        ledTop: "Accent gate output",
-        ledBottom: "Chaos Amount",
+          "Sets clock resolution (Drums / Euclidean only): 32ndT, 32nd, 16thT, 16th (default), 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar. No effect in DnB mode.",
+        ledTop: "Accent / Ghost Snare gate output",
+        ledBottom: "Chaos / Ghost Probability level",
         ledBottomPlusShift: "Resolution in blue, 16th note shown in yellow",
-        fnTitle: "Accent Mute",
-        fnDescription: "Mute accent gate",
-        fnPlusShiftTitle: "Toggle Output Mode",
-        fnPlusShiftDescription: "Light Blue = Drums, Pink = Euclidean",
+        fnTitle: "Accent / Ghost Mute",
+        fnDescription: "Mute accent (Drums / Euclidean) or ghost snare (DnB)",
+        fnPlusShiftTitle: "Cycle Output Mode",
+        fnPlusShiftDescription:
+          "Cycles through output modes: Light Blue = Drums, Pink = Euclidean, Sand = DnB",
       },
     ],
   },
