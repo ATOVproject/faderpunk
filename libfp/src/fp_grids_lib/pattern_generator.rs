@@ -587,14 +587,15 @@ impl PatternGenerator {
             }
 
             // Chaos: probabilistically flip this beat, with accent injection at high chaos
-            if self.chaos_globally_enabled_ && chaos > 0 {
-                if (self.random.get_word() % 256) < chaos as u16 {
-                    if self.random.get_word().is_multiple_of(8) {
-                        self.state_ ^= 1 << part;
-                    }
-                    if chaos > 192 && self.random.get_word().is_multiple_of(16) {
-                        self.state_ |= OutputBits::OutputBitAccent.to_bitmask();
-                    }
+            if self.chaos_globally_enabled_
+                && chaos > 0
+                && (self.random.get_word() % 256) < chaos as u16
+            {
+                if self.random.get_word().is_multiple_of(8) {
+                    self.state_ ^= 1 << part;
+                }
+                if chaos > 192 && self.random.get_word().is_multiple_of(16) {
+                    self.state_ |= OutputBits::OutputBitAccent.to_bitmask();
                 }
             }
         }

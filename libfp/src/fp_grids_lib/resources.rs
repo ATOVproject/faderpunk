@@ -19,11 +19,9 @@
 pub const K_NUM_PARTS: usize = 3;
 pub const K_NUM_STEPS_PER_PATTERN: u8 = 32;
 
-pub const LUT_RES_EUCLIDEAN_SIZE: usize = 1024;
 pub const NODE_DATA_SIZE: usize = 96;
 
-// Euclidean patterns lookup table
-pub const LUT_RES_EUCLIDEAN: [u32; LUT_RES_EUCLIDEAN_SIZE] = [
+pub const LUT_RES_EUCLIDEAN: [u32; 1024] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3,
     0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 7, 7, 7, 7, 7, 7,

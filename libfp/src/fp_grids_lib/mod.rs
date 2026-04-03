@@ -8,4 +8,4 @@ pub use pattern_generator::{
     PatternModeSettings, SequencerState, DNB_NUM_PATTERNS,
 };
 
-pub use resources::{K_NUM_PARTS, K_NUM_STEPS_PER_PATTERN};
+pub use resources::{K_NUM_PARTS, K_NUM_STEPS_PER_PATTERN, LUT_RES_EUCLIDEAN};

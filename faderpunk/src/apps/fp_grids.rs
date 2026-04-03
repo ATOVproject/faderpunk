@@ -276,7 +276,21 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id);
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            midi_channel: MidiChannel::default(),
+            midi_out: MidiOut::default(),
+            note1: MidiNote::from(36),
+            note2: MidiNote::from(37),
+            note3: MidiNote::from(38),
+            velocity: 100,
+            accent: 127,
+            gatel: 50,
+            color: Color::Orange,
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
@@ -341,7 +355,7 @@ pub async fn run(
     let midi_velocity = ((velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
     let accent_velocity = ((accent_velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
 
-    let midi = app.use_midi_output(midi_out, midi_channel);
+    let midi = app.use_midi_output(midi_out, midi_channel, false);
     let notes = [note1, note2, note3];
     let jack = [
         app.make_gate_jack(0, 4095).await,
@@ -398,7 +412,7 @@ pub async fn run(
         let mut output_mode = output_mode_glob.get();
         let mut dnb_pattern = dnb_pattern_glob.get();
         let mut tick_origin = ticks() as u32;
-        let ghost_note = notes[1].clone();
+        let ghost_note = notes[1];
         let ghost_velocity = (midi_velocity - (midi_velocity / 4)).clamp(1, 127);
 
         let mut generator = PatternGenerator::default();
