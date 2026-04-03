@@ -9,7 +9,7 @@ use crate::tasks::leds::{clear_led_overlay, set_led_overlay_mode, LedMode};
 
 static LAST_SCENE: AtomicU8 = AtomicU8::new(u8::MAX);
 
-const SCALE_LED_FIRST_CHANNEL: usize = 2;
+const SCALE_LED_FIRST_CHANNEL: usize = 3;
 const SCALE_LED_LAST_CHANNEL: usize = SCALE_LED_FIRST_CHANNEL + SCALE_LED_COUNT;
 const SCALE_LED_COUNT: usize = 12;
 const NUM_CHANNELS: usize = 16;
@@ -51,10 +51,19 @@ async fn run_input_handlers() {
                 .await;
             }
             InputEvent::SaveScene(scene) => {
+                let old = LAST_SCENE.swap(scene, Ordering::Relaxed);
+                if old < NUM_CHANNELS as u8 && old != scene {
+                    set_led_overlay_mode(
+                        old as usize,
+                        Led::Button,
+                        LedMode::Static(Color::White, Brightness::Off),
+                    )
+                    .await;
+                }
                 set_led_overlay_mode(
                     scene as usize,
                     Led::Button,
-                    LedMode::FlashThenStatic(Color::Red, 3, Color::White, Brightness::Off),
+                    LedMode::FlashThenStatic(Color::Red, 3, Color::Green, Brightness::Mid),
                 )
                 .await;
             }
