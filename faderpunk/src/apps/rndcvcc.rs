@@ -17,7 +17,7 @@ use crate::app::{
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, slew_exp, split_unsigned_value, SlewState},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
     Range, Value, APP_MAX_PARAMS,
 };
@@ -316,8 +316,8 @@ pub async fn run(
     };
 
     let timed_loop = async {
-        let mut out = 0.;
-        let mut last_out = 0;
+        let mut out = SlewState::new();
+        let mut last_out = SlewState::new();
         let mut count: u32 = 0;
         loop {
             app.delay_millis(1).await;
@@ -340,28 +340,30 @@ pub async fn run(
             };
 
             out = if !glob_muted.get() {
-                slew_2(
+                slew_exp(
                     out,
                     jackval,
                     fader_curve.at(storage.query(|s| s.slew_saved)),
+                    fader_curve.at(storage.query(|s| s.slew_saved)),
                 )
             } else if range.is_bipolar() {
-                2047.0
+                SlewState::from(2047)
             } else {
-                0.0
+                SlewState::new()
             };
+            let out_val = out.value();
 
-            output.set_value(out as u16);
+            output.set_value(out_val);
 
-            if last_out / 32 != out as u16 / 32 {
-                midi.send_cc(midi_cc, out as u16).await;
+            if last_out.value() / 32 != out.value() / 32 {
+                midi.send_cc(midi_cc, out_val).await;
             }
-            last_out = out as u16;
+            last_out = out;
 
             if latch_active_layer == LatchLayer::Main {
                 let color = glob_button_color.get();
                 if range.is_bipolar() {
-                    let ledj = split_unsigned_value(out as u16);
+                    let ledj = split_unsigned_value(out_val);
                     leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
                     leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
                 } else {
@@ -369,7 +371,7 @@ pub async fn run(
                         0,
                         Led::Top,
                         color,
-                        Brightness::Custom((last_out / 16) as u8),
+                        Brightness::Custom((out_val / 16) as u8),
                     );
                 }
             }
