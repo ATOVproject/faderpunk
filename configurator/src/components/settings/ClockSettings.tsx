@@ -125,6 +125,17 @@ export const ClockSettings = () => {
             />
           )}
         />
+        <Input
+          {...register("swingAmount", { valueAsNumber: true })}
+          {...inputProps}
+          label="Swing"
+          description="-49..+49, 0 = straight. Negative swing adds latency on external clock sources."
+          type="number"
+          inputMode="numeric"
+          min={-49}
+          max={49}
+          step={1}
+        />
       </div>
     </div>
   );

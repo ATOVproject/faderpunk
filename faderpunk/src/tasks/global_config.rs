@@ -21,7 +21,16 @@ const GLOBAL_CONFIG_WATCH_SUBSCRIBERS: usize = 6;
 const LED_BRIGHTNESS_FADER: usize = 0;
 const QUANTIZER_KEY_FADER: usize = 3;
 const QUANTIZER_TONIC_FADER: usize = 4;
+const SWING_FADER: usize = 14;
 const INTERNAL_BPM_FADER: usize = 15;
+
+fn val_to_swing(val: u16) -> i8 {
+    (((val as i32 * 99) / 4095) - 49).clamp(-49, 49) as i8
+}
+
+fn swing_to_val(swing: i8) -> u16 {
+    (((swing as i32 + 49) * 4095) / 99).clamp(0, 4095) as u16
+}
 
 pub static GLOBAL_CONFIG_WATCH: Watch<
     ThreadModeRawMutex,
@@ -37,6 +46,7 @@ pub fn get_global_config() -> GlobalConfig {
 pub fn get_fader_value_from_config(chan: usize, config: &GlobalConfig) -> u16 {
     match chan {
         INTERNAL_BPM_FADER => (((config.clock.internal_bpm - 45.0) * 16.0) as u16).clamp(0, 4095),
+        SWING_FADER => swing_to_val(config.clock.swing_amount),
         QUANTIZER_KEY_FADER => (config.quantizer.key as u16 * 256).clamp(0, 4095),
         QUANTIZER_TONIC_FADER => (config.quantizer.tonic as u16 * 342).clamp(0, 4095),
         LED_BRIGHTNESS_FADER => {
@@ -106,6 +116,18 @@ pub fn set_global_config_via_chan(chan: usize, val: u16) {
                     let new_bpm = (45.0 + val as f32 / 16.0).clamp(0.0, 300.0);
                     if config.clock.internal_bpm != new_bpm {
                         config.clock.internal_bpm = new_bpm;
+                        return true;
+                    }
+                }
+                false
+            });
+        }
+        SWING_FADER => {
+            global_config_sender.send_if_modified(|c| {
+                if let Some(config) = c {
+                    let new_swing = val_to_swing(val);
+                    if config.clock.swing_amount != new_swing {
+                        config.clock.swing_amount = new_swing;
                         return true;
                     }
                 }

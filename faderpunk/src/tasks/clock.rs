@@ -13,6 +13,7 @@ use embassy_sync::{
     pubsub::{PubSubChannel, Subscriber},
 };
 use embassy_time::{Duration, Instant, Timer};
+use heapless::Deque;
 use midly::live::SystemRealtime;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -151,6 +152,35 @@ const WATCHDOG_MULTIPLIER: u32 = 8;
 /// rate. Sized for the slowest plausible Eurorack source (≈1 PPQN at 30 BPM).
 /// Raise this to support slower clocks; lower it for faster Stop detection.
 const WATCHDOG_FLOOR: Duration = Duration::from_millis(2000);
+
+/// Half of the swing window, in 24-PPQN ticks. With `H = 6`, the swing window
+/// is one 8th note (12 ticks) and swing is applied at the 16th-note level.
+const SWING_HALF_INTERVAL: u32 = 6;
+
+/// Capacity of the external-clock pending-emission queue. One swing window of
+/// 2H = 12 ticks is scheduled up-front on the window-start pulse; capacity 32
+/// leaves ample headroom for transient jitter.
+const PENDING_EMISSIONS_CAPACITY: usize = 32;
+
+/// Swung absolute offset of tick `i` (in `[0, 2H]`) from the start of the swing
+/// window. Used by both the internal clock (to schedule the next tick directly)
+/// and the external clock (to schedule the whole window on its anchor pulse).
+fn swung_offset(i: u32, t: Duration, swing: i8) -> Duration {
+    let h = SWING_HALF_INTERVAL as i64;
+    let t_ticks = t.as_ticks() as i64;
+    let s = swing as i64;
+    let i = i as i64;
+
+    let raw = if i < h {
+        // First 16th note: normal spacing
+        i * t_ticks
+    } else {
+        // Second 16th note: shifted start, normal spacing within
+        let boundary = h * t_ticks * (50 + s) / 50;
+        boundary + (i - h) * t_ticks
+    };
+    Duration::from_ticks(raw.max(0) as u64)
+}
 
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(run_clock_sources(aux_inputs)).unwrap();
@@ -373,8 +403,13 @@ async fn run_unified_clock_engine() {
     let config = config_receiver.get().await;
     let mut is_running = is_clock_running().await;
     let mut current_tick_duration = bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
-    let mut last_tick_at = Instant::now();
-    let mut next_tick_at = Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
+    // `window_start_at` is the (unswung) time of tick 0 of the current swing
+    // window. For internal, it replaces the old per-tick `last_tick_at` — the
+    // swung schedule is computed relative to this anchor.
+    let startup_anchor = Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
+    let mut window_start_at = startup_anchor;
+    let mut tick_in_window: u32 = 0;
+    let mut next_tick_at = startup_anchor;
     let mut last_pulse: Option<Instant> = None;
     // Measured period between external pulses. `None` until we have enough pulses
     // to compute a rolling average, which gates the external watchdog so it can't
@@ -382,6 +417,16 @@ async fn run_unified_clock_engine() {
     let mut measured_ext_period: Option<Duration> = None;
     let mut delta_history: [Duration; HISTORY_SIZE] = [Duration::from_ticks(0); HISTORY_SIZE];
     let mut history_idx: usize = 0;
+    // Queued swung emissions for the external clock path. Each entry is the
+    // absolute emission time for the front-most unpublished tick. Empty in the
+    // internal or straight-passthrough (`swing == 0`) case.
+    let mut pending_emissions: Deque<Instant, PENDING_EMISSIONS_CAPACITY> = Deque::new();
+    // True if the current swing window's ticks were pre-scheduled on its
+    // anchor pulse. Mid-window pulses check this flag to decide whether
+    // to suppress (predicted — emission already queued) or fall through
+    // to straight passthrough (not predicted — e.g. swing was 0 or there
+    // was no measured period at the anchor). Cleared at window rollover.
+    let mut window_predicted = false;
     let mut config = config;
 
     // If clock was already running at startup (persisted state) with internal source,
@@ -394,20 +439,29 @@ async fn run_unified_clock_engine() {
 
     loop {
         // Timer future depends on mode:
-        // - Internal + running: fire on tick schedule
-        // - External + running + has pulse: watchdog timer
+        // - Internal + running: fire on swung tick schedule (`next_tick_at`)
+        // - External + running: earliest of watchdog (`next_tick_at`) and the
+        //   front of the pending-emission queue
         // - Otherwise: pend forever
         let timer_fut = async {
-            let should_tick = if config.clock.clock_src == ClockSrc::Internal {
-                is_running
-            } else {
-                // For external sources, only arm the watchdog once we've actually
-                // measured the inter-pulse period. Otherwise we'd kill the clock
-                // based on the stale internal-BPM-derived `current_tick_duration`.
-                is_running && last_pulse.is_some() && measured_ext_period.is_some()
-            };
-            if should_tick {
+            if !is_running {
+                core::future::pending::<()>().await;
+                return;
+            }
+            if config.clock.clock_src == ClockSrc::Internal {
                 Timer::at(next_tick_at).await;
+            } else if last_pulse.is_some() && measured_ext_period.is_some() {
+                // Watchdog is armed; also consider any pending swung emission
+                // that may be due sooner.
+                let deadline = pending_emissions
+                    .front()
+                    .copied()
+                    .map(|e| e.min(next_tick_at))
+                    .unwrap_or(next_tick_at);
+                Timer::at(deadline).await;
+            } else if let Some(&front) = pending_emissions.front() {
+                // Measurement lost but queue still has emissions (edge case).
+                Timer::at(front).await;
             } else {
                 core::future::pending::<()>().await;
             }
@@ -429,6 +483,8 @@ async fn run_unified_clock_engine() {
                     measured_ext_period = None;
                     delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
                     history_idx = 0;
+                    pending_emissions.clear();
+                    tick_in_window = 0;
 
                     // Drop transport state to match the gatekeeper's behavior,
                     // which also resets is_running on source change.
@@ -441,20 +497,28 @@ async fn run_unified_clock_engine() {
                         // Switching to internal: recalculate tick duration from BPM
                         current_tick_duration =
                             bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
-                        last_tick_at = Instant::now();
+                        window_start_at = Instant::now();
                     }
                 } else if config.clock.clock_src == ClockSrc::Internal {
-                    // BPM change while on internal source
-                    let old_tick_duration = current_tick_duration;
+                    // BPM or swing change while on internal source.
                     let new_tick_duration =
                         bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
-
-                    // Recompute next tick from the grid anchor to avoid drift
-                    if old_tick_duration != new_tick_duration && is_running {
-                        next_tick_at = last_tick_at + new_tick_duration;
-                    }
+                    let bpm_changed = current_tick_duration != new_tick_duration;
+                    let swing_changed = config.clock.swing_amount != new_config.clock.swing_amount;
 
                     current_tick_duration = new_tick_duration;
+
+                    if is_running && (bpm_changed || swing_changed) {
+                        // Recompute the next tick from the fixed window anchor.
+                        // Keeping `window_start_at` put preserves the grid and
+                        // the swing shape across live nudges.
+                        next_tick_at = window_start_at
+                            + swung_offset(
+                                tick_in_window,
+                                current_tick_duration,
+                                new_config.clock.swing_amount,
+                            );
+                    }
                 }
 
                 config = new_config;
@@ -474,9 +538,10 @@ async fn run_unified_clock_engine() {
 
                 if is_running != next_is_running {
                     if next_is_running {
-                        last_tick_at = Instant::now();
-                        next_tick_at =
-                            last_tick_at + Duration::from_millis(TICK_RESET_DELAY as u64);
+                        window_start_at =
+                            Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
+                        tick_in_window = 0;
+                        next_tick_at = window_start_at;
                         clock_in_sender
                             .send(ClockInEvent::Start(ClockSrc::Internal))
                             .await;
@@ -499,11 +564,23 @@ async fn run_unified_clock_engine() {
                     }
                     clock_in_sender.send(event).await;
                     match event {
-                        ClockInEvent::Start(_) | ClockInEvent::Continue(_) => {
+                        ClockInEvent::Start(_) => {
+                            is_running = true;
+                            // Fresh downbeat: drop any stale swung emissions and
+                            // re-anchor the window on the next pulse.
+                            pending_emissions.clear();
+                            tick_in_window = 0;
+                        }
+                        ClockInEvent::Continue(_) => {
                             is_running = true;
                         }
                         ClockInEvent::Stop(_) => {
                             is_running = false;
+                            pending_emissions.clear();
+                        }
+                        ClockInEvent::Reset(_) => {
+                            pending_emissions.clear();
+                            tick_in_window = 0;
                         }
                         _ => {}
                     }
@@ -513,6 +590,8 @@ async fn run_unified_clock_engine() {
                     let reset_src: ClockSrc = config.clock.reset_src.into();
                     if source == reset_src && reset_src != ClockSrc::None {
                         clock_in_sender.send(ClockInEvent::Reset(source)).await;
+                        pending_emissions.clear();
+                        tick_in_window = 0;
                         continue;
                     }
 
@@ -535,8 +614,72 @@ async fn run_unified_clock_engine() {
                         }
                     }
 
-                    // Phase snap: forward tick immediately
-                    clock_in_sender.send(ClockInEvent::Tick(source)).await;
+                    // Window-relative scheduling on external:
+                    //
+                    // - At `tick_in_window == 0` (window anchor), anchor the
+                    //   window to this pulse and, if we have a measured period
+                    //   and non-zero swing, pre-schedule all `2H` emissions
+                    //   for the window using `swung_offset`. This lets
+                    //   negative swing emit *earlier* than the unswung grid
+                    //   without any latency buffer, because we know where
+                    //   every tick in the window will land the moment we
+                    //   anchor it.
+                    // - Mid-window pulses are consumed for measurement and
+                    //   watchdog only; their emissions were already queued at
+                    //   window start.
+                    // - On `S = 0` or before the period has been measured,
+                    //   fall back to straight passthrough — forward every
+                    //   pulse immediately, no queue. This also covers the
+                    //   first window after Start / Reset / source change,
+                    //   which has no prior period to base a prediction on.
+                    let swing = config.clock.swing_amount;
+                    if tick_in_window == 0 {
+                        // Window anchor: decide the mode for this whole
+                        // window based on the state *right now*, and stick
+                        // with it until the next anchor.
+                        window_start_at = timestamp;
+                        match measured_ext_period {
+                            Some(t) if swing != 0 => {
+                                // Pre-schedule all 2H emissions for the window.
+                                for i in 0..(2 * SWING_HALF_INTERVAL) {
+                                    let emission = window_start_at + swung_offset(i, t, swing);
+                                    // Belt-and-braces monotonicity guard
+                                    // against any stale entries still sitting
+                                    // in the queue from a prior window that
+                                    // straddled a tempo transition.
+                                    let clamped = match pending_emissions.back() {
+                                        Some(&back) if emission < back => back,
+                                        _ => emission,
+                                    };
+                                    if pending_emissions.is_full() {
+                                        pending_emissions.pop_front();
+                                    }
+                                    let _ = pending_emissions.push_back(clamped);
+                                }
+                                window_predicted = true;
+                            }
+                            _ => {
+                                // No prediction — straight passthrough for
+                                // the anchor pulse and the rest of this
+                                // window, even if swing or the measured
+                                // period change mid-window. The next window
+                                // picks the mode fresh.
+                                clock_in_sender.send(ClockInEvent::Tick(source)).await;
+                                window_predicted = false;
+                            }
+                        }
+                    } else if !window_predicted {
+                        // Mid-window pulse under an unpredicted window —
+                        // forward it straight.
+                        clock_in_sender.send(ClockInEvent::Tick(source)).await;
+                    }
+                    // else: mid-window pulse under an active prediction —
+                    // emission is already queued, nothing to do here.
+
+                    tick_in_window += 1;
+                    if tick_in_window >= 2 * SWING_HALF_INTERVAL {
+                        tick_in_window = 0;
+                    }
 
                     // Frequency tracking: compute rolling average of pulse intervals
                     if let Some(last) = last_pulse {
@@ -574,20 +717,50 @@ async fn run_unified_clock_engine() {
             // Arm 4: Timer fired
             Either4::Fourth(_) => {
                 if config.clock.clock_src == ClockSrc::Internal && is_running {
-                    // Internal tick: advance grid anchor and schedule next
-                    last_tick_at = next_tick_at;
-                    next_tick_at = last_tick_at + current_tick_duration;
+                    // Internal tick: emit, advance window state, schedule next
                     clock_in_sender
                         .send(ClockInEvent::Tick(ClockSrc::Internal))
                         .await;
-                } else if is_running && last_pulse.is_some() {
-                    // Watchdog: external clock lost
-                    clock_in_sender
-                        .send(ClockInEvent::Stop(config.clock.clock_src))
-                        .await;
-                    last_pulse = None;
-                    is_running = false;
-                    spawner.spawn(store_clock_running(false)).ok();
+                    tick_in_window += 1;
+                    if tick_in_window >= 2 * SWING_HALF_INTERVAL {
+                        tick_in_window = 0;
+                        window_start_at += current_tick_duration * (2 * SWING_HALF_INTERVAL);
+                    }
+                    next_tick_at = window_start_at
+                        + swung_offset(
+                            tick_in_window,
+                            current_tick_duration,
+                            config.clock.swing_amount,
+                        );
+                } else if is_running {
+                    // External: either a pending swung emission is due, or the
+                    // watchdog fired (external clock lost).
+                    let now = Instant::now();
+                    let popped = if let Some(&front) = pending_emissions.front() {
+                        if front <= now {
+                            pending_emissions.pop_front();
+                            clock_in_sender
+                                .send(ClockInEvent::Tick(config.clock.clock_src))
+                                .await;
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+
+                    if !popped && last_pulse.is_some() && now >= next_tick_at {
+                        // Watchdog: external clock lost
+                        clock_in_sender
+                            .send(ClockInEvent::Stop(config.clock.clock_src))
+                            .await;
+                        last_pulse = None;
+                        is_running = false;
+                        pending_emissions.clear();
+                        tick_in_window = 0;
+                        spawner.spawn(store_clock_running(false)).ok();
+                    }
                 }
             }
         }
