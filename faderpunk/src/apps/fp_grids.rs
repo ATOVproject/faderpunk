@@ -563,7 +563,7 @@ pub async fn run(
                             // Accent fired
                             jack[3].set_high().await;
                             accent_on_glob.set(true);
-                            leds.set(3, Led::Top, led_color, Brightness::High);
+                            leds.set(3, Led::Top, led_color, Brightness::Mid);
                             if output_mode == OutputMode::OutputModeDnB {
                                 // Send Ghost Snare MIDI out, use next MIDI note up from Trigger 3
                                 midi.send_note_on(ghost_note, ghost_velocity).await;
@@ -597,7 +597,7 @@ pub async fn run(
                                 leds.set(3, Led::Bottom, Color::Orange, Brightness::Mid);
                             } else if div == 6 {
                                 // Highlight 1/16th note default
-                                leds.set(3, Led::Bottom, Color::Yellow, Brightness::High);
+                                leds.set(3, Led::Bottom, Color::Yellow, Brightness::Mid);
                             } else {
                                 leds.set(3, Led::Bottom, Color::Blue, Brightness::Mid);
                             }
@@ -950,7 +950,7 @@ pub async fn run(
                     }
                     LatchLayer::Alt => {
                         if chan == 3 && div_glob.get() == 6 {
-                            leds.set(3, Led::Bottom, DIV_SIXTEENTH_NOTE_COLOR, Brightness::High);
+                            leds.set(3, Led::Bottom, DIV_SIXTEENTH_NOTE_COLOR, Brightness::Mid);
                         } else {
                             leds.set(
                                 chan,
@@ -1014,7 +1014,7 @@ pub async fn run(
                     if muted_[part] {
                         leds.unset(part, Led::Button);
                     } else {
-                        leds.set(part, Led::Button, led_color, Brightness::High);
+                        leds.set(part, Led::Button, led_color, Brightness::Mid);
                     }
                 } else if part == K_NUM_PARTS {
                     // accent mute
@@ -1035,7 +1035,7 @@ pub async fn run(
                     if muted_[part] {
                         leds.unset(part, Led::Button);
                     } else {
-                        leds.set(part, Led::Button, led_color, Brightness::High);
+                        leds.set(part, Led::Button, led_color, Brightness::Mid);
                     }
                 }
             } else if part < K_NUM_PARTS
@@ -1071,18 +1071,18 @@ pub async fn run(
                     }
                     match drum_mode_ {
                         OutputMode::OutputModeDrums => {
-                            leds.set(3, Led::Button, drums_btn_color, Brightness::High);
+                            leds.set(3, Led::Button, drums_btn_color, Brightness::Mid);
                         }
                         OutputMode::OutputModeEuclidean => {
                             for part in 0..K_NUM_PARTS {
-                                leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
+                                leds.set(part, Led::Button, euclidean_btn_color, Brightness::Mid);
                             }
-                            leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                            leds.set(3, Led::Button, euclidean_btn_color, Brightness::Mid);
                         }
                         OutputMode::OutputModeDnB => {
-                            leds.set(0, Led::Button, dnb_btn_color, Brightness::High);
-                            leds.set(1, Led::Button, dnb_btn_color, Brightness::High);
-                            leds.set(3, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.set(0, Led::Button, dnb_btn_color, Brightness::Mid);
+                            leds.set(1, Led::Button, dnb_btn_color, Brightness::Mid);
+                            leds.set(3, Led::Button, dnb_btn_color, Brightness::Mid);
                         }
                     }
                 } else {
@@ -1091,7 +1091,7 @@ pub async fn run(
                         if *mute_ {
                             leds.unset(part, Led::Button);
                         } else {
-                            leds.set(part, Led::Button, led_color, Brightness::High);
+                            leds.set(part, Led::Button, led_color, Brightness::Mid);
                         }
                     }
                 }
@@ -1129,7 +1129,7 @@ pub async fn run(
                         if *mute_ {
                             leds.unset(part, Led::Button);
                         } else {
-                            leds.set(part, Led::Button, led_color, Brightness::High);
+                            leds.set(part, Led::Button, led_color, Brightness::Mid);
                         }
                     }
                 } else if latch_active_layer == LatchLayer::Alt {
@@ -1138,19 +1138,19 @@ pub async fn run(
                             for part in 0..K_NUM_PARTS {
                                 leds.unset(part, Led::Button);
                             }
-                            leds.set(3, Led::Button, drums_btn_color, Brightness::High);
+                            leds.set(3, Led::Button, drums_btn_color, Brightness::Mid);
                         }
                         OutputMode::OutputModeEuclidean => {
                             for part in 0..K_NUM_PARTS {
-                                leds.set(part, Led::Button, euclidean_btn_color, Brightness::High);
+                                leds.set(part, Led::Button, euclidean_btn_color, Brightness::Mid);
                             }
-                            leds.set(3, Led::Button, euclidean_btn_color, Brightness::High);
+                            leds.set(3, Led::Button, euclidean_btn_color, Brightness::Mid);
                         }
                         OutputMode::OutputModeDnB => {
-                            leds.set(0, Led::Button, dnb_btn_color, Brightness::High);
-                            leds.set(1, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.set(0, Led::Button, dnb_btn_color, Brightness::Mid);
+                            leds.set(1, Led::Button, dnb_btn_color, Brightness::Mid);
                             leds.unset(2, Led::Button);
-                            leds.set(3, Led::Button, dnb_btn_color, Brightness::High);
+                            leds.set(3, Led::Button, dnb_btn_color, Brightness::Mid);
                         }
                     }
                 }
@@ -1312,7 +1312,7 @@ fn refresh_state_from_storage(
         if *mute_ {
             leds.unset(part, Led::Button);
         } else {
-            leds.set(part, Led::Button, led_color, Brightness::High);
+            leds.set(part, Led::Button, led_color, Brightness::Mid);
         }
     }
 
@@ -1427,7 +1427,7 @@ fn update_fader_leds(
     // Other Led values
     if output_mode != OutputMode::OutputModeDnB && latch_active_layer == LatchLayer::Alt {
         if clock_resolution == 6 {
-            leds.set(3, Led::Bottom, DIV_SIXTEENTH_NOTE_COLOR, Brightness::High)
+            leds.set(3, Led::Bottom, DIV_SIXTEENTH_NOTE_COLOR, Brightness::Mid)
         } else {
             leds.set(
                 3,
