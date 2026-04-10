@@ -76,12 +76,31 @@ pub fn rescale_12bit_int(input: u16, min: u16, max: u16) -> u16 {
 }
 
 /// Clock divider resolution table for selectable division modes.
-pub fn resolution_for_mode(mode: usize) -> &'static [u32] {
+pub fn resolution_for_mode(mode: usize) -> &'static [u16] {
     match mode {
         0 => &[384, 192, 96, 48, 24, 12, 6, 3],
         1 => &[384, 192, 96, 48, 24, 16, 8, 4, 2],
         _ => &[384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2],
     }
+}
+
+/// Map a 12-bit value to an index into a slice of the given length.
+pub fn value_to_index(value: u16, len: usize) -> usize {
+    ((value as usize * len) / 4096).min(len.saturating_sub(1))
+}
+
+/// Map a 12-bit value to a resolution from the given table.
+pub fn value_to_resolution(value: u16, resolution: &[u16]) -> u32 {
+    resolution[value_to_index(value, resolution.len())] as u32
+}
+
+/// Map a 12-bit value to a resolution, offset by a bipolar CV input.
+pub fn resolution_with_input_offset(base: u16, in_val: u16, resolution: &[u16]) -> u32 {
+    let base_index = value_to_index(base, resolution.len()) as i32;
+    let max_offset = ((resolution.len() as i32 - 1) / 2).max(1);
+    let offset = ((in_val as i32 - 2047) * max_offset / 2047).clamp(-max_offset, max_offset);
+    let index = (base_index + offset).clamp(0, (resolution.len() - 1) as i32) as usize;
+    resolution[index] as u32
 }
 
 /// Use to attenuate 0-4095 representing a bipolar value

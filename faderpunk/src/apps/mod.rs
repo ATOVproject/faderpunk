@@ -19,5 +19,6 @@ register_apps!(
     18 => clk_div,
     19 => panner,
     20 => rnd_plus,
+    21 => clk_div_plus,
     22 => lfo_plus,
 );
