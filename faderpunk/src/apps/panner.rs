@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate_bipolar, clickless, split_unsigned_value},
+    utils::{attenuate_bipolar, clickless, slew_2, split_unsigned_value},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, Waveform, APP_MAX_PARAMS,
 };
 
@@ -365,8 +365,8 @@ pub async fn run(
             };
 
             // Slew limiting
-            out_l = slew_2(out_l, out_left, 3);
-            out_r = slew_2(out_r, out_right, 3);
+            out_l = slew_2(out_l, out_left, 3, 4);
+            out_r = slew_2(out_r, out_right, 3, 4);
 
             // MIDI output if changed
             let scaled_out = (out_l as u32 * 127) / 4095;
@@ -592,18 +592,6 @@ pub async fn run(
         scene_handler,
     )
     .await;
-}
-
-pub fn slew_2(prev: u16, input: u16, slew: u16) -> u16 {
-    // Integer-based smoothing
-    let smoothed = ((prev as u32 * slew as u32 + input as u32) / (slew as u32 + 1)) as u16;
-
-    // Snap to target if close enough
-    if (smoothed as i32 - input as i32).abs() <= slew as i32 {
-        input
-    } else {
-        smoothed
-    }
 }
 
 fn get_color_for(wave: Waveform) -> Color {

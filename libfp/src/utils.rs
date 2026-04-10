@@ -150,6 +150,16 @@ pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f3
     }
 }
 
+pub fn slew_2(prev: u16, input: u16, slew: u16, snap: i32) -> u16 {
+    let smoothed = ((prev as u32 * slew as u32 + input as u32) / (slew as u32 + 1)) as u16;
+
+    if (smoothed as i32 - input as i32).abs() < snap {
+        input
+    } else {
+        smoothed
+    }
+}
+
 /// Very short slew meant to avoid clicks
 pub fn clickless(prev: u16, input: u16) -> u16 {
     // Snap threshold: if the difference is small, jump to input
