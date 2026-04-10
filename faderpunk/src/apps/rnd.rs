@@ -17,7 +17,7 @@ use crate::app::{
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, slew_2, split_unsigned_value},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
     Range, Value, APP_MAX_PARAMS,
 };
@@ -316,8 +316,8 @@ pub async fn run(
     };
 
     let timed_loop = async {
-        let mut out = 0.;
-        let mut last_out = 0;
+        let mut out: u16 = 0;
+        let mut last_out: u16 = 0;
         let mut count: u32 = 0;
         loop {
             app.delay_millis(1).await;
@@ -344,24 +344,25 @@ pub async fn run(
                     out,
                     jackval,
                     fader_curve.at(storage.query(|s| s.slew_saved)),
+                    10,
                 )
             } else if range.is_bipolar() {
-                2047.0
+                2047
             } else {
-                0.0
+                0
             };
 
-            output.set_value(out as u16);
+            output.set_value(out);
 
-            if last_out / 32 != out as u16 / 32 {
-                midi.send_cc(midi_cc, out as u16).await;
+            if last_out / 32 != out / 32 {
+                midi.send_cc(midi_cc, out).await;
             }
-            last_out = out as u16;
+            last_out = out;
 
             if latch_active_layer == LatchLayer::Main {
                 let color = glob_button_color.get();
                 if range.is_bipolar() {
-                    let ledj = split_unsigned_value(out as u16);
+                    let ledj = split_unsigned_value(out);
                     leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
                     leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
                 } else {
@@ -380,9 +381,6 @@ pub async fn run(
                     Color::Red,
                     Brightness::Custom((att / 16) as u8),
                 );
-                // if storage.query(|s: &Storage| s.clocked) {
-                //     leds.set(0, Led::Bottom, Color::Red, Brightness::High);
-                // }
             }
             if latch_active_layer == LatchLayer::Third {
                 leds.set(
@@ -419,8 +417,4 @@ pub async fn run(
         join5(fut1, fut2, fut3, scene_handler, timed_loop),
     )
     .await;
-}
-
-fn slew_2(prev: f32, input: u16, slew: u16) -> f32 {
-    (prev * slew as f32 + input as f32) / (slew + 1) as f32
 }
