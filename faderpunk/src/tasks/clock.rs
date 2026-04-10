@@ -133,9 +133,24 @@ pub enum SyncEngineEvent {
 
 pub static SYNC_ENGINE_CHANNEL: Channel<ThreadModeRawMutex, SyncEngineEvent, 16> = Channel::new();
 
-const DEBOUNCE_THRESHOLD: Duration = Duration::from_millis(8);
+/// Debounce window for analog clock pins. Long enough to swallow any plausible
+/// edge bounce, short enough to never clip a real pulse from a fast Eurorack clock
+/// (24 PPQN at 1200 BPM ≈ 2.1ms; 48 PPQN at 600 BPM ≈ 2.1ms).
+const DEBOUNCE_THRESHOLD: Duration = Duration::from_millis(2);
+
+/// Rolling-average window for measured pulse interval. Larger = smoother but
+/// slower to widen the watchdog when tempo ramps down.
 const HISTORY_SIZE: usize = 4;
-const WATCHDOG_MULTIPLIER: u32 = 3;
+
+/// Maximum tempo slowdown (in measured-period multiples) we'll tolerate between
+/// two consecutive pulses before declaring the external clock lost. 8× covers
+/// any musical tempo change short of an actual stop.
+const WATCHDOG_MULTIPLIER: u32 = 8;
+
+/// Absolute upper bound on the gap between two pulses, regardless of measured
+/// rate. Sized for the slowest plausible Eurorack source (≈1 PPQN at 30 BPM).
+/// Raise this to support slower clocks; lower it for faster Stop detection.
+const WATCHDOG_FLOOR: Duration = Duration::from_millis(2000);
 
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(run_clock_sources(aux_inputs)).unwrap();
@@ -361,6 +376,10 @@ async fn run_unified_clock_engine() {
     let mut last_tick_at = Instant::now();
     let mut next_tick_at = Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
     let mut last_pulse: Option<Instant> = None;
+    // Measured period between external pulses. `None` until we have enough pulses
+    // to compute a rolling average, which gates the external watchdog so it can't
+    // fire based on a stale internal-BPM-derived duration.
+    let mut measured_ext_period: Option<Duration> = None;
     let mut delta_history: [Duration; HISTORY_SIZE] = [Duration::from_ticks(0); HISTORY_SIZE];
     let mut history_idx: usize = 0;
     let mut config = config;
@@ -382,7 +401,10 @@ async fn run_unified_clock_engine() {
             let should_tick = if config.clock.clock_src == ClockSrc::Internal {
                 is_running
             } else {
-                is_running && last_pulse.is_some()
+                // For external sources, only arm the watchdog once we've actually
+                // measured the inter-pulse period. Otherwise we'd kill the clock
+                // based on the stale internal-BPM-derived `current_tick_duration`.
+                is_running && last_pulse.is_some() && measured_ext_period.is_some()
             };
             if should_tick {
                 Timer::at(next_tick_at).await;
@@ -404,6 +426,7 @@ async fn run_unified_clock_engine() {
                 if config.clock.clock_src != new_config.clock.clock_src {
                     // Source changed: reset external tracking state
                     last_pulse = None;
+                    measured_ext_period = None;
                     delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
                     history_idx = 0;
 
@@ -498,10 +521,17 @@ async fn run_unified_clock_engine() {
                         continue;
                     }
 
-                    // Debounce: discard pulses that arrive too quickly
-                    if let Some(last) = last_pulse {
-                        if timestamp.duration_since(last) < DEBOUNCE_THRESHOLD {
-                            continue;
+                    // Debounce: discard pulses that arrive too quickly. Only applies
+                    // to analog clock-in pins (which can bounce on a switching edge);
+                    // MIDI clock is already digital and arrives in bursty USB packets,
+                    // so debouncing it would silently drop legitimate ticks at high BPM.
+                    let is_analog =
+                        matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube);
+                    if is_analog {
+                        if let Some(last) = last_pulse {
+                            if timestamp.duration_since(last) < DEBOUNCE_THRESHOLD {
+                                continue;
+                            }
                         }
                     }
 
@@ -523,14 +553,21 @@ async fn run_unified_clock_engine() {
                             }
                         }
                         if count > 0 {
-                            current_tick_duration = Duration::from_ticks(sum / count as u64);
+                            let avg = Duration::from_ticks(sum / count as u64);
+                            current_tick_duration = avg;
+                            measured_ext_period = Some(avg);
                         }
                     }
 
                     last_pulse = Some(timestamp);
-                    // Schedule watchdog: if no pulse arrives within N× the expected period,
-                    // declare external clock lost
-                    next_tick_at = timestamp + current_tick_duration * WATCHDOG_MULTIPLIER;
+                    // Schedule watchdog: if no pulse arrives within the watchdog window,
+                    // declare external clock lost. Use a generous floor so drastic tempo
+                    // changes (or slow analog clocks) don't trip it.
+                    let watchdog = measured_ext_period
+                        .map(|p| p * WATCHDOG_MULTIPLIER)
+                        .unwrap_or(WATCHDOG_FLOOR)
+                        .max(WATCHDOG_FLOOR);
+                    next_tick_at = timestamp + watchdog;
                 }
             },
 
