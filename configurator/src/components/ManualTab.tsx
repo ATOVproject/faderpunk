@@ -1027,7 +1027,7 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
     ],
   },
   {
-    appId: 46,
+    appId: 23,
     title: "FP-Grids",
     description:
       "Emilie Gillet's renowned Mutable Instruments Grids topographic drum sequencer for the ATOV Faderpunk",

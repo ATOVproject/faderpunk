@@ -21,5 +21,5 @@ register_apps!(
     20 => rnd_plus,
     21 => clk_div_plus,
     22 => lfo_plus,
-    46 => fp_grids,
+    23 => fp_grids,
 );
