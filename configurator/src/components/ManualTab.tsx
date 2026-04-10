@@ -146,7 +146,7 @@ const apps: ManualAppData[] = [
     description: "Generate random CC and CV values",
     color: "Green",
     icon: "random",
-    params: ["Bipolar", "MIDI Channel", "MIDI CC", "NRPN"],
+    params: ["Range", "MIDI Channel", "MIDI CC", "NRPN"],
     storage: ["Speed", "Muted", "Attenuation", "Slew", "Clocked"],
     text: "This app sends random CC and CV values at regular intervals, either in free-running mode or synced to a clock. The timing is set using the fader, and the MIDI channel and CC number can be configured in the parameters. Shift + Fader attenuates both CV and CC outputs, while Button + Fader accesses the onboard slew limiter, which smooths changes in both CV and CC values. Shift + Button toggles mute/unmute for the outputs. The output range can be set to unipolar or bipolar in the parameters, which also determines the mute behavior—settling at 0 in unipolar mode and in the middle in bipolar mode, similar to the Control app. Shift + Button long press switches between free-running and tempo-synced operation.",
     channels: [
@@ -691,7 +691,7 @@ const apps: ManualAppData[] = [
     description: "CV to MIDI CC",
     color: "Violet",
     icon: "note-grid",
-    params: ["Bipolar", "MIDI Channel", "MIDI CC", "Color", "NRPN"],
+    params: ["Range", "MIDI Channel", "MIDI CC", "Color", "NRPN"],
     storage: ["Attenuation", "Muted", "Offset"],
     text: "This app converts CV signals into MIDI CC messages. Jack 1 is the input. The configurator allows setting the input mode (unipolar or bipolar), MIDI channel, and MIDI CC. Main functions include Fader 1 for offset adjustment and Shift + Fader 1 for CV input attenuation. Button 1 mutes the output. All parameters are stored in scenes.",
     channels: [
@@ -717,7 +717,7 @@ const apps: ManualAppData[] = [
     description: "CV and gate to MIDI note converter",
     color: "Orange",
     icon: "note-box",
-    params: ["Bipolar", "MIDI Channel", "Delay (ms)", "Color"],
+    params: ["Range", "MIDI Channel", "Delay (ms)", "Color"],
     storage: [
       "Octave shift",
       "Semitone shift",
