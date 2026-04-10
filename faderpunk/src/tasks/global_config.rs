@@ -25,11 +25,11 @@ const SWING_FADER: usize = 14;
 const INTERNAL_BPM_FADER: usize = 15;
 
 fn val_to_swing(val: u16) -> i8 {
-    (((val as i32 * 99) / 4095) - 49).clamp(-49, 49) as i8
+    (((val as i32 * 70) / 4095) - 35).clamp(-35, 35) as i8
 }
 
 fn swing_to_val(swing: i8) -> u16 {
-    (((swing as i32 + 49) * 4095) / 99).clamp(0, 4095) as u16
+    (((swing.clamp(-35, 35) as i32 + 35) * 4095) / 70).clamp(0, 4095) as u16
 }
 
 pub static GLOBAL_CONFIG_WATCH: Watch<

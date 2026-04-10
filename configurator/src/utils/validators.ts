@@ -207,7 +207,7 @@ const globalConfigSchema = z.object({
     ext_ppqn: z.number().int().min(1).max(96),
     reset_src: taggedObjectSchema,
     internal_bpm: z.number().min(1).max(300),
-    swing_amount: z.number().int().min(-49).max(49).default(0),
+    swing_amount: z.number().int().min(-35).max(35).default(0),
   }),
   i2c_mode: taggedObjectSchema,
   led_brightness: z.number().int().min(100).max(255),

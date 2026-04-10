@@ -344,7 +344,7 @@ pub struct ClockConfig {
     pub ext_ppqn: u8,
     pub reset_src: ResetSrc,
     pub internal_bpm: f32,
-    /// Deluge-style swing amount in `[-49, 49]`. `0` = straight.
+    /// Deluge-style swing amount in `[-35, 35]`. `0` = straight.
     pub swing_amount: i8,
 }
 
