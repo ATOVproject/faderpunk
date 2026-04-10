@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub mod colors;
 pub mod constants;
 pub mod ext;
+pub mod fp_grids_lib;
 pub mod i2c_proto;
 pub mod latch;
 pub mod quantizer;
@@ -1092,6 +1093,13 @@ impl Add<MidiNote> for MidiNote {
 
     fn add(self, rhs: MidiNote) -> Self::Output {
         Self(self.0.saturating_add(rhs.0).min(127))
+    }
+}
+
+impl MidiNote {
+    /// Transpose a MidiNote by +/- semitones
+    pub fn transpose(&mut self, semitones: i8) -> Self {
+        Self((self.0 as i8 + semitones).clamp(0, 127) as u8)
     }
 }
 

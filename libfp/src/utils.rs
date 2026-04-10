@@ -12,6 +12,11 @@ pub fn scale_bits_12_7(value: u16) -> u7 {
     u7::new(((value as u32 * 127) / 4095) as u8)
 }
 
+/// Scale from 4095 u16 to 255 u8
+pub fn scale_bits_12_8(value: u16) -> u8 {
+    ((value as u32 * 255) / 4095) as u8
+}
+
 /// Scale from 127 u7 to 4095 u16
 pub fn scale_bits_7_12(value: u7) -> u16 {
     ((value.as_int() as u32 * 4095) / 127) as u16
@@ -177,6 +182,35 @@ pub fn slew_2(prev: u16, input: u16, slew: u16, snap: i32) -> u16 {
     } else {
         smoothed
     }
+}
+
+/// Rotate a bit pattern left within a given bit width
+pub fn euclidean_rotl(value: u32, width: u8, rotation: u8) -> u32 {
+    let rotation = rotation % width;
+    ((value << rotation) | (value >> (width - rotation))) & ((1 << width) - 1)
+}
+
+/// Return the Bjorklund/Euclidean pattern for `num_beats` in `num_steps` as a bitmask.
+/// Bit N is set if step N fires. `rotation` offsets the pattern; `padding` extends the
+/// effective width for rotation without changing the number of active steps.
+pub fn euclidean_pattern(num_steps: u8, num_beats: u8, rotation: u8, padding: u8) -> u32 {
+    use crate::constants::BJORKLUND_PATTERNS;
+    let steps = num_steps.max(2);
+    let beats = num_beats.min(steps);
+    let index = (steps as usize - 2) * 33 + beats as usize;
+    let mut pattern = BJORKLUND_PATTERNS.get(index).copied().unwrap_or(0);
+    if rotation > 0 {
+        let rot = rotation % (steps + padding);
+        pattern = euclidean_rotl(pattern, steps + padding, rot);
+    }
+    pattern
+}
+
+/// Return true if `clock` (step count from origin) fires in an E(`num_beats`, `num_steps`) pattern.
+pub fn euclidean_at(num_steps: u8, num_beats: u8, rotation: u8, clock: u32) -> bool {
+    let pattern = euclidean_pattern(num_steps, num_beats, rotation, 0);
+    let pos = (clock % num_steps as u32) as u8;
+    (pattern & (1 << pos)) != 0
 }
 
 /// Very short slew meant to avoid clicks
