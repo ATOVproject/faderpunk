@@ -1,5 +1,3 @@
-use core::sync::atomic::AtomicU8;
-
 use embassy_executor::Spawner;
 use embassy_rp::{
     gpio::{Level, Output},
@@ -50,24 +48,51 @@ type MuxPins = (
     Peri<'static, PIN_15>,
 );
 
-pub type MaxSender = Sender<'static, CriticalSectionRawMutex, (usize, MaxCmd), MAX_CHANNEL_SIZE>;
-pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, (usize, MaxCmd), MAX_CHANNEL_SIZE> =
-    Channel::new();
+pub type MaxSender = Sender<'static, CriticalSectionRawMutex, MaxCmd, MAX_CHANNEL_SIZE>;
+pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, MaxCmd, MAX_CHANNEL_SIZE> = Channel::new();
 
 static MAX: StaticCell<SharedMax> = StaticCell::new();
 pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-pub static MAX_TRIGGERS_GPO: [AtomicU8; 20] = [const { AtomicU8::new(0) }; 20];
 pub static MAX_VALUES_DAC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static MAX_VALUES_ADC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static CALIBRATING: AtomicBool = AtomicBool::new(false);
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 #[allow(dead_code)]
 pub enum MaxCmd {
-    // Mode, GPO level (for mode 3)
-    ConfigurePort(Mode, Option<u16>),
-    GpoSetHigh,
-    GpoSetLow,
+    ConfigurePort {
+        port: Port,
+        mode: Mode,
+        gpo_level: Option<u16>,
+    },
+    GpoSetHigh {
+        port: Port,
+    },
+    GpoSetLow {
+        port: Port,
+    },
+    /// Drive these Mode3 ports high in a single SPI transaction. All bits
+    /// in the same GPODAT register word latch simultaneously at the chip.
+    GpoSetHighMany(heapless::Vec<Port, 4>),
+    /// Drive these Mode3 ports low in a single SPI transaction.
+    GpoSetLowMany(heapless::Vec<Port, 4>),
+}
+
+impl MaxCmd {
+    /// Returns `true` if this command targets the fader port (`Port::P16`),
+    /// which must never be reconfigured or driven as GPO while the fader task
+    /// owns it. Callers can in theory construct a command with `Port::P16`,
+    /// but `message_loop` drops such messages before touching the chip.
+    fn touches_fader_port(&self) -> bool {
+        match self {
+            MaxCmd::ConfigurePort { port, .. }
+            | MaxCmd::GpoSetHigh { port }
+            | MaxCmd::GpoSetLow { port } => *port == Port::P16,
+            MaxCmd::GpoSetHighMany(ports) | MaxCmd::GpoSetLowMany(ports) => {
+                ports.contains(&Port::P16)
+            }
+        }
+    }
 }
 
 pub async fn start_max(
@@ -239,17 +264,6 @@ async fn process_channel_values(
             let port = Port::try_from(i).unwrap();
             let mut max = max_driver.lock().await;
             match max.get_mode(port) {
-                Mode::Mode3(_) => match MAX_TRIGGERS_GPO[i].load(Ordering::Relaxed) {
-                    1 => {
-                        max.gpo_set_low(port).await.unwrap();
-                        MAX_TRIGGERS_GPO[i].store(0, Ordering::Relaxed);
-                    }
-                    2 => {
-                        max.gpo_set_high(port).await.unwrap();
-                        MAX_TRIGGERS_GPO[i].store(0, Ordering::Relaxed);
-                    }
-                    _ => {}
-                },
                 Mode::Mode5(config) => {
                     let target_dac_value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
                     let calibrated_value = if target_dac_value == 0 {
@@ -310,16 +324,21 @@ async fn process_channel_values(
 #[embassy_executor::task]
 async fn message_loop(max_driver: &'static SharedMax) {
     loop {
-        let (chan, msg) = MAX_CHANNEL.receive().await;
-        if chan == 16 {
-            // Do not process channel 16 (faders)
+        let msg = MAX_CHANNEL.receive().await;
+        // The fader port (P16) is owned by `read_fader` and must never be
+        // reconfigured or driven as GPO from here. Drop any command that
+        // tries to touch it. See `MaxCmd::touches_fader_port` for details.
+        if msg.touches_fader_port() {
             continue;
         }
-        let port = Port::try_from(chan).unwrap();
         let mut max = max_driver.lock().await;
 
         match msg {
-            MaxCmd::ConfigurePort(config, gpo_level) => match config {
+            MaxCmd::ConfigurePort {
+                port,
+                mode,
+                gpo_level,
+            } => match mode {
                 Mode::Mode0(_) => {
                     max.configure_port(port, ConfigMode0).await.unwrap();
                 }
@@ -338,11 +357,17 @@ async fn message_loop(max_driver: &'static SharedMax) {
                 }
                 _ => {}
             },
-            MaxCmd::GpoSetHigh => {
+            MaxCmd::GpoSetHigh { port } => {
                 max.gpo_set_high(port).await.unwrap();
             }
-            MaxCmd::GpoSetLow => {
+            MaxCmd::GpoSetLow { port } => {
                 max.gpo_set_low(port).await.unwrap();
+            }
+            MaxCmd::GpoSetHighMany(ports) => {
+                max.gpo_set_high_many(&ports).await.unwrap();
+            }
+            MaxCmd::GpoSetLowMany(ports) => {
+                max.gpo_set_low_many(&ports).await.unwrap();
             }
         }
     }

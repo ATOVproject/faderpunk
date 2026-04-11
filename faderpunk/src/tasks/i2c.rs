@@ -8,7 +8,7 @@ use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMu
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::Timer;
 use embedded_hal_async::i2c::I2c;
-use max11300::config::{ConfigMode5, ConfigMode7, Mode, AVR, NSAMPLES};
+use max11300::config::{ConfigMode5, ConfigMode7, Mode, Port, AVR, NSAMPLES};
 use mii::{
     devices::{ansible, er301, telexo},
     Command as MiiCommand,
@@ -195,18 +195,17 @@ impl<'a> Compat16N<'a> {
 async fn process_write_read(command: WriteReadCommand) -> Response {
     match command {
         WriteReadCommand::AdcGetVoltage(channel, range) => {
+            let port = Port::try_from(channel).unwrap();
             MAX_CHANNEL
-                .send((
-                    channel,
-                    MaxCmd::ConfigurePort(
-                        Mode::Mode7(ConfigMode7(
-                            AVR::InternalRef,
-                            range.into(),
-                            NSAMPLES::Samples1,
-                        )),
-                        None,
-                    ),
-                ))
+                .send(MaxCmd::ConfigurePort {
+                    port,
+                    mode: Mode::Mode7(ConfigMode7(
+                        AVR::InternalRef,
+                        range.into(),
+                        NSAMPLES::Samples1,
+                    )),
+                    gpo_level: None,
+                })
                 .await;
             Timer::after_millis(100).await;
             let value = MAX_VALUES_ADC[channel].load(Ordering::Relaxed);
@@ -237,11 +236,13 @@ async fn process_write(command: WriteCommand, sender: &mut I2cFollowerSender) {
                 .await;
         }
         WriteCommand::DacSetVoltage(channel, range, value) => {
+            let port = Port::try_from(channel).unwrap();
             MAX_CHANNEL
-                .send((
-                    channel,
-                    MaxCmd::ConfigurePort(Mode::Mode5(ConfigMode5(range.into())), None),
-                ))
+                .send(MaxCmd::ConfigurePort {
+                    port,
+                    mode: Mode::Mode5(ConfigMode5(range.into())),
+                    gpo_level: None,
+                })
                 .await;
             MAX_VALUES_DAC[channel].store(value, Ordering::Relaxed);
         }

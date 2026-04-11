@@ -21,10 +21,12 @@ use libfp::{
     utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig, MidiOut, MidiOutConfig,
 };
 
+use max11300::config::Port;
+
 use crate::{
     state::{is_clock_running, update_state},
     tasks::{
-        max::MAX_TRIGGERS_GPO,
+        max::{MaxCmd, MAX_CHANNEL},
         midi::{MidiClockMsg, MidiOutEvent, MIDI_CHANNEL},
     },
     Spawner, GLOBAL_CONFIG_WATCH,
@@ -203,12 +205,11 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
 }
 
 async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &mut [u16; 3]) {
+    let mut ports: heapless::Vec<Port, 4> = heapless::Vec::new();
     for (i, aux) in config.aux.iter().enumerate() {
         if let AuxJackMode::ClockOut(div) = aux {
             if counters[i] == 0 {
-                // TODO: Adjust trigger_len based on division?
-                // Ignore if task pool is full - skip this tick rather than panic
-                spawner.spawn(analog_tick(i, 5)).ok();
+                let _ = ports.push(Port::try_from(17 + i).unwrap());
             }
 
             counters[i] += 1;
@@ -217,23 +218,38 @@ async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &
             }
         }
     }
+    if !ports.is_empty() {
+        MAX_CHANNEL
+            .sender()
+            .send(MaxCmd::GpoSetHighMany(ports.clone()))
+            .await;
+        spawner.spawn(analog_tick_release(ports, 5)).ok();
+    }
 }
 
 async fn send_analog_reset(spawner: &Spawner, config: &GlobalConfig) {
+    let mut ports: heapless::Vec<Port, 4> = heapless::Vec::new();
     for (i, aux) in config.aux.iter().enumerate() {
         if let AuxJackMode::ResetOut = aux {
-            // Send reset pulse with longer duration (10ms)
-            // Ignore if task pool is full - skip this reset rather than panic
-            spawner.spawn(analog_tick(i, 10)).ok();
+            let _ = ports.push(Port::try_from(17 + i).unwrap());
         }
     }
+    if !ports.is_empty() {
+        MAX_CHANNEL
+            .sender()
+            .send(MaxCmd::GpoSetHighMany(ports.clone()))
+            .await;
+        spawner.spawn(analog_tick_release(ports, 10)).ok();
+    }
 }
-#[embassy_executor::task(pool_size = 12)]
-async fn analog_tick(aux_no: usize, trigger_len: u64) {
-    let gpo_index = 17 + aux_no;
-    MAX_TRIGGERS_GPO[gpo_index].store(2, Ordering::Relaxed);
+
+#[embassy_executor::task(pool_size = 4)]
+async fn analog_tick_release(ports: heapless::Vec<Port, 4>, trigger_len: u64) {
     Timer::after_millis(trigger_len).await;
-    MAX_TRIGGERS_GPO[gpo_index].store(1, Ordering::Relaxed);
+    MAX_CHANNEL
+        .sender()
+        .send(MaxCmd::GpoSetLowMany(ports))
+        .await;
 }
 
 #[embassy_executor::task]

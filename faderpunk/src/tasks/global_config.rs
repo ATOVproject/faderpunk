@@ -3,7 +3,7 @@ use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, watch::Watch};
 use embassy_time::Timer;
 use libfp::{AuxJackMode, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
-use max11300::config::{ConfigMode0, ConfigMode3, Mode};
+use max11300::config::{ConfigMode0, ConfigMode3, Mode, Port};
 use portable_atomic::Ordering;
 
 use crate::layout::FORCE_RESPAWN_SIGNAL;
@@ -144,21 +144,24 @@ pub async fn start_global_config(spawner: &Spawner) {
 }
 
 async fn set_aux_config(aux_port: usize, aux_jack_mode: &AuxJackMode) {
+    let port = Port::try_from(17 + aux_port).unwrap();
     match aux_jack_mode {
         AuxJackMode::ClockOut(_) | AuxJackMode::ResetOut => {
             MAX_CHANNEL
-                .send((
-                    17 + aux_port,
-                    MaxCmd::ConfigurePort(Mode::Mode3(ConfigMode3), Some(2048)),
-                ))
+                .send(MaxCmd::ConfigurePort {
+                    port,
+                    mode: Mode::Mode3(ConfigMode3),
+                    gpo_level: Some(2048),
+                })
                 .await;
         }
         AuxJackMode::None => {
             MAX_CHANNEL
-                .send((
-                    17 + aux_port,
-                    MaxCmd::ConfigurePort(Mode::Mode0(ConfigMode0), None),
-                ))
+                .send(MaxCmd::ConfigurePort {
+                    port,
+                    mode: Mode::Mode0(ConfigMode0),
+                    gpo_level: None,
+                })
                 .await;
         }
     }
