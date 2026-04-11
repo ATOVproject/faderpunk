@@ -2,6 +2,7 @@ import { useState } from "react";
 import { type Value } from "@atov/fp-config";
 import { useForm } from "react-hook-form";
 import classNames from "classnames";
+import { Link } from "react-router-dom";
 
 import { COLORS_CLASSES } from "../utils/class-helpers";
 import {
@@ -82,6 +83,22 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
           <div className="flex-1">
             <p className="text-yellow-fp text-sm font-bold uppercase">Slots</p>
             <p className="text-lg font-medium">{app.channels}</p>
+          </div>
+          <div className="flex-1">
+            <p className="text-yellow-fp text-sm font-bold uppercase">
+              Resources
+            </p>
+            <div className="text-lg font-medium underline">
+              <Link
+                to={`/manual#app-${app.appId}`}
+                target="fpmanual"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-2"
+              >
+                <Icon className="h-4 w-4" name="arrow-out" />
+                Manual
+              </Link>
+            </div>
           </div>
           {app.paramCount > 0 ? (
             <div className="text-2xl group-open:rotate-90">
