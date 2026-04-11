@@ -3,3 +3,7 @@
 /gen-bindings/target
 /libfp/target
 /target
+
+# devenv
+.devenv/
+.devenv.flake.nix
