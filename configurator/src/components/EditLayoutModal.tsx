@@ -41,6 +41,7 @@ import {
 import {
   addAppToLayout,
   delay,
+  findFreeSlot,
   pascalToKebab,
   recalculateStartChannels,
 } from "../utils/utils";
@@ -171,6 +172,16 @@ export const EditLayoutModal = ({
       });
     }
     setActiveId(null);
+  }, []);
+
+  const handleDuplicateItem = useCallback((idToDuplicate: number) => {
+    setItems((items) => {
+      const source = items.find(({ id }) => id === idToDuplicate);
+      if (!source?.app) return items;
+      const { success, newLayout, newId } = addAppToLayout(items, source.app);
+      if (!success || newId === null) return items;
+      return newLayout;
+    });
   }, []);
 
   const handleDeleteItem = useCallback((idToDelete: number) => {
@@ -376,7 +387,12 @@ export const EditLayoutModal = ({
                 <div className="mr-1.5 ml-1.5 grid min-h-12 grid-cols-16 gap-3">
                   {layout.map((item) => (
                     <SortableItem
+                      canDuplicate={
+                        !!item.app &&
+                        findFreeSlot(layout, Number(item.app.channels)) !== null
+                      }
                       onDeleteItem={handleDeleteItem}
+                      onDuplicateItem={handleDuplicateItem}
                       deletePopoverId={deletePopoverId}
                       setDeletePopoverId={setDeletePopoverId}
                       newAppId={newAppId !== null ? newAppId : undefined}
@@ -391,7 +407,13 @@ export const EditLayoutModal = ({
               {activeItem ? (
                 <Item
                   className="opacity-60 shadow-md"
+                  canDuplicate={
+                    !!activeItem.app &&
+                    findFreeSlot(layout, Number(activeItem.app.channels)) !==
+                      null
+                  }
                   onDeleteItem={handleDeleteItem}
+                  onDuplicateItem={handleDuplicateItem}
                   deletePopoverId={deletePopoverId}
                   newAppId={newAppId !== null ? newAppId : undefined}
                   isDragging={true}

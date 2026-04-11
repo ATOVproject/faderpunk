@@ -233,7 +233,7 @@ export const recalculateStartChannels = (layout: AppLayout) => {
   });
 };
 
-const findFreeSlot = (layout: AppLayout, requiredChannels: number) => {
+export const findFreeSlot = (layout: AppLayout, requiredChannels: number) => {
   if (requiredChannels <= 0) {
     return null;
   }
