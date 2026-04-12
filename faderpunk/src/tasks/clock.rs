@@ -168,6 +168,14 @@ const PENDING_EMISSIONS_CAPACITY: usize = 32;
 /// Swung absolute offset of tick `i` (in `[0, 2H]`) from the start of the swing
 /// window. Used by both the internal clock (to schedule the next tick directly)
 /// and the external clock (to schedule the whole window on its anchor pulse).
+///
+/// The result is clamped to 500µs before the window boundary. Without this,
+/// heavy positive swing pushes the last ticks of the window past the boundary,
+/// causing the engine to fire tick 0 of the next window as an immediate
+/// catch-up. That catch-up creates two ticks in rapid succession: the
+/// gatekeeper processes both before any subscriber runs, incrementing
+/// TICK_COUNTER twice, so subscribers read the same stale counter for both
+/// events and double-fire notes on beat boundaries.
 fn swung_offset(i: u32, t: Duration, swing: i8) -> Duration {
     let h = SWING_HALF_INTERVAL as i64;
     let t_ticks = t.as_ticks() as i64;
@@ -183,7 +191,13 @@ fn swung_offset(i: u32, t: Duration, swing: i8) -> Duration {
         boundary + (i - h) * t_ticks
     };
 
-    Duration::from_ticks(raw.max(0) as u64)
+    // Clamp to 500µs before the window end. A 1µs margin was insufficient:
+    // by the time the next loop iteration polls `Timer::at(next_tick_at)`,
+    // several µs of code execution have elapsed, consuming the gap and causing
+    // the timer to fire immediately — no executor yield, same race. 500µs is
+    // larger than any plausible Arm 4 round-trip.
+    let window_end = 2 * h * t_ticks - 500;
+    Duration::from_ticks((raw.max(0) as u64).min(window_end as u64))
 }
 
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
