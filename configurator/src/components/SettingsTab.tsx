@@ -35,9 +35,9 @@ export interface Inputs {
   auxAtom: AuxJackMode["tag"];
   auxMeteor: AuxJackMode["tag"];
   auxCube: AuxJackMode["tag"];
-  auxAtomDiv: ClockDivision["tag"];
-  auxMeteorDiv: ClockDivision["tag"];
-  auxCubeDiv: ClockDivision["tag"];
+  auxAtomDiv?: ClockDivision["tag"];
+  auxMeteorDiv?: ClockDivision["tag"];
+  auxCubeDiv?: ClockDivision["tag"];
   clockSrc: ClockSrc["tag"];
   i2cMode: I2cMode["tag"];
   internalBpm: number;
@@ -98,7 +98,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
   const midiOut2 = getMidiOutValues(2);
 
   const methods = useForm<Inputs>({
-    defaultValues: {
+    values: {
       auxAtom: config.aux[0].tag,
       auxMeteor: config.aux[1].tag,
       auxCube: config.aux[2].tag,

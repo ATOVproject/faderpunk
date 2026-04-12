@@ -1,11 +1,13 @@
 import type { MidiOutMode } from "@atov/fp-config";
-import { Checkbox } from "@heroui/checkbox";
-import { Select, SelectItem } from "@heroui/select";
-import { Switch } from "@heroui/switch";
-import { Controller, useFormContext } from "react-hook-form";
+import { SelectItem } from "@heroui/select";
+import { useFormContext } from "react-hook-form";
 
-import { selectProps } from "../input/defaultProps";
 import type { Inputs } from "../SettingsTab";
+import {
+  ControlledSelect,
+  ControlledSwitch,
+  ControlledCheckbox,
+} from "./ControlledFields";
 
 interface MidiOutModeItem {
   key: MidiOutMode["tag"];
@@ -34,8 +36,13 @@ const MIDI_OUTPUTS = [
   { key: "out2", label: "Out 2", index: 2 },
 ] as const;
 
+const switchClassNames = {
+  base: "flex-col-reverse items-start justify-start",
+  label: "ms-0 mb-2 text-sm font-medium",
+};
+
 export const MidiSettings = () => {
-  const { control, register, watch } = useFormContext<Inputs>();
+  const { control, watch } = useFormContext<Inputs>();
 
   const midiUsbMode = watch("midiUsbMode");
   const midiOut1Mode = watch("midiOut1Mode");
@@ -66,53 +73,47 @@ export const MidiSettings = () => {
                 {output.label}
               </h3>
               <div className="grid grid-cols-4 items-start gap-x-16 px-4">
-                <Controller
+                <ControlledSelect
                   name={modeKey}
                   control={control}
-                  render={({ field }) => (
-                    <Select
-                      selectedKeys={[String(field.value)]}
-                      onSelectionChange={(value) => {
-                        field.onChange(value.currentKey);
-                      }}
-                      {...selectProps}
-                      label="Mode"
-                      items={midiOutModeItems}
-                      placeholder="Mode"
-                    >
-                      {(item: MidiOutModeItem) => (
-                        <SelectItem key={item.key} textValue={item.value}>
-                          <div className="font-medium">{item.value}</div>
-                          <div className="text-default-400 text-xs">
-                            {item.description}
-                          </div>
-                        </SelectItem>
-                      )}
-                    </Select>
-                  )}
-                />
+                  items={midiOutModeItems}
+                  label="Mode"
+                  placeholder="Mode"
+                >
+                  {(item: { key: string; value: string }) => {
+                    const modeItem = item as MidiOutModeItem;
+                    return (
+                      <SelectItem key={modeItem.key} textValue={modeItem.value}>
+                        <div className="font-medium">{modeItem.value}</div>
+                        <div className="text-default-400 text-xs">
+                          {modeItem.description}
+                        </div>
+                      </SelectItem>
+                    );
+                  }}
+                </ControlledSelect>
 
-                <Switch
-                  {...register(`midi${prefix}SendClock` as keyof Inputs)}
-                  color="secondary"
-                  classNames={{
-                    base: "flex-col-reverse items-start justify-start",
-                    label: "ms-0 mb-2 text-sm font-medium",
+                <ControlledSwitch
+                  name={`midi${prefix}SendClock` as keyof Inputs}
+                  control={control}
+                  switchProps={{
+                    color: "secondary",
+                    classNames: switchClassNames,
                   }}
                 >
                   Send Clock
-                </Switch>
+                </ControlledSwitch>
 
-                <Switch
-                  {...register(`midi${prefix}SendTransport` as keyof Inputs)}
-                  color="secondary"
-                  classNames={{
-                    base: "flex-col-reverse items-start justify-start",
-                    label: "ms-0 mb-2 text-sm font-medium",
+                <ControlledSwitch
+                  name={`midi${prefix}SendTransport` as keyof Inputs}
+                  control={control}
+                  switchProps={{
+                    color: "secondary",
+                    classNames: switchClassNames,
                   }}
                 >
                   Send Transport
-                </Switch>
+                </ControlledSwitch>
 
                 {(mode === "MidiThru" || mode === "MidiMerge") && (
                   <div className="flex flex-col">
@@ -127,22 +128,20 @@ export const MidiSettings = () => {
                       <>
                         <p className="mb-2 text-sm font-medium">Sources</p>
                         <div className="flex flex-row gap-4">
-                          <Checkbox
-                            {...register(
-                              `midi${prefix}SourceUsb` as keyof Inputs,
-                            )}
-                            color="secondary"
+                          <ControlledCheckbox
+                            name={`midi${prefix}SourceUsb` as keyof Inputs}
+                            control={control}
+                            checkboxProps={{ color: "secondary" }}
                           >
                             USB
-                          </Checkbox>
-                          <Checkbox
-                            {...register(
-                              `midi${prefix}SourceDin` as keyof Inputs,
-                            )}
-                            color="secondary"
+                          </ControlledCheckbox>
+                          <ControlledCheckbox
+                            name={`midi${prefix}SourceDin` as keyof Inputs}
+                            control={control}
+                            checkboxProps={{ color: "secondary" }}
                           >
                             DIN
-                          </Checkbox>
+                          </ControlledCheckbox>
                         </div>
                       </>
                     )}

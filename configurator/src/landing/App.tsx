@@ -23,8 +23,16 @@ type State =
 
 export default function App() {
   const [state, setState] = useState<State>({ status: "idle" });
+  const [connectionLost, setConnectionLost] = useState(false);
   const latestVersion = useLatestFirmwareVersion();
   const webUsbSupported = !!navigator.usb;
+
+  useEffect(() => {
+    if (sessionStorage.getItem("fp-connection-lost")) {
+      sessionStorage.removeItem("fp-connection-lost");
+      setConnectionLost(true);
+    }
+  }, []);
 
   // Redirect hash routes to the versioned deployment
   useEffect(() => {
@@ -116,63 +124,68 @@ export default function App() {
 
   return (
     <main className="flex min-h-screen min-w-screen items-center justify-center bg-gray-500">
-      <div className="flex flex-col justify-center">
-        <div className="border-pink-fp flex flex-col items-center justify-center gap-8 rounded-sm border-3 p-10 shadow-[0px_0px_11px_2px_#B7B2B240]">
-          <img
-            src="/img/fp-logo-alt.svg"
-            alt="Faderpunk Logo"
-            className="w-48"
-          />
+      <div className="flex flex-col items-center">
+        <div className="flex flex-col">
+          <div className="border-pink-fp flex flex-col items-center justify-center gap-8 rounded-sm border-3 p-10 shadow-[0px_0px_11px_2px_#B7B2B240]">
+            <img
+              src="/img/fp-logo-alt.svg"
+              alt="Faderpunk Logo"
+              className="w-48"
+            />
 
-          {showButton && (
-            <button
-              onClick={connectAndRedirect}
-              disabled={isLoading || !webUsbSupported}
-              className="cursor-pointer rounded-sm bg-white px-8 py-2.5 text-sm font-semibold text-black shadow-[0px_0px_11px_2px_#B7B2B240] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {state.status === "connecting" ? (
-                <>
-                  Connecting
-                  <Spinner />
-                </>
-              ) : state.status === "redirecting" ? (
-                <>
-                  Redirecting
-                  <Spinner />
-                </>
-              ) : (
-                "Connect Device"
-              )}
-            </button>
-          )}
-        </div>
-
-        <div className="mt-4 flex items-center justify-between gap-4">
-          <a
-            href={versionPath(latestVersion) + "#/troubleshooting"}
-            className="cursor-pointer text-center text-gray-400 underline hover:text-[#d4d4d8]"
-          >
-            Trouble connecting?
-          </a>
-          <a
-            href={versionPath(latestVersion) + "#/about"}
-            className="cursor-pointer text-center text-gray-400 underline hover:text-[#d4d4d8]"
-          >
-            What is this?
-          </a>
-        </div>
-
-        {state.status === "error" && (
-          <div className="mt-4 rounded-sm border border-[#ff4444] bg-[#2a1a1a] p-4 text-[#ff6666]">
-            {state.message}
+            {showButton && (
+              <button
+                onClick={connectAndRedirect}
+                disabled={isLoading || !webUsbSupported}
+                className="cursor-pointer rounded-sm bg-white px-8 py-2.5 text-sm font-semibold text-black shadow-[0px_0px_11px_2px_#B7B2B240] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {state.status === "connecting" ? (
+                  <>
+                    Connecting
+                    <Spinner />
+                  </>
+                ) : state.status === "redirecting" ? (
+                  <>
+                    Redirecting
+                    <Spinner />
+                  </>
+                ) : (
+                  "Connect Device"
+                )}
+              </button>
+            )}
           </div>
+
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <a
+              href={versionPath(latestVersion) + "#/troubleshooting"}
+              className="cursor-pointer text-center text-gray-400 underline hover:text-[#d4d4d8]"
+            >
+              Trouble connecting?
+            </a>
+            <a
+              href={versionPath(latestVersion) + "#/about"}
+              className="cursor-pointer text-center text-gray-400 underline hover:text-[#d4d4d8]"
+            >
+              What is this?
+            </a>
+          </div>
+        </div>
+
+        {connectionLost && (
+          <ErrorBanner onDismiss={() => setConnectionLost(false)}>
+            I don't see the Faderpunk anymore! Check your cabling and feel free
+            to connect again.
+          </ErrorBanner>
         )}
 
+        {state.status === "error" && <ErrorBanner>{state.message}</ErrorBanner>}
+
         {!webUsbSupported && state.status === "idle" && (
-          <div className="mt-4 rounded-sm border border-[#ff4444] bg-[#2a1a1a] p-4 text-[#ff6666]">
+          <ErrorBanner>
             WebUSB is not supported in this browser. Please use Chrome, Edge, or
             another Chromium-based browser.
-          </div>
+          </ErrorBanner>
         )}
 
         {state.status === "update-available" && (
@@ -211,6 +224,29 @@ export default function App() {
         )}
       </div>
     </main>
+  );
+}
+
+function ErrorBanner({
+  children,
+  onDismiss,
+}: {
+  children: React.ReactNode;
+  onDismiss?: () => void;
+}) {
+  return (
+    <div className="mt-4 flex items-center justify-between rounded-sm border border-[#ff4444] bg-[#2a1a1a] p-4 text-[#ff6666]">
+      <span>{children}</span>
+      {onDismiss && (
+        <button
+          onClick={onDismiss}
+          className="ml-4 cursor-pointer text-[#ff6666] hover:text-[#ff8888]"
+          aria-label="Dismiss"
+        >
+          ✕
+        </button>
+      )}
+    </div>
   );
 }
 
