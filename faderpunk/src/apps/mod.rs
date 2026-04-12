@@ -22,4 +22,5 @@ register_apps!(
     21 => clk_div_plus,
     22 => lfo_plus,
     23 => fp_grids,
+    24 => automator,
 );

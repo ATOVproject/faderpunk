@@ -1183,6 +1183,74 @@ Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are sh
       },
     ],
   },
+
+  {
+    appId: 24,
+    title: "Automator",
+    description: "CV gesture looper",
+    color: "Cyan",
+    icon: "fader",
+    params: ["MIDI Channel", "MIDI CC", "Range", "Color", "NRPN", "MIDI Out"],
+    storage: ["Loop length (1/2/4 bars)", "Committed loop buffer"],
+    text: `The Automator is a CV gesture looper that continuously records your fader movements into a circular buffer, letting you retroactively capture gestures as looping CV patterns.
+
+**Requires a running clock to operate.** When no clock is detected, the LED pulses white and the fader passes through to the CV output but no recording or playback occurs. All button input is ignored until a clock signal is present.
+
+#### States
+
+The Automator operates in three states:
+
+**Passthrough** (LED shows app color) — The default state. The fader controls the CV output directly while the circular buffer silently records every fader position (sampled every 2 clock ticks at 24ppqn, yielding 12 samples per quarter note). The buffer holds up to 4 bars of gesture data.
+
+**Playing** (LED green) — The committed loop plays back from the buffer, looping at the configured length (1, 2, or 4 bars). The fader is completely decoupled from the output — moving it has no effect. Slew smoothing is applied for clean CV transitions.
+
+**Overdubbing** (LED red) — Playback continues at the current loop position, but moving the fader overwrites the buffer at the read head. The CV output follows the fader directly (no slew). Each overdub fully replaces the stored value — there is no crossfade or blend.
+
+#### Button Controls
+
+**Tap** cycles through the main states:
+* Passthrough → Playing: Commits the loop. The most recent 1/2/4 bars of fader movement become a looping CV pattern.
+* Playing → Overdubbing: Begins overdub. A snapshot of the current loop is saved for undo.
+* Overdubbing → Playing: Ends overdub. Playback continues from the current position.
+
+**Hold** provides secondary actions:
+* Passthrough + Hold: Cycles loop length (1 → 2 → 4 → 1 bars). The LED flashes white N times to confirm the new length.
+* Playing + Hold: Stops playback and returns to Passthrough. A yellow flash confirms the transition.
+* Overdubbing + Hold: Undoes the overdub, restoring the loop to its state before overdubbing began. A yellow flash confirms the undo and playback resumes.
+
+#### Clock Behaviour
+
+* **Start**: Re-aligns the read head to bar 1. Playback resumes from the start of the loop.
+* **Continue**: Resumes from the frozen position. No re-alignment.
+* **Stop**: All heads freeze. CV output holds the last value.
+* **Clock dropout** (no pulse for 500ms, no Stop received): Treated identically to Stop. On recovery, resumes from frozen position (Continue semantics).
+
+#### Loop Persistence
+
+The committed loop and loop length are saved to non-volatile memory and restored on power-up. If a saved loop exists, the Automator starts in Playing state (awaiting clock). Loops are also saved and restored with scenes. The continuously-recording circular buffer used in Passthrough is not persisted.
+
+#### MIDI Output
+
+The current output value is also sent as a MIDI CC message on the configured channel and CC number. This applies in all three states: Passthrough sends the live fader position, Playing sends the loop playback value, and Overdubbing sends the current fader position. MIDI output rate is once per sample tick (every 2 clock pulses).`,
+    channels: [
+      {
+        jackTitle: "CV Output",
+        jackDescription: "CV output (slew smoothed during playback)",
+        faderTitle: "CV level / gesture input",
+        faderDescription:
+          "Controls CV directly in Passthrough and Overdub; decoupled during Playing",
+        fnTitle: "Tap: commit / overdub / freeze",
+        fnDescription:
+          "Passthrough → Playing, Playing → Overdub, Overdub → Playing",
+        fnPlusShiftTitle: "Hold: cycle bars / stop / undo",
+        fnPlusShiftDescription:
+          "Passthrough: cycle loop length, Playing: stop playback, Overdub: undo",
+        ledTop: "",
+        ledBottom:
+          "State indicator — app color (passthrough), green (playing), red (overdubbing), white pulse (no clock)",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
