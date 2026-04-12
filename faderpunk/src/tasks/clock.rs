@@ -75,6 +75,7 @@ pub static TRANSPORT_CMD_CHANNEL: Channel<ThreadModeRawMutex, TransportCmd, 8> =
 #[derive(Clone, Copy)]
 pub enum ClockInEvent {
     Tick(ClockSrc),
+    MidiTick(ClockSrc),
     Start(ClockSrc),
     Stop(ClockSrc),
     Reset(ClockSrc),
@@ -84,16 +85,16 @@ pub enum ClockInEvent {
 impl ClockInEvent {
     pub fn source(&self) -> ClockSrc {
         match self {
-            Self::Tick(s) | Self::Start(s) | Self::Stop(s) | Self::Reset(s) | Self::Continue(s) => {
-                *s
-            }
+            Self::Tick(s)
+            | Self::MidiTick(s)
+            | Self::Start(s)
+            | Self::Stop(s)
+            | Self::Reset(s)
+            | Self::Continue(s) => *s,
         }
     }
     pub fn is_clock(&self) -> bool {
-        if let Self::Tick(_) = self {
-            return true;
-        }
-        false
+        matches!(self, Self::Tick(_) | Self::MidiTick(_))
     }
     #[allow(dead_code)]
     pub fn is_transport(&self) -> bool {
@@ -181,6 +182,7 @@ fn swung_offset(i: u32, t: Duration, swing: i8) -> Duration {
         let boundary = h * t_ticks * (50 + s) / 50;
         boundary + (i - h) * t_ticks
     };
+
     Duration::from_ticks(raw.max(0) as u64)
 }
 
@@ -297,6 +299,7 @@ async fn run_clock_gatekeeper() {
             Either::First(event) => {
                 let (is_active, _source) = match event {
                     ClockInEvent::Tick(s)
+                    | ClockInEvent::MidiTick(s)
                     | ClockInEvent::Start(s)
                     | ClockInEvent::Stop(s)
                     | ClockInEvent::Continue(s) => (s == config.clock.clock_src, s),
@@ -345,6 +348,13 @@ async fn run_clock_gatekeeper() {
                             TICK_COUNTER.fetch_add(1, Ordering::Relaxed);
                             clock_publisher.publish(ClockEvent::Tick).await;
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
+                        }
+                    }
+                    // Unswung MIDI clock tick — forwarded to MIDI outputs at the straight rate
+                    ClockInEvent::MidiTick(source) => {
+                        if is_running
+                            || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
+                        {
                             midi_rt_event = Some(SystemRealtime::TimingClock);
                         }
                     }
@@ -426,6 +436,7 @@ async fn run_unified_clock_engine() {
     let mut window_start_at = startup_anchor;
     let mut tick_in_window: u32 = 0;
     let mut next_tick_at = startup_anchor;
+    let mut next_midi_tick_at = startup_anchor;
     let mut last_pulse: Option<Instant> = None;
     // Measured period between external pulses. `None` until we have enough pulses
     // to compute a rolling average, which gates the external watchdog so it can't
@@ -465,7 +476,7 @@ async fn run_unified_clock_engine() {
                 return;
             }
             if config.clock.clock_src == ClockSrc::Internal {
-                Timer::at(next_tick_at).await;
+                Timer::at(next_tick_at.min(next_midi_tick_at)).await;
             } else if last_pulse.is_some() && measured_ext_period.is_some() {
                 // Watchdog is armed; also consider any pending swung emission
                 // that may be due sooner.
@@ -514,6 +525,7 @@ async fn run_unified_clock_engine() {
                         current_tick_duration =
                             bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
                         window_start_at = Instant::now();
+                        next_midi_tick_at = window_start_at;
                     }
                 } else if config.clock.clock_src == ClockSrc::Internal {
                     // BPM or swing change while on internal source.
@@ -558,6 +570,7 @@ async fn run_unified_clock_engine() {
                             Instant::now() + Duration::from_millis(TICK_RESET_DELAY as u64);
                         tick_in_window = 0;
                         next_tick_at = window_start_at;
+                        next_midi_tick_at = window_start_at;
                         clock_in_sender
                             .send(ClockInEvent::Start(ClockSrc::Internal))
                             .await;
@@ -648,6 +661,10 @@ async fn run_unified_clock_engine() {
                     //   pulse immediately, no queue. This also covers the
                     //   first window after Start / Reset / source change,
                     //   which has no prior period to base a prediction on.
+
+                    // Forward every raw pulse as an unswung MIDI clock tick.
+                    clock_in_sender.send(ClockInEvent::MidiTick(source)).await;
+
                     let swing = config.clock.swing_amount;
                     if tick_in_window == 0 {
                         // Window anchor: decide the mode for this whole
@@ -733,21 +750,31 @@ async fn run_unified_clock_engine() {
             // Arm 4: Timer fired
             Either4::Fourth(_) => {
                 if config.clock.clock_src == ClockSrc::Internal && is_running {
-                    // Internal tick: emit, advance window state, schedule next
-                    clock_in_sender
-                        .send(ClockInEvent::Tick(ClockSrc::Internal))
-                        .await;
-                    tick_in_window += 1;
-                    if tick_in_window >= 2 * SWING_HALF_INTERVAL {
-                        tick_in_window = 0;
-                        window_start_at += current_tick_duration * (2 * SWING_HALF_INTERVAL);
+                    let now = Instant::now();
+                    // Unswung MIDI clock: fires at the nominal (straight) cadence
+                    if now >= next_midi_tick_at {
+                        clock_in_sender
+                            .send(ClockInEvent::MidiTick(ClockSrc::Internal))
+                            .await;
+                        next_midi_tick_at += current_tick_duration;
                     }
-                    next_tick_at = window_start_at
-                        + swung_offset(
-                            tick_in_window,
-                            current_tick_duration,
-                            config.clock.swing_amount,
-                        );
+                    // Swung internal tick: fires at the swing-adjusted time
+                    if now >= next_tick_at {
+                        clock_in_sender
+                            .send(ClockInEvent::Tick(ClockSrc::Internal))
+                            .await;
+                        tick_in_window += 1;
+                        if tick_in_window >= 2 * SWING_HALF_INTERVAL {
+                            tick_in_window = 0;
+                            window_start_at += current_tick_duration * (2 * SWING_HALF_INTERVAL);
+                        }
+                        next_tick_at = window_start_at
+                            + swung_offset(
+                                tick_in_window,
+                                current_tick_duration,
+                                config.clock.swing_amount,
+                            );
+                    }
                 } else if is_running {
                     // External: either a pending swung emission is due, or the
                     // watchdog fired (external clock lost).
