@@ -53,10 +53,9 @@ export const MiscSettings = () => {
           placeholder="Select mode"
           selectProps={{
             classNames: {
-              ...({ label: "font-medium pb-2 w-full" } as Record<
-                string,
-                string
-              >),
+              base: "flex-col items-start",
+              label: "font-medium pb-2 w-full",
+              popoverContent: "rounded-xs",
             },
           }}
           label={

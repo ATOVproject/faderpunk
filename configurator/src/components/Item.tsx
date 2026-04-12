@@ -105,7 +105,7 @@ export const Item = forwardRef(
 
     const { app, id } = item;
 
-    const showActionsPopover = deletePopoverId === id && newAppId !== id;
+    const showActionsPopover = deletePopoverId === id;
 
     return (
       <Tooltip
