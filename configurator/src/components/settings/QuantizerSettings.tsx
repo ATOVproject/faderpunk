@@ -1,7 +1,6 @@
 import type { Key, Note } from "@atov/fp-config";
-import { Select, SelectItem } from "@heroui/select";
+import { SelectItem } from "@heroui/select";
 
-import { selectProps } from "../input/defaultProps";
 import type { Inputs } from "../SettingsTab";
 import { useFormContext } from "react-hook-form";
 import classNames from "classnames";
@@ -9,6 +8,7 @@ import {
   QUANTIZER_KEY_COLORS,
   QUANTIZER_TONIC_COLORS,
 } from "../../utils/class-helpers";
+import { ControlledSelect } from "./ControlledFields";
 
 interface QuantizerKeyItem {
   key: Key["tag"];
@@ -58,7 +58,7 @@ const tonicItems: QuantizerTonicItem[] = [
 }));
 
 export const QuantizerSettings = () => {
-  const { register } = useFormContext<Inputs>();
+  const { control } = useFormContext<Inputs>();
 
   return (
     <div className="mb-12">
@@ -66,11 +66,11 @@ export const QuantizerSettings = () => {
         Quantizer
       </h2>
       <div className="grid grid-cols-4 gap-x-16 gap-y-8 px-4">
-        <Select
-          {...register("quantizerKey")}
-          {...selectProps}
-          label="Scale"
+        <ControlledSelect
+          name="quantizerKey"
+          control={control}
           items={keyItems}
+          label="Scale"
           placeholder="Scale"
         >
           {(item) => (
@@ -80,8 +80,9 @@ export const QuantizerSettings = () => {
                   className={classNames(
                     "h-5",
                     "w-5",
-                    QUANTIZER_KEY_COLORS[item.key],
-                    item.key === "Chromatic" && "border border-gray-300",
+                    QUANTIZER_KEY_COLORS[(item as QuantizerKeyItem).key],
+                    (item as QuantizerKeyItem).key === "Chromatic" &&
+                      "border border-gray-300",
                   )}
                 />
               }
@@ -89,12 +90,12 @@ export const QuantizerSettings = () => {
               {item.value}
             </SelectItem>
           )}
-        </Select>
-        <Select
-          {...register("quantizerTonic")}
-          {...selectProps}
-          label="Tonic"
+        </ControlledSelect>
+        <ControlledSelect
+          name="quantizerTonic"
+          control={control}
           items={tonicItems}
+          label="Tonic"
           placeholder="Tonic"
         >
           {(item) => (
@@ -104,8 +105,9 @@ export const QuantizerSettings = () => {
                   className={classNames(
                     "h-5",
                     "w-5",
-                    QUANTIZER_TONIC_COLORS[item.key],
-                    item.key === "C" && "border border-gray-300",
+                    QUANTIZER_TONIC_COLORS[(item as QuantizerTonicItem).key],
+                    (item as QuantizerTonicItem).key === "C" &&
+                      "border border-gray-300",
                   )}
                 />
               }
@@ -113,7 +115,7 @@ export const QuantizerSettings = () => {
               {item.value}
             </SelectItem>
           )}
-        </Select>
+        </ControlledSelect>
       </div>
     </div>
   );

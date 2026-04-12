@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
 import { useStore } from "./store";
+import { useConnectionHealthCheck } from "./hooks/useConnectionHealthCheck";
 import { ConfiguratorPage } from "./components/ConfiguratorPage";
 import { AboutPage } from "./components/AboutPage";
 import { ConnectPage } from "./components/ConnectPage";
@@ -11,6 +12,7 @@ import { TroubleshootingPage } from "./components/TroubleshootingPage";
 
 const App = () => {
   const { usbDevice, autoConnect } = useStore();
+  useConnectionHealthCheck();
   const [isAutoConnecting, setIsAutoConnecting] = useState(true);
 
   useEffect(() => {

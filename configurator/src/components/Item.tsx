@@ -15,36 +15,57 @@ import type { AppSlot } from "../utils/types";
 import { COLORS_CLASSES, WIDTHS_CLASSES } from "../utils/class-helpers";
 import { pascalToKebab } from "../utils/utils";
 
-interface DeleteTooltipProps {
+interface PopoverActionsProps {
   handleDeleteItem(): void;
+  handleDuplicateItem?: () => void;
+  canDuplicate?: boolean;
 }
 
-const DeletePopover = ({ handleDeleteItem }: DeleteTooltipProps) => (
-  <button
-    className="flex cursor-pointer items-center justify-center gap-2"
-    onClick={handleDeleteItem}
-  >
-    <Icon className="text-red h-3 w-3" name="trash" />
-    <span className="text-xs font-medium">Delete</span>
-  </button>
+const ItemActionsPopover = ({
+  handleDeleteItem,
+  handleDuplicateItem,
+  canDuplicate,
+}: PopoverActionsProps) => (
+  <div className="flex items-center justify-center gap-4">
+    {canDuplicate && handleDuplicateItem ? (
+      <button
+        className="flex cursor-pointer items-center justify-center gap-2"
+        onClick={handleDuplicateItem}
+      >
+        <Icon className="h-3 w-3" name="copy" />
+        <span className="text-xs font-medium">Duplicate</span>
+      </button>
+    ) : null}
+    <button
+      className="flex cursor-pointer items-center justify-center gap-2"
+      onClick={handleDeleteItem}
+    >
+      <Icon className="text-red h-3 w-3" name="trash" />
+      <span className="text-xs font-medium">Delete</span>
+    </button>
+  </div>
 );
 
 interface Props extends ComponentProps<"div"> {
+  canDuplicate?: boolean;
   deletePopoverId: number | null;
   isDragging?: boolean;
   item: AppSlot;
   newAppId?: number;
   onDeleteItem(itemId: number): void;
+  onDuplicateItem?(itemId: number): void;
   setDeletePopoverId: Dispatch<SetStateAction<number | null>>;
 }
 
 export const Item = forwardRef(
   (
     {
+      canDuplicate,
       className,
       isDragging,
       item,
       onDeleteItem,
+      onDuplicateItem,
       newAppId,
       deletePopoverId,
       setDeletePopoverId,
@@ -66,6 +87,10 @@ export const Item = forwardRef(
       onDeleteItem(item.id);
     }, [onDeleteItem, item.id]);
 
+    const handleDuplicateItem = useCallback(() => {
+      onDuplicateItem?.(item.id);
+    }, [onDuplicateItem, item.id]);
+
     if (!item.app) {
       return (
         <div
@@ -80,7 +105,7 @@ export const Item = forwardRef(
 
     const { app, id } = item;
 
-    const showDeletePopover = deletePopoverId === id && newAppId !== id;
+    const showActionsPopover = deletePopoverId === id;
 
     return (
       <Tooltip
@@ -90,14 +115,20 @@ export const Item = forwardRef(
         }}
         radius="sm"
         content={
-          showDeletePopover ? (
-            <DeletePopover handleDeleteItem={handleDeleteItem} />
+          showActionsPopover ? (
+            <ItemActionsPopover
+              handleDeleteItem={handleDeleteItem}
+              handleDuplicateItem={
+                onDuplicateItem ? handleDuplicateItem : undefined
+              }
+              canDuplicate={canDuplicate}
+            />
           ) : (
             <span className="text-xs font-medium">{app.name}</span>
           )
         }
         showArrow={true}
-        isOpen={!isDragging && (isHovered || showDeletePopover)}
+        isOpen={!isDragging && (isHovered || showActionsPopover)}
       >
         <div
           className={classNames(

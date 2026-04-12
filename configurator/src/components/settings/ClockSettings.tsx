@@ -1,12 +1,13 @@
 import type { ClockSrc, ResetSrc } from "@atov/fp-config";
-import { Select, SelectItem } from "@heroui/select";
+import { SelectItem } from "@heroui/select";
+import { Controller, useFormContext } from "react-hook-form";
 import { Input } from "@heroui/input";
-import { useFormContext } from "react-hook-form";
 import classNames from "classnames";
 
-import { inputProps, selectProps } from "../input/defaultProps";
+import { inputProps } from "../input/defaultProps";
 import { Icon } from "../Icon";
 import type { Inputs } from "../SettingsTab";
+import { ControlledSelect } from "./ControlledFields";
 
 interface ClockSrcItem {
   key: ClockSrc["tag"];
@@ -50,26 +51,29 @@ const resetSrcItems: ResetSrcItems[] = [
 ];
 
 export const ClockSettings = () => {
-  const { register } = useFormContext<Inputs>();
+  const { control } = useFormContext<Inputs>();
 
   return (
     <div className="mb-12">
       <h2 className="text-yellow-fp mb-4 text-sm font-bold uppercase">Clock</h2>
       <div className="grid grid-cols-4 gap-x-16 gap-y-8 px-4">
-        <Select
-          {...register("clockSrc")}
-          {...selectProps}
-          label="Clock source"
+        <ControlledSelect
+          name="clockSrc"
+          control={control}
           items={clockSrcItems}
+          label="Clock source"
           placeholder="Clock source"
         >
           {(item) => (
             <SelectItem
               startContent={
-                item.icon ? (
+                (item as ClockSrcItem).icon ? (
                   <Icon
-                    className={classNames("h-5 w-5", item.iconClass)}
-                    name={item.icon}
+                    className={classNames(
+                      "h-5 w-5",
+                      (item as ClockSrcItem).iconClass,
+                    )}
+                    name={(item as ClockSrcItem).icon!}
                   />
                 ) : undefined
               }
@@ -77,21 +81,24 @@ export const ClockSettings = () => {
               {item.value}
             </SelectItem>
           )}
-        </Select>
-        <Select
-          {...register("resetSrc")}
-          {...selectProps}
-          label="Reset source"
+        </ControlledSelect>
+        <ControlledSelect
+          name="resetSrc"
+          control={control}
           items={resetSrcItems}
+          label="Reset source"
           placeholder="Reset source"
         >
           {(item) => (
             <SelectItem
               startContent={
-                item.icon ? (
+                (item as ResetSrcItems).icon ? (
                   <Icon
-                    className={classNames("h-5 w-5", item.iconClass)}
-                    name={item.icon}
+                    className={classNames(
+                      "h-5 w-5",
+                      (item as ResetSrcItems).iconClass,
+                    )}
+                    name={(item as ResetSrcItems).icon!}
                   />
                 ) : undefined
               }
@@ -99,16 +106,24 @@ export const ClockSettings = () => {
               {item.value}
             </SelectItem>
           )}
-        </Select>
-        <Input
-          {...register("internalBpm", { valueAsNumber: true })}
-          {...inputProps}
-          label="Internal BPM"
-          type="number"
-          inputMode="decimal"
-          min={45.0}
-          max={300.0}
-          step="any"
+        </ControlledSelect>
+        <Controller
+          name="internalBpm"
+          control={control}
+          render={({ field }) => (
+            <Input
+              {...inputProps}
+              label="Internal BPM"
+              type="number"
+              inputMode="decimal"
+              min={45.0}
+              max={300.0}
+              step="any"
+              value={String(field.value)}
+              onChange={(e) => field.onChange(Number(e.target.value))}
+              onBlur={field.onBlur}
+            />
+          )}
         />
       </div>
     </div>

@@ -1,12 +1,10 @@
 import type { latch } from "@atov/fp-config";
-import { Select, SelectItem } from "@heroui/select";
-import { Slider } from "@heroui/slider";
+import { SelectItem } from "@heroui/select";
 import { Tooltip } from "@heroui/tooltip";
-import { useCallback } from "react";
 import { useFormContext } from "react-hook-form";
 import { Icon } from "../Icon";
-import { selectProps } from "../input/defaultProps";
 import type { Inputs } from "../SettingsTab";
+import { ControlledSelect, ControlledSlider } from "./ControlledFields";
 
 interface TakeoverModeItem {
   key: latch.TakeoverMode["tag"];
@@ -33,25 +31,7 @@ const takeoverModeItems: TakeoverModeItem[] = [
 ];
 
 export const MiscSettings = () => {
-  const { register, getValues } = useFormContext<Inputs>();
-
-  const {
-    onChange: onChangeBrightness,
-    onBlur: onBlurBrightness,
-    name: nameBrightness,
-    ref: refBrightness,
-  } = register("ledBrightness", {
-    valueAsNumber: true,
-  });
-
-  const handleChangeBrightness = useCallback(
-    (value: number | number[]) => {
-      if (!Array.isArray(value)) {
-        onChangeBrightness({ target: { name: nameBrightness, value } });
-      }
-    },
-    [nameBrightness, onChangeBrightness],
-  );
+  const { control } = useFormContext<Inputs>();
 
   return (
     <div className="mb-12">
@@ -59,22 +39,24 @@ export const MiscSettings = () => {
         Miscellaneous
       </h2>
       <div className="grid grid-cols-4 gap-x-16 gap-y-8 px-4">
-        <Slider
-          defaultValue={getValues("ledBrightness")}
+        <ControlledSlider
+          name="ledBrightness"
+          control={control}
+          label="LED Brightness"
           minValue={100}
           maxValue={255}
-          onBlur={onBlurBrightness}
-          name={nameBrightness}
-          onChange={handleChangeBrightness}
-          label="LED Brightness"
-          ref={refBrightness}
         />
-        <Select
-          {...register("takeoverMode")}
-          {...selectProps}
-          classNames={{
-            ...selectProps.classNames,
-            label: "font-medium pb-2 w-full",
+        <ControlledSelect
+          name="takeoverMode"
+          control={control}
+          items={takeoverModeItems}
+          placeholder="Select mode"
+          selectProps={{
+            classNames: {
+              base: "flex-col items-start",
+              label: "font-medium pb-2 w-full",
+              popoverContent: "rounded-xs",
+            },
           }}
           label={
             <div className="flex w-full items-center justify-between gap-1">
@@ -89,11 +71,9 @@ export const MiscSettings = () => {
               </Tooltip>
             </div>
           }
-          items={takeoverModeItems}
-          placeholder="Select mode"
         >
           {(item) => <SelectItem>{item.value}</SelectItem>}
-        </Select>
+        </ControlledSelect>
       </div>
     </div>
   );

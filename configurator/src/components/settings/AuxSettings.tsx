@@ -1,11 +1,11 @@
 import type { AuxJackMode, ClockDivision } from "@atov/fp-config";
-import { Select, SelectItem } from "@heroui/select";
-import { Controller, useFormContext } from "react-hook-form";
+import { SelectItem } from "@heroui/select";
+import { useFormContext } from "react-hook-form";
 
 import { Icon } from "../Icon";
-import { selectProps } from "../input/defaultProps";
 import type { Inputs } from "../SettingsTab";
 import { useEffect } from "react";
+import { ControlledSelect } from "./ControlledFields";
 
 interface AuxJackModeItem {
   key: AuxJackMode["tag"];
@@ -37,7 +37,7 @@ const auxDivisionItems: DivisionItem[] = [
 ];
 
 export const AuxSettings = () => {
-  const { control, register, setValue, watch } = useFormContext<Inputs>();
+  const { control, setValue, watch } = useFormContext<Inputs>();
 
   const [clockSrc, resetSrc] = watch(["clockSrc", "resetSrc"]);
 
@@ -66,114 +66,87 @@ export const AuxSettings = () => {
       </h2>
       <div className="grid grid-cols-4 gap-x-16 gap-y-8 px-4">
         <div className="flex flex-col gap-y-4">
-          <Controller
+          <ControlledSelect
             name="auxAtom"
             control={control}
-            render={({ field }) => (
-              <Select
-                selectedKeys={[field.value]}
-                onSelectionChange={(value) => {
-                  field.onChange(value.currentKey);
-                }}
-                isDisabled={clockSrc === "Atom" || resetSrc === "Atom"}
-                {...selectProps}
-                label={
-                  <div className="flex items-center">
-                    <Icon className="text-cyan-fp h-4 w-4" name="atom" />
-                    Atom Mode
-                  </div>
-                }
-                items={auxJackModeItems}
-                placeholder="Atom Mode"
-              >
-                {(item) => <SelectItem>{item.value}</SelectItem>}
-              </Select>
-            )}
-          ></Controller>
+            items={auxJackModeItems}
+            isDisabled={clockSrc === "Atom" || resetSrc === "Atom"}
+            label={
+              <div className="flex items-center">
+                <Icon className="text-cyan-fp h-4 w-4" name="atom" />
+                Atom Mode
+              </div>
+            }
+            placeholder="Atom Mode"
+          >
+            {(item) => <SelectItem>{item.value}</SelectItem>}
+          </ControlledSelect>
           {atomMode == "ClockOut" && (
-            <Select
-              {...register("auxAtomDiv")}
-              {...selectProps}
-              label="Division"
+            <ControlledSelect
+              name="auxAtomDiv"
+              control={control}
               items={auxDivisionItems}
+              label="Division"
               placeholder="Division"
             >
               {(item) => <SelectItem>{item.value}</SelectItem>}
-            </Select>
+            </ControlledSelect>
           )}
         </div>
         <div className="flex flex-col gap-y-4">
-          <Controller
+          <ControlledSelect
             name="auxMeteor"
             control={control}
-            render={({ field }) => (
-              <Select
-                selectedKeys={[field.value]}
-                onSelectionChange={(value) => {
-                  field.onChange(value.currentKey);
-                }}
-                isDisabled={clockSrc === "Meteor" || resetSrc === "Meteor"}
-                {...selectProps}
-                label={
-                  <div className="flex items-center">
-                    <Icon className="text-yellow-fp h-4 w-4" name="meteor" />
-                    Meteor Mode
-                  </div>
-                }
-                items={auxJackModeItems}
-                placeholder="Meteor Mode"
-              >
-                {(item) => <SelectItem>{item.value}</SelectItem>}
-              </Select>
-            )}
-          ></Controller>
+            items={auxJackModeItems}
+            isDisabled={clockSrc === "Meteor" || resetSrc === "Meteor"}
+            label={
+              <div className="flex items-center">
+                <Icon className="text-yellow-fp h-4 w-4" name="meteor" />
+                Meteor Mode
+              </div>
+            }
+            placeholder="Meteor Mode"
+          >
+            {(item) => <SelectItem>{item.value}</SelectItem>}
+          </ControlledSelect>
           {meteorMode == "ClockOut" && (
-            <Select
-              {...register("auxMeteorDiv")}
-              {...selectProps}
-              label="Division"
+            <ControlledSelect
+              name="auxMeteorDiv"
+              control={control}
               items={auxDivisionItems}
+              label="Division"
               placeholder="Division"
             >
               {(item) => <SelectItem>{item.value}</SelectItem>}
-            </Select>
+            </ControlledSelect>
           )}
         </div>
         <div className="flex flex-col gap-y-4">
-          <Controller
+          <ControlledSelect
             name="auxCube"
             control={control}
-            render={({ field }) => (
-              <Select
-                selectedKeys={[field.value]}
-                onSelectionChange={(value) => {
-                  field.onChange(value.currentKey);
-                }}
-                isDisabled={clockSrc === "Cube" || resetSrc === "Cube"}
-                {...selectProps}
-                label={
-                  <div className="flex items-center">
-                    <Icon className="text-pink-fp h-4 w-4" name="cube" />
-                    Cube Mode
-                  </div>
-                }
-                items={auxJackModeItems}
-                placeholder="Cube Mode"
-              >
-                {(item) => <SelectItem>{item.value}</SelectItem>}
-              </Select>
-            )}
-          ></Controller>
+            items={auxJackModeItems}
+            isDisabled={clockSrc === "Cube" || resetSrc === "Cube"}
+            label={
+              <div className="flex items-center">
+                <Icon className="text-pink-fp h-4 w-4" name="cube" />
+                Cube Mode
+              </div>
+            }
+            placeholder="Cube Mode"
+          >
+            {(item) => <SelectItem>{item.value}</SelectItem>}
+          </ControlledSelect>
           {cubeMode == "ClockOut" && (
-            <Select
-              {...register("auxCubeDiv")}
-              {...selectProps}
-              label="Division"
+            <ControlledSelect
+              name="auxCubeDiv"
+              control={control}
               items={auxDivisionItems}
+              label="Division"
               placeholder="Division"
             >
               {(item) => <SelectItem>{item.value}</SelectItem>}
-            </Select>
+            </ControlledSelect>
           )}
         </div>
       </div>
