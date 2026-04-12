@@ -1,0 +1,89 @@
+diff --git a/faderpunk/src/tasks/clock.rs b/faderpunk/src/tasks/clock.rs
+index 90574064..81b844fe 100644
+--- a/faderpunk/src/tasks/clock.rs
++++ b/faderpunk/src/tasks/clock.rs
+@@ -24,7 +24,7 @@ use libfp::{
+ use crate::{
+     state::{is_clock_running, update_state},
+     tasks::{
+-        max::MAX_TRIGGERS_GPO,
++        max::{MaxCmd, MAX_CHANNEL},
+         midi::{MidiClockMsg, MidiOutEvent, MIDI_CHANNEL},
+     },
+     Spawner, GLOBAL_CONFIG_WATCH,
+@@ -203,12 +203,13 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
+ }
+ 
+ async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &mut [u16; 3]) {
++    // (aux_index, division) pairs for outputs firing on this master tick.
++    let mut pending: heapless::Vec<(usize, u16), 3> = heapless::Vec::new();
++
+     for (i, aux) in config.aux.iter().enumerate() {
+         if let AuxJackMode::ClockOut(div) = aux {
+             if counters[i] == 0 {
+-                // TODO: Adjust trigger_len based on division?
+-                // Ignore if task pool is full - skip this tick rather than panic
+-                spawner.spawn(analog_tick(i, 5)).ok();
++                let _ = pending.push((i, *div as u16));
+             }
+ 
+             counters[i] += 1;
+@@ -217,23 +218,53 @@ async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &
+             }
+         }
+     }
++
++    // Longest division first: bar-level pulses reach the jack before shorter
++    // clocks on shared beats, so downstream sequencers reset before advancing.
++    pending.sort_unstable_by(|a, b| b.1.cmp(&a.1));
++
++    for (i, _div) in pending.iter() {
++        trigger_analog_tick(spawner, *i, 5);
++    }
+ }
+ 
+ async fn send_analog_reset(spawner: &Spawner, config: &GlobalConfig) {
+     for (i, aux) in config.aux.iter().enumerate() {
+         if let AuxJackMode::ResetOut = aux {
+             // Send reset pulse with longer duration (10ms)
+-            // Ignore if task pool is full - skip this reset rather than panic
+-            spawner.spawn(analog_tick(i, 10)).ok();
++            trigger_analog_tick(spawner, i, 10);
+         }
+     }
+ }
++
++/// Issue a rising edge on an aux GPO and spawn a task to release it after
++/// `trigger_len` ms. The rising edge is enqueued onto `MAX_CHANNEL` so that
++/// simultaneous calls reach the MAX driver in the exact order they are made
++/// here — this is what gives `send_analog_ticks` its deterministic ordering.
++fn trigger_analog_tick(spawner: &Spawner, aux_no: usize, trigger_len: u64) {
++    let gpo_index = 17 + aux_no;
++
++    // Only raise the edge if we also have room to schedule its release,
++    // otherwise we'd strand the GPO high.
++    if spawner
++        .spawn(analog_tick_release(aux_no, trigger_len))
++        .is_ok()
++    {
++        MAX_CHANNEL
++            .sender()
++            .try_send((gpo_index, MaxCmd::GpoSetHigh))
++            .ok();
++    }
++}
++
+ #[embassy_executor::task(pool_size = 12)]
+-async fn analog_tick(aux_no: usize, trigger_len: u64) {
++async fn analog_tick_release(aux_no: usize, trigger_len: u64) {
+     let gpo_index = 17 + aux_no;
+-    MAX_TRIGGERS_GPO[gpo_index].store(2, Ordering::Relaxed);
+     Timer::after_millis(trigger_len).await;
+-    MAX_TRIGGERS_GPO[gpo_index].store(1, Ordering::Relaxed);
++    MAX_CHANNEL
++        .sender()
++        .send((gpo_index, MaxCmd::GpoSetLow))
++        .await;
+ }
+ 
+ #[embassy_executor::task]
