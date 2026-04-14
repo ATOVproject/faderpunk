@@ -1,15 +1,16 @@
 use embassy_futures::{
     join::join5,
-    select::{select, select3, Either},
+    select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embassy_time::{with_timeout, Duration};
+use embassy_time::{with_timeout, Duration, Instant};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue,
-    utils::slew_2,
+    latch::LatchLayer,
+    utils::{attenuate, attenuate_bipolar, clickless, split_unsigned_value},
     AppIcon, Brightness, ClockDivision, Color, Config, MidiCc, MidiChannel, MidiOut, Param, Range,
     Value, APP_MAX_PARAMS,
 };
@@ -22,12 +23,10 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 7;
 
 const MAX_BUFFER_SAMPLES: usize = 192;
-const SAMPLES_PER_BAR: usize = 48;
 const CLOCK_TIMEOUT_MS: u64 = 500;
-
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Automator",
@@ -38,9 +37,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::MidiChannel {
     name: "MIDI Channel",
 })
-.add_param(Param::MidiCc {
-    name: "MIDI CC",
-})
+.add_param(Param::MidiCc { name: "MIDI CC" })
 .add_param(Param::Range {
     name: "Range",
     variants: &[Range::_0_10V, Range::_Neg5_5V],
@@ -59,7 +56,11 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     ],
 })
 .add_param(Param::MidiNrpn)
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::Enum {
+    name: "Resolution",
+    variants: &["1 ppqn / 2 bars", "2 ppqn / 4 bars", "4 ppqn / 8 bars"],
+});
 
 pub struct Params {
     midi_channel: MidiChannel,
@@ -68,6 +69,7 @@ pub struct Params {
     color: Color,
     nrpn: bool,
     midi_out: MidiOut,
+    resolution: usize,
 }
 
 impl AppParams for Params {
@@ -82,6 +84,7 @@ impl AppParams for Params {
             color: Color::from_value(values[3]),
             nrpn: bool::from_value(values[4]),
             midi_out: MidiOut::from_value(values[5]),
+            resolution: usize::from_value(values[6]),
         })
     }
 
@@ -93,81 +96,80 @@ impl AppParams for Params {
         vec.push(self.color.into()).unwrap();
         vec.push(self.nrpn.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.resolution.into()).unwrap();
         vec
     }
 }
 
+/// Looper operating mode.
 #[derive(Clone, Copy, PartialEq)]
 enum LooperState {
+    /// No loop. Fader = direct CV/MIDI output.
     Passthrough,
+    /// Button held, waiting for 16th-note boundary before recording starts.
+    PendingRecording,
+    /// Recording live fader values into rec_buf each clock tick.
+    Recording,
+    /// Loop playing back. Fader = bipolar offset added to loop signal.
     Playing,
-    Overdubbing,
 }
 
-/// Command issued by the button handler, processed by the clock handler.
-/// Using a command enum avoids race conditions — the clock handler performs
-/// all buffer mutations at the sample tick boundary.
+/// Commands issued by the button handler and consumed by the clock handler
+/// at the next tick boundary, keeping all buffer mutations synchronised.
 #[derive(Clone, Copy, PartialEq)]
 enum LooperCmd {
     None,
-    /// Passthrough → Playing: commit the loop from the circular buffer
-    CommitLoop,
-    /// Playing → Overdubbing: snapshot buffer into undo slot, begin overdub
-    BeginOverdub,
-    /// Overdubbing → Playing: stop writing, resume playback
-    EndOverdub,
-    /// Overdubbing + Hold: restore undo buffer, resume playback
-    UndoOverdub,
-    /// Playing + Hold: return to passthrough
-    StopPlayback,
-    /// Scene load: reload play buffer from storage
+    /// PendingRecording → Recording: held until next 16th-note boundary.
+    PendingStart,
+    /// Recording → Playing (or Passthrough if nothing captured): held until next 16th-note.
+    PendingCommit,
+    /// Erase the loop and return to Passthrough.
+    ClearLoop,
+    /// Scene loaded — reload play_buf from storage.
     LoadFromStorage,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
-    loop_bars: u8,
-    /// The committed playback loop (not the circular write buffer).
+    /// The committed playback loop.
     buffer: Arr<u16, MAX_BUFFER_SAMPLES>,
     has_loop: bool,
+    /// Number of valid samples in buffer.
+    loop_len: u16,
+    /// Attenuator level (0–4095, default = max).
+    att_val: u16,
+    /// Fader offset centre (0–4095, centre = 2048 = no offset).
+    offset_val: u16,
 }
 
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            loop_bars: 2,
             buffer: Arr::default(),
             has_loop: false,
+            loop_len: 0,
+            att_val: 4095,
+            offset_val: 2048,
         }
     }
 }
 
 impl AppStorage for Storage {}
 
-fn loop_len_samples(bars: u8) -> usize {
-    bars as usize * SAMPLES_PER_BAR
-}
-
-fn next_loop_bars(bars: u8) -> u8 {
-    match bars {
-        1 => 2,
-        2 => 4,
-        _ => 1,
-    }
-}
-
-#[embassy_executor::task(pool_size = 16/CHANNELS)]
+#[embassy_executor::task(pool_size = 16 / CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+    let ch = app.start_channel as u8;
     let param_store = ParamStore::<Params>::new(
         app.app_id,
         app.layout_id,
         Params {
             midi_channel: MidiChannel::default(),
-            midi_cc: MidiCc::default(),
+            midi_cc: MidiCc::from(32u8.saturating_add(ch)),
             range: Range::_0_10V,
             color: Color::Cyan,
             nrpn: false,
-            midi_out: MidiOut([false, false, false]),
+            midi_out: MidiOut::default(),
+            resolution: 1,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -189,55 +191,108 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
+/// Linearly interpolates between two adjacent loop samples at 1 ms resolution.
+///
+/// Call from the 1 ms output loop. Each time the clock fires a new sample, reset
+/// `elapsed_ms` to 0 and roll: old `next` → `prev`, new computed value → `next`.
+///
+/// `tick_interval_ms`: empirically measured duration of the last clock tick (ms).
+/// `ppqn`: the clock division in use (e.g. `ClockDivision::_2 as u8 = 2`).
+///         Caps the interpolation window at the interval expected at 20 BPM for that
+///         division, so the output holds at `next` rather than drifting if the clock stalls.
+fn interp_loop_sample(
+    prev: u16,
+    next: u16,
+    elapsed_ms: u32,
+    tick_interval_ms: u32,
+    ppqn: u8,
+) -> u16 {
+    let max_ms = 60_000 / (20_u32 * ppqn as u32).max(1);
+    let interval = tick_interval_ms.clamp(1, max_ms);
+    let phase = elapsed_ms.min(interval) as f32 / interval as f32;
+    (prev as f32 + (next as f32 - prev as f32) * phase).clamp(0.0, 4095.0) as u16
+}
+
 pub async fn run(
     app: &App<CHANNELS>,
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_out, midi_chan, midi_cc, range, nrpn, led_color) =
-        params.query(|p| (p.midi_out, p.midi_channel, p.midi_cc, p.range, p.nrpn, p.color));
+    let (midi_out_cfg, midi_chan, midi_cc, range, nrpn, led_color, resolution) = params.query(|p| {
+        (
+            p.midi_out,
+            p.midi_channel,
+            p.midi_cc,
+            p.range,
+            p.nrpn,
+            p.color,
+            p.resolution,
+        )
+    });
+    let clock_div = match resolution {
+        0 => ClockDivision::_1,
+        2 => ClockDivision::_4,
+        _ => ClockDivision::_2,
+    };
 
     let mut clock = app.use_clock();
+    // Function pointer into TICK_COUNTER; used by clock_handler to check 16th-note boundaries.
+    let tick_fn = clock.get_ticker();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
-    let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
+    let midi = app.use_midi_output(midi_out_cfg, midi_chan, nrpn);
     let output = app.make_out_jack(0, range).await;
+    let bipolar = range.is_bipolar();
 
     let state_glob = app.make_global(LooperState::Passthrough);
     let cmd_glob = app.make_global(LooperCmd::None);
     let clock_running_glob = app.make_global(false);
-    let loop_bars_glob = app.make_global(storage.query(|s| s.loop_bars));
-
-    // Restore saved loop if available
+    // Shared att/offset: main_loop writes, clock_handler reads.
+    let att_glob = app.make_global(storage.query(|s| s.att_val));
+    let offset_glob = app.make_global(storage.query(|s| s.offset_val));
     let has_saved_loop = storage.query(|s| s.has_loop);
+    // Last computed output for fader LED display.
+    let last_output_glob = app.make_global(0u16);
+    // Raw loop target written by clock_handler; main_loop interpolates and drives output.
+    // Seeded with the first saved sample so output is stable before the clock starts.
+    let seed = if has_saved_loop { storage.query(|s| s.buffer.at(0)) } else { 0u16 };
+    let loop_prev_glob = app.make_global(seed);
+    let loop_target_glob = app.make_global(seed);
+    // Measured ms between the last two clock ticks; 0 = no tick seen yet.
+    let tick_interval_glob = app.make_global(0u32);
     if has_saved_loop {
         state_glob.set(LooperState::Playing);
+        leds.set(0, Led::Button, Color::Green, Brightness::High);
+    } else {
+        leds.set(0, Led::Button, led_color, Brightness::Mid);
     }
 
+    // ── Clock handler ────────────────────────────────────────────────────────
+    // Advances the loop, writes/reads sample buffers, computes the per-sample
+    // target and writes it to loop_target_glob, and sends MIDI CC.  All buffer
+    // mutations happen here, at tick boundaries.
+    // CV output is driven by main_loop, which slews loop_target_glob at 1 ms.
+    //
+    // PendingStart / PendingCommit are quantised to 16th-note boundaries:
+    // 24 PPQN / 4 = 6 underlying ticks per 16th note.  tick_fn() % 6 == 0
+    // detects this boundary regardless of the active clock_div.
     let clock_handler = async {
-        // Circular write buffer (ephemeral, used in Passthrough)
-        let mut write_buf = [0u16; MAX_BUFFER_SAMPLES];
-        let mut write_head: usize = 0;
-
-        // Playback buffer (the committed loop)
         let mut play_buf = [0u16; MAX_BUFFER_SAMPLES];
-        let mut undo_buf = [0u16; MAX_BUFFER_SAMPLES];
-        let mut has_undo = false;
+        let mut rec_buf = [0u16; MAX_BUFFER_SAMPLES];
+        let mut rec_head: usize = 0;
         let mut read_head: usize = 0;
-        let mut loop_len = loop_len_samples(loop_bars_glob.get());
+        let mut loop_len: usize = storage.query(|s| s.loop_len as usize).max(1);
+        let mut last_tick: Option<Instant> = None;
 
-        // Restore from storage if we have a saved loop
         if has_saved_loop {
             play_buf = storage.query(|s| s.buffer.get());
         }
 
-        let mut prev_slew_val: u16 = 0;
-
         loop {
             let event = with_timeout(
                 Duration::from_millis(CLOCK_TIMEOUT_MS),
-                clock.wait_for_event(ClockDivision::_2),
+                clock.wait_for_event(clock_div),
             )
             .await;
 
@@ -247,100 +302,127 @@ pub async fn run(
                         clock_running_glob.set(true);
                     }
 
-                    // Process any pending command from button handler
+                    // Measure tick interval and update elapsed baseline.
+                    let now = Instant::now();
+                    if let Some(prev_tick) = last_tick {
+                        let interval = now.duration_since(prev_tick).as_millis() as u32;
+                        tick_interval_glob.set(interval);
+                    }
+                    last_tick = Some(now);
+
+                    // Process any pending command from button_handler.
+                    // PendingStart / PendingCommit are held until a 16th-note
+                    // boundary (TICK_COUNTER % 6 == 0); all others fire immediately.
                     let cmd = cmd_glob.get();
                     if cmd != LooperCmd::None {
-                        cmd_glob.set(LooperCmd::None);
+                        let on_16th = tick_fn() % 6 == 0;
+                        let ready = match cmd {
+                            LooperCmd::PendingStart | LooperCmd::PendingCommit => on_16th,
+                            _ => true,
+                        };
 
-                        match cmd {
-                            LooperCmd::CommitLoop => {
-                                // Copy the last loop_len samples from the circular write buffer
-                                // into the playback buffer
-                                loop_len = loop_len_samples(loop_bars_glob.get());
-                                let start = (write_head + MAX_BUFFER_SAMPLES - loop_len)
-                                    % MAX_BUFFER_SAMPLES;
-                                for i in 0..loop_len {
-                                    play_buf[i] = write_buf[(start + i) % MAX_BUFFER_SAMPLES];
+                        if ready {
+                            cmd_glob.set(LooperCmd::None);
+                            match cmd {
+                                LooperCmd::PendingStart => {
+                                    rec_head = 0;
+                                    state_glob.set(LooperState::Recording);
                                 }
-                                read_head = 0;
-                                has_undo = false;
-                                // Persist committed loop
-                                let buf_copy = play_buf;
-                                storage.modify_and_save(|s| {
-                                    s.buffer.set(buf_copy);
-                                    s.has_loop = true;
-                                });
-                            }
-                            LooperCmd::BeginOverdub => {
-                                undo_buf = play_buf;
-                                has_undo = true;
-                            }
-                            LooperCmd::EndOverdub => {
-                                // Persist the overdubbed loop
-                                let buf_copy = play_buf;
-                                storage.modify_and_save(|s| {
-                                    s.buffer.set(buf_copy);
-                                });
-                            }
-                            LooperCmd::UndoOverdub => {
-                                if has_undo {
-                                    play_buf = undo_buf;
-                                    has_undo = false;
+                                LooperCmd::PendingCommit => {
+                                    if rec_head > 0 {
+                                        loop_len = rec_head;
+                                        play_buf[..loop_len].copy_from_slice(&rec_buf[..loop_len]);
+                                        read_head = 0;
+                                        let buf_copy = play_buf;
+                                        storage.modify_and_save(|s| {
+                                            s.buffer.set(buf_copy);
+                                            s.has_loop = true;
+                                            s.loop_len = loop_len as u16;
+                                        });
+                                        state_glob.set(LooperState::Playing);
+                                        leds.set(0, Led::Button, led_color, Brightness::Mid);
+                                    } else {
+                                        // Button released before recording started — abort.
+                                        state_glob.set(LooperState::Passthrough);
+                                    }
                                 }
+                                LooperCmd::ClearLoop => {
+                                    loop_len = 1;
+                                    rec_head = 0;
+                                    read_head = 0;
+                                    storage.modify_and_save(|s| {
+                                        s.has_loop = false;
+                                        s.loop_len = 0;
+                                    });
+                                }
+                                LooperCmd::LoadFromStorage => {
+                                    play_buf = storage.query(|s| s.buffer.get());
+                                    loop_len = storage.query(|s| s.loop_len as usize).max(1);
+                                    read_head = 0;
+                                }
+                                LooperCmd::None => {}
                             }
-                            LooperCmd::StopPlayback => {
-                                // write_head continues from where it was frozen
-                            }
-                            LooperCmd::LoadFromStorage => {
-                                play_buf = storage.query(|s| s.buffer.get());
-                                loop_len = loop_len_samples(loop_bars_glob.get());
-                                read_head = 0;
-                                has_undo = false;
-                            }
-                            LooperCmd::None => {}
                         }
                     }
 
                     let state = state_glob.get();
                     let fader_val = fader.get_value();
+                    let att_val = att_glob.get();
+                    let offset_val = offset_glob.get();
 
                     match state {
-                        LooperState::Passthrough => {
-                            write_buf[write_head] = fader_val;
-                            write_head = (write_head + 1) % MAX_BUFFER_SAMPLES;
-                            output.set_value(fader_val);
-                            midi.send_cc(midi_cc, fader_val).await;
+                        LooperState::Passthrough | LooperState::PendingRecording => {
+                            // Output driven by main_loop (1 ms polling).
+                        }
+                        LooperState::Recording => {
+                            if rec_head < MAX_BUFFER_SAMPLES {
+                                rec_buf[rec_head] = fader_val;
+                                rec_head += 1;
+                            }
+                            // CV output still driven by main_loop.
                         }
                         LooperState::Playing => {
+                            // Flash button white for 2 PPQN on the first sample of each cycle.
+                            if read_head == 0 {
+                                leds.set_mode(
+                                    0,
+                                    Led::Button,
+                                    LedMode::FlashThenStatic(
+                                        Color::White,
+                                        1,
+                                        led_color,
+                                        Brightness::Mid,
+                                    ),
+                                );
+                            }
                             let sample = play_buf[read_head % loop_len];
-                            prev_slew_val = slew_2(prev_slew_val, sample, 3, 10);
-                            output.set_value(prev_slew_val);
-                            midi.send_cc(midi_cc, prev_slew_val).await;
-                            read_head = (read_head + 1) % loop_len;
-                        }
-                        LooperState::Overdubbing => {
-                            let idx = read_head % loop_len;
-                            play_buf[idx] = fader_val;
-                            output.set_value(fader_val);
-                            midi.send_cc(midi_cc, fader_val).await;
+                            let attenuated = if bipolar {
+                                attenuate_bipolar(sample, att_val)
+                            } else {
+                                attenuate(sample, att_val)
+                            };
+                            let with_offset = (attenuated as i32 + offset_val as i32 - 2048)
+                                .clamp(0, 4095)
+                                as u16;
+                            // Roll interpolation window: current target → prev, new → target.
+                            loop_prev_glob.set(loop_target_glob.get());
+                            loop_target_glob.set(with_offset);
+                            midi.send_cc(midi_cc, with_offset).await;
                             read_head = (read_head + 1) % loop_len;
                         }
                     }
                 }
                 Ok(ClockEvent::Reset) => {
-                    // MIDI Start — re-align read head to bar start
                     clock_running_glob.set(true);
                     read_head = 0;
                 }
                 Ok(ClockEvent::Start) => {
-                    // MIDI Continue — resume from frozen position
                     clock_running_glob.set(true);
                 }
                 Ok(ClockEvent::Stop) => {
                     clock_running_glob.set(false);
                 }
                 Err(_) => {
-                    // Clock dropout — treated as stop (resume = Continue semantics)
                     if clock_running_glob.get() {
                         clock_running_glob.set(false);
                     }
@@ -349,138 +431,252 @@ pub async fn run(
         }
     };
 
+    // ── Button handler ───────────────────────────────────────────────────────
+    // UI rules:
+    //   Button (hold)   — record a new loop; start and end are quantised to the
+    //                     next 16th-note boundary by the clock handler.
+    //   Button (tap)    — while Playing: start overdub; while Overdubbing: end overdub.
+    //   Shift + button  — clear loop and return to Passthrough (always works).
     let button_handler = async {
         loop {
-            buttons.wait_for_any_down().await;
+            let (_, is_shift) = buttons.wait_for_any_down().await;
+            let state = state_glob.get();
 
-            if !clock_running_glob.get() {
-                // All button input is ignored when clock is stopped
+            if is_shift {
+                // Shift+button clears the loop from any state.
+                buttons.wait_for_any_up().await;
+                state_glob.set(LooperState::Passthrough);
+                cmd_glob.set(LooperCmd::ClearLoop);
+                leds.set(0, Led::Button, led_color, Brightness::Mid);
                 continue;
             }
 
-            // Discriminate tap vs hold: race long_press against button up
-            match select(
-                buttons.wait_for_any_long_press(),
-                buttons.wait_for_any_up(),
-            )
-            .await
-            {
-                Either::First(_) => {
-                    // Hold
-                    let state = state_glob.get();
-                    match state {
-                        LooperState::Passthrough => {
-                            // Cycle loop length: 1 → 2 → 4 → 1
-                            let bars = next_loop_bars(loop_bars_glob.get());
-                            loop_bars_glob.set(bars);
-                            storage.modify_and_save(|s| s.loop_bars = bars);
-                            // Flash white N times to confirm
-                            leds.set_mode(
-                                0,
-                                Led::Button,
-                                LedMode::Flash(Color::White, Some(bars as usize)),
-                            );
-                        }
-                        LooperState::Playing => {
-                            // Stop playback → Passthrough
-                            state_glob.set(LooperState::Passthrough);
-                            cmd_glob.set(LooperCmd::StopPlayback);
-                            // Yellow flash then off
-                            leds.set_mode(0, Led::Button, LedMode::FadeOut(Color::Yellow));
-                        }
-                        LooperState::Overdubbing => {
-                            // Undo overdub → Playing
-                            state_glob.set(LooperState::Playing);
-                            cmd_glob.set(LooperCmd::UndoOverdub);
-                            // Yellow flash then green
-                            leds.set_mode(
-                                0,
-                                Led::Button,
-                                LedMode::FlashThenStatic(
-                                    Color::Yellow,
-                                    1,
-                                    Color::Green,
-                                    Brightness::High,
-                                ),
-                            );
-                        }
+            match state {
+                LooperState::Passthrough => {
+                    if !clock_running_glob.get() {
+                        buttons.wait_for_any_up().await;
+                        continue;
                     }
+                    // Visual feedback starts immediately; actual recording begins
+                    // on the next 16th-note boundary (processed by clock_handler).
+                    state_glob.set(LooperState::PendingRecording);
+                    cmd_glob.set(LooperCmd::PendingStart);
+                    leds.set(0, Led::Button, Color::Red, Brightness::High);
+
+                    buttons.wait_for_any_up().await;
+
+                    // Queue commit; clock_handler decides Playing vs Passthrough
+                    // based on whether any samples were captured (rec_head > 0).
+                    // Restore button LED — clock_handler sets it to led_color on commit,
+                    // or main_loop restores it if the abort path fires.
+                    cmd_glob.set(LooperCmd::PendingCommit);
                 }
-                Either::Second(_) => {
-                    // Tap (released before long press threshold)
-                    let state = state_glob.get();
-                    match state {
-                        LooperState::Passthrough => {
-                            // Commit loop → Playing
-                            state_glob.set(LooperState::Playing);
-                            cmd_glob.set(LooperCmd::CommitLoop);
-                            leds.set(0, Led::Button, Color::Green, Brightness::High);
-                        }
-                        LooperState::Playing => {
-                            // Begin overdub
-                            state_glob.set(LooperState::Overdubbing);
-                            cmd_glob.set(LooperCmd::BeginOverdub);
-                            leds.set(0, Led::Button, Color::Red, Brightness::High);
-                        }
-                        LooperState::Overdubbing => {
-                            // End overdub → Playing
-                            state_glob.set(LooperState::Playing);
-                            cmd_glob.set(LooperCmd::EndOverdub);
-                            leds.set(0, Led::Button, Color::Green, Brightness::High);
-                        }
+                LooperState::PendingRecording | LooperState::Recording => {
+                    // Should not be reachable (button is already held down).
+                    buttons.wait_for_any_up().await;
+                }
+                LooperState::Playing => {
+                    if !clock_running_glob.get() {
+                        buttons.wait_for_any_up().await;
+                        continue;
                     }
+                    // Re-record over the existing loop, same flow as Passthrough.
+                    state_glob.set(LooperState::PendingRecording);
+                    cmd_glob.set(LooperCmd::PendingStart);
+                    leds.set(0, Led::Button, Color::Red, Brightness::High);
+
+                    buttons.wait_for_any_up().await;
+
+                    cmd_glob.set(LooperCmd::PendingCommit);
                 }
             }
         }
     };
 
-    let led_handler = async {
-        let mut prev_clock_running = false;
-        let mut prev_state = LooperState::Passthrough;
-
-        // Initial LED state
-        if has_saved_loop {
-            leds.set(0, Led::Button, Color::Green, Brightness::High);
-        } else {
-            leds.set_mode(0, Led::Button, LedMode::Flash(Color::White, None));
-        }
+    // ── Main loop ────────────────────────────────────────────────────────────
+    // Runs every 1 ms.  Handles:
+    //   • Fader latch (main layer = offset, alt layer via shift = attenuator).
+    //   • Direct CV+MIDI output in Passthrough / PendingRecording / Recording.
+    //   • Fader LEDs: signal level in led_color; when shift is held, attenuator
+    //     level in red (mirrors control.rs behaviour).
+    //   • Button LED updates when clock state changes in Passthrough.
+    let main_loop = async {
+        let mut latch = app.make_latch(fader.get_value());
+        let mut last_midi_scaled: u32 = u32::MAX;
+        let mut prev_state = state_glob.get();
+        let mut prev_clock_running = clock_running_glob.get();
+        let mut prev_slew_val: u16 = loop_target_glob.get();
+        let mut elapsed_ms: u32 = 0;
+        // Detect when clock_handler rolls the interpolation window forward.
+        let mut last_loop_prev: u16 = loop_prev_glob.get();
 
         loop {
-            app.delay_millis(50).await;
-            let state = state_glob.get();
-            let clock_running = clock_running_glob.get();
+            app.delay_millis(1).await;
 
-            // Only update LEDs on state/clock changes to avoid overriding
-            // transition flashes set by the button handler
-            if state != prev_state || clock_running != prev_clock_running {
-                match state {
-                    LooperState::Passthrough => {
-                        if clock_running {
-                            leds.set(0, Led::Button, led_color, Brightness::Mid);
+            // ── Fader latch ──────────────────────────────────────────────────
+            // Latch always ticks so pickup state stays consistent, but results
+            // are only applied when a loop is active.  During Passthrough /
+            // PendingRecording / Recording the fader IS the signal — applying
+            // an offset would corrupt the full range of a recorded gesture.
+            let state = state_glob.get();
+            let is_shift = buttons.is_shift_pressed();
+            let latch_layer = LatchLayer::from(is_shift);
+            let offset_target = storage.query(|s| s.offset_val);
+            let att_target = storage.query(|s| s.att_val);
+            let latch_target = match latch_layer {
+                LatchLayer::Main => offset_target,
+                LatchLayer::Alt => att_target,
+                _ => 0,
+            };
+
+            let latch_active = state == LooperState::Playing;
+            if let Some(new_val) = latch.update(fader.get_value(), latch_layer, latch_target) {
+                if latch_active {
+                    match latch_layer {
+                        LatchLayer::Main => {
+                            storage.modify(|s| s.offset_val = new_val);
+                            offset_glob.set(new_val);
+                        }
+                        LatchLayer::Alt => {
+                            storage.modify(|s| s.att_val = new_val);
+                            att_glob.set(new_val);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Reset offset to center when a fresh loop commits so playback
+            // always starts unmodified regardless of where the fader landed.
+            let coming_from_record = matches!(
+                prev_state,
+                LooperState::Recording | LooperState::PendingRecording
+            );
+            if coming_from_record && state == LooperState::Playing {
+                storage.modify(|s| s.offset_val = 2048);
+                offset_glob.set(2048);
+                latch = app.make_latch(fader.get_value());
+            }
+
+            // ── CV + MIDI output ─────────────────────────────────────────────
+            // Compute the raw target for this state, send MIDI unfiltered,
+            // then apply clickless once right before driving the CV output.
+            let raw_target = match state {
+                LooperState::Passthrough
+                | LooperState::PendingRecording
+                | LooperState::Recording => {
+                    let fader_val = fader.get_value();
+                    let scaled = (fader_val as u32 * 127) / 4095;
+                    if last_midi_scaled != scaled {
+                        midi.send_cc(midi_cc, fader_val).await;
+                        last_midi_scaled = scaled;
+                    }
+                    fader_val
+                }
+                LooperState::Playing => {
+                    last_midi_scaled = u32::MAX;
+                    // Reset elapsed when clock_handler rolls the window forward
+                    // (loop_prev_glob changed since our last iteration).
+                    let current_loop_prev = loop_prev_glob.get();
+                    if current_loop_prev != last_loop_prev {
+                        elapsed_ms = 0;
+                        last_loop_prev = current_loop_prev;
+                    }
+                    elapsed_ms += 1;
+                    let interval = tick_interval_glob.get();
+                    if interval > 0 {
+                        interp_loop_sample(
+                            current_loop_prev,
+                            loop_target_glob.get(),
+                            elapsed_ms,
+                            interval,
+                            clock_div as u8,
+                        )
+                    } else {
+                        loop_target_glob.get()
+                    }
+                }
+            };
+            prev_slew_val = raw_target;
+            output.set_value(prev_slew_val);
+            last_output_glob.set(prev_slew_val);
+
+            // ── Fader LEDs ───────────────────────────────────────────────────
+            // Shift held (alt layer): attenuator level in red.
+            // Recording / PendingRecording: solid red.
+            // Playing: solid green.
+            // Passthrough: param color, level-modulated.
+            let att_val = att_glob.get();
+            match latch_layer {
+                LatchLayer::Alt => {
+                    let b = Brightness::Custom((att_val / 16) as u8);
+                    leds.set(0, Led::Top, Color::Red, b);
+                    if bipolar {
+                        leds.set(0, Led::Bottom, Color::Red, b);
+                    } else {
+                        leds.unset(0, Led::Bottom);
+                    }
+                }
+                _ => match state {
+                    LooperState::Recording | LooperState::PendingRecording => {
+                        let out = last_output_glob.get();
+                        if bipolar {
+                            let vals = split_unsigned_value(out);
+                            leds.set(0, Led::Top, Color::Red, Brightness::Custom(vals[0]));
+                            leds.set(0, Led::Bottom, Color::Red, Brightness::Custom(vals[1]));
                         } else {
-                            leds.set_mode(
-                                0,
-                                Led::Button,
-                                LedMode::Flash(Color::White, None),
-                            );
+                            leds.set(0, Led::Top, Color::Red, Brightness::Custom((out / 16) as u8));
+                            leds.unset(0, Led::Bottom);
                         }
                     }
                     LooperState::Playing => {
-                        // Don't override transition flash — button handler already set the LED
-                        if prev_state == state && !clock_running {
-                            // Clock stopped during playback — keep green but frozen
-                            leds.set(0, Led::Button, Color::Green, Brightness::High);
+                        let out = last_output_glob.get();
+                        if bipolar {
+                            let vals = split_unsigned_value(out);
+                            leds.set(0, Led::Top, Color::Green, Brightness::Custom(vals[0]));
+                            leds.set(0, Led::Bottom, Color::Green, Brightness::Custom(vals[1]));
+                        } else {
+                            leds.set(0, Led::Top, Color::Green, Brightness::Custom((out / 16) as u8));
+                            leds.unset(0, Led::Bottom);
                         }
                     }
-                    LooperState::Overdubbing => {
-                        if prev_state == state && !clock_running {
-                            leds.set(0, Led::Button, Color::Red, Brightness::High);
+                    LooperState::Passthrough => {
+                        let out = last_output_glob.get();
+                        if bipolar {
+                            let vals = split_unsigned_value(out);
+                            leds.set(0, Led::Top, led_color, Brightness::Custom(vals[0]));
+                            leds.set(0, Led::Bottom, led_color, Brightness::Custom(vals[1]));
+                        } else {
+                            leds.set(0, Led::Top, led_color, Brightness::Custom((out / 16) as u8));
+                            leds.unset(0, Led::Bottom);
                         }
                     }
+                },
+            }
+
+            // ── Button LED: restore led_color on state transitions ────────────
+            let clock_running = clock_running_glob.get();
+            if state != prev_state || clock_running != prev_clock_running {
+                match state {
+                    LooperState::Passthrough => {
+                        // Abort path (PendingCommit with rec_head == 0): restore button.
+                        leds.set(0, Led::Button, led_color, Brightness::Mid);
+                    }
+                    // Recording: button set solid red by button_handler already.
+                    // Playing: button set to led_color by clock_handler on commit,
+                    //          or white flash on loop start — leave it alone.
+                    _ => {}
                 }
                 prev_state = state;
                 prev_clock_running = clock_running;
             }
+        }
+    };
+
+    let save_handler = async {
+        loop {
+            app.delay_secs(1).await;
+            storage.save().await;
         }
     };
 
@@ -489,7 +685,8 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    loop_bars_glob.set(storage.query(|s| s.loop_bars));
+                    att_glob.set(storage.query(|s| s.att_val));
+                    offset_glob.set(storage.query(|s| s.offset_val));
 
                     if storage.query(|s| s.has_loop) {
                         state_glob.set(LooperState::Playing);
@@ -501,25 +698,12 @@ pub async fn run(
                     }
                 }
                 SceneEvent::SaveScene(scene) => {
+                    storage.modify_and_save(|s| {
+                        s.att_val = att_glob.get();
+                        s.offset_val = offset_glob.get();
+                    });
                     storage.save_to_scene(scene).await;
                 }
-            }
-        }
-    };
-
-    // Ensures responsive CV output between clock ticks and when clock is stopped.
-    let passthrough_loop = async {
-        loop {
-            app.delay_millis(1).await;
-            let state = state_glob.get();
-            match state {
-                LooperState::Passthrough => {
-                    output.set_value(fader.get_value());
-                }
-                LooperState::Overdubbing => {
-                    output.set_value(fader.get_value());
-                }
-                LooperState::Playing => {}
             }
         }
     };
@@ -527,9 +711,9 @@ pub async fn run(
     join5(
         clock_handler,
         button_handler,
-        led_handler,
+        main_loop,
+        save_handler,
         scene_handler,
-        passthrough_loop,
     )
     .await;
 }
