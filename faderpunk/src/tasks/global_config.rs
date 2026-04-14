@@ -221,6 +221,9 @@ async fn global_config_change() {
                 show_config_top_leds(&config).await;
             }
         }
+        if config.clock.swing_amount != old.clock.swing_amount && is_scene_button_pressed() {
+            show_config_top_leds(&config).await;
+        }
         if config.led_brightness != old.led_brightness {
             LED_BRIGHTNESS.store(config.led_brightness, Ordering::Relaxed);
         }

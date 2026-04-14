@@ -16,6 +16,7 @@ const NUM_CHANNELS: usize = 16;
 const LED_BRIGHTNESS_FADER: usize = 0;
 const QUANTIZER_KEY_FADER: usize = 3;
 const QUANTIZER_TONIC_FADER: usize = 4;
+const SWING_FADER: usize = 14;
 const BPM_FADER: usize = 15;
 
 /// Piano black-key pattern: C=white, C#=black, D=white, D#=black, E=white,
@@ -197,6 +198,25 @@ pub async fn show_config_top_leds(config: &GlobalConfig) {
         BPM_FADER,
         Led::Top,
         LedMode::ClockFlash(Color::White, Brightness::High, Brightness::Low),
+    )
+    .await;
+
+    let (swing_color, swing_brightness) = {
+        let swing = config.clock.swing_amount;
+        if swing > 0 {
+            let b = ((swing as u32 * 255) / 35).max(40) as u8;
+            (Color::Cyan, Brightness::Custom(b))
+        } else if swing < 0 {
+            let b = ((-swing as u32 * 255) / 35).max(40) as u8;
+            (Color::Orange, Brightness::Custom(b))
+        } else {
+            (Color::White, Brightness::Off)
+        }
+    };
+    set_led_overlay_mode(
+        SWING_FADER,
+        Led::Top,
+        LedMode::Static(swing_color, swing_brightness),
     )
     .await;
 }
