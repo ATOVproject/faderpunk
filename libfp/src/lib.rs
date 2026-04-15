@@ -344,6 +344,8 @@ pub struct ClockConfig {
     pub ext_ppqn: u8,
     pub reset_src: ResetSrc,
     pub internal_bpm: f32,
+    /// Deluge-style swing amount in `[-35, 35]`. `0` = straight.
+    pub swing_amount: i8,
 }
 
 #[allow(clippy::new_without_default)]
@@ -354,6 +356,7 @@ impl ClockConfig {
             clock_src: ClockSrc::Internal,
             reset_src: ResetSrc::None,
             internal_bpm: 120.0,
+            swing_amount: 0,
         }
     }
 }

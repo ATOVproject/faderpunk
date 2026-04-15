@@ -1,11 +1,11 @@
 import type { ClockSrc, ResetSrc } from "@atov/fp-config";
-import { SelectItem } from "@heroui/select";
-import { Controller, useFormContext } from "react-hook-form";
 import { Input } from "@heroui/input";
+import { SelectItem } from "@heroui/select";
+import { Tooltip } from "@heroui/tooltip";
 import classNames from "classnames";
-
-import { inputProps } from "../input/defaultProps";
+import { Controller, useFormContext } from "react-hook-form";
 import { Icon } from "../Icon";
+import { inputProps } from "../input/defaultProps";
 import type { Inputs } from "../SettingsTab";
 import { ControlledSelect } from "./ControlledFields";
 
@@ -119,6 +119,40 @@ export const ClockSettings = () => {
               min={45.0}
               max={300.0}
               step="any"
+              value={String(field.value)}
+              onChange={(e) => field.onChange(Number(e.target.value))}
+              onBlur={field.onBlur}
+            />
+          )}
+        />
+        <Controller
+          name="swingAmount"
+          control={control}
+          render={({ field }) => (
+            <Input
+              {...inputProps}
+              classNames={{
+                ...inputProps.classNames,
+                label: "font-medium w-full",
+              }}
+              label={
+                <div className="flex w-full items-center justify-between gap-1">
+                  <span>Swing</span>
+                  <Tooltip
+                    content="-35..+35, 0 = straight. Applied at the 16th-note level."
+                    showArrow={true}
+                  >
+                    <button type="button" className="cursor-help">
+                      <Icon className="h-4 w-4" name="info" />
+                    </button>
+                  </Tooltip>
+                </div>
+              }
+              type="number"
+              inputMode="numeric"
+              min={-35}
+              max={35}
+              step={1}
               value={String(field.value)}
               onChange={(e) => field.onChange(Number(e.target.value))}
               onBlur={field.onBlur}

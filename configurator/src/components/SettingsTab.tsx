@@ -41,6 +41,7 @@ export interface Inputs {
   clockSrc: ClockSrc["tag"];
   i2cMode: I2cMode["tag"];
   internalBpm: number;
+  swingAmount: number;
   ledBrightness: number;
   resetSrc: ResetSrc["tag"];
   quantizerKey: Key["tag"];
@@ -111,6 +112,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
       clockSrc: config.clock.clock_src.tag,
       resetSrc: config.clock.reset_src.tag,
       internalBpm: config.clock.internal_bpm,
+      swingAmount: config.clock.swing_amount,
       i2cMode: config.i2c_mode.tag,
       quantizerKey: config.quantizer.key.tag,
       quantizerTonic: config.quantizer.tonic.tag,
@@ -293,6 +295,7 @@ const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
       ext_ppqn: 24,
       reset_src: { tag: formValues.resetSrc },
       internal_bpm: formValues.internalBpm,
+      swing_amount: formValues.swingAmount,
     },
     i2c_mode: { tag: formValues.i2cMode },
     led_brightness: formValues.ledBrightness,

@@ -3,7 +3,7 @@ use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, watch::Watch};
 use embassy_time::Timer;
 use libfp::{AuxJackMode, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
-use max11300::config::{ConfigMode0, ConfigMode3, Mode};
+use max11300::config::{ConfigMode0, ConfigMode3, Mode, Port};
 use portable_atomic::Ordering;
 
 use crate::layout::FORCE_RESPAWN_SIGNAL;
@@ -14,14 +14,23 @@ use crate::tasks::leds::LED_BRIGHTNESS;
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
 use crate::QUANTIZER;
 
-// Receivers: ext clock loops (3), internal clock loop (1), clock ticker loop (1)
+// Receivers: unified clock engine (1), clock gatekeeper (1)
 // global config loop (1), config storer (1), MIDI loops (2)
-const GLOBAL_CONFIG_WATCH_SUBSCRIBERS: usize = 9;
+const GLOBAL_CONFIG_WATCH_SUBSCRIBERS: usize = 6;
 
 const LED_BRIGHTNESS_FADER: usize = 0;
 const QUANTIZER_KEY_FADER: usize = 3;
 const QUANTIZER_TONIC_FADER: usize = 4;
+const SWING_FADER: usize = 14;
 const INTERNAL_BPM_FADER: usize = 15;
+
+fn val_to_swing(val: u16) -> i8 {
+    (((val as i32 * 70) / 4095) - 35).clamp(-35, 35) as i8
+}
+
+fn swing_to_val(swing: i8) -> u16 {
+    (((swing.clamp(-35, 35) as i32 + 35) * 4095) / 70).clamp(0, 4095) as u16
+}
 
 pub static GLOBAL_CONFIG_WATCH: Watch<
     ThreadModeRawMutex,
@@ -37,6 +46,7 @@ pub fn get_global_config() -> GlobalConfig {
 pub fn get_fader_value_from_config(chan: usize, config: &GlobalConfig) -> u16 {
     match chan {
         INTERNAL_BPM_FADER => (((config.clock.internal_bpm - 45.0) * 16.0) as u16).clamp(0, 4095),
+        SWING_FADER => swing_to_val(config.clock.swing_amount),
         QUANTIZER_KEY_FADER => (config.quantizer.key as u16 * 256).clamp(0, 4095),
         QUANTIZER_TONIC_FADER => (config.quantizer.tonic as u16 * 342).clamp(0, 4095),
         LED_BRIGHTNESS_FADER => {
@@ -112,6 +122,18 @@ pub fn set_global_config_via_chan(chan: usize, val: u16) {
                 false
             });
         }
+        SWING_FADER => {
+            global_config_sender.send_if_modified(|c| {
+                if let Some(config) = c {
+                    let new_swing = val_to_swing(val);
+                    if config.clock.swing_amount != new_swing {
+                        config.clock.swing_amount = new_swing;
+                        return true;
+                    }
+                }
+                false
+            });
+        }
         _ => {}
     }
 }
@@ -122,21 +144,24 @@ pub async fn start_global_config(spawner: &Spawner) {
 }
 
 async fn set_aux_config(aux_port: usize, aux_jack_mode: &AuxJackMode) {
+    let port = Port::try_from(17 + aux_port).unwrap();
     match aux_jack_mode {
         AuxJackMode::ClockOut(_) | AuxJackMode::ResetOut => {
             MAX_CHANNEL
-                .send((
-                    17 + aux_port,
-                    MaxCmd::ConfigurePort(Mode::Mode3(ConfigMode3), Some(2048)),
-                ))
+                .send(MaxCmd::ConfigurePort {
+                    port,
+                    mode: Mode::Mode3(ConfigMode3),
+                    gpo_level: Some(2048),
+                })
                 .await;
         }
         AuxJackMode::None => {
             MAX_CHANNEL
-                .send((
-                    17 + aux_port,
-                    MaxCmd::ConfigurePort(Mode::Mode0(ConfigMode0), None),
-                ))
+                .send(MaxCmd::ConfigurePort {
+                    port,
+                    mode: Mode::Mode0(ConfigMode0),
+                    gpo_level: None,
+                })
                 .await;
         }
     }
@@ -195,6 +220,9 @@ async fn global_config_change() {
                 show_scale_keyboard(config.quantizer.key, config.quantizer.tonic).await;
                 show_config_top_leds(&config).await;
             }
+        }
+        if config.clock.swing_amount != old.clock.swing_amount && is_scene_button_pressed() {
+            show_config_top_leds(&config).await;
         }
         if config.led_brightness != old.led_brightness {
             LED_BRIGHTNESS.store(config.led_brightness, Ordering::Relaxed);

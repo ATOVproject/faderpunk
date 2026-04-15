@@ -13,7 +13,7 @@ use embassy_sync::{
     channel::{Channel, Sender},
     pubsub::{PubSubChannel, Publisher, Subscriber},
 };
-use embassy_time::{with_timeout, Duration, Ticker, TimeoutError};
+use embassy_time::{with_timeout, Duration, Instant, Ticker, TimeoutError};
 use embassy_usb::class::midi::{Receiver as UsbReceiver, Sender as UsbSender};
 use embedded_io_async::{Read, Write};
 use heapless::{Deque, Vec};
@@ -30,7 +30,7 @@ use libfp::{ClockSrc, MidiIn, MidiOut, MidiOutConfig, MidiOutMode, GLOBAL_CHANNE
 use crate::{
     events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB},
     tasks::{
-        clock::{ClockInEvent, CLOCK_IN_CHANNEL},
+        clock::{ClockInEvent, SyncEngineEvent, SYNC_ENGINE_CHANNEL},
         global_config::GLOBAL_CONFIG_WATCH,
     },
 };
@@ -428,7 +428,7 @@ pub async fn midi_in_task<'a>(
 ) {
     let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
 
-    let clock_in_sender = CLOCK_IN_CHANNEL.sender();
+    let sync_engine_sender = SYNC_ENGINE_CHANNEL.sender();
     let midi_sender = MIDI_CHANNEL.sender();
     let din_publisher = MIDI_DIN_PUBSUB.publisher().unwrap();
     let usb_publisher = MIDI_USB_PUBSUB.publisher().unwrap();
@@ -514,7 +514,7 @@ pub async fn midi_in_task<'a>(
                                     &mut usb_nrpn_trackers,
                                     midi_passthru_from_usb,
                                     ClockSrc::MidiUsb,
-                                    &clock_in_sender,
+                                    &sync_engine_sender,
                                     &midi_sender,
                                     &event_publisher,
                                 )
@@ -546,7 +546,7 @@ pub async fn midi_in_task<'a>(
                             &mut din_nrpn_trackers,
                             midi_passthru_from_din,
                             ClockSrc::MidiIn,
-                            &clock_in_sender,
+                            &sync_engine_sender,
                             &midi_sender,
                             &event_publisher,
                         )
@@ -669,28 +669,41 @@ async fn process_midi_event(
     nrpn_trackers: &mut [NrpnTracker; 16],
     thru_targets: [bool; 3],
     clock_src: ClockSrc,
-    clock_in_sender: &Sender<'static, ThreadModeRawMutex, ClockInEvent, 16>,
+    sync_engine_sender: &Sender<'static, ThreadModeRawMutex, SyncEngineEvent, 16>,
     midi_sender: &Sender<'static, CriticalSectionRawMutex, MidiOutEvent, 16>,
     event_publisher: &EventPubSubPublisher,
 ) {
     match event {
         LiveEvent::Realtime(msg) => match msg {
             SystemRealtime::TimingClock => {
-                clock_in_sender.send(ClockInEvent::Tick(clock_src)).await;
+                sync_engine_sender
+                    .send(SyncEngineEvent::Pulse {
+                        source: clock_src,
+                        timestamp: Instant::now(),
+                    })
+                    .await;
             }
             SystemRealtime::Start => {
-                clock_in_sender.send(ClockInEvent::Start(clock_src)).await;
+                sync_engine_sender
+                    .send(SyncEngineEvent::Transport(ClockInEvent::Start(clock_src)))
+                    .await;
             }
             SystemRealtime::Stop => {
-                clock_in_sender.send(ClockInEvent::Stop(clock_src)).await;
+                sync_engine_sender
+                    .send(SyncEngineEvent::Transport(ClockInEvent::Stop(clock_src)))
+                    .await;
             }
             SystemRealtime::Continue => {
-                clock_in_sender
-                    .send(ClockInEvent::Continue(clock_src))
+                sync_engine_sender
+                    .send(SyncEngineEvent::Transport(ClockInEvent::Continue(
+                        clock_src,
+                    )))
                     .await;
             }
             SystemRealtime::Reset => {
-                clock_in_sender.send(ClockInEvent::Reset(clock_src)).await;
+                sync_engine_sender
+                    .send(SyncEngineEvent::Transport(ClockInEvent::Reset(clock_src)))
+                    .await;
             }
             _ => {}
         },

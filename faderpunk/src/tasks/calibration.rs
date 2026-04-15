@@ -2,7 +2,7 @@ use defmt::info;
 use embassy_futures::select::{select, select3, Either, Either3};
 use embassy_time::Timer;
 use linreg::linear_regression;
-use max11300::config::{ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES};
+use max11300::config::{ConfigMode5, ConfigMode7, Mode, Port, ADCRANGE, AVR, DACRANGE, NSAMPLES};
 use portable_atomic::Ordering;
 
 use libfp::{
@@ -65,9 +65,14 @@ async fn wait_for_start_cmd(msg_receiver: &mut I2cFollowerReceiver) {
 }
 
 async fn configure_jack(ch: usize, mode: Mode) {
+    let port = Port::try_from(ch).unwrap();
     MAX_CHANNEL
         .sender()
-        .send((ch, MaxCmd::ConfigurePort(mode, None)))
+        .send(MaxCmd::ConfigurePort {
+            port,
+            mode,
+            gpo_level: None,
+        })
         .await;
 }
 
@@ -172,11 +177,13 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
             let mut set_values: [u16; 3] = Default::default();
             let target_values = values_arrays[range_idx];
 
+            let port = Port::try_from(chan).unwrap();
             MAX_CHANNEL
-                .send((
-                    chan,
-                    MaxCmd::ConfigurePort(Mode::Mode5(ConfigMode5(dac_range)), None),
-                ))
+                .send(MaxCmd::ConfigurePort {
+                    port,
+                    mode: Mode::Mode5(ConfigMode5(dac_range)),
+                    gpo_level: None,
+                })
                 .await;
 
             info!("Calibrating DAC range index: {}", range_idx);

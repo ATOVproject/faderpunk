@@ -5,7 +5,8 @@ use embassy_rp::clocks::RoscRng;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use max11300::config::{
-    ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, ADCRANGE, AVR, DACRANGE, NSAMPLES,
+    ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, Port, ADCRANGE, AVR, DACRANGE,
+    NSAMPLES,
 };
 use midly::{live::LiveEvent, num::u4, MidiMessage, PitchBend};
 use portable_atomic::Ordering;
@@ -26,9 +27,7 @@ use crate::{
         global_config::get_global_config,
         i2c::{I2cLeaderMessage, I2cLeaderSender},
         leds::{set_led_mode, LedMode, LedMsg},
-        max::{
-            MaxCmd, MaxSender, MAX_TRIGGERS_GPO, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
-        },
+        max::{MaxCmd, MaxSender, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::{
             AppMidiSender, MidiEvent, MidiEventSource, MidiMsg, MidiPubSubChannel,
             MidiPubSubSubscriber,
@@ -116,11 +115,13 @@ impl GateJack {
     }
 
     pub async fn set_high(&self) {
-        MAX_TRIGGERS_GPO[self.channel].store(2, Ordering::Relaxed);
+        let port = Port::try_from(self.channel).unwrap();
+        MAX_CHANNEL.sender().send(MaxCmd::GpoSetHigh { port }).await;
     }
 
     pub async fn set_low(&self) {
-        MAX_TRIGGERS_GPO[self.channel].store(1, Ordering::Relaxed);
+        let port = Port::try_from(self.channel).unwrap();
+        MAX_CHANNEL.sender().send(MaxCmd::GpoSetLow { port }).await;
     }
 }
 
@@ -688,11 +689,13 @@ impl<const N: usize> App<N> {
     }
 
     async fn reconfigure_jack(&self, chan: usize, mode: Mode, gpo_level: Option<u16>) {
+        let port = Port::try_from(self.start_channel + chan).unwrap();
         self.max_sender
-            .send((
-                self.start_channel + chan,
-                MaxCmd::ConfigurePort(mode, gpo_level),
-            ))
+            .send(MaxCmd::ConfigurePort {
+                port,
+                mode,
+                gpo_level,
+            })
             .await;
     }
 
