@@ -132,6 +132,10 @@ export const Interface = () => (
         <strong>quantizer root note</strong>
       </li>
       <li>
+        <strong>Scene + Fader 15</strong> → Adjusts <strong>swing</strong> (–35
+        to +35 ticks)
+      </li>
+      <li>
         <strong>Scene + Fader 16</strong> → Controls <strong>BPM</strong> (when
         using the internal clock)
       </li>
@@ -156,6 +160,15 @@ export const Interface = () => (
       on the bottom of the fader display the notes of the selected scale, with
       the intensity reflecting whether the note is in the scale or not. White
       keys are represented by a white LED and black by a yellow LED.
+    </p>
+    <p className="mt-4">
+      For <strong>swing</strong> (Fader 15), the top LED shows both the
+      direction and amount of swing: a{" "}
+      <strong className="text-cyan-fp">cyan</strong> LED indicates positive
+      (late) swing, while an{" "}
+      <strong className="text-palette-orange">orange</strong> LED indicates
+      negative (early) swing. The brightness scales with the swing amount — the
+      LED is off when swing is set to zero.
     </p>
 
     <Table
