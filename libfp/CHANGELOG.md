@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.2-beta.0 (2026-04-17)
+
+### Features
+
+- show led info on scene button press (#489)
+- add random+ app (#453)
+- add clock divider+ app  (#456)
+- add fp-grids app (#467)
+- add swing option to clock (#491)
+
 ## 0.10.1 (2026-02-23)
 
 ### Features

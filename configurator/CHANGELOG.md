@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.9.0-beta.0 (2026-04-17)
+
+### Features
+
+- show led info on scene button press (#489)
+- add random+ app (#453)
+- add clock divider+ app  (#456)
+- add fp-grids app (#467)
+- add swing option to clock (#491)
+
+### Fixes
+
+- add NRPN param to app manuals (#496)
+- rename Bipolar param to Range (#501)
+- some QoL fixes (#504)
+
 ## 1.8.5 (2026-03-16)
 
 ### Fixes

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.9.0-beta.0 (2026-04-17)
+
+### Features
+
+- change scene via midi program-change message (#459)
+- flash scene LED when clock is running (#471)
+- add 14bit MIDI-CC/NRPN support (#470)
+- add LED feedback for straight/triplet division settings (#481)
+- show led info on scene button press (#489)
+- add division parameter for resolution handling in clock divider (#455)
+- add random+ app (#453)
+- add clock divider+ app  (#456)
+- add fp-grids app (#467)
+- add swing option to clock (#491)
+
+### Fixes
+
+- make MidiCC default values more predictable (#490)
+- convert bipolar to range params (#494)
+
 ## 1.8.2 (2026-03-16)
 
 ### Fixes
