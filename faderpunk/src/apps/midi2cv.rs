@@ -425,11 +425,11 @@ pub async fn run(
                     }
                 }
                 AppMidiEvent::Message(msg) => match msg {
-                MidiMessage::Controller { controller, value } => {
-                    if mode == 0 && controller == u7::from(midi_cc) {
-                        let val = scale_bits_7_12(value);
-                        offset_glob.set(val);
-                    }
+                MidiMessage::Controller { controller, value }
+                    if mode == 0 && controller == u7::from(midi_cc) =>
+                {
+                    let val = scale_bits_7_12(value);
+                    offset_glob.set(val);
                 }
                 MidiMessage::NoteOn { key, vel } => {
                     // Sometimes note-off will be a NoteOn with velocity 0
@@ -437,27 +437,25 @@ pub async fn run(
                         handle_note_off(key, &mut note_num);
                     } else {
                         match mode {
-                            1 => {
-                                if !muted_glob.get() {
-                                    // Legato detection: if a note is already held, enable glide
-                                    let is_legato = note_num > 0;
-                                    glide_active_glob.set(is_legato);
-                                    note_num += 1;
+                            1 if !muted_glob.get() => {
+                                // Legato detection: if a note is already held, enable glide
+                                let is_legato = note_num > 0;
+                                glide_active_glob.set(is_legato);
+                                note_num += 1;
 
-                                    let mut note_in = bits_7_16(key);
-                                    note_in = (note_in as u32 * 410 / 12) as u16;
-                                    let main_val = storage.query(|s| s.main_layer_val);
-                                    let oct = (main_val as i32 * 10 / 4095) - 5;
-                                    let note_out =
-                                        (note_in as i32 + oct * 410).clamp(0, 4095) as u16;
-                                    pitch_glob.set(note_out);
-                                    leds.set(
-                                        0,
-                                        Led::Top,
-                                        led_color,
-                                        Brightness::Custom((note_out / 16) as u8),
-                                    );
-                                }
+                                let mut note_in = bits_7_16(key);
+                                note_in = (note_in as u32 * 410 / 12) as u16;
+                                let main_val = storage.query(|s| s.main_layer_val);
+                                let oct = (main_val as i32 * 10 / 4095) - 5;
+                                let note_out =
+                                    (note_in as i32 + oct * 410).clamp(0, 4095) as u16;
+                                pitch_glob.set(note_out);
+                                leds.set(
+                                    0,
+                                    Led::Top,
+                                    led_color,
+                                    Brightness::Custom((note_out / 16) as u8),
+                                );
                             }
                             2 => {
                                 if !muted_glob.get() {
@@ -488,20 +486,18 @@ pub async fn run(
                                     Brightness::Custom((vel_out / 16) as u8),
                                 );
                             }
-                            6 => {
-                                if key == u7::from(note) {
-                                    if !muted_glob.get() {
-                                        let vel_out = if gate_vel {
-                                            (scale_bits_7_12(vel) as u32 * 3685 / 4095 + 410) as u16
-                                        } else {
-                                            4095
-                                        };
-                                        jack.set_value(vel_out);
-                                        note_num += 1;
-                                        leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
+                            6 if key == u7::from(note) => {
+                                if !muted_glob.get() {
+                                    let vel_out = if gate_vel {
+                                        (scale_bits_7_12(vel) as u32 * 3685 / 4095 + 410) as u16
                                     } else {
-                                        note_num = 0;
-                                    }
+                                        4095
+                                    };
+                                    jack.set_value(vel_out);
+                                    note_num += 1;
+                                    leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
+                                } else {
+                                    note_num = 0;
                                 }
                             }
                             _ => {}
@@ -530,11 +526,9 @@ pub async fn run(
                     }
                     _ => {}
                 },
-                MidiMessage::ChannelAftertouch { vel } => {
-                    if mode == 4 {
-                        let val = scale_bits_7_12(vel);
-                        offset_glob.set(val);
-                    }
+                MidiMessage::ChannelAftertouch { vel } if mode == 4 => {
+                    let val = scale_bits_7_12(vel);
+                    offset_glob.set(val);
                 }
 
                 _ => {}

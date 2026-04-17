@@ -926,15 +926,13 @@ pub async fn run(
                                 Brightness::Custom(scale_bits_12_8(fader_led_value)),
                             );
                         }
-                        LatchLayer::Alt => {
-                            if chan != 3 {
-                                leds.set(
-                                    chan,
-                                    Led::Bottom,
-                                    alt_led_color,
-                                    Brightness::Custom(scale_bits_12_8(fader_led_value)),
-                                );
-                            }
+                        LatchLayer::Alt if chan != 3 => {
+                            leds.set(
+                                chan,
+                                Led::Bottom,
+                                alt_led_color,
+                                Brightness::Custom(scale_bits_12_8(fader_led_value)),
+                            );
                         }
                         _ => {}
                     };

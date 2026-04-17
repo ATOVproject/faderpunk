@@ -290,10 +290,8 @@ pub async fn run(
                         }
                     }
                 }
-                ClockEvent::Stop => {
-                    if midi_mode == MidiMode::Note {
-                        midi.send_note_off(midi_note.get()).await;
-                    }
+                ClockEvent::Stop if midi_mode == MidiMode::Note => {
+                    midi.send_note_off(midi_note.get()).await;
                 }
                 _ => {}
             }

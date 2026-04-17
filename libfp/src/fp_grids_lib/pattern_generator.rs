@@ -955,13 +955,9 @@ impl PatternGenerator {
                 // Snare
                 (self.base_dnb_pattern.snare, true)
             }
-            3 => {
+            3 if self.current_dnb_pattern.has_ghost => {
                 // Ghost Snare
-                if self.current_dnb_pattern.has_ghost {
-                    (self.base_dnb_pattern.ghost_snare, true)
-                } else {
-                    ([false; DNB_MAX_STEPS], false)
-                }
+                (self.base_dnb_pattern.ghost_snare, true)
             }
             _ => ([false; DNB_MAX_STEPS], false),
         };

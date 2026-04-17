@@ -529,22 +529,20 @@ impl MidiInput {
     pub async fn wait_for_event(&mut self) -> AppMidiEvent {
         loop {
             match self.next_event().await {
-                MidiEvent::Live(LiveEvent::Midi { channel, message }) => {
-                    if channel == self.midi_channel {
-                        return AppMidiEvent::Message(message);
-                    }
+                MidiEvent::Live(LiveEvent::Midi { channel, message })
+                    if channel == self.midi_channel =>
+                {
+                    return AppMidiEvent::Message(message);
                 }
                 MidiEvent::Nrpn {
                     channel,
                     param,
                     value,
-                } => {
-                    if channel == self.midi_channel {
-                        return AppMidiEvent::Nrpn {
-                            param,
-                            value: scale_bits_14_12(value),
-                        };
-                    }
+                } if channel == self.midi_channel => {
+                    return AppMidiEvent::Nrpn {
+                        param,
+                        value: scale_bits_14_12(value),
+                    };
                 }
                 _ => {}
             }
