@@ -129,7 +129,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 4; // Number of used faderpunk channels
-pub const PARAMS: usize = 9; // NUmber of app configuration parameters
+pub const PARAMS: usize = 13; // NUmber of app configuration parameters
 
 const DIV_SIXTEENTH_NOTE_COLOR: Color = Color::Yellow;
 
@@ -141,16 +141,26 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     AppIcon::Euclid,
 )
 .add_param(Param::MidiChannel {
-    name: "MIDI Channel",
+    name: "Note 1 MIDI Channel",
 })
 .add_param(Param::MidiNote {
     name: "MIDI Note 1",
-})
-.add_param(Param::MidiNote {
+}).add_param(Param::MidiChannel {
+    name: "Note 2 MIDI Channel",
+}).add_param(Param::MidiNote {
     name: "MIDI Note 2",
+})
+.add_param(Param::MidiChannel {
+    name: "Note 3 MIDI Channel",
 })
 .add_param(Param::MidiNote {
     name: "MIDI Note 3",
+})
+.add_param(Param::MidiChannel {
+    name: "DnB Ghost Note MIDI Channel",
+})
+.add_param(Param::MidiNote {
+    name: "MIDI DnB Ghost Note",
 })
 .add_param(Param::i32 {
     name: "MIDI Velocity",
@@ -192,6 +202,10 @@ pub struct Params {
     accent: i32,
     gatel: i32,
     color: Color,
+    ghost_note: MidiNote,
+    midi_channel2: MidiChannel,
+    midi_channel3: MidiChannel,
+    midi_channel4: MidiChannel,
 }
 
 impl Default for Params {
@@ -206,6 +220,10 @@ impl Default for Params {
             accent: 127,
             gatel: 50,
             color: Color::Orange,
+            ghost_note: MidiNote::from(39),
+            midi_channel2: MidiChannel::default(),
+            midi_channel3: MidiChannel::default(),
+            midi_channel4: MidiChannel::default(),
         }
     }
 }
@@ -218,13 +236,17 @@ impl AppParams for Params {
         Some(Self {
             midi_channel: MidiChannel::from_value(values[0]),
             note1: MidiNote::from_value(values[1]),
-            note2: MidiNote::from_value(values[2]),
-            note3: MidiNote::from_value(values[3]),
-            velocity: i32::from_value(values[4]),
-            accent: i32::from_value(values[5]),
-            gatel: i32::from_value(values[6]),
-            color: Color::from_value(values[7]),
-            midi_out: MidiOut::from_value(values[8]),
+            midi_channel2: MidiChannel::from_value(values[2]),
+            note2: MidiNote::from_value(values[3]),
+            midi_channel3: MidiChannel::from_value(values[4]),
+            note3: MidiNote::from_value(values[5]),
+            midi_channel4: MidiChannel::from_value(values[6]),
+            ghost_note: MidiNote::from_value(values[7]),
+            velocity: i32::from_value(values[8]),
+            accent: i32::from_value(values[9]),
+            gatel: i32::from_value(values[10]),
+            color: Color::from_value(values[11]),
+            midi_out: MidiOut::from_value(values[12]),
         })
     }
 
@@ -232,8 +254,12 @@ impl AppParams for Params {
         let mut vec = Vec::new();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.note1.into()).unwrap();
+        vec.push(self.midi_channel2.into()).unwrap();
         vec.push(self.note2.into()).unwrap();
+        vec.push(self.midi_channel3.into()).unwrap();
         vec.push(self.note3.into()).unwrap();
+        vec.push(self.midi_channel4.into()).unwrap();
+        vec.push(self.ghost_note.into()).unwrap();
         vec.push(self.velocity.into()).unwrap();
         vec.push(self.accent.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
@@ -289,6 +315,10 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             accent: 127,
             gatel: 50,
             color: Color::Orange,
+            ghost_note: MidiNote::from(39),
+            midi_channel2: MidiChannel::default(),
+            midi_channel3: MidiChannel::default(),
+            midi_channel4: MidiChannel::default(),           
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -329,6 +359,10 @@ pub async fn run(
         velocityi32,
         accent_velocityi32,
         led_color,
+        ghost_note,
+        midi_channel2,
+        midi_channel3,  
+        midi_channel4
     ) = params.query(|p| {
         (
             p.midi_out,
@@ -340,6 +374,10 @@ pub async fn run(
             p.velocity,
             p.accent,
             p.color,
+            p.ghost_note,
+            p.midi_channel2,
+            p.midi_channel3,
+            p.midi_channel4,
         )
     });
     let alt_led_color = if led_color == Color::Blue {
@@ -355,7 +393,13 @@ pub async fn run(
     let midi_velocity = ((velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
     let accent_velocity = ((accent_velocityi32.abs().clamp(1, 127) as u32 * 4095) / 127) as u16;
 
-    let midi = app.use_midi_output(midi_out, midi_channel, false);
+    let midi = [
+        app.use_midi_output(midi_out, midi_channel, false),
+        app.use_midi_output(midi_out, midi_channel2, false),
+        app.use_midi_output(midi_out, midi_channel3, false),
+        app.use_midi_output(midi_out, midi_channel4, false),
+    ];
+
     let notes = [note1, note2, note3];
     let jack = [
         app.make_gate_jack(0, 4095).await,
@@ -403,7 +447,7 @@ pub async fn run(
         },
     );
 
-    reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
+    reset_all_outputs(&midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
 
     let main_loop = async {
         let mut clock = app.use_clock();
@@ -412,7 +456,6 @@ pub async fn run(
         let mut output_mode = output_mode_glob.get();
         let mut dnb_pattern = dnb_pattern_glob.get();
         let mut tick_origin = ticks() as u32;
-        let ghost_note = notes[1];
         let ghost_velocity = (midi_velocity - (midi_velocity / 4)).clamp(1, 127);
 
         let mut generator = PatternGenerator::default();
@@ -441,11 +484,11 @@ pub async fn run(
         // Decide if need to send MIDI note off events after a re-spawn, assume MIDI notes have not changed since last restore
         for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
             if restored_note_on_[part] {
-                midi.send_note_off(*note).await;
+                midi[part].send_note_off(*note).await;
             }
         }
         if output_mode == OutputMode::OutputModeDnB && restored_accent_on_ {
-            midi.send_note_off(ghost_note).await;
+            midi[3].send_note_off(ghost_note).await;
         }
 
         loop {
@@ -454,7 +497,7 @@ pub async fn run(
                     // defmt::info!("[{}] Clock reset!", ticks());
                     tick_origin = ticks() as u32;
                     output_mode = output_mode_glob.get();
-                    reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
+                    reset_all_outputs(&midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
 
                     generator.set_seed(die.roll());
@@ -466,7 +509,7 @@ pub async fn run(
                 ClockEvent::Stop => {
                     // defmt::info!("[{}] Clock stop", ticks());
                     // Prevent hanging notes / gate CVs if clock is stopped
-                    reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
+                    reset_all_outputs(&midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
                     dnb_vary_pattern_glob.set(false);
                     dnb_reset_pattern_glob.set(false);
@@ -539,12 +582,12 @@ pub async fn run(
                                 // Send Note Off first if re-triggering
                                 let mut note_on_ = note_on_glob.get();
                                 if note_on_[part] {
-                                    midi.send_note_off(*note).await;
+                                    midi[part].send_note_off(*note).await;
                                 }
                                 jack[part].set_high().await;
                                 note_on_[part] = true;
                                 note_on_glob.set(note_on_);
-                                midi.send_note_on(*note, velocity_).await;
+                                midi[part].send_note_on(*note, velocity_).await;
                                 leds.set(
                                     part,
                                     Led::Top,
@@ -566,7 +609,7 @@ pub async fn run(
                             leds.set(3, Led::Top, led_color, Brightness::Mid);
                             if output_mode == OutputMode::OutputModeDnB {
                                 // Send Ghost Snare MIDI out, use next MIDI note up from Trigger 3
-                                midi.send_note_on(ghost_note, ghost_velocity).await;
+                                midi[3].send_note_on(ghost_note, ghost_velocity).await;
                             }
                         }
 
@@ -609,7 +652,7 @@ pub async fn run(
                         let mut note_on_ = note_on_glob.get();
                         for (part, note) in notes.iter().enumerate().take(K_NUM_PARTS) {
                             if note_on_[part] {
-                                midi.send_note_off(*note).await;
+                                midi[part].send_note_off(*note).await;
                                 note_on_[part] = false;
                                 jack[part].set_low().await;
                             }
@@ -622,7 +665,7 @@ pub async fn run(
                             jack[3].set_low().await;
                             leds.unset(3, Led::Top);
                             if output_mode == OutputMode::OutputModeDnB {
-                                midi.send_note_off(ghost_note).await;
+                                midi[3].send_note_off(ghost_note).await;
                             }
                         }
                         if glob_latch_layer.get() == LatchLayer::Alt {
@@ -996,7 +1039,7 @@ pub async fn run(
                     if note_on_glob.get()[part] {
                         let mut note_on_ = note_on_glob.get();
                         if note_on_[part] {
-                            midi.send_note_off(notes[part]).await;
+                            midi[part].send_note_off(notes[part]).await;
                             note_on_[part] = false;
                             note_on_glob.set(note_on_);
                             jack[part].set_low().await;
@@ -1181,7 +1224,7 @@ pub async fn run(
                             dnb_pattern_glob: &dnb_pattern_glob,
                         },
                     );
-                    reset_all_outputs(midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
+                    reset_all_outputs(&midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
                         .await;
                 }
 
@@ -1196,7 +1239,7 @@ pub async fn run(
 }
 
 async fn reset_all_outputs(
-    midi: crate::app::MidiOutput,
+    midi: &[crate::app::MidiOutput; 4],
     leds: crate::app::Leds<4>,
     notes: [MidiNote; 3],
     jack: &[crate::app::GateJack; 4],
@@ -1208,7 +1251,7 @@ async fn reset_all_outputs(
         if note_on_[part] {
             join(
                 // Only send a MIDI note off if we think we have previously sent a note on
-                midi.send_note_off(notes[part]),
+                midi[part].send_note_off(notes[part]),
                 jack[part].set_low(),
             )
             .await;
