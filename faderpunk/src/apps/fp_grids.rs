@@ -140,27 +140,29 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::SkyBlue,
     AppIcon::Euclid,
 )
-.add_param(Param::MidiChannel {
-    name: "Note 1 MIDI Channel",
-})
 .add_param(Param::MidiNote {
     name: "MIDI Note 1",
-}).add_param(Param::MidiChannel {
-    name: "Note 2 MIDI Channel",
-}).add_param(Param::MidiNote {
-    name: "MIDI Note 2",
 })
-.add_param(Param::MidiChannel {
-    name: "Note 3 MIDI Channel",
+.add_param(Param::MidiNote {
+    name: "MIDI Note 2",
 })
 .add_param(Param::MidiNote {
     name: "MIDI Note 3",
 })
-.add_param(Param::MidiChannel {
-    name: "DnB Ghost Note MIDI Channel",
-})
 .add_param(Param::MidiNote {
     name: "MIDI DnB Ghost Note",
+})
+.add_param(Param::MidiChannel {
+    name: "Note 1 MIDI Channel",
+})
+.add_param(Param::MidiChannel {
+    name: "Note 2 MIDI Channel",
+})
+.add_param(Param::MidiChannel {
+    name: "Note 3 MIDI Channel",
+})
+.add_param(Param::MidiChannel {
+    name: "DnB Ghost Note MIDI Channel",
 })
 .add_param(Param::i32 {
     name: "MIDI Velocity",
@@ -220,7 +222,7 @@ impl Default for Params {
             accent: 127,
             gatel: 50,
             color: Color::Orange,
-            ghost_note: MidiNote::from(39),
+            ghost_note: MidiNote::from(37),
             midi_channel2: MidiChannel::default(),
             midi_channel3: MidiChannel::default(),
             midi_channel4: MidiChannel::default(),
@@ -234,14 +236,14 @@ impl AppParams for Params {
             return None;
         }
         Some(Self {
-            midi_channel: MidiChannel::from_value(values[0]),
-            note1: MidiNote::from_value(values[1]),
-            midi_channel2: MidiChannel::from_value(values[2]),
-            note2: MidiNote::from_value(values[3]),
-            midi_channel3: MidiChannel::from_value(values[4]),
-            note3: MidiNote::from_value(values[5]),
-            midi_channel4: MidiChannel::from_value(values[6]),
-            ghost_note: MidiNote::from_value(values[7]),
+            note1: MidiNote::from_value(values[0]),
+            note2: MidiNote::from_value(values[1]),
+            note3: MidiNote::from_value(values[2]),
+            ghost_note: MidiNote::from_value(values[3]),
+            midi_channel: MidiChannel::from_value(values[4]),
+            midi_channel2: MidiChannel::from_value(values[5]),
+            midi_channel3: MidiChannel::from_value(values[6]),
+            midi_channel4: MidiChannel::from_value(values[7]),
             velocity: i32::from_value(values[8]),
             accent: i32::from_value(values[9]),
             gatel: i32::from_value(values[10]),
@@ -252,14 +254,14 @@ impl AppParams for Params {
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
-        vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.note1.into()).unwrap();
-        vec.push(self.midi_channel2.into()).unwrap();
         vec.push(self.note2.into()).unwrap();
-        vec.push(self.midi_channel3.into()).unwrap();
         vec.push(self.note3.into()).unwrap();
-        vec.push(self.midi_channel4.into()).unwrap();
         vec.push(self.ghost_note.into()).unwrap();
+        vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.midi_channel2.into()).unwrap();
+        vec.push(self.midi_channel3.into()).unwrap();
+        vec.push(self.midi_channel4.into()).unwrap();
         vec.push(self.velocity.into()).unwrap();
         vec.push(self.accent.into()).unwrap();
         vec.push(self.gatel.into()).unwrap();
@@ -318,7 +320,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             ghost_note: MidiNote::from(39),
             midi_channel2: MidiChannel::default(),
             midi_channel3: MidiChannel::default(),
-            midi_channel4: MidiChannel::default(),           
+            midi_channel4: MidiChannel::default(),
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -361,8 +363,8 @@ pub async fn run(
         led_color,
         ghost_note,
         midi_channel2,
-        midi_channel3,  
-        midi_channel4
+        midi_channel3,
+        midi_channel4,
     ) = params.query(|p| {
         (
             p.midi_out,
