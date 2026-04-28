@@ -449,7 +449,7 @@ pub async fn run(
         },
     );
 
-    reset_all_outputs(&midi, leds, notes, &jack, &note_on_glob, &accent_on_glob).await;
+    reset_all_outputs(&midi, leds, notes, ghost_note, &jack, &note_on_glob, &accent_on_glob).await;
 
     let main_loop = async {
         let mut clock = app.use_clock();
@@ -499,7 +499,7 @@ pub async fn run(
                     // defmt::info!("[{}] Clock reset!", ticks());
                     tick_origin = ticks() as u32;
                     output_mode = output_mode_glob.get();
-                    reset_all_outputs(&midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
+                    reset_all_outputs(&midi, leds, notes, ghost_note, &jack, &note_on_glob, &accent_on_glob)
                         .await;
 
                     generator.set_seed(die.roll());
@@ -511,7 +511,7 @@ pub async fn run(
                 ClockEvent::Stop => {
                     // defmt::info!("[{}] Clock stop", ticks());
                     // Prevent hanging notes / gate CVs if clock is stopped
-                    reset_all_outputs(&midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
+                    reset_all_outputs(&midi, leds, notes, ghost_note, &jack, &note_on_glob, &accent_on_glob)
                         .await;
                     dnb_vary_pattern_glob.set(false);
                     dnb_reset_pattern_glob.set(false);
@@ -1226,7 +1226,7 @@ pub async fn run(
                             dnb_pattern_glob: &dnb_pattern_glob,
                         },
                     );
-                    reset_all_outputs(&midi, leds, notes, &jack, &note_on_glob, &accent_on_glob)
+                    reset_all_outputs(&midi, leds, notes, ghost_note, &jack, &note_on_glob, &accent_on_glob)
                         .await;
                 }
 
@@ -1244,6 +1244,7 @@ async fn reset_all_outputs(
     midi: &[crate::app::MidiOutput; 4],
     leds: crate::app::Leds<4>,
     notes: [MidiNote; 3],
+    ghost_note: MidiNote,
     jack: &[crate::app::GateJack; 4],
     note_on_glob: &Global<[bool; 3]>,
     accent_on_glob: &Global<bool>,
@@ -1263,7 +1264,7 @@ async fn reset_all_outputs(
         leds.unset(part, Led::Top);
     }
     note_on_glob.set([false; K_NUM_PARTS]);
-    jack[3].set_low().await;
+    join(midi[3].send_note_off(ghost_note), jack[3].set_low()).await;
     accent_on_glob.set(false);
     leds.unset(3, Led::Top);
 }
