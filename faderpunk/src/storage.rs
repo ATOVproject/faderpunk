@@ -9,7 +9,8 @@ use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializ
 
 use libfp::{
     types::{CalibFile, MaxCalibration, MaxCalibrationV1},
-    GlobalConfig, Layout, Value, APP_MAX_PARAMS, CALIB_FILE_MAGIC,
+    AuxJackMode, ClockConfig, ClockSrc, GlobalConfig, I2cMode, Layout, MidiConfig,
+    QuantizerConfig, ResetSrc, TakeoverMode, Value, APP_MAX_PARAMS, CALIB_FILE_MAGIC,
 };
 
 use crate::{
@@ -26,11 +27,77 @@ const RUNTIME_STATE_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..384;
 const LAYOUT_RANGE: Range<u32> = RUNTIME_STATE_RANGE.end..512;
 const CALIBRATION_RANGE: Range<u32> = LAYOUT_RANGE.end..1024;
 const APP_STORAGE_RANGE: Range<u32> = CALIBRATION_RANGE.end..122_880;
-const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..131_072;
+const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..SCHEMA_HEADER_RANGE.start;
+/// Reserved region at the very end of FRAM holding `SchemaHeader`. Everything
+/// before it is data laid out by the firmware version that wrote it; this
+/// header is what tells us whether that layout matches the running firmware.
+const SCHEMA_HEADER_RANGE: Range<u32> = 131_056..131_072;
 
 const APP_STORAGE_MAX_BYTES: u32 = 400;
 const APP_PARAMS_MAX_BYTES: u32 = 128;
 const SCENES_PER_APP: u32 = 16;
+
+/// Magic bytes identifying a valid `SchemaHeader` (FaderPunk Schema Version).
+const SCHEMA_MAGIC: [u8; 4] = *b"FPSV";
+
+/// Version of the on-FRAM data layout. Bump this whenever a serialized struct
+/// stored in FRAM changes in a way that isn't backwards compatible under
+/// postcard. The migration logic in `migrate_legacy_global_config` runs once
+/// per device when the stored version is older than this.
+const SCHEMA_VERSION: u8 = 1;
+
+#[derive(Serialize, Deserialize)]
+struct SchemaHeader {
+    magic: [u8; 4],
+    version: u8,
+}
+
+/// v0 layout = anything older than `SCHEMA_VERSION = 1` (i.e. v1.8.2 and the
+/// pre-fix v1.9 betas, which never wrote a header).
+const SCHEMA_VERSION_V0: u8 = 0;
+
+/// On-FRAM layout of `ClockConfig` as it existed before v1.9 added
+/// `swing_amount`. Used only by `migrate_legacy_global_config` to deserialize
+/// stored v1.8.2 `GlobalConfig` blobs without the byte shift that would
+/// otherwise corrupt every field after `internal_bpm`.
+#[derive(Deserialize)]
+struct ClockConfigV0 {
+    clock_src: ClockSrc,
+    ext_ppqn: u8,
+    reset_src: ResetSrc,
+    internal_bpm: f32,
+}
+
+#[derive(Deserialize)]
+struct GlobalConfigV0 {
+    aux: [AuxJackMode; 3],
+    clock: ClockConfigV0,
+    i2c_mode: I2cMode,
+    led_brightness: u8,
+    midi: MidiConfig,
+    quantizer: QuantizerConfig,
+    takeover_mode: TakeoverMode,
+}
+
+impl From<GlobalConfigV0> for GlobalConfig {
+    fn from(old: GlobalConfigV0) -> Self {
+        Self {
+            aux: old.aux,
+            clock: ClockConfig {
+                clock_src: old.clock.clock_src,
+                ext_ppqn: old.clock.ext_ppqn,
+                reset_src: old.clock.reset_src,
+                internal_bpm: old.clock.internal_bpm,
+                swing_amount: 0,
+            },
+            i2c_mode: old.i2c_mode,
+            led_brightness: old.led_brightness,
+            midi: old.midi,
+            quantizer: old.quantizer,
+            takeover_mode: old.takeover_mode,
+        }
+    }
+}
 
 pub async fn store_global_config(config: &GlobalConfig) {
     let res = write_with(GLOBAL_CONFIG_RANGE.start, |buf| {
@@ -203,13 +270,102 @@ async fn erase_range(range: Range<u32>) {
     }
 }
 
-/// Erases all data from FRAM except for the calibration data.
+async fn write_schema_header(version: u8) {
+    let header = SchemaHeader {
+        magic: SCHEMA_MAGIC,
+        version,
+    };
+    let res = write_with(SCHEMA_HEADER_RANGE.start, |buf| {
+        Ok(to_slice(&header, &mut *buf)?.len())
+    })
+    .await;
+
+    if res.is_err() {
+        defmt::error!("Could not save FRAM schema header");
+    }
+}
+
+/// Returns the schema version recorded in FRAM, or `SCHEMA_VERSION_V0` if no
+/// valid header is present. A missing/garbled header means the stored data was
+/// written by a firmware predating the schema-version mechanism (v1.8.2 or the
+/// pre-fix v1.9 betas).
+async fn read_schema_version() -> u8 {
+    let Ok(guard) = read_data(SCHEMA_HEADER_RANGE.start).await else {
+        return SCHEMA_VERSION_V0;
+    };
+    let Ok(header) = from_bytes::<SchemaHeader>(guard.data()) else {
+        return SCHEMA_VERSION_V0;
+    };
+    if header.magic != SCHEMA_MAGIC {
+        return SCHEMA_VERSION_V0;
+    }
+    header.version
+}
+
+/// One-shot migration for `GlobalConfig` written by v1.8.2 / pre-fix v1.9
+/// betas. The stored bytes were laid out without `swing_amount`, so a current
+/// `from_bytes::<GlobalConfig>` either fails or, worse, succeeds with every
+/// field after `internal_bpm` shifted by one byte.
+///
+/// We deserialize as `GlobalConfigV0`, fill in `swing_amount = 0`, save the
+/// result in the current format, and return it. On any failure we fall back to
+/// `GlobalConfig::new()` and persist that — the v0 blob is left untouched on
+/// disk by the read, so the only data lost on failure is the global config
+/// (layouts, calibration, app params, app storage are all untouched).
+async fn migrate_legacy_global_config() -> GlobalConfig {
+    let migrated = read_data(GLOBAL_CONFIG_RANGE.start)
+        .await
+        .ok()
+        .and_then(|guard| from_bytes::<GlobalConfigV0>(guard.data()).ok())
+        .map(GlobalConfig::from);
+
+    let mut config = match migrated {
+        Some(config) => {
+            defmt::info!("Migrated GlobalConfig from pre-v1.9 (v0) layout");
+            config
+        }
+        None => {
+            defmt::warn!("Could not migrate legacy GlobalConfig; using defaults");
+            GlobalConfig::new()
+        }
+    };
+    config.validate();
+    store_global_config(&config).await;
+    config
+}
+
+/// Runs FRAM migrations needed to bring stored data forward to
+/// `SCHEMA_VERSION`. Migrations are non-destructive: only the data structures
+/// known to have changed shape are rewritten in place. Layouts, calibration,
+/// and per-app storage are left alone — apps that load mismatched param/state
+/// blobs already fall back to defaults gracefully.
+///
+/// On a fresh device (no header, but no stored data either) this is
+/// effectively a no-op apart from writing the header.
+pub async fn migrate_fram() {
+    let version = read_schema_version().await;
+    if version >= SCHEMA_VERSION {
+        return;
+    }
+
+    if version < 1 {
+        // v0 → v1: ClockConfig gained `swing_amount`, shifting every field
+        // after it inside GlobalConfig. Migrate the global config in place.
+        migrate_legacy_global_config().await;
+    }
+
+    write_schema_header(SCHEMA_VERSION).await;
+}
+
+/// Erases all data from FRAM except for the calibration data and reboots.
 pub async fn factory_reset() {
     erase_range(GLOBAL_CONFIG_RANGE).await;
     erase_range(RUNTIME_STATE_RANGE).await;
     erase_range(LAYOUT_RANGE).await;
     erase_range(APP_STORAGE_RANGE).await;
     erase_range(APP_PARAM_RANGE).await;
+    erase_range(SCHEMA_HEADER_RANGE).await;
+    write_schema_header(SCHEMA_VERSION).await;
     // Wait a bit
     Timer::after_millis(100).await;
     // Then restart the unit

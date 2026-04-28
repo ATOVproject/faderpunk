@@ -37,7 +37,7 @@ use {defmt_rtt as _, panic_probe as _};
 use crate::storage::{factory_reset, store_layout};
 
 use layout::{LayoutManager, FORCE_RESPAWN_SIGNAL, LAYOUT_MANAGER, LAYOUT_WATCH};
-use storage::{load_calibration_data, load_global_config, load_layout};
+use storage::{load_calibration_data, load_global_config, load_layout, migrate_fram};
 use tasks::{
     buttons::{is_channel_button_pressed, is_scene_button_pressed},
     fram::MAX_DATA_LEN,
@@ -182,6 +182,11 @@ async fn main(spawner: Spawner) {
 
     // Initialize the buttons, otherwise we can't detect a press during startup
     tasks::buttons::start_buttons(&spawner, buttons).await;
+
+    // Migrate stored data from older firmware versions (e.g. v1.8.2's
+    // GlobalConfig that didn't yet have ClockConfig::swing_amount). Runs once
+    // per device, then short-circuits via the FRAM schema header.
+    migrate_fram().await;
 
     let calibration_data = load_calibration_data().await;
     let mut global_config = load_global_config().await;
