@@ -6,6 +6,7 @@ use embassy_time::Duration;
 use heapless::Vec;
 use max11300::config::{ADCRANGE, DACRANGE};
 use midly::num::{u4, u7};
+use minicbor::{Decode, Encode};
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
@@ -60,8 +61,9 @@ pub type ConfigMeta<'a> = (usize, &'a str, &'a str, Color, AppIcon, &'a [Param])
 // (app_id, channels, layout_id)
 pub type InnerLayout = [Option<(u8, usize, u8)>; GLOBAL_CHANNELS];
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
-pub struct Layout(pub InnerLayout);
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[cbor(transparent)]
+pub struct Layout(#[n(0)] pub InnerLayout);
 
 impl Layout {
     pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) -> bool {
@@ -164,15 +166,23 @@ impl<'a> IntoIterator for &'a Layout {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum ClockSrc {
+    #[n(0)]
     None,
+    #[n(1)]
     Atom,
+    #[n(2)]
     Meteor,
+    #[n(3)]
     Cube,
+    #[n(4)]
     Internal,
+    #[n(5)]
     MidiIn,
+    #[n(6)]
     MidiUsb,
 }
 
@@ -187,38 +197,62 @@ impl From<ResetSrc> for ClockSrc {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum ResetSrc {
+    #[n(0)]
     None,
+    #[n(1)]
     Atom,
+    #[n(2)]
     Meteor,
+    #[n(3)]
     Cube,
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum I2cMode {
+    #[n(0)]
     Calibration,
+    #[n(1)]
     Leader,
+    #[n(2)]
     Follower,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum Note {
     #[default]
+    #[n(0)]
     C = 0,
+    #[n(1)]
     CSharp = 1,
+    #[n(2)]
     D = 2,
+    #[n(3)]
     DSharp = 3,
+    #[n(4)]
     E = 4,
+    #[n(5)]
     F = 5,
+    #[n(6)]
     FSharp = 6,
+    #[n(7)]
     G = 7,
+    #[n(8)]
     GSharp = 8,
+    #[n(9)]
     A = 9,
+    #[n(10)]
     ASharp = 10,
+    #[n(11)]
     B = 11,
 }
 
@@ -251,25 +285,44 @@ impl FromValue for Note {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum Key {
     #[default]
+    #[n(0)]
     Chromatic,
+    #[n(1)]
     Ionian,
+    #[n(2)]
     Dorian,
+    #[n(3)]
     Phrygian,
+    #[n(4)]
     Lydian,
+    #[n(5)]
     Mixolydian,
+    #[n(6)]
     Aeolian,
+    #[n(7)]
     Locrian,
+    #[n(8)]
     BluesMaj,
+    #[n(9)]
     BluesMin,
+    #[n(10)]
     PentatonicMaj,
+    #[n(11)]
     PentatonicMin,
+    #[n(12)]
     Folk,
+    #[n(13)]
     Japanese,
+    #[n(14)]
     Gamelan,
+    #[n(15)]
     HungarianMin,
 }
 
@@ -297,18 +350,31 @@ impl Key {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub enum MidiOutMode {
+    #[n(0)]
     None,
+    #[n(1)]
     Local,
-    MidiThru { sources: MidiIn },
-    MidiMerge { sources: MidiIn },
+    #[n(2)]
+    MidiThru {
+        #[n(0)]
+        sources: MidiIn,
+    },
+    #[n(3)]
+    MidiMerge {
+        #[n(0)]
+        sources: MidiIn,
+    },
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct MidiOutConfig {
+    #[n(0)]
     pub send_clock: bool,
+    #[n(1)]
     pub send_transport: bool,
+    #[n(2)]
     pub mode: MidiOutMode,
 }
 
@@ -323,9 +389,10 @@ impl MidiOutConfig {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct MidiConfig {
     // [usb, out1, out2]
+    #[n(0)]
     pub outs: [MidiOutConfig; 3],
 }
 
@@ -338,13 +405,18 @@ impl MidiConfig {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct ClockConfig {
+    #[n(0)]
     pub clock_src: ClockSrc,
+    #[n(1)]
     pub ext_ppqn: u8,
+    #[n(2)]
     pub reset_src: ResetSrc,
+    #[n(3)]
     pub internal_bpm: f32,
     /// Deluge-style swing amount in `[-35, 35]`. `0` = straight.
+    #[n(4)]
     pub swing_amount: i8,
 }
 
@@ -361,9 +433,11 @@ impl ClockConfig {
     }
 }
 
-#[derive(Clone, Default, Serialize, Deserialize, PostcardBindings, PartialEq)]
+#[derive(Clone, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct QuantizerConfig {
+    #[n(0)]
     pub key: Key,
+    #[n(1)]
     pub tonic: Note,
 }
 
@@ -377,41 +451,62 @@ impl QuantizerConfig {
     }
 }
 
-#[derive(Copy, Clone, Serialize, PartialEq, Deserialize, PostcardBindings)]
+#[derive(Copy, Clone, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode)]
+#[cbor(index_only)]
 #[repr(u16)]
 pub enum ClockDivision {
+    #[n(1)]
     _1 = 1,
+    #[n(2)]
     _2 = 2,
+    #[n(4)]
     _4 = 4,
+    #[n(6)]
     _6 = 6,
+    #[n(8)]
     _8 = 8,
+    #[n(12)]
     _12 = 12,
     // 1 quarter note at 24 ppqn
+    #[n(24)]
     _24 = 24,
     // 1 bar at 24 ppqn
+    #[n(96)]
     _96 = 96,
     // 2 bars
+    #[n(192)]
     _192 = 192,
     // 4 bars
+    #[n(384)]
     _384 = 384,
 }
 
-#[derive(Clone, Serialize, PartialEq, Deserialize, PostcardBindings)]
+#[derive(Clone, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode)]
 #[repr(u8)]
 pub enum AuxJackMode {
+    #[n(0)]
     None,
-    ClockOut(ClockDivision),
+    #[n(1)]
+    ClockOut(#[n(0)] ClockDivision),
+    #[n(2)]
     ResetOut,
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
 pub struct GlobalConfig {
+    #[n(0)]
     pub aux: [AuxJackMode; 3],
+    #[n(1)]
     pub clock: ClockConfig,
+    #[n(2)]
     pub i2c_mode: I2cMode,
+    #[n(3)]
     pub led_brightness: u8,
+    #[n(4)]
     pub midi: MidiConfig,
+    #[n(5)]
     pub quantizer: QuantizerConfig,
+    #[n(6)]
     pub takeover_mode: TakeoverMode,
 }
 
@@ -1032,9 +1127,10 @@ impl From<MidiChannel> for u4 {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[cbor(transparent)]
 // [usb, din]
-pub struct MidiIn(pub [bool; 2]);
+pub struct MidiIn(#[n(0)] pub [bool; 2]);
 
 impl Default for MidiIn {
     fn default() -> Self {

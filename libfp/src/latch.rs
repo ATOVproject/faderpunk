@@ -1,3 +1,4 @@
+use minicbor::{Decode, Encode};
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
@@ -20,14 +21,30 @@ impl From<bool> for LatchLayer {
 }
 
 /// Defines how a fader should take control of a value when switching layers or starting a session.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize, PostcardBindings)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Default,
+    Serialize,
+    Deserialize,
+    PostcardBindings,
+    Encode,
+    Decode,
+)]
+#[cbor(index_only)]
 pub enum TakeoverMode {
     /// Wait until fader crosses target value, then sync (default behavior)
     #[default]
+    #[n(0)]
     Pickup,
     /// Value immediately jumps to fader position (no pickup delay)
+    #[n(1)]
     Jump,
     /// Gradually scale value toward fader position based on movement and runway
+    #[n(2)]
     Scale,
 }
 

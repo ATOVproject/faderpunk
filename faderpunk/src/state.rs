@@ -1,10 +1,12 @@
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use minicbor::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 use crate::storage;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Default, Debug)]
+#[derive(Serialize, Deserialize, Encode, Decode, Clone, Copy, Default, Debug)]
 pub struct RuntimeState {
+    #[n(0)]
     pub clock_is_running: bool,
 }
 
