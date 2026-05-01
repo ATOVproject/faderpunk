@@ -10,8 +10,8 @@ use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializ
 
 use libfp::{
     types::{CalibFile, MaxCalibration, MaxCalibrationV1},
-    AuxJackMode, ClockConfig, ClockSrc, GlobalConfig, I2cMode, Layout, MidiConfig,
-    QuantizerConfig, ResetSrc, TakeoverMode, Value, APP_MAX_PARAMS, CALIB_FILE_MAGIC,
+    AuxJackMode, ClockConfig, ClockSrc, GlobalConfig, I2cMode, Layout, MidiConfig, QuantizerConfig,
+    ResetSrc, TakeoverMode, Value, APP_MAX_PARAMS, CALIB_FILE_MAGIC,
 };
 
 use crate::{

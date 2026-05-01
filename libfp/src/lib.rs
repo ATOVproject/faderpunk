@@ -1127,7 +1127,9 @@ impl From<MidiChannel> for u4 {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
 #[cbor(transparent)]
 // [usb, din]
 pub struct MidiIn(#[n(0)] pub [bool; 2]);
