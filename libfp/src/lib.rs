@@ -166,6 +166,10 @@ impl<'a> IntoIterator for &'a Layout {
     }
 }
 
+/// Persisted in `GlobalConfig` via CBOR. New variants may be appended with the
+/// next free `#[n(N)]` tag without a migration. **Removing** a variant
+/// requires a one-shot FRAM migration (see `storage::migrate_fram`) — old
+/// stored data containing the removed tag would otherwise fail to decode.
 #[derive(
     Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
 )]
@@ -200,6 +204,9 @@ impl From<ResetSrc> for ClockSrc {
     }
 }
 
+/// Persisted in `GlobalConfig` via CBOR. New variants may be appended with the
+/// next free `#[n(N)]` tag without a migration. **Removing** a variant
+/// requires a one-shot FRAM migration (see `storage::migrate_fram`).
 #[derive(
     Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
 )]
@@ -217,6 +224,9 @@ pub enum ResetSrc {
     Cube,
 }
 
+/// Persisted in `GlobalConfig` via CBOR. New variants may be appended with the
+/// next free `#[n(N)]` tag without a migration. **Removing** a variant
+/// requires a one-shot FRAM migration (see `storage::migrate_fram`).
 #[derive(Clone, Default, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
 #[cbor(index_only)]
 #[repr(u8)]
@@ -230,6 +240,10 @@ pub enum I2cMode {
     Follower,
 }
 
+/// Persisted in `GlobalConfig` via CBOR (inside `QuantizerConfig`). New
+/// variants may be appended with the next free `#[n(N)]` tag without a
+/// migration. **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
 )]
@@ -292,6 +306,10 @@ impl FromValue for Note {
     }
 }
 
+/// Persisted in `GlobalConfig` via CBOR (inside `QuantizerConfig`). New
+/// variants may be appended with the next free `#[n(N)]` tag without a
+/// migration. **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
 )]
@@ -357,6 +375,10 @@ impl Key {
     }
 }
 
+/// Persisted in `GlobalConfig` via CBOR (inside `MidiOutConfig`). New variants
+/// may be appended with the next free `#[n(N)]` tag without a migration.
+/// **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
 #[derive(Clone, Copy, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub enum MidiOutMode {
     #[n(0)]
@@ -488,6 +510,10 @@ impl QuantizerConfig {
     }
 }
 
+/// Persisted in `GlobalConfig` via CBOR (inside `AuxJackMode::ClockOut`). New
+/// variants may be appended with the next free `#[n(N)]` tag without a
+/// migration. **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
 #[derive(
     Copy, Clone, Default, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode,
 )]
@@ -521,6 +547,10 @@ pub enum ClockDivision {
     _384 = 384,
 }
 
+/// Persisted in `GlobalConfig` via CBOR (inside `aux: [AuxJackMode; 3]`). New
+/// variants may be appended with the next free `#[n(N)]` tag without a
+/// migration. **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
 #[derive(Clone, Default, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode)]
 #[repr(u8)]
 pub enum AuxJackMode {

@@ -20,7 +20,12 @@ impl From<bool> for LatchLayer {
     }
 }
 
-/// Defines how a fader should take control of a value when switching layers or starting a session.
+/// Defines how a fader should take control of a value when switching layers
+/// or starting a session.
+///
+/// Persisted in `GlobalConfig` via CBOR. New variants may be appended with the
+/// next free `#[n(N)]` tag without a migration. **Removing** a variant
+/// requires a one-shot FRAM migration (see `storage::migrate_fram`).
 #[derive(
     Clone,
     Copy,
