@@ -1471,4 +1471,205 @@ mod tests {
             final_ids.push(layout_id).unwrap();
         }
     }
+
+    // ---- CBOR storage / migration tests ----
+    //
+    // These pin down the behaviour the rest of the storage layer relies on:
+    //   1. CBOR round-trips current persisted types.
+    //   2. Adding a `#[cbor(default)]` field is forward-compatible: data written
+    //      by an older shape decodes into the newer shape with the new field
+    //      defaulted.
+    //   3. Removing a field is backward-compatible: data written by an older
+    //      shape decodes into the newer (slimmer) shape with the dropped field
+    //      silently skipped.
+    //   4. v1.8.2 postcard `GlobalConfig` data fails to decode as the current
+    //      postcard `GlobalConfig` (which is what makes the migration's
+    //      "current first, V0 fallback" strategy safe).
+
+    use super::*;
+    use minicbor::{Decode, Encode};
+    use serde::{Deserialize, Serialize};
+
+    fn cbor_encode_to_vec<T: Encode<()>>(value: &T) -> heapless::Vec<u8, 256> {
+        let mut buf = [0u8; 256];
+        let initial = buf.len();
+        let mut writer: &mut [u8] = &mut buf[..];
+        minicbor::encode(value, &mut writer).unwrap();
+        let written = initial - writer.len();
+        heapless::Vec::from_slice(&buf[..written]).unwrap()
+    }
+
+    #[test]
+    fn cbor_round_trip_default_global_config() {
+        let original = GlobalConfig::new();
+        let encoded = cbor_encode_to_vec(&original);
+        let decoded: GlobalConfig = minicbor::decode(&encoded).unwrap();
+
+        assert_eq!(decoded.led_brightness, original.led_brightness);
+        assert_eq!(
+            decoded.clock.internal_bpm.to_bits(),
+            original.clock.internal_bpm.to_bits()
+        );
+        assert_eq!(decoded.clock.swing_amount, original.clock.swing_amount);
+        assert_eq!(decoded.i2c_mode as u8, I2cMode::Leader as u8);
+    }
+
+    #[test]
+    fn cbor_field_added_decodes_with_default() {
+        // V1: a struct shaped like an "older" version.
+        #[derive(Encode, Decode)]
+        struct V1 {
+            #[n(0)]
+            x: u32,
+            #[n(1)]
+            y: u32,
+        }
+
+        // V2: same tags, plus a new field that uses cbor(default).
+        #[derive(Encode, Decode, Debug, PartialEq)]
+        struct V2 {
+            #[n(0)]
+            #[cbor(default)]
+            x: u32,
+            #[n(1)]
+            #[cbor(default)]
+            y: u32,
+            #[n(2)]
+            #[cbor(default)]
+            z: u32,
+        }
+
+        let v1 = V1 { x: 42, y: 7 };
+        let bytes = cbor_encode_to_vec(&v1);
+        let v2: V2 = minicbor::decode(&bytes).unwrap();
+        assert_eq!(v2, V2 { x: 42, y: 7, z: 0 });
+    }
+
+    #[test]
+    fn cbor_field_removed_skips_unknown_tag() {
+        // V2: an "older" version that wrote a y field.
+        #[derive(Encode, Decode)]
+        struct V2 {
+            #[n(0)]
+            x: u32,
+            #[n(1)]
+            y: u32,
+        }
+
+        // V3: the y field has been removed.
+        #[derive(Encode, Decode, Debug, PartialEq)]
+        struct V3 {
+            #[n(0)]
+            x: u32,
+        }
+
+        let v2 = V2 { x: 42, y: 999 };
+        let bytes = cbor_encode_to_vec(&v2);
+        let v3: V3 = minicbor::decode(&bytes).unwrap();
+        assert_eq!(v3, V3 { x: 42 });
+    }
+
+    #[test]
+    fn cbor_postcard_data_does_not_decode_as_cbor() {
+        // After migration, FRAM holds CBOR. If the schema header somehow gets
+        // lost and migrate_fram runs on already-migrated data, the postcard
+        // legacy decoders must reject the CBOR bytes (so we don't clobber).
+        let original = GlobalConfig::new();
+        let cbor_bytes = cbor_encode_to_vec(&original);
+
+        let postcard_result: Result<GlobalConfig, _> = postcard::from_bytes(&cbor_bytes);
+        assert!(
+            postcard_result.is_err(),
+            "postcard must reject CBOR-encoded GlobalConfig bytes"
+        );
+    }
+
+    /// Mirror of v1.8.2's `ClockConfig` shape, used only by the migration
+    /// regression tests below.
+    #[derive(Serialize, Deserialize)]
+    struct ClockConfigPreSwing {
+        clock_src: ClockSrc,
+        ext_ppqn: u8,
+        reset_src: ResetSrc,
+        internal_bpm: f32,
+    }
+
+    /// Mirror of v1.8.2's `GlobalConfig` shape (no `swing_amount` in clock).
+    #[derive(Serialize, Deserialize)]
+    struct GlobalConfigPreSwing {
+        aux: [AuxJackMode; 3],
+        clock: ClockConfigPreSwing,
+        i2c_mode: I2cMode,
+        led_brightness: u8,
+        midi: MidiConfig,
+        quantizer: QuantizerConfig,
+        takeover_mode: TakeoverMode,
+    }
+
+    fn make_v18_default() -> GlobalConfigPreSwing {
+        GlobalConfigPreSwing {
+            aux: [
+                AuxJackMode::ClockOut(ClockDivision::_1),
+                AuxJackMode::None,
+                AuxJackMode::None,
+            ],
+            clock: ClockConfigPreSwing {
+                clock_src: ClockSrc::Internal,
+                ext_ppqn: 24,
+                reset_src: ResetSrc::None,
+                internal_bpm: 120.0,
+            },
+            i2c_mode: I2cMode::Leader,
+            led_brightness: 150,
+            midi: MidiConfig::new(),
+            quantizer: QuantizerConfig::new(),
+            takeover_mode: TakeoverMode::Pickup,
+        }
+    }
+
+    #[test]
+    fn v18_postcard_data_fails_current_postcard_decode() {
+        // The migration's correctness rests on this invariant: v1.8.2 stored
+        // bytes are always 1 byte short of what the current GlobalConfig
+        // postcard decoder needs (the missing `swing_amount`). Without it,
+        // the "try current first" path could mis-decode v1.8.2 data as
+        // pre-fix v1.9 data with shifted fields.
+        let v18 = make_v18_default();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v18, &mut buf).unwrap();
+
+        let result: Result<GlobalConfig, _> = postcard::from_bytes(bytes);
+        assert!(
+            result.is_err(),
+            "v1.8.2 postcard data must NOT decode as current postcard GlobalConfig"
+        );
+    }
+
+    #[test]
+    fn v18_postcard_data_decodes_as_pre_swing_shape() {
+        // The fallback path: same legacy bytes, decoded with the v1.8.2-shaped
+        // type, must succeed.
+        let v18 = make_v18_default();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v18, &mut buf).unwrap();
+
+        let decoded: GlobalConfigPreSwing = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded.led_brightness, 150);
+        assert_eq!(decoded.clock.ext_ppqn, 24);
+        assert_eq!(decoded.clock.internal_bpm.to_bits(), 120.0_f32.to_bits());
+    }
+
+    #[test]
+    fn pre_fix_v19_postcard_data_decodes_as_current() {
+        // Pre-fix v1.9 betas wrote postcard `GlobalConfig` with the swing
+        // field present. The "try current first" path must accept it as-is.
+        let original = GlobalConfig::new();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&original, &mut buf).unwrap();
+
+        let decoded: GlobalConfig = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded.led_brightness, 150);
+        assert_eq!(decoded.clock.swing_amount, 0);
+        assert_eq!(decoded.i2c_mode as u8, I2cMode::Leader as u8);
+    }
 }
