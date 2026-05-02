@@ -210,26 +210,6 @@ pub struct Params {
     midi_channel4: MidiChannel,
 }
 
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            midi_channel: MidiChannel::default(),
-            midi_out: MidiOut::default(),
-            note1: MidiNote::from(36),
-            note2: MidiNote::from(37),
-            note3: MidiNote::from(38),
-            velocity: 100,
-            accent: 127,
-            gatel: 50,
-            color: Color::Orange,
-            ghost_note: MidiNote::from(37),
-            midi_channel2: MidiChannel::default(),
-            midi_channel3: MidiChannel::default(),
-            midi_channel4: MidiChannel::default(),
-        }
-    }
-}
-
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         if values.len() < PARAMS {
