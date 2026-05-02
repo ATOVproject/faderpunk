@@ -4,9 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::storage;
 
+/// Persisted to FRAM as CBOR. Adding/removing fields is migration-free as long
+/// as every field carries `#[cbor(default)]` and a fresh `#[n(N)]`. See the
+/// `GlobalConfig` doc comment in `libfp::lib` for the full convention.
 #[derive(Serialize, Deserialize, Encode, Decode, Clone, Copy, Default, Debug)]
 pub struct RuntimeState {
     #[n(0)]
+    #[cbor(default)]
     pub clock_is_running: bool,
 }
 

@@ -166,7 +166,9 @@ impl<'a> IntoIterator for &'a Layout {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[derive(
+    Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
 #[cbor(index_only)]
 #[repr(u8)]
 pub enum ClockSrc {
@@ -178,6 +180,7 @@ pub enum ClockSrc {
     Meteor,
     #[n(3)]
     Cube,
+    #[default]
     #[n(4)]
     Internal,
     #[n(5)]
@@ -197,10 +200,13 @@ impl From<ResetSrc> for ClockSrc {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[derive(
+    Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
 #[cbor(index_only)]
 #[repr(u8)]
 pub enum ResetSrc {
+    #[default]
     #[n(0)]
     None,
     #[n(1)]
@@ -211,12 +217,13 @@ pub enum ResetSrc {
     Cube,
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[derive(Clone, Default, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
 #[cbor(index_only)]
 #[repr(u8)]
 pub enum I2cMode {
     #[n(0)]
     Calibration,
+    #[default]
     #[n(1)]
     Leader,
     #[n(2)]
@@ -350,10 +357,11 @@ impl Key {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
+#[derive(Clone, Copy, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub enum MidiOutMode {
     #[n(0)]
     None,
+    #[default]
     #[n(1)]
     Local,
     #[n(2)]
@@ -371,11 +379,20 @@ pub enum MidiOutMode {
 #[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct MidiOutConfig {
     #[n(0)]
+    #[cbor(default)]
     pub send_clock: bool,
     #[n(1)]
+    #[cbor(default)]
     pub send_transport: bool,
     #[n(2)]
+    #[cbor(default)]
     pub mode: MidiOutMode,
+}
+
+impl Default for MidiOutConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(clippy::new_without_default)]
@@ -393,7 +410,14 @@ impl MidiOutConfig {
 pub struct MidiConfig {
     // [usb, out1, out2]
     #[n(0)]
+    #[cbor(default)]
     pub outs: [MidiOutConfig; 3],
+}
+
+impl Default for MidiConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(clippy::new_without_default)]
@@ -408,16 +432,27 @@ impl MidiConfig {
 #[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct ClockConfig {
     #[n(0)]
+    #[cbor(default)]
     pub clock_src: ClockSrc,
     #[n(1)]
+    #[cbor(default)]
     pub ext_ppqn: u8,
     #[n(2)]
+    #[cbor(default)]
     pub reset_src: ResetSrc,
     #[n(3)]
+    #[cbor(default)]
     pub internal_bpm: f32,
     /// Deluge-style swing amount in `[-35, 35]`. `0` = straight.
     #[n(4)]
+    #[cbor(default)]
     pub swing_amount: i8,
+}
+
+impl Default for ClockConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(clippy::new_without_default)]
@@ -436,8 +471,10 @@ impl ClockConfig {
 #[derive(Clone, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct QuantizerConfig {
     #[n(0)]
+    #[cbor(default)]
     pub key: Key,
     #[n(1)]
+    #[cbor(default)]
     pub tonic: Note,
 }
 
@@ -451,10 +488,13 @@ impl QuantizerConfig {
     }
 }
 
-#[derive(Copy, Clone, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode)]
+#[derive(
+    Copy, Clone, Default, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode,
+)]
 #[cbor(index_only)]
 #[repr(u16)]
 pub enum ClockDivision {
+    #[default]
     #[n(1)]
     _1 = 1,
     #[n(2)]
@@ -481,9 +521,10 @@ pub enum ClockDivision {
     _384 = 384,
 }
 
-#[derive(Clone, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode)]
+#[derive(Clone, Default, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode)]
 #[repr(u8)]
 pub enum AuxJackMode {
+    #[default]
     #[n(0)]
     None,
     #[n(1)]
@@ -492,22 +533,56 @@ pub enum AuxJackMode {
     ResetOut,
 }
 
+/// `GlobalConfig` is persisted to FRAM as CBOR. To keep the on-FRAM format
+/// forward/backward compatible without writing a migration:
+///
+/// - **Every field has `#[cbor(default)]`.** Missing tags decode as
+///   `Default::default()` instead of erroring. Removing a field is just
+///   deleting the field; old stored data with that tag is silently skipped.
+///   Adding a field is just declaring it with the next free tag — old data
+///   without the tag falls back to its `Default`.
+/// - **Tags are append-only.** Never reuse an `#[n(N)]` for a different
+///   purpose; pick the next unused integer. Reusing a tag would silently
+///   reinterpret old stored data.
+/// - **Field types must implement `Default`** with a value that's safe if it
+///   ever shows up on a device that's missing the field in FRAM.
+///
+/// This convention applies recursively to every type reachable from
+/// `GlobalConfig` through fields tagged `#[cbor(default)]`. Things that *do*
+/// require a one-shot migration (handled in `storage::migrate_fram`):
+///
+/// - Changing the type of an existing field (e.g. `u8 → u16`).
+/// - Resizing fixed-size arrays (`[T; N]`) or tuples.
+/// - Removing an enum variant while old data may still contain it.
 #[derive(Clone, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
 pub struct GlobalConfig {
     #[n(0)]
+    #[cbor(default)]
     pub aux: [AuxJackMode; 3],
     #[n(1)]
+    #[cbor(default)]
     pub clock: ClockConfig,
     #[n(2)]
+    #[cbor(default)]
     pub i2c_mode: I2cMode,
     #[n(3)]
+    #[cbor(default)]
     pub led_brightness: u8,
     #[n(4)]
+    #[cbor(default)]
     pub midi: MidiConfig,
     #[n(5)]
+    #[cbor(default)]
     pub quantizer: QuantizerConfig,
     #[n(6)]
+    #[cbor(default)]
     pub takeover_mode: TakeoverMode,
+}
+
+impl Default for GlobalConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(clippy::new_without_default)]
