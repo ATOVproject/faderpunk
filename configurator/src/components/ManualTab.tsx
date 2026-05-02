@@ -1030,15 +1030,19 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
     appId: 23,
     title: "FP-Grids",
     description:
-      "Emilie Gillet's renowned Mutable Instruments Grids topographic drum sequencer for the ATOV Faderpunk",
+      "Emilie Gillet's renowned Mutable Instruments Grids topographic drum sequencer for the ATOV Faderpunk, with an extra Drum n' Bass mode",
     color: "Orange",
     icon: "euclid",
     params: [
       "MIDI mode",
-      "MIDI channel",
+      "Note 1 MIDI channel",
       "MIDI Note 1",
+      "Note 2 MIDI Channel",
       "MIDI Note 2",
+      "Note 3 MIDI Channel",
       "MIDI Note 3",
+      "DnB Ghost Note MIDI Channel",
+      "DnB Ghost Note MIDI Note",
       "MIDI Velocity",
       "MIDI velocity (Accent)",
       "Gate %",
@@ -1060,7 +1064,6 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
 Grids is described as a "topographic drum sequencer" - it generates a variety of drum patterns based on continuous interpolation through a "map" of patterns (Drum Mode) or using Euclidean algorithms (Euclidean Mode).  The original Mutable Instruments module manual is [here](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/manual/).
 
 * FP-Grids outputs CV gates (0V = off, 10V = on) and, optionally MIDI note on/off messages, with normal and accented velocity levels.
-* The 4th channel provides a global accent CV gate that can be used for triggering other voices or envelopes. This combines the accents from the individual three drum voices in the original Grids firmware into a single mixed Accent signal.
 
 #### Drums Output Mode
 
@@ -1069,6 +1072,7 @@ Generates patterns by interpolating through a 2D map of pre-analyzed drum patter
 * **Map X / Map Y:** Controls the position on the pattern map. Small changes typically result in related rhythmic variations.
 * **Density 1 / Density 2 / Density 3:** Controls the event density (fill) for each of the three main trigger outputs.
 * **Chaos Amount:** Controls the amount of randomness applied. When set to a high value, rolls / ghost notes will be randomly added to the pattern.
+* **Global Accent:** The 4th channel provides a global accent CV gate that can be used for triggering other voices or envelopes. This combines the accents from the individual three drum voices in the original Grids firmware into a single mixed Accent signal.
 
 #### Euclidean Output Mode
 
@@ -1085,12 +1089,13 @@ Generates classic Euclidean rhythms for each of the three main trigger outputs i
 
 A drum and bass pattern generator with 12 preset kick/snare/hi-hat patterns and probabilistic triggering. Cycle through output modes with Shift + Button 4 until the LED shows sand/amber.
 
+* **Outputs:** Kick, Snare, Hats and Ghost Snare CV gates and MIDI notes
 * **Kick / Snare / Ghost Snare:** Faders 1, 2, and 4 set the trigger probability for each voice (0 = never, full = always).
 * **Pattern select:** Fader 3 selects one of 12 DnB patterns. The pattern changes take effect at the start of the next bar.
 * **Vary pattern:** Shift + Button 1 randomly mutates the current pattern.
 * **Restore pattern:** Shift + Button 2 restores the pattern to the last selected base pattern.
 * Clock division is set automatically by the selected pattern — Fader 4 Alt (resolution) has no effect in this mode.
-* The Ghost Snare uses the same MIDI note as Trigger 2 (Snare), at a reduced velocity.
+* The Ghost Snare uses the the "DnB Ghost Note MIDI Note" and MIDI Channel, at a reduced velocity.
 
 #### Patch Ideas
 
@@ -1163,7 +1168,7 @@ Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are sh
           "Euclidean: Shift + Button 3 rotates pattern 3 by one step. Drums / DnB: no function.",
       },
       {
-        jackTitle: "Accent / Ghost Snare gate output",
+        jackTitle: "Accent / Accent / Ghost Snare gate output",
         jackDescription:
           "Global accent gate output (Drums / Euclidean) or Ghost Snare gate output (DnB)",
         faderTitle: "Chaos / Ghost Probability",
