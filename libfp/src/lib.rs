@@ -1672,4 +1672,45 @@ mod tests {
         assert_eq!(decoded.clock.swing_amount, 0);
         assert_eq!(decoded.i2c_mode as u8, I2cMode::Leader as u8);
     }
+
+    #[test]
+    fn brightness_round_trips_through_v18_migration() {
+        // Reproduction of a real hardware report: brightness 111 on v1.8.2
+        // came back as 100 after upgrading to fixed v1.9. Pin down that the
+        // postcard-V0 → CBOR migration preserves an arbitrary u8 brightness
+        // exactly (no clamping, no off-by-one).
+        let mut v18 = make_v18_default();
+        v18.led_brightness = 111;
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v18, &mut buf).unwrap();
+
+        // Step 1: migration reads the legacy bytes via GlobalConfigPreSwing.
+        let decoded_v0: GlobalConfigPreSwing = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded_v0.led_brightness, 111);
+
+        // Step 2: migration would convert to current GlobalConfig (we mirror
+        // the From<GlobalConfigV0> conversion in storage.rs here).
+        let migrated = GlobalConfig {
+            aux: decoded_v0.aux,
+            clock: ClockConfig {
+                clock_src: decoded_v0.clock.clock_src,
+                ext_ppqn: decoded_v0.clock.ext_ppqn,
+                reset_src: decoded_v0.clock.reset_src,
+                internal_bpm: decoded_v0.clock.internal_bpm,
+                swing_amount: 0,
+            },
+            i2c_mode: decoded_v0.i2c_mode,
+            led_brightness: decoded_v0.led_brightness,
+            midi: decoded_v0.midi,
+            quantizer: decoded_v0.quantizer,
+            takeover_mode: decoded_v0.takeover_mode,
+        };
+        assert_eq!(migrated.led_brightness, 111);
+
+        // Step 3: round-trip through CBOR (what migration actually writes,
+        // and what every subsequent boot reads).
+        let encoded = cbor_encode_to_vec(&migrated);
+        let decoded: GlobalConfig = minicbor::decode(&encoded).unwrap();
+        assert_eq!(decoded.led_brightness, 111);
+    }
 }
