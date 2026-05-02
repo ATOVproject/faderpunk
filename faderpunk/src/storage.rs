@@ -331,24 +331,34 @@ async fn read_schema_version() -> u8 {
 }
 
 /// One-shot migration for `GlobalConfig` written by v1.8.2 / pre-fix v1.9
-/// betas. The stored bytes were postcard-encoded without `swing_amount`, so a
-/// current `cbor_decode::<GlobalConfig>` would fail and a postcard
-/// `from_bytes::<GlobalConfig>` would succeed-with-shift. We deserialize as
-/// `GlobalConfigV0`, fill in `swing_amount = 0`, and re-save as CBOR. If the
-/// postcard read fails we leave the existing bytes alone — they may already be
-/// in CBOR format from a previous (header-less) migration attempt.
+/// betas. Both layouts are postcard, but they differ by one byte:
+/// `ClockConfig` gained `swing_amount` in v1.9. We try the v1.9 (current)
+/// layout first — pre-fix v1.9 data decodes cleanly there, and v1.8.2 data
+/// either runs out of bytes or hits an invalid `i2c_mode` varint and fails,
+/// at which point we fall back to `GlobalConfigV0` (v1.8.2 layout) and fill
+/// in `swing_amount = 0`.
+///
+/// On any failure the stored bytes are left alone, so a partially-migrated
+/// state (cbor data, no header) self-heals on the next boot: postcard decode
+/// of cbor bytes fails on the first byte, this is a no-op, and the schema
+/// header eventually gets written.
 async fn migrate_legacy_global_config() {
     let Ok(guard) = read_data(GLOBAL_CONFIG_RANGE.start).await else {
         return;
     };
-    let Ok(legacy) = from_bytes::<GlobalConfigV0>(guard.data()) else {
+    let data = guard.data();
+    let migrated: Option<GlobalConfig> = from_bytes::<GlobalConfig>(data).ok().or_else(|| {
+        from_bytes::<GlobalConfigV0>(data)
+            .ok()
+            .map(GlobalConfig::from)
+    });
+    let Some(mut config) = migrated else {
         return;
     };
     drop(guard);
-    let mut config: GlobalConfig = legacy.into();
     config.validate();
     store_global_config(&config).await;
-    defmt::info!("Migrated GlobalConfig: postcard v0 → CBOR");
+    defmt::info!("Migrated GlobalConfig: postcard → CBOR");
 }
 
 /// One-shot re-encode of `Layout` from postcard to CBOR. The struct shape

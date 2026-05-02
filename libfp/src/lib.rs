@@ -379,7 +379,9 @@ impl Key {
 /// may be appended with the next free `#[n(N)]` tag without a migration.
 /// **Removing** a variant requires a one-shot FRAM migration (see
 /// `storage::migrate_fram`).
-#[derive(Clone, Copy, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
+#[derive(
+    Clone, Copy, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode,
+)]
 pub enum MidiOutMode {
     #[n(0)]
     None,
