@@ -1713,4 +1713,101 @@ mod tests {
         let decoded: GlobalConfig = minicbor::decode(&encoded).unwrap();
         assert_eq!(decoded.led_brightness, 111);
     }
+
+    /// Mirror of v1.7.0's `GlobalConfig` shape (no `takeover_mode`, no
+    /// `swing_amount`).
+    #[derive(Serialize, Deserialize)]
+    struct GlobalConfigV170 {
+        aux: [AuxJackMode; 3],
+        clock: ClockConfigPreSwing,
+        i2c_mode: I2cMode,
+        led_brightness: u8,
+        midi: MidiConfig,
+        quantizer: QuantizerConfig,
+    }
+
+    fn make_v17_default() -> GlobalConfigV170 {
+        GlobalConfigV170 {
+            aux: [
+                AuxJackMode::ClockOut(ClockDivision::_1),
+                AuxJackMode::None,
+                AuxJackMode::None,
+            ],
+            clock: ClockConfigPreSwing {
+                clock_src: ClockSrc::Internal,
+                ext_ppqn: 24,
+                reset_src: ResetSrc::None,
+                internal_bpm: 120.0,
+            },
+            i2c_mode: I2cMode::Leader,
+            led_brightness: 150,
+            midi: MidiConfig::new(),
+            quantizer: QuantizerConfig::new(),
+        }
+    }
+
+    #[test]
+    fn v17_postcard_data_fails_current_and_v18_postcard_decode() {
+        // v1.7.0 data is 2 bytes shorter than current and 1 byte shorter than
+        // v1.8.x. Both larger shapes must fail so the V170 fallback is the one
+        // that actually runs.
+        let v17 = make_v17_default();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v17, &mut buf).unwrap();
+
+        let current: Result<GlobalConfig, _> = postcard::from_bytes(bytes);
+        assert!(current.is_err(), "v1.7.0 must NOT decode as current");
+        let v18: Result<GlobalConfigPreSwing, _> = postcard::from_bytes(bytes);
+        assert!(v18.is_err(), "v1.7.0 must NOT decode as v1.8.x");
+    }
+
+    #[test]
+    fn v17_postcard_data_decodes_as_v170_shape() {
+        let v17 = make_v17_default();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v17, &mut buf).unwrap();
+
+        let decoded: GlobalConfigV170 = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded.led_brightness, 150);
+        assert_eq!(decoded.clock.internal_bpm.to_bits(), 120.0_f32.to_bits());
+    }
+
+    #[test]
+    fn brightness_round_trips_through_v170_migration() {
+        // Same hardware-bug regression as the v1.8.x test, one version older:
+        // brightness 111 set on v1.7.0 must survive the postcard-V170 → CBOR
+        // migration unchanged. `swing_amount` and `takeover_mode` come back as
+        // their `Default::default()` values.
+        let mut v17 = make_v17_default();
+        v17.led_brightness = 111;
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v17, &mut buf).unwrap();
+
+        let decoded_v17: GlobalConfigV170 = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded_v17.led_brightness, 111);
+
+        // Mirror the From<GlobalConfigV170> conversion from storage.rs.
+        let migrated = GlobalConfig {
+            aux: decoded_v17.aux,
+            clock: ClockConfig {
+                clock_src: decoded_v17.clock.clock_src,
+                ext_ppqn: decoded_v17.clock.ext_ppqn,
+                reset_src: decoded_v17.clock.reset_src,
+                internal_bpm: decoded_v17.clock.internal_bpm,
+                swing_amount: 0,
+            },
+            i2c_mode: decoded_v17.i2c_mode,
+            led_brightness: decoded_v17.led_brightness,
+            midi: decoded_v17.midi,
+            quantizer: decoded_v17.quantizer,
+            takeover_mode: TakeoverMode::Pickup,
+        };
+        assert_eq!(migrated.led_brightness, 111);
+        assert_eq!(migrated.clock.swing_amount, 0);
+
+        let encoded = cbor_encode_to_vec(&migrated);
+        let decoded: GlobalConfig = minicbor::decode(&encoded).unwrap();
+        assert_eq!(decoded.led_brightness, 111);
+        assert_eq!(decoded.clock.swing_amount, 0);
+    }
 }

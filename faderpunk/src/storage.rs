@@ -58,9 +58,10 @@ struct SchemaHeader {
 const SCHEMA_VERSION_V0: u8 = 0;
 
 /// On-FRAM layout of `ClockConfig` as it existed before v1.9 added
-/// `swing_amount`. Used only by `migrate_legacy_global_config` to deserialize
-/// stored v1.8.2 `GlobalConfig` blobs without the byte shift that would
-/// otherwise corrupt every field after `internal_bpm`.
+/// `swing_amount`. Used by both `GlobalConfigV0` (v1.8.x) and
+/// `GlobalConfigV170` (v1.7.0) to deserialize their stored `clock` field
+/// without the byte shift that would otherwise corrupt every field after
+/// `internal_bpm`.
 #[derive(Deserialize)]
 struct ClockConfigV0 {
     clock_src: ClockSrc,
@@ -69,6 +70,8 @@ struct ClockConfigV0 {
     internal_bpm: f32,
 }
 
+/// `GlobalConfig` as written by v1.8.x: same as v1.7.0 plus `takeover_mode`,
+/// still missing `ClockConfig::swing_amount` (added in v1.9).
 #[derive(Deserialize)]
 struct GlobalConfigV0 {
     aux: [AuxJackMode; 3],
@@ -96,6 +99,39 @@ impl From<GlobalConfigV0> for GlobalConfig {
             midi: old.midi,
             quantizer: old.quantizer,
             takeover_mode: old.takeover_mode,
+        }
+    }
+}
+
+/// `GlobalConfig` as written by v1.7.0: missing both `takeover_mode` (added in
+/// v1.8.0) and `ClockConfig::swing_amount` (added in v1.9). Both fields fall
+/// back to their `Default::default()` on migration.
+#[derive(Deserialize)]
+struct GlobalConfigV170 {
+    aux: [AuxJackMode; 3],
+    clock: ClockConfigV0,
+    i2c_mode: I2cMode,
+    led_brightness: u8,
+    midi: MidiConfig,
+    quantizer: QuantizerConfig,
+}
+
+impl From<GlobalConfigV170> for GlobalConfig {
+    fn from(old: GlobalConfigV170) -> Self {
+        Self {
+            aux: old.aux,
+            clock: ClockConfig {
+                clock_src: old.clock.clock_src,
+                ext_ppqn: old.clock.ext_ppqn,
+                reset_src: old.clock.reset_src,
+                internal_bpm: old.clock.internal_bpm,
+                swing_amount: 0,
+            },
+            i2c_mode: old.i2c_mode,
+            led_brightness: old.led_brightness,
+            midi: old.midi,
+            quantizer: old.quantizer,
+            takeover_mode: TakeoverMode::Pickup,
         }
     }
 }
@@ -330,13 +366,17 @@ async fn read_schema_version() -> u8 {
     header.version
 }
 
-/// One-shot migration for `GlobalConfig` written by v1.8.2 / pre-fix v1.9
-/// betas. Both layouts are postcard, but they differ by one byte:
-/// `ClockConfig` gained `swing_amount` in v1.9. We try the v1.9 (current)
-/// layout first — pre-fix v1.9 data decodes cleanly there, and v1.8.2 data
-/// either runs out of bytes or hits an invalid `i2c_mode` varint and fails,
-/// at which point we fall back to `GlobalConfigV0` (v1.8.2 layout) and fill
-/// in `swing_amount = 0`.
+/// One-shot migration for `GlobalConfig` written by v1.7.0 / v1.8.x / pre-fix
+/// v1.9 betas. All three are postcard, differing by trailing fields:
+///
+/// - v1.7.0 → no `takeover_mode`, no `swing_amount` (2 bytes shorter).
+/// - v1.8.x → has `takeover_mode`, no `swing_amount` (1 byte shorter).
+/// - pre-fix v1.9 → matches the current shape.
+///
+/// Fallback order matters: postcard's `from_bytes` does not check for trailing
+/// bytes, so the largest layout must be tried first. We try current → V0 →
+/// V170; if V170 ran first it would falsely accept v1.8.x data (silently
+/// dropping `takeover_mode`).
 ///
 /// On any failure the stored bytes are left alone, so a partially-migrated
 /// state (cbor data, no header) self-heals on the next boot: postcard decode
@@ -347,11 +387,18 @@ async fn migrate_legacy_global_config() {
         return;
     };
     let data = guard.data();
-    let migrated: Option<GlobalConfig> = from_bytes::<GlobalConfig>(data).ok().or_else(|| {
-        from_bytes::<GlobalConfigV0>(data)
-            .ok()
-            .map(GlobalConfig::from)
-    });
+    let migrated: Option<GlobalConfig> = from_bytes::<GlobalConfig>(data)
+        .ok()
+        .or_else(|| {
+            from_bytes::<GlobalConfigV0>(data)
+                .ok()
+                .map(GlobalConfig::from)
+        })
+        .or_else(|| {
+            from_bytes::<GlobalConfigV170>(data)
+                .ok()
+                .map(GlobalConfig::from)
+        });
     let Some(mut config) = migrated else {
         return;
     };
