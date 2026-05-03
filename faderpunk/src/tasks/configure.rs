@@ -60,8 +60,8 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
     let mut proto = ConfigProtocol::new(webusb);
     let mut layout_receiver = LAYOUT_WATCH.receiver().unwrap();
     proto.wait_enabled().await;
+    let mut layout = layout_receiver.get().await;
     loop {
-        // Test: send some app config to parse on the client side
         let msg = proto.read_msg().await.unwrap();
         match msg {
             ConfigMsgIn::Ping => {
@@ -82,8 +82,10 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 proto.send_msg(ConfigMsgOut::BatchMsgEnd).await.unwrap();
             }
             ConfigMsgIn::GetLayout => {
-                let layout = layout_receiver.get().await;
-                proto.send_msg(ConfigMsgOut::Layout(layout)).await.unwrap();
+                proto
+                    .send_msg(ConfigMsgOut::Layout(layout.clone()))
+                    .await
+                    .unwrap();
             }
             ConfigMsgIn::GetGlobalConfig => {
                 let config = get_global_config();
@@ -115,7 +117,6 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 }
             }
             ConfigMsgIn::GetAllAppParams => {
-                let layout = layout_receiver.get().await;
                 let layout_ids = layout.get_layout_ids();
                 let app_count = layout_ids.len();
 
@@ -148,14 +149,15 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
                 let sender = GLOBAL_CONFIG_WATCH.sender();
                 sender.send(global_config);
             }
-            ConfigMsgIn::SetLayout(mut layout) => {
-                layout.validate(get_channels);
+            ConfigMsgIn::SetLayout(mut new_layout) => {
+                new_layout.validate(get_channels);
                 let sender = LAYOUT_WATCH.sender();
                 proto
-                    .send_msg(ConfigMsgOut::Layout(layout.clone()))
+                    .send_msg(ConfigMsgOut::Layout(new_layout.clone()))
                     .await
                     .unwrap();
-                sender.send(layout);
+                layout = new_layout.clone();
+                sender.send(new_layout);
             }
             ConfigMsgIn::FactoryReset => {
                 factory_reset().await;
