@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.9.0 (2026-05-04)
+
+### Features
+
+- show led info on scene button press (#489)
+- add random+ app (#453)
+- add clock divider+ app  (#456)
+- add fp-grids app (#467)
+- add swing option to clock (#491)
+- per-note midi channels for fp-grids (#512)
+
+### Fixes
+
+- add NRPN param to app manuals (#496)
+- rename Bipolar param to Range (#501)
+- some QoL fixes (#504)
+- clippy issues
+
 ## 1.9.0-beta.0 (2026-04-17)
 
 ### Features

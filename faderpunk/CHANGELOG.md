@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.9.0 (2026-05-04)
+
+### Features
+
+- change scene via midi program-change message (#459)
+- flash scene LED when clock is running (#471)
+- add 14bit MIDI-CC/NRPN support (#470)
+- add LED feedback for straight/triplet division settings (#481)
+- show led info on scene button press (#489)
+- add division parameter for resolution handling in clock divider (#455)
+- add random+ app (#453)
+- add clock divider+ app  (#456)
+- add fp-grids app (#467)
+- add swing option to clock (#491)
+- per-note midi channels for fp-grids (#512)
+
+### Fixes
+
+- make MidiCC default values more predictable (#490)
+- convert bipolar to range params (#494)
+- clippy issues
+- cache layout before loop to prevent GetLayout blocking forever (#509)
+- use CBOR to encode config and layout on FRAM (#513)
+
 ## 1.9.0-beta.0 (2026-04-17)
 
 ### Features
