@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.2 (2026-05-04)
+
+### Features
+
+- show led info on scene button press (#489)
+- add random+ app (#453)
+- add clock divider+ app  (#456)
+- add fp-grids app (#467)
+- add swing option to clock (#491)
+- per-note midi channels for fp-grids (#512)
+
+### Fixes
+
+- clippy issues
+
 ## 0.10.2-beta.0 (2026-04-17)
 
 ### Features
