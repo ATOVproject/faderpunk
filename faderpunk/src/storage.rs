@@ -4,12 +4,14 @@ use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use heapless::Vec;
+use minicbor::{Decode, Encode};
 use postcard::{from_bytes, to_slice};
 use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use libfp::{
     types::{CalibFile, MaxCalibration, MaxCalibrationV1},
-    GlobalConfig, Layout, Value, APP_MAX_PARAMS, CALIB_FILE_MAGIC,
+    AuxJackMode, ClockConfig, ClockSrc, GlobalConfig, I2cMode, Layout, MidiConfig, QuantizerConfig,
+    ResetSrc, TakeoverMode, Value, APP_MAX_PARAMS, CALIB_FILE_MAGIC,
 };
 
 use crate::{
@@ -26,17 +28,152 @@ const RUNTIME_STATE_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..384;
 const LAYOUT_RANGE: Range<u32> = RUNTIME_STATE_RANGE.end..512;
 const CALIBRATION_RANGE: Range<u32> = LAYOUT_RANGE.end..1024;
 const APP_STORAGE_RANGE: Range<u32> = CALIBRATION_RANGE.end..122_880;
-const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..131_072;
+const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..SCHEMA_HEADER_RANGE.start;
+/// Reserved region at the very end of FRAM holding `SchemaHeader`. Everything
+/// before it is data laid out by the firmware version that wrote it; this
+/// header is what tells us whether that layout matches the running firmware.
+const SCHEMA_HEADER_RANGE: Range<u32> = 131_056..131_072;
 
 const APP_STORAGE_MAX_BYTES: u32 = 400;
 const APP_PARAMS_MAX_BYTES: u32 = 128;
 const SCENES_PER_APP: u32 = 16;
 
+/// Magic bytes identifying a valid `SchemaHeader` (FaderPunk Schema Version).
+const SCHEMA_MAGIC: [u8; 4] = *b"FPSV";
+
+/// Version of the on-FRAM data layout. Bump this whenever a serialized struct
+/// stored in FRAM changes in a way that isn't backwards compatible under
+/// postcard. The migration logic in `migrate_legacy_global_config` runs once
+/// per device when the stored version is older than this.
+const SCHEMA_VERSION: u8 = 1;
+
+#[derive(Serialize, Deserialize)]
+struct SchemaHeader {
+    magic: [u8; 4],
+    version: u8,
+}
+
+/// v0 layout = anything older than `SCHEMA_VERSION = 1` (i.e. v1.8.2 and the
+/// pre-fix v1.9 betas, which never wrote a header).
+const SCHEMA_VERSION_V0: u8 = 0;
+
+/// On-FRAM layout of `ClockConfig` as it existed before v1.9 added
+/// `swing_amount`. Used by both `GlobalConfigV0` (v1.8.x) and
+/// `GlobalConfigV170` (v1.7.0) to deserialize their stored `clock` field
+/// without the byte shift that would otherwise corrupt every field after
+/// `internal_bpm`.
+#[derive(Deserialize)]
+struct ClockConfigV0 {
+    clock_src: ClockSrc,
+    ext_ppqn: u8,
+    reset_src: ResetSrc,
+    internal_bpm: f32,
+}
+
+/// `GlobalConfig` as written by v1.8.x: same as v1.7.0 plus `takeover_mode`,
+/// still missing `ClockConfig::swing_amount` (added in v1.9).
+#[derive(Deserialize)]
+struct GlobalConfigV0 {
+    aux: [AuxJackMode; 3],
+    clock: ClockConfigV0,
+    i2c_mode: I2cMode,
+    led_brightness: u8,
+    midi: MidiConfig,
+    quantizer: QuantizerConfig,
+    takeover_mode: TakeoverMode,
+}
+
+impl From<GlobalConfigV0> for GlobalConfig {
+    fn from(old: GlobalConfigV0) -> Self {
+        Self {
+            aux: old.aux,
+            clock: ClockConfig {
+                clock_src: old.clock.clock_src,
+                ext_ppqn: old.clock.ext_ppqn,
+                reset_src: old.clock.reset_src,
+                internal_bpm: old.clock.internal_bpm,
+                swing_amount: 0,
+            },
+            i2c_mode: old.i2c_mode,
+            led_brightness: old.led_brightness,
+            midi: old.midi,
+            quantizer: old.quantizer,
+            takeover_mode: old.takeover_mode,
+        }
+    }
+}
+
+/// `GlobalConfig` as written by v1.7.0: missing both `takeover_mode` (added in
+/// v1.8.0) and `ClockConfig::swing_amount` (added in v1.9). Both fields fall
+/// back to their `Default::default()` on migration.
+#[derive(Deserialize)]
+struct GlobalConfigV170 {
+    aux: [AuxJackMode; 3],
+    clock: ClockConfigV0,
+    i2c_mode: I2cMode,
+    led_brightness: u8,
+    midi: MidiConfig,
+    quantizer: QuantizerConfig,
+}
+
+impl From<GlobalConfigV170> for GlobalConfig {
+    fn from(old: GlobalConfigV170) -> Self {
+        Self {
+            aux: old.aux,
+            clock: ClockConfig {
+                clock_src: old.clock.clock_src,
+                ext_ppqn: old.clock.ext_ppqn,
+                reset_src: old.clock.reset_src,
+                internal_bpm: old.clock.internal_bpm,
+                swing_amount: 0,
+            },
+            i2c_mode: old.i2c_mode,
+            led_brightness: old.led_brightness,
+            midi: old.midi,
+            quantizer: old.quantizer,
+            takeover_mode: TakeoverMode::Pickup,
+        }
+    }
+}
+
+/// `minicbor::encode::Write` impl that tracks bytes written into a borrowed
+/// slice. We avoid `minicbor::len`/`CborLen` so we don't have to derive a
+/// third trait on every persisted type — `minicbor::encode` only requires
+/// `Encode`, and a counting writer recovers the encoded length for free.
+struct SliceWriter<'a> {
+    buf: &'a mut [u8],
+    pos: usize,
+}
+
+impl minicbor::encode::Write for SliceWriter<'_> {
+    type Error = ();
+
+    fn write_all(&mut self, data: &[u8]) -> Result<(), Self::Error> {
+        let end = self.pos.checked_add(data.len()).ok_or(())?;
+        if end > self.buf.len() {
+            return Err(());
+        }
+        self.buf[self.pos..end].copy_from_slice(data);
+        self.pos = end;
+        Ok(())
+    }
+}
+
+/// Encodes `value` as CBOR into `buf` and returns the byte length. Errors are
+/// mapped to `postcard::Error` so the result threads back through
+/// `write_with`'s closure type without a custom error enum.
+fn cbor_encode<T: Encode<()>>(value: &T, buf: &mut [u8]) -> Result<usize, postcard::Error> {
+    let mut writer = SliceWriter { buf, pos: 0 };
+    minicbor::encode(value, &mut writer).map_err(|_| postcard::Error::SerializeBufferFull)?;
+    Ok(writer.pos)
+}
+
+fn cbor_decode<'b, T: Decode<'b, ()>>(bytes: &'b [u8]) -> Option<T> {
+    minicbor::decode(bytes).ok()
+}
+
 pub async fn store_global_config(config: &GlobalConfig) {
-    let res = write_with(GLOBAL_CONFIG_RANGE.start, |buf| {
-        Ok(to_slice(&config, &mut *buf)?.len())
-    })
-    .await;
+    let res = write_with(GLOBAL_CONFIG_RANGE.start, |buf| cbor_encode(config, buf)).await;
 
     if res.is_err() {
         defmt::error!("Could not save GlobalConfig");
@@ -47,7 +184,7 @@ pub async fn load_global_config() -> GlobalConfig {
     if let Ok(guard) = read_data(GLOBAL_CONFIG_RANGE.start).await {
         let data = guard.data();
         if !data.is_empty() {
-            if let Ok(mut config) = from_bytes::<GlobalConfig>(data) {
+            if let Some(mut config) = cbor_decode::<GlobalConfig>(data) {
                 config.validate();
                 return config;
             }
@@ -57,10 +194,7 @@ pub async fn load_global_config() -> GlobalConfig {
 }
 
 pub async fn store_runtime_state(state: &RuntimeState) {
-    let res = write_with(RUNTIME_STATE_RANGE.start, |buf| {
-        Ok(to_slice(&state, &mut *buf)?.len())
-    })
-    .await;
+    let res = write_with(RUNTIME_STATE_RANGE.start, |buf| cbor_encode(state, buf)).await;
 
     if res.is_err() {
         defmt::error!("Could not save runtime state");
@@ -71,7 +205,7 @@ pub async fn load_runtime_state() -> RuntimeState {
     if let Ok(guard) = read_data(RUNTIME_STATE_RANGE.start).await {
         let data = guard.data();
         if !data.is_empty() {
-            if let Ok(state) = from_bytes::<RuntimeState>(data) {
+            if let Some(state) = cbor_decode::<RuntimeState>(data) {
                 return state;
             }
         }
@@ -80,10 +214,7 @@ pub async fn load_runtime_state() -> RuntimeState {
 }
 
 pub async fn store_layout(layout: &Layout) {
-    let res = write_with(LAYOUT_RANGE.start, |buf| {
-        Ok(to_slice(&layout, &mut *buf)?.len())
-    })
-    .await;
+    let res = write_with(LAYOUT_RANGE.start, |buf| cbor_encode(layout, buf)).await;
 
     if res.is_err() {
         defmt::error!("Could not save Layout");
@@ -94,7 +225,7 @@ pub async fn load_layout() -> Layout {
     if let Ok(guard) = read_data(LAYOUT_RANGE.start).await {
         let data = guard.data();
         if !data.is_empty() {
-            if let Ok(mut layout) = from_bytes::<Layout>(data) {
+            if let Some(mut layout) = cbor_decode::<Layout>(data) {
                 drop(guard);
                 // Validate the layout after loading it from fram
                 if layout.validate(get_channels) {
@@ -203,13 +334,144 @@ async fn erase_range(range: Range<u32>) {
     }
 }
 
-/// Erases all data from FRAM except for the calibration data.
+async fn write_schema_header(version: u8) {
+    let header = SchemaHeader {
+        magic: SCHEMA_MAGIC,
+        version,
+    };
+    let res = write_with(SCHEMA_HEADER_RANGE.start, |buf| {
+        Ok(to_slice(&header, &mut *buf)?.len())
+    })
+    .await;
+
+    if res.is_err() {
+        defmt::error!("Could not save FRAM schema header");
+    }
+}
+
+/// Returns the schema version recorded in FRAM, or `SCHEMA_VERSION_V0` if no
+/// valid header is present. A missing/garbled header means the stored data was
+/// written by a firmware predating the schema-version mechanism (v1.8.2 or the
+/// pre-fix v1.9 betas).
+async fn read_schema_version() -> u8 {
+    let Ok(guard) = read_data(SCHEMA_HEADER_RANGE.start).await else {
+        return SCHEMA_VERSION_V0;
+    };
+    let Ok(header) = from_bytes::<SchemaHeader>(guard.data()) else {
+        return SCHEMA_VERSION_V0;
+    };
+    if header.magic != SCHEMA_MAGIC {
+        return SCHEMA_VERSION_V0;
+    }
+    header.version
+}
+
+/// One-shot migration for `GlobalConfig` written by v1.7.0 / v1.8.x / pre-fix
+/// v1.9 betas. All three are postcard, differing by trailing fields:
+///
+/// - v1.7.0 → no `takeover_mode`, no `swing_amount` (2 bytes shorter).
+/// - v1.8.x → has `takeover_mode`, no `swing_amount` (1 byte shorter).
+/// - pre-fix v1.9 → matches the current shape.
+///
+/// Fallback order matters: postcard's `from_bytes` does not check for trailing
+/// bytes, so the largest layout must be tried first. We try current → V0 →
+/// V170; if V170 ran first it would falsely accept v1.8.x data (silently
+/// dropping `takeover_mode`).
+///
+/// On any failure the stored bytes are left alone, so a partially-migrated
+/// state (cbor data, no header) self-heals on the next boot: postcard decode
+/// of cbor bytes fails on the first byte, this is a no-op, and the schema
+/// header eventually gets written.
+async fn migrate_legacy_global_config() {
+    let Ok(guard) = read_data(GLOBAL_CONFIG_RANGE.start).await else {
+        return;
+    };
+    let data = guard.data();
+    let migrated: Option<GlobalConfig> = from_bytes::<GlobalConfig>(data)
+        .ok()
+        .or_else(|| {
+            from_bytes::<GlobalConfigV0>(data)
+                .ok()
+                .map(GlobalConfig::from)
+        })
+        .or_else(|| {
+            from_bytes::<GlobalConfigV170>(data)
+                .ok()
+                .map(GlobalConfig::from)
+        });
+    let Some(mut config) = migrated else {
+        return;
+    };
+    drop(guard);
+    config.validate();
+    store_global_config(&config).await;
+    defmt::info!("Migrated GlobalConfig: postcard → CBOR");
+}
+
+/// One-shot re-encode of `Layout` from postcard to CBOR. The struct shape
+/// didn't change between v1.8.2 and v1.9, so the same `Layout` type
+/// deserializes both — we just need to rewrite it in the new on-FRAM format.
+async fn migrate_legacy_layout() {
+    let Ok(guard) = read_data(LAYOUT_RANGE.start).await else {
+        return;
+    };
+    let Ok(mut layout) = from_bytes::<Layout>(guard.data()) else {
+        return;
+    };
+    drop(guard);
+    layout.validate(get_channels);
+    store_layout(&layout).await;
+    defmt::info!("Migrated Layout: postcard → CBOR");
+}
+
+/// One-shot re-encode of `RuntimeState` from postcard to CBOR.
+async fn migrate_legacy_runtime_state() {
+    let Ok(guard) = read_data(RUNTIME_STATE_RANGE.start).await else {
+        return;
+    };
+    let Ok(state) = from_bytes::<RuntimeState>(guard.data()) else {
+        return;
+    };
+    drop(guard);
+    store_runtime_state(&state).await;
+    defmt::info!("Migrated RuntimeState: postcard → CBOR");
+}
+
+/// Runs FRAM migrations needed to bring stored data forward to
+/// `SCHEMA_VERSION`. Migrations are non-destructive: each step reads the old
+/// format, rewrites in the current format, and is a no-op if the stored bytes
+/// don't match the legacy shape. Calibration and per-app storage are left
+/// alone — apps already fall back to defaults gracefully on bad data.
+///
+/// On a fresh device (no header, no stored data) this is effectively a no-op
+/// apart from writing the header.
+pub async fn migrate_fram() {
+    let version = read_schema_version().await;
+    if version >= SCHEMA_VERSION {
+        return;
+    }
+
+    if version < 1 {
+        // v0 → v1: switch top-level types from postcard to CBOR. Lifts
+        // GlobalConfig (which also gained ClockConfig::swing_amount, hence the
+        // legacy v0 type), Layout, and RuntimeState in place.
+        migrate_legacy_global_config().await;
+        migrate_legacy_layout().await;
+        migrate_legacy_runtime_state().await;
+    }
+
+    write_schema_header(SCHEMA_VERSION).await;
+}
+
+/// Erases all data from FRAM except for the calibration data and reboots.
 pub async fn factory_reset() {
     erase_range(GLOBAL_CONFIG_RANGE).await;
     erase_range(RUNTIME_STATE_RANGE).await;
     erase_range(LAYOUT_RANGE).await;
     erase_range(APP_STORAGE_RANGE).await;
     erase_range(APP_PARAM_RANGE).await;
+    erase_range(SCHEMA_HEADER_RANGE).await;
+    write_schema_header(SCHEMA_VERSION).await;
     // Wait a bit
     Timer::after_millis(100).await;
     // Then restart the unit
