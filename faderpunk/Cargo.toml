@@ -51,6 +51,7 @@ log = "0.4.29"
 max11300 = "0.5.2"
 midly = { version = "0.5.3", default-features = false }
 mii = "0.2.0"
+minicbor = { version = "2.2.1", default-features = false, features = ["derive"] }
 panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 pio = "0.3.0"
 portable-atomic = { version = "1.13.1", features = ["critical-section"] }

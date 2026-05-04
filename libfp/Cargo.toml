@@ -13,6 +13,7 @@ libm = "0.2.16"
 log = { version = "0.4", default-features = false }
 max11300 = "0.5.2"
 midly = { version = "0.5.3", default-features = false }
+minicbor = { version = "2.2.1", default-features = false, features = ["derive"] }
 postcard = "1.1.3"
 postcard-bindgen = "0.7.1"
 serde = { version = "1.0.219", features = ["derive"], default-features = false }

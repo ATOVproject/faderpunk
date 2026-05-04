@@ -6,6 +6,7 @@ use embassy_time::Duration;
 use heapless::Vec;
 use max11300::config::{ADCRANGE, DACRANGE};
 use midly::num::{u4, u7};
+use minicbor::{Decode, Encode};
 use postcard_bindgen::PostcardBindings;
 use serde::{Deserialize, Serialize};
 
@@ -60,8 +61,9 @@ pub type ConfigMeta<'a> = (usize, &'a str, &'a str, Color, AppIcon, &'a [Param])
 // (app_id, channels, layout_id)
 pub type InnerLayout = [Option<(u8, usize, u8)>; GLOBAL_CHANNELS];
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
-pub struct Layout(pub InnerLayout);
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[cbor(transparent)]
+pub struct Layout(#[n(0)] pub InnerLayout);
 
 impl Layout {
     pub fn validate(&mut self, get_channels: fn(u8) -> Option<usize>) -> bool {
@@ -164,15 +166,30 @@ impl<'a> IntoIterator for &'a Layout {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
+/// Persisted in `GlobalConfig` via CBOR. New variants may be appended with the
+/// next free `#[n(N)]` tag without a migration. **Removing** a variant
+/// requires a one-shot FRAM migration (see `storage::migrate_fram`) — old
+/// stored data containing the removed tag would otherwise fail to decode.
+#[derive(
+    Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum ClockSrc {
+    #[n(0)]
     None,
+    #[n(1)]
     Atom,
+    #[n(2)]
     Meteor,
+    #[n(3)]
     Cube,
+    #[default]
+    #[n(4)]
     Internal,
+    #[n(5)]
     MidiIn,
+    #[n(6)]
     MidiUsb,
 }
 
@@ -187,38 +204,76 @@ impl From<ResetSrc> for ClockSrc {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, PostcardBindings)]
+/// Persisted in `GlobalConfig` via CBOR. New variants may be appended with the
+/// next free `#[n(N)]` tag without a migration. **Removing** a variant
+/// requires a one-shot FRAM migration (see `storage::migrate_fram`).
+#[derive(
+    Clone, Copy, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum ResetSrc {
+    #[default]
+    #[n(0)]
     None,
+    #[n(1)]
     Atom,
+    #[n(2)]
     Meteor,
+    #[n(3)]
     Cube,
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
+/// Persisted in `GlobalConfig` via CBOR. New variants may be appended with the
+/// next free `#[n(N)]` tag without a migration. **Removing** a variant
+/// requires a one-shot FRAM migration (see `storage::migrate_fram`).
+#[derive(Clone, Default, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum I2cMode {
+    #[n(0)]
     Calibration,
+    #[default]
+    #[n(1)]
     Leader,
+    #[n(2)]
     Follower,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+/// Persisted in `GlobalConfig` via CBOR (inside `QuantizerConfig`). New
+/// variants may be appended with the next free `#[n(N)]` tag without a
+/// migration. **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum Note {
     #[default]
+    #[n(0)]
     C = 0,
+    #[n(1)]
     CSharp = 1,
+    #[n(2)]
     D = 2,
+    #[n(3)]
     DSharp = 3,
+    #[n(4)]
     E = 4,
+    #[n(5)]
     F = 5,
+    #[n(6)]
     FSharp = 6,
+    #[n(7)]
     G = 7,
+    #[n(8)]
     GSharp = 8,
+    #[n(9)]
     A = 9,
+    #[n(10)]
     ASharp = 10,
+    #[n(11)]
     B = 11,
 }
 
@@ -251,25 +306,48 @@ impl FromValue for Note {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
+/// Persisted in `GlobalConfig` via CBOR (inside `QuantizerConfig`). New
+/// variants may be appended with the next free `#[n(N)]` tag without a
+/// migration. **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
+#[cbor(index_only)]
 #[repr(u8)]
 pub enum Key {
     #[default]
+    #[n(0)]
     Chromatic,
+    #[n(1)]
     Ionian,
+    #[n(2)]
     Dorian,
+    #[n(3)]
     Phrygian,
+    #[n(4)]
     Lydian,
+    #[n(5)]
     Mixolydian,
+    #[n(6)]
     Aeolian,
+    #[n(7)]
     Locrian,
+    #[n(8)]
     BluesMaj,
+    #[n(9)]
     BluesMin,
+    #[n(10)]
     PentatonicMaj,
+    #[n(11)]
     PentatonicMin,
+    #[n(12)]
     Folk,
+    #[n(13)]
     Japanese,
+    #[n(14)]
     Gamelan,
+    #[n(15)]
     HungarianMin,
 }
 
@@ -297,19 +375,48 @@ impl Key {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq)]
+/// Persisted in `GlobalConfig` via CBOR (inside `MidiOutConfig`). New variants
+/// may be appended with the next free `#[n(N)]` tag without a migration.
+/// **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
+#[derive(
+    Clone, Copy, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode,
+)]
 pub enum MidiOutMode {
+    #[n(0)]
     None,
+    #[default]
+    #[n(1)]
     Local,
-    MidiThru { sources: MidiIn },
-    MidiMerge { sources: MidiIn },
+    #[n(2)]
+    MidiThru {
+        #[n(0)]
+        sources: MidiIn,
+    },
+    #[n(3)]
+    MidiMerge {
+        #[n(0)]
+        sources: MidiIn,
+    },
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct MidiOutConfig {
+    #[n(0)]
+    #[cbor(default)]
     pub send_clock: bool,
+    #[n(1)]
+    #[cbor(default)]
     pub send_transport: bool,
+    #[n(2)]
+    #[cbor(default)]
     pub mode: MidiOutMode,
+}
+
+impl Default for MidiOutConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(clippy::new_without_default)]
@@ -323,10 +430,18 @@ impl MidiOutConfig {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct MidiConfig {
     // [usb, out1, out2]
+    #[n(0)]
+    #[cbor(default)]
     pub outs: [MidiOutConfig; 3],
+}
+
+impl Default for MidiConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(clippy::new_without_default)]
@@ -338,14 +453,30 @@ impl MidiConfig {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct ClockConfig {
+    #[n(0)]
+    #[cbor(default)]
     pub clock_src: ClockSrc,
+    #[n(1)]
+    #[cbor(default)]
     pub ext_ppqn: u8,
+    #[n(2)]
+    #[cbor(default)]
     pub reset_src: ResetSrc,
+    #[n(3)]
+    #[cbor(default)]
     pub internal_bpm: f32,
     /// Deluge-style swing amount in `[-35, 35]`. `0` = straight.
+    #[n(4)]
+    #[cbor(default)]
     pub swing_amount: i8,
+}
+
+impl Default for ClockConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(clippy::new_without_default)]
@@ -361,9 +492,13 @@ impl ClockConfig {
     }
 }
 
-#[derive(Clone, Default, Serialize, Deserialize, PostcardBindings, PartialEq)]
+#[derive(Clone, Default, Serialize, Deserialize, PostcardBindings, PartialEq, Encode, Decode)]
 pub struct QuantizerConfig {
+    #[n(0)]
+    #[cbor(default)]
     pub key: Key,
+    #[n(1)]
+    #[cbor(default)]
     pub tonic: Note,
 }
 
@@ -377,42 +512,109 @@ impl QuantizerConfig {
     }
 }
 
-#[derive(Copy, Clone, Serialize, PartialEq, Deserialize, PostcardBindings)]
+/// Persisted in `GlobalConfig` via CBOR (inside `AuxJackMode::ClockOut`). New
+/// variants may be appended with the next free `#[n(N)]` tag without a
+/// migration. **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
+#[derive(
+    Copy, Clone, Default, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode,
+)]
+#[cbor(index_only)]
 #[repr(u16)]
 pub enum ClockDivision {
+    #[default]
+    #[n(1)]
     _1 = 1,
+    #[n(2)]
     _2 = 2,
+    #[n(4)]
     _4 = 4,
+    #[n(6)]
     _6 = 6,
+    #[n(8)]
     _8 = 8,
+    #[n(12)]
     _12 = 12,
     // 1 quarter note at 24 ppqn
+    #[n(24)]
     _24 = 24,
     // 1 bar at 24 ppqn
+    #[n(96)]
     _96 = 96,
     // 2 bars
+    #[n(192)]
     _192 = 192,
     // 4 bars
+    #[n(384)]
     _384 = 384,
 }
 
-#[derive(Clone, Serialize, PartialEq, Deserialize, PostcardBindings)]
+/// Persisted in `GlobalConfig` via CBOR (inside `aux: [AuxJackMode; 3]`). New
+/// variants may be appended with the next free `#[n(N)]` tag without a
+/// migration. **Removing** a variant requires a one-shot FRAM migration (see
+/// `storage::migrate_fram`).
+#[derive(Clone, Default, Serialize, PartialEq, Deserialize, PostcardBindings, Encode, Decode)]
 #[repr(u8)]
 pub enum AuxJackMode {
+    #[default]
+    #[n(0)]
     None,
-    ClockOut(ClockDivision),
+    #[n(1)]
+    ClockOut(#[n(0)] ClockDivision),
+    #[n(2)]
     ResetOut,
 }
 
-#[derive(Clone, Serialize, Deserialize, PostcardBindings)]
+/// `GlobalConfig` is persisted to FRAM as CBOR. To keep the on-FRAM format
+/// forward/backward compatible without writing a migration:
+///
+/// - **Every field has `#[cbor(default)]`.** Missing tags decode as
+///   `Default::default()` instead of erroring. Removing a field is just
+///   deleting the field; old stored data with that tag is silently skipped.
+///   Adding a field is just declaring it with the next free tag — old data
+///   without the tag falls back to its `Default`.
+/// - **Tags are append-only.** Never reuse an `#[n(N)]` for a different
+///   purpose; pick the next unused integer. Reusing a tag would silently
+///   reinterpret old stored data.
+/// - **Field types must implement `Default`** with a value that's safe if it
+///   ever shows up on a device that's missing the field in FRAM.
+///
+/// This convention applies recursively to every type reachable from
+/// `GlobalConfig` through fields tagged `#[cbor(default)]`. Things that *do*
+/// require a one-shot migration (handled in `storage::migrate_fram`):
+///
+/// - Changing the type of an existing field (e.g. `u8 → u16`).
+/// - Resizing fixed-size arrays (`[T; N]`) or tuples.
+/// - Removing an enum variant while old data may still contain it.
+#[derive(Clone, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
 pub struct GlobalConfig {
+    #[n(0)]
+    #[cbor(default)]
     pub aux: [AuxJackMode; 3],
+    #[n(1)]
+    #[cbor(default)]
     pub clock: ClockConfig,
+    #[n(2)]
+    #[cbor(default)]
     pub i2c_mode: I2cMode,
+    #[n(3)]
+    #[cbor(default)]
     pub led_brightness: u8,
+    #[n(4)]
+    #[cbor(default)]
     pub midi: MidiConfig,
+    #[n(5)]
+    #[cbor(default)]
     pub quantizer: QuantizerConfig,
+    #[n(6)]
+    #[cbor(default)]
     pub takeover_mode: TakeoverMode,
+}
+
+impl Default for GlobalConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(clippy::new_without_default)]
@@ -1032,9 +1234,12 @@ impl From<MidiChannel> for u4 {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings, Encode, Decode,
+)]
+#[cbor(transparent)]
 // [usb, din]
-pub struct MidiIn(pub [bool; 2]);
+pub struct MidiIn(#[n(0)] pub [bool; 2]);
 
 impl Default for MidiIn {
     fn default() -> Self {
@@ -1265,5 +1470,344 @@ mod tests {
             assert!(!final_ids.contains(&layout_id));
             final_ids.push(layout_id).unwrap();
         }
+    }
+
+    // ---- CBOR storage / migration tests ----
+    //
+    // These pin down the behaviour the rest of the storage layer relies on:
+    //   1. CBOR round-trips current persisted types.
+    //   2. Adding a `#[cbor(default)]` field is forward-compatible: data written
+    //      by an older shape decodes into the newer shape with the new field
+    //      defaulted.
+    //   3. Removing a field is backward-compatible: data written by an older
+    //      shape decodes into the newer (slimmer) shape with the dropped field
+    //      silently skipped.
+    //   4. v1.8.2 postcard `GlobalConfig` data fails to decode as the current
+    //      postcard `GlobalConfig` (which is what makes the migration's
+    //      "current first, V0 fallback" strategy safe).
+
+    use super::*;
+    use minicbor::{Decode, Encode};
+    use serde::{Deserialize, Serialize};
+
+    fn cbor_encode_to_vec<T: Encode<()>>(value: &T) -> heapless::Vec<u8, 256> {
+        let mut buf = [0u8; 256];
+        let initial = buf.len();
+        let mut writer: &mut [u8] = &mut buf[..];
+        minicbor::encode(value, &mut writer).unwrap();
+        let written = initial - writer.len();
+        heapless::Vec::from_slice(&buf[..written]).unwrap()
+    }
+
+    #[test]
+    fn cbor_round_trip_default_global_config() {
+        let original = GlobalConfig::new();
+        let encoded = cbor_encode_to_vec(&original);
+        let decoded: GlobalConfig = minicbor::decode(&encoded).unwrap();
+
+        assert_eq!(decoded.led_brightness, original.led_brightness);
+        assert_eq!(
+            decoded.clock.internal_bpm.to_bits(),
+            original.clock.internal_bpm.to_bits()
+        );
+        assert_eq!(decoded.clock.swing_amount, original.clock.swing_amount);
+        assert_eq!(decoded.i2c_mode as u8, I2cMode::Leader as u8);
+    }
+
+    #[test]
+    fn cbor_field_added_decodes_with_default() {
+        // V1: a struct shaped like an "older" version.
+        #[derive(Encode, Decode)]
+        struct V1 {
+            #[n(0)]
+            x: u32,
+            #[n(1)]
+            y: u32,
+        }
+
+        // V2: same tags, plus a new field that uses cbor(default).
+        #[derive(Encode, Decode, Debug, PartialEq)]
+        struct V2 {
+            #[n(0)]
+            #[cbor(default)]
+            x: u32,
+            #[n(1)]
+            #[cbor(default)]
+            y: u32,
+            #[n(2)]
+            #[cbor(default)]
+            z: u32,
+        }
+
+        let v1 = V1 { x: 42, y: 7 };
+        let bytes = cbor_encode_to_vec(&v1);
+        let v2: V2 = minicbor::decode(&bytes).unwrap();
+        assert_eq!(v2, V2 { x: 42, y: 7, z: 0 });
+    }
+
+    #[test]
+    fn cbor_field_removed_skips_unknown_tag() {
+        // V2: an "older" version that wrote a y field.
+        #[derive(Encode, Decode)]
+        struct V2 {
+            #[n(0)]
+            x: u32,
+            #[n(1)]
+            y: u32,
+        }
+
+        // V3: the y field has been removed.
+        #[derive(Encode, Decode, Debug, PartialEq)]
+        struct V3 {
+            #[n(0)]
+            x: u32,
+        }
+
+        let v2 = V2 { x: 42, y: 999 };
+        let bytes = cbor_encode_to_vec(&v2);
+        let v3: V3 = minicbor::decode(&bytes).unwrap();
+        assert_eq!(v3, V3 { x: 42 });
+    }
+
+    #[test]
+    fn cbor_postcard_data_does_not_decode_as_cbor() {
+        // After migration, FRAM holds CBOR. If the schema header somehow gets
+        // lost and migrate_fram runs on already-migrated data, the postcard
+        // legacy decoders must reject the CBOR bytes (so we don't clobber).
+        let original = GlobalConfig::new();
+        let cbor_bytes = cbor_encode_to_vec(&original);
+
+        let postcard_result: Result<GlobalConfig, _> = postcard::from_bytes(&cbor_bytes);
+        assert!(
+            postcard_result.is_err(),
+            "postcard must reject CBOR-encoded GlobalConfig bytes"
+        );
+    }
+
+    /// Mirror of v1.8.2's `ClockConfig` shape, used only by the migration
+    /// regression tests below.
+    #[derive(Serialize, Deserialize)]
+    struct ClockConfigPreSwing {
+        clock_src: ClockSrc,
+        ext_ppqn: u8,
+        reset_src: ResetSrc,
+        internal_bpm: f32,
+    }
+
+    /// Mirror of v1.8.2's `GlobalConfig` shape (no `swing_amount` in clock).
+    #[derive(Serialize, Deserialize)]
+    struct GlobalConfigPreSwing {
+        aux: [AuxJackMode; 3],
+        clock: ClockConfigPreSwing,
+        i2c_mode: I2cMode,
+        led_brightness: u8,
+        midi: MidiConfig,
+        quantizer: QuantizerConfig,
+        takeover_mode: TakeoverMode,
+    }
+
+    fn make_v18_default() -> GlobalConfigPreSwing {
+        GlobalConfigPreSwing {
+            aux: [
+                AuxJackMode::ClockOut(ClockDivision::_1),
+                AuxJackMode::None,
+                AuxJackMode::None,
+            ],
+            clock: ClockConfigPreSwing {
+                clock_src: ClockSrc::Internal,
+                ext_ppqn: 24,
+                reset_src: ResetSrc::None,
+                internal_bpm: 120.0,
+            },
+            i2c_mode: I2cMode::Leader,
+            led_brightness: 150,
+            midi: MidiConfig::new(),
+            quantizer: QuantizerConfig::new(),
+            takeover_mode: TakeoverMode::Pickup,
+        }
+    }
+
+    #[test]
+    fn v18_postcard_data_fails_current_postcard_decode() {
+        // The migration's correctness rests on this invariant: v1.8.2 stored
+        // bytes are always 1 byte short of what the current GlobalConfig
+        // postcard decoder needs (the missing `swing_amount`). Without it,
+        // the "try current first" path could mis-decode v1.8.2 data as
+        // pre-fix v1.9 data with shifted fields.
+        let v18 = make_v18_default();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v18, &mut buf).unwrap();
+
+        let result: Result<GlobalConfig, _> = postcard::from_bytes(bytes);
+        assert!(
+            result.is_err(),
+            "v1.8.2 postcard data must NOT decode as current postcard GlobalConfig"
+        );
+    }
+
+    #[test]
+    fn v18_postcard_data_decodes_as_pre_swing_shape() {
+        // The fallback path: same legacy bytes, decoded with the v1.8.2-shaped
+        // type, must succeed.
+        let v18 = make_v18_default();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v18, &mut buf).unwrap();
+
+        let decoded: GlobalConfigPreSwing = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded.led_brightness, 150);
+        assert_eq!(decoded.clock.ext_ppqn, 24);
+        assert_eq!(decoded.clock.internal_bpm.to_bits(), 120.0_f32.to_bits());
+    }
+
+    #[test]
+    fn pre_fix_v19_postcard_data_decodes_as_current() {
+        // Pre-fix v1.9 betas wrote postcard `GlobalConfig` with the swing
+        // field present. The "try current first" path must accept it as-is.
+        let original = GlobalConfig::new();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&original, &mut buf).unwrap();
+
+        let decoded: GlobalConfig = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded.led_brightness, 150);
+        assert_eq!(decoded.clock.swing_amount, 0);
+        assert_eq!(decoded.i2c_mode as u8, I2cMode::Leader as u8);
+    }
+
+    #[test]
+    fn brightness_round_trips_through_v18_migration() {
+        // Reproduction of a real hardware report: brightness 111 on v1.8.2
+        // came back as 100 after upgrading to fixed v1.9. Pin down that the
+        // postcard-V0 → CBOR migration preserves an arbitrary u8 brightness
+        // exactly (no clamping, no off-by-one).
+        let mut v18 = make_v18_default();
+        v18.led_brightness = 111;
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v18, &mut buf).unwrap();
+
+        // Step 1: migration reads the legacy bytes via GlobalConfigPreSwing.
+        let decoded_v0: GlobalConfigPreSwing = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded_v0.led_brightness, 111);
+
+        // Step 2: migration would convert to current GlobalConfig (we mirror
+        // the From<GlobalConfigV0> conversion in storage.rs here).
+        let migrated = GlobalConfig {
+            aux: decoded_v0.aux,
+            clock: ClockConfig {
+                clock_src: decoded_v0.clock.clock_src,
+                ext_ppqn: decoded_v0.clock.ext_ppqn,
+                reset_src: decoded_v0.clock.reset_src,
+                internal_bpm: decoded_v0.clock.internal_bpm,
+                swing_amount: 0,
+            },
+            i2c_mode: decoded_v0.i2c_mode,
+            led_brightness: decoded_v0.led_brightness,
+            midi: decoded_v0.midi,
+            quantizer: decoded_v0.quantizer,
+            takeover_mode: decoded_v0.takeover_mode,
+        };
+        assert_eq!(migrated.led_brightness, 111);
+
+        // Step 3: round-trip through CBOR (what migration actually writes,
+        // and what every subsequent boot reads).
+        let encoded = cbor_encode_to_vec(&migrated);
+        let decoded: GlobalConfig = minicbor::decode(&encoded).unwrap();
+        assert_eq!(decoded.led_brightness, 111);
+    }
+
+    /// Mirror of v1.7.0's `GlobalConfig` shape (no `takeover_mode`, no
+    /// `swing_amount`).
+    #[derive(Serialize, Deserialize)]
+    struct GlobalConfigV170 {
+        aux: [AuxJackMode; 3],
+        clock: ClockConfigPreSwing,
+        i2c_mode: I2cMode,
+        led_brightness: u8,
+        midi: MidiConfig,
+        quantizer: QuantizerConfig,
+    }
+
+    fn make_v17_default() -> GlobalConfigV170 {
+        GlobalConfigV170 {
+            aux: [
+                AuxJackMode::ClockOut(ClockDivision::_1),
+                AuxJackMode::None,
+                AuxJackMode::None,
+            ],
+            clock: ClockConfigPreSwing {
+                clock_src: ClockSrc::Internal,
+                ext_ppqn: 24,
+                reset_src: ResetSrc::None,
+                internal_bpm: 120.0,
+            },
+            i2c_mode: I2cMode::Leader,
+            led_brightness: 150,
+            midi: MidiConfig::new(),
+            quantizer: QuantizerConfig::new(),
+        }
+    }
+
+    #[test]
+    fn v17_postcard_data_fails_current_and_v18_postcard_decode() {
+        // v1.7.0 data is 2 bytes shorter than current and 1 byte shorter than
+        // v1.8.x. Both larger shapes must fail so the V170 fallback is the one
+        // that actually runs.
+        let v17 = make_v17_default();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v17, &mut buf).unwrap();
+
+        let current: Result<GlobalConfig, _> = postcard::from_bytes(bytes);
+        assert!(current.is_err(), "v1.7.0 must NOT decode as current");
+        let v18: Result<GlobalConfigPreSwing, _> = postcard::from_bytes(bytes);
+        assert!(v18.is_err(), "v1.7.0 must NOT decode as v1.8.x");
+    }
+
+    #[test]
+    fn v17_postcard_data_decodes_as_v170_shape() {
+        let v17 = make_v17_default();
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v17, &mut buf).unwrap();
+
+        let decoded: GlobalConfigV170 = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded.led_brightness, 150);
+        assert_eq!(decoded.clock.internal_bpm.to_bits(), 120.0_f32.to_bits());
+    }
+
+    #[test]
+    fn brightness_round_trips_through_v170_migration() {
+        // Same hardware-bug regression as the v1.8.x test, one version older:
+        // brightness 111 set on v1.7.0 must survive the postcard-V170 → CBOR
+        // migration unchanged. `swing_amount` and `takeover_mode` come back as
+        // their `Default::default()` values.
+        let mut v17 = make_v17_default();
+        v17.led_brightness = 111;
+        let mut buf = [0u8; 256];
+        let bytes = postcard::to_slice(&v17, &mut buf).unwrap();
+
+        let decoded_v17: GlobalConfigV170 = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(decoded_v17.led_brightness, 111);
+
+        // Mirror the From<GlobalConfigV170> conversion from storage.rs.
+        let migrated = GlobalConfig {
+            aux: decoded_v17.aux,
+            clock: ClockConfig {
+                clock_src: decoded_v17.clock.clock_src,
+                ext_ppqn: decoded_v17.clock.ext_ppqn,
+                reset_src: decoded_v17.clock.reset_src,
+                internal_bpm: decoded_v17.clock.internal_bpm,
+                swing_amount: 0,
+            },
+            i2c_mode: decoded_v17.i2c_mode,
+            led_brightness: decoded_v17.led_brightness,
+            midi: decoded_v17.midi,
+            quantizer: decoded_v17.quantizer,
+            takeover_mode: TakeoverMode::Pickup,
+        };
+        assert_eq!(migrated.led_brightness, 111);
+        assert_eq!(migrated.clock.swing_amount, 0);
+
+        let encoded = cbor_encode_to_vec(&migrated);
+        let decoded: GlobalConfig = minicbor::decode(&encoded).unwrap();
+        assert_eq!(decoded.led_brightness, 111);
+        assert_eq!(decoded.clock.swing_amount, 0);
     }
 }

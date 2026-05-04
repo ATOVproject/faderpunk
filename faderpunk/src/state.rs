@@ -1,10 +1,16 @@
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use minicbor::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 use crate::storage;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Default, Debug)]
+/// Persisted to FRAM as CBOR. Adding/removing fields is migration-free as long
+/// as every field carries `#[cbor(default)]` and a fresh `#[n(N)]`. See the
+/// `GlobalConfig` doc comment in `libfp::lib` for the full convention.
+#[derive(Serialize, Deserialize, Encode, Decode, Clone, Copy, Default, Debug)]
 pub struct RuntimeState {
+    #[n(0)]
+    #[cbor(default)]
     pub clock_is_running: bool,
 }
 
