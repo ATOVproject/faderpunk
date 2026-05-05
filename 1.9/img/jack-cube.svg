@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="b" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" width="32.3161" height="38.2375" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 32.3161 38.2375">
+  <defs>
+    <linearGradient id="e" x1="16.452" y1="30.67" x2="16.452" y2="10.07" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#161616"/>
+      <stop offset="1" stop-color="#696969"/>
+    </linearGradient>
+    <filter id="f" data-name="drop-shadow-1" x="6.2864" y="10.8292" width="24" height="24" filterUnits="userSpaceOnUse">
+      <feOffset dx="2" dy="2"/>
+      <feGaussianBlur result="g" stdDeviation="1"/>
+      <feFlood flood-color="#000" flood-opacity=".4"/>
+      <feComposite in2="g" operator="in"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+    <linearGradient id="h" x1="10.7952" y1="14.7131" x2="22.1089" y2="26.0268" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#a6a7a7"/>
+    </linearGradient>
+    <linearGradient id="i" x1="18.7514" y1="15.44" x2="14.1502" y2="25.3051" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5c5c5c"/>
+      <stop offset="1" stop-color="#acacad"/>
+    </linearGradient>
+  </defs>
+  <g id="c" data-name="Main">
+    <g id="d" data-name="SetupRight">
+      <g>
+        <polygon points="1.8841 12.317 .521 30.065 12.0531 37.704 31.8161 33.397 31.8161 10.72 12.9881 .621 1.8841 12.317" style="fill: none; stroke: #bd4dd8; stroke-linecap: square; stroke-miterlimit: 1.5;"/>
+        <line x1="13.1261" y1="1.118" x2="31.51" y2="33.086" style="fill: none; stroke: #bd4dd8; stroke-linecap: square; stroke-miterlimit: 1.5;"/>
+        <line x1="31.51" y1="10.994" x2="12.112" y2="37.334" style="fill: none; stroke: #bd4dd8; stroke-linecap: square; stroke-miterlimit: 1.5;"/>
+        <line x1="2.1761" y1="12.185" x2="31.51" y2="33.086" style="fill: none; stroke: #bd4dd8; stroke-linecap: square; stroke-miterlimit: 1.5;"/>
+        <line x1=".8551" y1="29.746" x2="31.51" y2="10.994" style="fill: none; stroke: #bd4dd8; stroke-linecap: square; stroke-miterlimit: 1.5;"/>
+        <g>
+          <circle cx="16.452" cy="20.37" r="11" style="fill: #333;"/>
+          <circle cx="16.452" cy="20.37" r="10.3" style="fill: url(#e);"/>
+          <circle cx="16.452" cy="20.37" r="8.5" style="fill: #828282; filter: url(#f);"/>
+          <circle cx="16.452" cy="20.37" r="8.5" style="fill: #828282;"/>
+          <circle cx="16.452" cy="20.37" r="8" style="fill: url(#h);"/>
+          <circle cx="16.452" cy="20.37" r="7" style="fill: #c5c7c5;"/>
+          <circle cx="16.452" cy="20.37" r="5.5" style="fill: url(#i);"/>
+          <circle cx="16.452" cy="20.37" r="4.5"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>
