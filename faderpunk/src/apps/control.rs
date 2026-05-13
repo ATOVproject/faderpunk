@@ -252,6 +252,7 @@ pub async fn run(
         let mut fad_val = 0;
         let mut out: u16 = 0;
         let mut last_midi = 0u32;
+        let mut last_i2c = 0u16;
 
         loop {
             app.delay_millis(1).await;
@@ -340,8 +341,11 @@ pub async fn run(
             };
             if last_midi != midi_val {
                 midi.send_cc(midi_cc, midi_out).await;
-                i2c.send_fader_value(0, out, range);
                 last_midi = midi_val;
+            }
+            if last_i2c != midi_out {
+                i2c.send_fader_value(0, midi_out, range);
+                last_i2c = midi_out;
             }
 
             // Update LEDs
