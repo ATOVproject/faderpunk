@@ -16,8 +16,8 @@ use std::path::Path;
 
 use syn::punctuated::Punctuated;
 use syn::{
-    Expr, ExprArray, ExprCall, ExprLit, ExprMethodCall, ExprPath, ExprReference, ExprStruct, Ident,
-    Item, Lit, LitInt, Member, Token,
+    Expr, ExprArray, ExprCall, ExprLit, ExprMethodCall, ExprPath, ExprReference, ExprStruct,
+    ExprUnary, Ident, Item, Lit, LitInt, Member, Token, UnOp,
 };
 
 struct AppEntry {
@@ -126,6 +126,7 @@ fn unwrap_reference(expr: &Expr) -> &Expr {
 fn convert_field_value(expr: &Expr) -> TsValue {
     match expr {
         Expr::Lit(ExprLit { lit, .. }) => convert_lit(lit),
+        Expr::Unary(unary) => convert_unary(unary),
         Expr::Path(_) => {
             let name = path_last_segment(expr).expect("path expr must have a segment");
             TsValue::tag(&name)
@@ -133,6 +134,13 @@ fn convert_field_value(expr: &Expr) -> TsValue {
         Expr::Array(ExprArray { elems, .. }) => convert_array(elems),
         Expr::Reference(_) => convert_field_value(unwrap_reference(expr)),
         other => panic!("unsupported field-value expression: {:?}", other),
+    }
+}
+
+fn convert_unary(unary: &ExprUnary) -> TsValue {
+    match (&unary.op, convert_field_value(&unary.expr)) {
+        (UnOp::Neg(_), TsValue::Num(number)) => TsValue::Num(format!("-{number}")),
+        _ => panic!("unsupported unary field-value expression: {:?}", unary),
     }
 }
 
@@ -397,4 +405,19 @@ pub fn generate(faderpunk_src: &Path, out_file: &Path) {
         fs::create_dir_all(parent).unwrap();
     }
     fs::write(out_file, out).unwrap_or_else(|e| panic!("writing {}: {e}", out_file.display()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_negative_integer_field_values() {
+        let expr = syn::parse_str("-50").unwrap();
+        let mut rendered = String::new();
+
+        convert_field_value(&expr).render(&mut rendered, 0);
+
+        assert_eq!(rendered, "-50");
+    }
 }
