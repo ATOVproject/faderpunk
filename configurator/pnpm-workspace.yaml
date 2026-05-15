@@ -1,0 +1,5 @@
+allowBuilds:
+  '@heroui/shared-utils': true
+  '@swc/core': true
+  '@tailwindcss/oxide': true
+  esbuild: true
