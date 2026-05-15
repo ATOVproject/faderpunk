@@ -97,12 +97,13 @@ pub struct Storage {
     gateseq: Arr<bool, 64>,
     legato_seq: Arr<bool, 64>,
     // Alt layer - fader-scale values (0-4095)
-    length_fader: [u16; 4],    // F0: derive seq_length = val/256+1
-    gate_fader: [u16; 4],      // F1: derive gate_length
-    oct_fader: [u16; 4],       // F2: derive oct = val/1000
-    range_fader: [u16; 4],     // F3: derive range = val/1000+1
-    res_fader: [u16; 4],       // F4: derive res_index = val/512
-    direction_fader: [u16; 4], // F5: derive Direction = val/1024
+    length_fader: [u16; 4],      // F0: derive seq_length = val/256+1
+    gate_fader: [u16; 4],        // F1: derive gate_length
+    oct_fader: [u16; 4],         // F2: derive oct = val/1000
+    range_fader: [u16; 4],       // F3: derive range = val/1000+1
+    res_fader: [u16; 4],         // F4: derive res_index = val/512
+    direction_fader: [u16; 4],   // F5: derive Direction = val/1024
+    probability_fader: [u16; 4], // F6: probability 5%..100% (linear)
 }
 
 impl Default for Storage {
@@ -112,14 +113,21 @@ impl Default for Storage {
             gateseq: Arr::new([true; 64]),
             legato_seq: Arr::new([false; 64]),
             // Default fader values - positioned to produce sensible defaults
-            length_fader: [3840; 4],   // -> length 16 (3840/256+1 = 16)
-            gate_fader: [2032; 4],     // -> gate_length 127 (127*16 = 2032)
-            oct_fader: [0; 4],         // -> oct 0
-            range_fader: [2000; 4],    // -> range 3 (2000/1000+1 = 3)
-            res_fader: [2048; 4],      // -> res_index 4 (2048/512 = 4)
-            direction_fader: [0; 4],   // -> Direction::Forward
+            length_fader: [3840; 4],      // -> length 16 (3840/256+1 = 16)
+            gate_fader: [2032; 4],        // -> gate_length 127 (127*16 = 2032)
+            oct_fader: [0; 4],            // -> oct 0
+            range_fader: [2000; 4],       // -> range 3 (2000/1000+1 = 3)
+            res_fader: [2048; 4],         // -> res_index 4 (2048/512 = 4)
+            direction_fader: [0; 4],      // -> Direction::Forward
+            probability_fader: [4095; 4], // -> 100%
         }
     }
+}
+
+/// Maps the per-track probability fader (0..=4095) to a die-roll threshold (0..=4096).
+/// Fader 0 → 5%, fader 4095 → 100%.
+fn probability_threshold(fader: u16) -> u16 {
+    205 + ((fader as u32 * 3891) / 4095) as u16
 }
 
 /// Maps a raw step counter to a position within `length`, respecting `direction`.
@@ -254,6 +262,8 @@ pub async fn run(
     let gatelength_glob: Global<[u8; 4]> = app.make_global([128; 4]);
     let clockres_glob = app.make_global([6usize; 4]);
     let direction_glob: Global<[Direction; 4]> = app.make_global([Direction::Forward; 4]);
+    // Cached die-roll thresholds (0..=4096); recomputed when F6 changes.
+    let probability_glob: Global<[u16; 4]> = app.make_global([4096; 4]);
     // Actual playing position per track (post direction). LED display reads this
     // so the highlighted step matches the audible step regardless of direction.
     let playing_pos_glob: Global<[usize; 4]> = app.make_global([0; 4]);
@@ -278,6 +288,7 @@ pub async fn run(
         _range_faders,
         res_faders,
         direction_faders,
+        probability_faders,
     ) = storage.query(|s| {
         (
             s.seq,
@@ -289,6 +300,7 @@ pub async fn run(
             s.range_fader,
             s.res_fader,
             s.direction_fader,
+            s.probability_fader,
         )
     });
 
@@ -302,6 +314,7 @@ pub async fn run(
     clockres_glob.set(clockres_init);
     gatelength_glob.set(gatel_init);
     direction_glob.set(direction_faders.map(Direction::from_fader));
+    probability_glob.set(probability_faders.map(probability_threshold));
 
     let shift_handler = async {
         loop {
@@ -356,6 +369,7 @@ pub async fn run(
                                 gatelength_glob: &gatelength_glob,
                                 clockres_glob: &clockres_glob,
                                 direction_glob: &direction_glob,
+                                probability_glob: &probability_glob,
                                 resolution: &resolution,
                             },
                         );
@@ -540,6 +554,7 @@ pub async fn run(
                     let clockn = ticks() as usize;
                     let seq = seq_glob.get();
                     let direction = direction_glob.get();
+                    let probability = probability_glob.get();
                     for n in 0..4 {
                         if clockn.is_multiple_of(clockres[n]) {
                             let step = clockn / clockres[n];
@@ -551,7 +566,8 @@ pub async fn run(
                             playing_pos_glob.set(positions);
 
                             midi[n].send_note_off(lastnote[n]).await;
-                            if gateseq[clkindex] {
+                            let fires = gateseq[clkindex] && die.roll() < probability[n];
+                            if fires {
                                 let out = quantizer
                                     .get_quantized_note(
                                         (seq[clkindex] as u32
@@ -602,6 +618,7 @@ pub async fn run(
                         gate_faders,
                         res_faders,
                         direction_faders,
+                        probability_faders,
                     ) = storage.query(|s| {
                         (
                             s.seq,
@@ -611,6 +628,7 @@ pub async fn run(
                             s.gate_fader,
                             s.res_fader,
                             s.direction_fader,
+                            s.probability_fader,
                         )
                     });
 
@@ -624,6 +642,7 @@ pub async fn run(
                     clockres_glob.set(clockres);
                     gatelength_glob.set(gatel);
                     direction_glob.set(direction_faders.map(Direction::from_fader));
+                    probability_glob.set(probability_faders.map(probability_threshold));
                 }
                 SceneEvent::SaveScene(scene) => {
                     storage.save_to_scene(scene).await;
@@ -654,7 +673,8 @@ fn get_alt_target(chan: usize, seq_idx: usize, storage: &ManagedStorage<Storage>
         3 => storage.query(|s| s.range_fader[seq_idx]),
         4 => storage.query(|s| s.res_fader[seq_idx]),
         5 => storage.query(|s| s.direction_fader[seq_idx]),
-        _ => 0, // F6-F7 have no alt function
+        6 => storage.query(|s| s.probability_fader[seq_idx]),
+        _ => 0, // F7 has no alt function
     }
 }
 
@@ -664,6 +684,7 @@ struct AltUpdateContext<'a> {
     gatelength_glob: &'a Global<[u8; 4]>,
     clockres_glob: &'a Global<[usize; 4]>,
     direction_glob: &'a Global<[Direction; 4]>,
+    probability_glob: &'a Global<[u16; 4]>,
     resolution: &'a [usize; 8],
 }
 
@@ -718,6 +739,14 @@ fn apply_alt_update(chan: usize, seq_idx: usize, value: u16, ctx: &AltUpdateCont
             let mut arr = ctx.direction_glob.get();
             arr[seq_idx] = Direction::from_fader(value);
             ctx.direction_glob.set(arr);
+        }
+        6 => {
+            // Probability
+            ctx.storage
+                .modify_and_save(|s| s.probability_fader[seq_idx] = value);
+            let mut arr = ctx.probability_glob.get();
+            arr[seq_idx] = probability_threshold(value);
+            ctx.probability_glob.set(arr);
         }
         _ => {}
     }
