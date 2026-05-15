@@ -103,15 +103,38 @@ impl Default for Storage {
 
 impl AppStorage for Storage {}
 
+/// Derives runtime parameters from stored fader values.
+fn derive_runtime_params(
+    length_faders: [u16; 4],
+    gate_faders: [u16; 4],
+    res_faders: [u16; 4],
+    resolution: &[usize; 8],
+) -> ([u8; 4], [usize; 4], [u8; 4]) {
+    let mut seq_length = [0u8; 4];
+    let mut clockres = [0usize; 4];
+    let mut gatel = [0u8; 4];
+    for n in 0..4 {
+        seq_length[n] = (length_faders[n] / 256 + 1) as u8;
+        clockres[n] = resolution[(res_faders[n] / 512) as usize];
+        gatel[n] = (clockres[n] * (gate_faders[n] as usize) / 4096) as u8;
+        gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
+    }
+    (seq_length, clockres, gatel)
+}
+
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id, Params {
-        midi_channel1: MidiChannel::from(1),
-        midi_channel2: MidiChannel::from(2),
-        midi_channel3: MidiChannel::from(3),
-        midi_channel4: MidiChannel::from(4),
-        midi_out: MidiOut::default(),
-    });
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            midi_channel1: MidiChannel::from(1),
+            midi_channel2: MidiChannel::from(2),
+            midi_channel3: MidiChannel::from(3),
+            midi_channel4: MidiChannel::from(4),
+            midi_out: MidiOut::default(),
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
@@ -176,7 +199,6 @@ pub async fn run(
     let quantizer = app.use_quantizer(range);
 
     let page_glob: Global<usize> = app.make_global(0);
-    let led_flag_glob: Global<bool> = app.make_global(true);
     let latch_layer_glob: Global<LatchLayer> = app.make_global(LatchLayer::Main);
     let seq_glob: Global<[u16; 64]> = app.make_global([0; 64]);
     let gateseq_glob: Global<[bool; 64]> = app.make_global([true; 64]);
@@ -184,10 +206,9 @@ pub async fn run(
 
     let seq_length_glob: Global<[u8; 4]> = app.make_global([16; 4]);
     let gatelength_glob: Global<[u8; 4]> = app.make_global([128; 4]);
+    let clockres_glob = app.make_global([6usize; 4]);
 
-    let clockres_glob = app.make_global([6, 6, 6, 6]);
-
-    let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
+    let resolution = [24usize, 16, 12, 8, 6, 4, 3, 2];
 
     let mut lastnote = [MidiNote::default(); 4];
     let mut gatelength1 = gatelength_glob.get();
@@ -222,23 +243,15 @@ pub async fn run(
     gateseq_glob.set(gateseq_saved.get());
     legatoseq_glob.set(legato_seq_saved.get());
 
-    // Derive runtime parameters from fader values
-    let mut seq_length_saved = [0u8; 4];
-    let mut clockres = [0usize; 4];
-    let mut gatel = [0u8; 4];
-    for n in 0..4 {
-        seq_length_saved[n] = (length_faders[n] / 256 + 1) as u8;
-        clockres[n] = resolution[(res_faders[n] / 512) as usize];
-        gatel[n] = (clockres[n] * (gate_faders[n] as usize) / 4096) as u8;
-        gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
-    }
-    seq_length_glob.set(seq_length_saved);
-    clockres_glob.set(clockres);
-    gatelength_glob.set(gatel);
+    let (seq_length_init, clockres_init, gatel_init) =
+        derive_runtime_params(length_faders, gate_faders, res_faders, &resolution);
+    seq_length_glob.set(seq_length_init);
+    clockres_glob.set(clockres_init);
+    gatelength_glob.set(gatel_init);
 
     let shift_handler = async {
         loop {
-            app.delay_millis(1).await;
+            app.delay_millis(16).await;
             let layer = if buttons.is_shift_pressed() {
                 LatchLayer::Alt
             } else {
@@ -255,7 +268,6 @@ pub async fn run(
             let seq_idx = page / 2;
             let latch_layer = latch_layer_glob.get();
 
-            // Determine target value based on layer and fader
             let target_value = match latch_layer {
                 LatchLayer::Main => {
                     let seq = seq_glob.get();
@@ -270,7 +282,6 @@ pub async fn run(
             {
                 match latch_layer {
                     LatchLayer::Main => {
-                        // Update step value
                         let mut seq = seq_glob.get();
                         seq[chan + (page * 8)] = new_value;
                         seq_glob.set(seq);
@@ -297,33 +308,28 @@ pub async fn run(
                     LatchLayer::Third => {}
                 }
             }
-            led_flag_glob.set(true);
         }
     };
 
     let button_handler = async {
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
-            let mut gateseq = gateseq_glob.get();
-            let mut legato_seq = legatoseq_glob.get();
-
-            // let mut gateseq = gateseq_glob.get_array();
             let page = page_glob.get();
-            if !is_shift_pressed {
-                gateseq[chan + (page * 8)] = !gateseq[chan + (page * 8)];
-                gateseq_glob.set(gateseq);
 
+            if !is_shift_pressed {
+                let mut gateseq = gateseq_glob.get();
+                let mut legato_seq = legatoseq_glob.get();
+
+                gateseq[chan + (page * 8)] = !gateseq[chan + (page * 8)];
                 legato_seq[chan + (page * 8)] = false;
+
+                gateseq_glob.set(gateseq);
                 legatoseq_glob.set(legato_seq);
 
                 storage.modify_and_save(|s| {
                     s.gateseq.set(gateseq);
                     s.legato_seq.set(legato_seq);
                 });
-
-                // gateseq_glob.set_array(gateseq);
-                // gateseq_glob.save();
-                led_flag_glob.set(true);
             } else {
                 page_glob.set(chan);
             }
@@ -333,54 +339,56 @@ pub async fn run(
     let button_long_press_handler = async {
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_long_press().await;
-
             let page = page_glob.get();
 
             if !is_shift_pressed {
                 let mut legato_seq = legatoseq_glob.get();
-                legato_seq[chan + (page * 8)] = !legato_seq[chan + (page * 8)];
-                legatoseq_glob.set(legato_seq);
-
                 let mut gateseq = gateseq_glob.get();
+
+                legato_seq[chan + (page * 8)] = !legato_seq[chan + (page * 8)];
                 gateseq[chan + (page * 8)] = true;
+
+                legatoseq_glob.set(legato_seq);
                 gateseq_glob.set(gateseq);
 
-                storage.modify_and_save(|s| s.gateseq.set(gateseq));
-                storage.modify_and_save(|s| s.legato_seq.set(legato_seq));
-
-                // gateseq_glob.set_array(gateseq);
-                // gateseq_glob.save();
+                storage.modify_and_save(|s| {
+                    s.gateseq.set(gateseq);
+                    s.legato_seq.set(legato_seq);
+                });
             }
         }
     };
 
     let led_handler = async {
+        let intensities = [
+            Brightness::Low,
+            Brightness::Mid,
+            Brightness::High,
+            Brightness::High,
+        ];
+        let colors = [Color::Yellow, Color::Pink, Color::Cyan, Color::White];
+
         loop {
-            let intensities = [
-                Brightness::Low,
-                Brightness::Mid,
-                Brightness::High,
-                Brightness::High,
-            ];
-            let colors = [Color::Yellow, Color::Pink, Color::Cyan, Color::White];
             app.delay_millis(16).await;
             let clockres = clockres_glob.get();
             let clockn = ticks() as usize;
+            let page = page_glob.get();
 
             if buttons.is_shift_pressed() {
                 let seq_length = seq_length_glob.get();
+                let track = page / 2;
+                let current_step = (clockn / clockres[track] % seq_length[track] as usize) as u8;
 
-                let page = page_glob.get();
-                let mut bright = Brightness::Mid;
-                for n in 0..=7 {
-                    if n == page {
-                        bright = intensities[3];
+                for n in 0..8 {
+                    let bright = if n == page {
+                        intensities[3]
                     } else {
-                        bright = intensities[1];
-                    }
+                        intensities[1]
+                    };
                     led.set(n, Led::Button, colors[n / 2], bright);
                 }
                 for n in 0..=15 {
+                    let mut bright = Brightness::Off;
                     if n < seq_length[page / 2] {
                         bright = Brightness::Mid;
                     }
@@ -390,46 +398,20 @@ pub async fn run(
                     if n >= seq_length[page / 2] {
                         bright = Brightness::Off;
                     }
-
-                    let led_color = if matches!(clockres[page / 2], 2 | 4 | 8 | 16) {
-                        Color::Orange
-                    } else {
-                        Color::Blue
-                    };
                     if n < 8 {
-                        led.set(n as usize, Led::Top, led_color, bright)
+                        led.set(n as usize, Led::Top, Color::Red, bright)
                     } else {
-                        led.set(n as usize - 8, Led::Bottom, led_color, bright)
+                        led.set(n as usize - 8, Led::Bottom, Color::Red, bright)
                     }
                 }
-            }
-
-            if !buttons.is_shift_pressed() {
-                // LED stuff
-                let page = page_glob.get();
-
+            } else {
                 let seq = seq_glob.get();
                 let gateseq = gateseq_glob.get();
-                let seq_length = seq_length_glob.get();
-
-                let mut color = colors[0];
-
-                if page / 2 == 0 {
-                    color = colors[0];
-                }
-                if page / 2 == 1 {
-                    color = colors[1];
-                }
-                if page / 2 == 2 {
-                    color = colors[2];
-                }
-                if page / 2 == 3 {
-                    color = colors[3];
-                }
-
                 let legato_seq = legatoseq_glob.get();
+                let seq_length = seq_length_glob.get();
+                let color = colors[page / 2];
 
-                for n in 0..=7 {
+                for n in 0..8 {
                     led.set(
                         n,
                         Led::Top,
@@ -437,40 +419,38 @@ pub async fn run(
                         Brightness::Custom((seq[n + (page * 8)] / 16) as u8 / 2),
                     );
 
-                    if gateseq[n + (page * 8)] {
-                        led.set(n, Led::Button, color, intensities[1]);
-                    }
-                    if !gateseq[n + (page * 8)] {
-                        led.set(n, Led::Button, color, intensities[0]);
-                    }
-                    if legato_seq[n + (page * 8)] {
-                        led.set(n, Led::Button, color, intensities[2]);
-                    }
+                    let button_bright = if legato_seq[n + (page * 8)] {
+                        intensities[2]
+                    } else if gateseq[n + (page * 8)] {
+                        intensities[1]
+                    } else {
+                        intensities[0]
+                    };
+                    led.set(n, Led::Button, color, button_bright);
 
                     let index = seq_length[page / 2] as usize - (page % 2 * 8);
-
                     if n >= index || index > 16 {
                         led.unset(n, Led::Button);
                     }
 
-                    if (clockn / clockres[n / 2] % seq_length[n / 2] as usize) % 16 - (n % 2) * 8
-                        < 8
-                    {
-                        //this needs changing
-                        led.set(n, Led::Bottom, Color::Red, Brightness::Mid)
+                    // Show which page of each track is currently playing
+                    let track = n / 2;
+                    let step = clockn / clockres[track] % seq_length[track] as usize;
+                    let active = if n % 2 == 0 { step < 8 } else { step >= 8 };
+                    if active {
+                        led.set(n, Led::Bottom, Color::Red, Brightness::Mid);
                     } else {
                         led.unset(n, Led::Bottom);
                     }
                 }
-                //runing light on buttons
-                if ((clockn / clockres[page / 2]) % seq_length[page / 2] as usize) % 16
-                    - (page % 2) * 8
-                    < 8
-                    && clockn != 0
-                {
+
+                // Highlight the current step button on the active page
+                let step_in_seq =
+                    (clockn / clockres[page / 2] % seq_length[page / 2] as usize) % 16;
+                let page_offset = (page % 2) * 8;
+                if clockn != 0 && step_in_seq >= page_offset && step_in_seq < page_offset + 8 {
                     led.set(
-                        (clockn / clockres[page / 2] % seq_length[page / 2] as usize) % 16
-                            - (page % 2) * 8,
+                        step_in_seq - page_offset,
                         Led::Button,
                         Color::Red,
                         Brightness::Mid,
@@ -479,8 +459,6 @@ pub async fn run(
 
                 led.set(page, Led::Bottom, color, Brightness::High);
             }
-
-            led_flag_glob.set(false);
         }
     };
 
@@ -492,13 +470,7 @@ pub async fn run(
             let legato_seq = legatoseq_glob.get();
 
             match clk.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Reset => {
-                    for n in 0..4 {
-                        midi[n].send_note_off(lastnote[n]).await;
-                        gate_out[n].set_low().await;
-                    }
-                }
-                ClockEvent::Stop => {
+                ClockEvent::Reset | ClockEvent::Stop => {
                     for n in 0..4 {
                         midi[n].send_note_off(lastnote[n]).await;
                         gate_out[n].set_low().await;
@@ -506,15 +478,14 @@ pub async fn run(
                 }
                 ClockEvent::Tick => {
                     let clockn = ticks() as usize;
-                    for n in 0..=3 {
+                    let seq = seq_glob.get();
+                    for n in 0..4 {
                         if clockn.is_multiple_of(clockres[n]) {
                             let clkindex =
                                 (clockn / clockres[n] % seq_length[n] as usize) + (n * 16);
 
                             midi[n].send_note_off(lastnote[n]).await;
                             if gateseq[clkindex] {
-                                let seq = seq_glob.get();
-
                                 let out = quantizer
                                     .get_quantized_note(
                                         (seq[clkindex] as u32
@@ -580,17 +551,9 @@ pub async fn run(
                     gateseq_glob.set(gateseq_saved.get());
                     legatoseq_glob.set(legato_seq_saved.get());
 
-                    // Derive runtime parameters from fader values
-                    let mut seq_length_saved = [0u8; 4];
-                    let mut clockres = [0usize; 4];
-                    let mut gatel = [0u8; 4];
-                    for n in 0..4 {
-                        seq_length_saved[n] = (length_faders[n] / 256 + 1) as u8;
-                        clockres[n] = resolution[(res_faders[n] / 512) as usize];
-                        gatel[n] = (clockres[n] * (gate_faders[n] as usize) / 4096) as u8;
-                        gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
-                    }
-                    seq_length_glob.set(seq_length_saved);
+                    let (seq_length, clockres, gatel) =
+                        derive_runtime_params(length_faders, gate_faders, res_faders, &resolution);
+                    seq_length_glob.set(seq_length);
                     clockres_glob.set(clockres);
                     gatelength_glob.set(gatel);
                 }
@@ -672,7 +635,7 @@ fn apply_alt_update(chan: usize, seq_idx: usize, value: u16, ctx: &AltUpdateCont
             let mut arr = ctx.clockres_glob.get();
             arr[seq_idx] = ctx.resolution[res_index];
             ctx.clockres_glob.set(arr);
-            // Update gate length to clamp within new resolution
+            // Re-clamp gate length within new resolution
             let clockres = ctx.clockres_glob.get();
             let mut gatel = ctx.gatelength_glob.get();
             gatel[seq_idx] = gatel[seq_idx].clamp(1, clockres[seq_idx] as u8);
