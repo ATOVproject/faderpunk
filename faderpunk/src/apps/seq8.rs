@@ -72,17 +72,37 @@ impl AppParams for Params {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Forward,
+    Backward,
+    PingPong,
+    Random,
+}
+
+impl Direction {
+    fn from_fader(value: u16) -> Self {
+        match value / 1024 {
+            0 => Direction::Forward,
+            1 => Direction::Backward,
+            2 => Direction::PingPong,
+            _ => Direction::Random,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     seq: Arr<u16, 64>,
     gateseq: Arr<bool, 64>,
     legato_seq: Arr<bool, 64>,
     // Alt layer - fader-scale values (0-4095)
-    length_fader: [u16; 4], // F0: derive seq_length = val/256+1
-    gate_fader: [u16; 4],   // F1: derive gate_length
-    oct_fader: [u16; 4],    // F2: derive oct = val/1000
-    range_fader: [u16; 4],  // F3: derive range = val/1000+1
-    res_fader: [u16; 4],    // F4: derive res_index = val/512
+    length_fader: [u16; 4],    // F0: derive seq_length = val/256+1
+    gate_fader: [u16; 4],      // F1: derive gate_length
+    oct_fader: [u16; 4],       // F2: derive oct = val/1000
+    range_fader: [u16; 4],     // F3: derive range = val/1000+1
+    res_fader: [u16; 4],       // F4: derive res_index = val/512
+    direction_fader: [u16; 4], // F5: derive Direction = val/1024
 }
 
 impl Default for Storage {
@@ -92,12 +112,37 @@ impl Default for Storage {
             gateseq: Arr::new([true; 64]),
             legato_seq: Arr::new([false; 64]),
             // Default fader values - positioned to produce sensible defaults
-            length_fader: [3840; 4], // -> length 16 (3840/256+1 = 16)
-            gate_fader: [2032; 4],   // -> gate_length 127 (127*16 = 2032)
-            oct_fader: [0; 4],       // -> oct 0
-            range_fader: [2000; 4],  // -> range 3 (2000/1000+1 = 3)
-            res_fader: [2048; 4],    // -> res_index 4 (2048/512 = 4)
+            length_fader: [3840; 4],   // -> length 16 (3840/256+1 = 16)
+            gate_fader: [2032; 4],     // -> gate_length 127 (127*16 = 2032)
+            oct_fader: [0; 4],         // -> oct 0
+            range_fader: [2000; 4],    // -> range 3 (2000/1000+1 = 3)
+            res_fader: [2048; 4],      // -> res_index 4 (2048/512 = 4)
+            direction_fader: [0; 4],   // -> Direction::Forward
         }
+    }
+}
+
+/// Maps a raw step counter to a position within `length`, respecting `direction`.
+fn step_position(direction: Direction, step: usize, length: u8, die_roll: u16) -> usize {
+    let l = length as usize;
+    if l == 0 {
+        return 0;
+    }
+    match direction {
+        Direction::Forward => step % l,
+        Direction::Backward => (l - 1) - (step % l),
+        Direction::PingPong => {
+            // Endpoints are repeated. For L=3: 0,1,2,2,1,0,0,1,2,2,1,0,...
+            // Period = 2*L; first half ascends, second half descends.
+            let period = 2 * l;
+            let phase = step % period;
+            if phase < l {
+                phase
+            } else {
+                period - 1 - phase
+            }
+        }
+        Direction::Random => (die_roll as usize) % l,
     }
 }
 
@@ -173,6 +218,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let mut clk = app.use_clock();
+    let die = app.use_die();
     let ticks = clk.get_ticker();
     let led = app.use_leds();
 
@@ -207,10 +253,15 @@ pub async fn run(
     let seq_length_glob: Global<[u8; 4]> = app.make_global([16; 4]);
     let gatelength_glob: Global<[u8; 4]> = app.make_global([128; 4]);
     let clockres_glob = app.make_global([6usize; 4]);
+    let direction_glob: Global<[Direction; 4]> = app.make_global([Direction::Forward; 4]);
+    // Actual playing position per track (post direction). LED display reads this
+    // so the highlighted step matches the audible step regardless of direction.
+    let playing_pos_glob: Global<[usize; 4]> = app.make_global([0; 4]);
 
     let resolution = [24usize, 16, 12, 8, 6, 4, 3, 2];
 
     let mut lastnote = [MidiNote::default(); 4];
+    let mut last_step_index = [0usize; 4];
     let mut gatelength1 = gatelength_glob.get();
 
     // Initialize latches for all 8 faders
@@ -226,6 +277,7 @@ pub async fn run(
         _oct_faders,
         _range_faders,
         res_faders,
+        direction_faders,
     ) = storage.query(|s| {
         (
             s.seq,
@@ -236,6 +288,7 @@ pub async fn run(
             s.oct_fader,
             s.range_fader,
             s.res_fader,
+            s.direction_fader,
         )
     });
 
@@ -248,6 +301,7 @@ pub async fn run(
     seq_length_glob.set(seq_length_init);
     clockres_glob.set(clockres_init);
     gatelength_glob.set(gatel_init);
+    direction_glob.set(direction_faders.map(Direction::from_fader));
 
     let shift_handler = async {
         loop {
@@ -301,6 +355,7 @@ pub async fn run(
                                 seq_length_glob: &seq_length_glob,
                                 gatelength_glob: &gatelength_glob,
                                 clockres_glob: &clockres_glob,
+                                direction_glob: &direction_glob,
                                 resolution: &resolution,
                             },
                         );
@@ -376,8 +431,8 @@ pub async fn run(
 
             if buttons.is_shift_pressed() {
                 let seq_length = seq_length_glob.get();
-                let track = page / 2;
-                let current_step = (clockn / clockres[track] % seq_length[track] as usize) as u8;
+                let playing_pos = playing_pos_glob.get();
+                let current_step = playing_pos[page / 2] as u8;
 
                 for n in 0..8 {
                     let bright = if n == page {
@@ -387,21 +442,26 @@ pub async fn run(
                     };
                     led.set(n, Led::Button, colors[n / 2], bright);
                 }
+                let led_color = if matches!(clockres[page / 2], 2 | 4 | 8 | 16) {
+                    Color::Orange
+                } else {
+                    Color::Blue
+                };
                 for n in 0..=15 {
                     let mut bright = Brightness::Off;
                     if n < seq_length[page / 2] {
                         bright = Brightness::Mid;
                     }
-                    if n == (clockn / clockres[page / 2]) as u8 % seq_length[page / 2] {
+                    if n == current_step {
                         bright = Brightness::High;
                     }
                     if n >= seq_length[page / 2] {
                         bright = Brightness::Off;
                     }
                     if n < 8 {
-                        led.set(n as usize, Led::Top, Color::Red, bright)
+                        led.set(n as usize, Led::Top, led_color, bright)
                     } else {
-                        led.set(n as usize - 8, Led::Bottom, Color::Red, bright)
+                        led.set(n as usize - 8, Led::Bottom, led_color, bright)
                     }
                 }
             } else {
@@ -409,6 +469,7 @@ pub async fn run(
                 let gateseq = gateseq_glob.get();
                 let legato_seq = legatoseq_glob.get();
                 let seq_length = seq_length_glob.get();
+                let playing_pos = playing_pos_glob.get();
                 let color = colors[page / 2];
 
                 for n in 0..8 {
@@ -435,7 +496,7 @@ pub async fn run(
 
                     // Show which page of each track is currently playing
                     let track = n / 2;
-                    let step = clockn / clockres[track] % seq_length[track] as usize;
+                    let step = playing_pos[track];
                     let active = if n % 2 == 0 { step < 8 } else { step >= 8 };
                     if active {
                         led.set(n, Led::Bottom, Color::Red, Brightness::Mid);
@@ -445,8 +506,7 @@ pub async fn run(
                 }
 
                 // Highlight the current step button on the active page
-                let step_in_seq =
-                    (clockn / clockres[page / 2] % seq_length[page / 2] as usize) % 16;
+                let step_in_seq = playing_pos[page / 2];
                 let page_offset = (page % 2) * 8;
                 if clockn != 0 && step_in_seq >= page_offset && step_in_seq < page_offset + 8 {
                     led.set(
@@ -479,10 +539,16 @@ pub async fn run(
                 ClockEvent::Tick => {
                     let clockn = ticks() as usize;
                     let seq = seq_glob.get();
+                    let direction = direction_glob.get();
                     for n in 0..4 {
                         if clockn.is_multiple_of(clockres[n]) {
-                            let clkindex =
-                                (clockn / clockres[n] % seq_length[n] as usize) + (n * 16);
+                            let step = clockn / clockres[n];
+                            let pos = step_position(direction[n], step, seq_length[n], die.roll());
+                            let clkindex = pos + (n * 16);
+                            last_step_index[n] = clkindex;
+                            let mut positions = playing_pos_glob.get();
+                            positions[n] = pos;
+                            playing_pos_glob.set(positions);
 
                             midi[n].send_note_off(lastnote[n]).await;
                             if gateseq[clkindex] {
@@ -509,8 +575,7 @@ pub async fn run(
                         if clockn >= gatelength1[n] as usize
                             && (clockn - gatelength1[n] as usize).is_multiple_of(clockres[n])
                         {
-                            let clkindex =
-                                (((clockn - 1) / clockres[n]) % seq_length[n] as usize) + (n * 16);
+                            let clkindex = last_step_index[n];
                             if gateseq[clkindex] && !legato_seq[clkindex] {
                                 gate_out[n].set_low().await;
                                 midi[n].send_note_off(lastnote[n]).await;
@@ -536,6 +601,7 @@ pub async fn run(
                         length_faders,
                         gate_faders,
                         res_faders,
+                        direction_faders,
                     ) = storage.query(|s| {
                         (
                             s.seq,
@@ -544,6 +610,7 @@ pub async fn run(
                             s.length_fader,
                             s.gate_fader,
                             s.res_fader,
+                            s.direction_fader,
                         )
                     });
 
@@ -556,6 +623,7 @@ pub async fn run(
                     seq_length_glob.set(seq_length);
                     clockres_glob.set(clockres);
                     gatelength_glob.set(gatel);
+                    direction_glob.set(direction_faders.map(Direction::from_fader));
                 }
                 SceneEvent::SaveScene(scene) => {
                     storage.save_to_scene(scene).await;
@@ -585,7 +653,8 @@ fn get_alt_target(chan: usize, seq_idx: usize, storage: &ManagedStorage<Storage>
         2 => storage.query(|s| s.oct_fader[seq_idx]),
         3 => storage.query(|s| s.range_fader[seq_idx]),
         4 => storage.query(|s| s.res_fader[seq_idx]),
-        _ => 0, // F5-F7 have no alt function
+        5 => storage.query(|s| s.direction_fader[seq_idx]),
+        _ => 0, // F6-F7 have no alt function
     }
 }
 
@@ -594,6 +663,7 @@ struct AltUpdateContext<'a> {
     seq_length_glob: &'a Global<[u8; 4]>,
     gatelength_glob: &'a Global<[u8; 4]>,
     clockres_glob: &'a Global<[usize; 4]>,
+    direction_glob: &'a Global<[Direction; 4]>,
     resolution: &'a [usize; 8],
 }
 
@@ -640,6 +710,14 @@ fn apply_alt_update(chan: usize, seq_idx: usize, value: u16, ctx: &AltUpdateCont
             let mut gatel = ctx.gatelength_glob.get();
             gatel[seq_idx] = gatel[seq_idx].clamp(1, clockres[seq_idx] as u8);
             ctx.gatelength_glob.set(gatel);
+        }
+        5 => {
+            // Direction
+            ctx.storage
+                .modify_and_save(|s| s.direction_fader[seq_idx] = value);
+            let mut arr = ctx.direction_glob.get();
+            arr[seq_idx] = Direction::from_fader(value);
+            ctx.direction_glob.set(arr);
         }
         _ => {}
     }
