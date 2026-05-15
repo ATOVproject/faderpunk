@@ -1,9 +1,10 @@
 use embassy_futures::{
-    join::{join3, join5},
+    join::{join4, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
+use libm::expf;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
@@ -104,6 +105,7 @@ pub struct Storage {
     res_fader: [u16; 4],         // F4: derive res_index = val/512
     direction_fader: [u16; 4],   // F5: derive Direction = val/1024
     probability_fader: [u16; 4], // F6: probability 5%..100% (linear)
+    slide_fader: [u16; 4],       // F7: 303-style slide time (0 = instant)
 }
 
 impl Default for Storage {
@@ -120,6 +122,7 @@ impl Default for Storage {
             res_fader: [2048; 4],         // -> res_index 4 (2048/512 = 4)
             direction_fader: [0; 4],      // -> Direction::Forward
             probability_fader: [4095; 4], // -> 100%
+            slide_fader: [0; 4],          // -> instant (no slide)
         }
     }
 }
@@ -128,6 +131,18 @@ impl Default for Storage {
 /// Fader 0 → 5%, fader 4095 → 100%.
 fn probability_threshold(fader: u16) -> u16 {
     205 + ((fader as u32 * 3891) / 4095) as u16
+}
+
+/// 303-style slide coefficient. RC-filter exponential approach. Same approach as
+/// midi2cv's glide: coeff = 1 - exp(-1/tau), applied each 1ms tick.
+/// Fader 0 → 1.0 (instant). Fader 4095 → tau ~205 ticks (~600ms to settle).
+fn calc_slide_coeff(fader: u16) -> f32 {
+    if fader == 0 {
+        1.0
+    } else {
+        let tau = 1.0 + (fader as f32 * 0.05);
+        1.0 - expf(-1.0 / tau)
+    }
 }
 
 /// Maps a raw step counter to a position within `length`, respecting `direction`.
@@ -264,6 +279,12 @@ pub async fn run(
     let direction_glob: Global<[Direction; 4]> = app.make_global([Direction::Forward; 4]);
     // Cached die-roll thresholds (0..=4096); recomputed when F6 changes.
     let probability_glob: Global<[u16; 4]> = app.make_global([4096; 4]);
+    // Per-tick exponential coefficient for the slide (1.0 = instant).
+    let slide_coeff_glob: Global<[f32; 4]> = app.make_global([1.0; 4]);
+    // CV target set by clock_handler at note-on; slide_handler interpolates toward it.
+    let target_cv_glob: Global<[u16; 4]> = app.make_global([0; 4]);
+    // Set true at note-on when the previously played step had legato enabled.
+    let sliding_glob: Global<[bool; 4]> = app.make_global([false; 4]);
     // Actual playing position per track (post direction). LED display reads this
     // so the highlighted step matches the audible step regardless of direction.
     let playing_pos_glob: Global<[usize; 4]> = app.make_global([0; 4]);
@@ -272,6 +293,8 @@ pub async fn run(
 
     let mut lastnote = [MidiNote::default(); 4];
     let mut last_step_index = [0usize; 4];
+    // Was the just-played step a legato step? Drives whether to slide into the next.
+    let mut prev_step_legato = [false; 4];
     let mut gatelength1 = gatelength_glob.get();
 
     // Initialize latches for all 8 faders
@@ -289,6 +312,7 @@ pub async fn run(
         res_faders,
         direction_faders,
         probability_faders,
+        slide_faders,
     ) = storage.query(|s| {
         (
             s.seq,
@@ -301,6 +325,7 @@ pub async fn run(
             s.res_fader,
             s.direction_fader,
             s.probability_fader,
+            s.slide_fader,
         )
     });
 
@@ -315,6 +340,7 @@ pub async fn run(
     gatelength_glob.set(gatel_init);
     direction_glob.set(direction_faders.map(Direction::from_fader));
     probability_glob.set(probability_faders.map(probability_threshold));
+    slide_coeff_glob.set(slide_faders.map(calc_slide_coeff));
 
     let shift_handler = async {
         loop {
@@ -370,6 +396,7 @@ pub async fn run(
                                 clockres_glob: &clockres_glob,
                                 direction_glob: &direction_glob,
                                 probability_glob: &probability_glob,
+                                slide_coeff_glob: &slide_coeff_glob,
                                 resolution: &resolution,
                             },
                         );
@@ -582,11 +609,19 @@ pub async fn run(
 
                                 midi[n].send_note_on(lastnote[n], 4095).await;
                                 gatelength1 = gatelength_glob.get();
-                                cv_out[n].set_value(out.as_counts(range));
+                                // Hand the target CV to slide_handler; slide only if
+                                // the previously played step had legato enabled.
+                                let mut targets = target_cv_glob.get();
+                                targets[n] = out.as_counts(range);
+                                target_cv_glob.set(targets);
+                                let mut slid = sliding_glob.get();
+                                slid[n] = prev_step_legato[n];
+                                sliding_glob.set(slid);
                                 gate_out[n].set_high().await;
                             } else {
                                 gate_out[n].set_low().await;
                             }
+                            prev_step_legato[n] = legato_seq[clkindex];
                         }
                         if clockn >= gatelength1[n] as usize
                             && (clockn - gatelength1[n] as usize).is_multiple_of(clockres[n])
@@ -619,6 +654,7 @@ pub async fn run(
                         res_faders,
                         direction_faders,
                         probability_faders,
+                        slide_faders,
                     ) = storage.query(|s| {
                         (
                             s.seq,
@@ -629,6 +665,7 @@ pub async fn run(
                             s.res_fader,
                             s.direction_fader,
                             s.probability_fader,
+                            s.slide_fader,
                         )
                     });
 
@@ -643,6 +680,7 @@ pub async fn run(
                     gatelength_glob.set(gatel);
                     direction_glob.set(direction_faders.map(Direction::from_fader));
                     probability_glob.set(probability_faders.map(probability_threshold));
+                    slide_coeff_glob.set(slide_faders.map(calc_slide_coeff));
                 }
                 SceneEvent::SaveScene(scene) => {
                     storage.save_to_scene(scene).await;
@@ -651,7 +689,30 @@ pub async fn run(
         }
     };
 
-    join3(
+    // CV slide handler — runs at 1ms and exponentially interpolates each
+    // track's CV from its current value toward target_cv_glob[n] using
+    // slide_coeff_glob[n]. Only slides when sliding_glob[n] is true (set
+    // by clock_handler when the previously played step had legato).
+    let slide_handler = async {
+        let mut current: [f32; 4] = [0.0; 4];
+        loop {
+            app.delay_millis(1).await;
+            let target = target_cv_glob.get();
+            let sliding = sliding_glob.get();
+            let coeff = slide_coeff_glob.get();
+            for n in 0..4 {
+                let target_f = target[n] as f32;
+                if sliding[n] && coeff[n] < 1.0 {
+                    current[n] += (target_f - current[n]) * coeff[n];
+                } else {
+                    current[n] = target_f;
+                }
+                cv_out[n].set_value(current[n] as u16);
+            }
+        }
+    };
+
+    join4(
         join5(
             shift_handler,
             fader_handler,
@@ -661,6 +722,7 @@ pub async fn run(
         ),
         button_long_press_handler,
         scene_handler,
+        slide_handler,
     )
     .await;
 }
@@ -674,7 +736,8 @@ fn get_alt_target(chan: usize, seq_idx: usize, storage: &ManagedStorage<Storage>
         4 => storage.query(|s| s.res_fader[seq_idx]),
         5 => storage.query(|s| s.direction_fader[seq_idx]),
         6 => storage.query(|s| s.probability_fader[seq_idx]),
-        _ => 0, // F7 has no alt function
+        7 => storage.query(|s| s.slide_fader[seq_idx]),
+        _ => 0,
     }
 }
 
@@ -685,6 +748,7 @@ struct AltUpdateContext<'a> {
     clockres_glob: &'a Global<[usize; 4]>,
     direction_glob: &'a Global<[Direction; 4]>,
     probability_glob: &'a Global<[u16; 4]>,
+    slide_coeff_glob: &'a Global<[f32; 4]>,
     resolution: &'a [usize; 8],
 }
 
@@ -747,6 +811,14 @@ fn apply_alt_update(chan: usize, seq_idx: usize, value: u16, ctx: &AltUpdateCont
             let mut arr = ctx.probability_glob.get();
             arr[seq_idx] = probability_threshold(value);
             ctx.probability_glob.set(arr);
+        }
+        7 => {
+            // Slide time
+            ctx.storage
+                .modify_and_save(|s| s.slide_fader[seq_idx] = value);
+            let mut arr = ctx.slide_coeff_glob.get();
+            arr[seq_idx] = calc_slide_coeff(value);
+            ctx.slide_coeff_glob.set(arr);
         }
         _ => {}
     }
