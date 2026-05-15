@@ -4,6 +4,7 @@
   "version": "1.9.0",
   "license": "GPL-3.0",
   "description": "Web configurator for Faderpunk",
+  "packageManager": "pnpm@11.1.1",
   "scripts": {
     "dev": "vite",
     "dev:landing": "vite --config vite.landing.config.mjs",
