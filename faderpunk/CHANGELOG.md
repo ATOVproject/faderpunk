@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.1 (2026-05-16)
+
+### Fixes
+
+- bump default jitter tolerance from 20 to 25
+- [euclid] restore div_saved on boot, refresh mute LED on scene load (#523)
+- [control] decouple i2c from MIDI and fix NRPN change detection (#520)
+- increase EVENT_PUBSUB_SUBS to 80 to support 16 concurrent apps (#519)
+
 ## 1.9.0 (2026-05-04)
 
 ### Features
