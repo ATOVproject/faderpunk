@@ -78,7 +78,7 @@ impl AnalogLatch {
     /// It starts on layer 0 and assumes the fader's initial physical position
     /// matches the a given initial value, so it begins in a "latched" state.
     pub fn new(initial_value: u16, mode: TakeoverMode) -> Self {
-        Self::with_tolerance(initial_value, 20, mode) // Default tolerance of 20
+        Self::with_tolerance(initial_value, 25, mode) // Default tolerance of 25
     }
 
     /// Creates a new AnalogLatch with custom jitter tolerance.
@@ -940,16 +940,92 @@ mod tests {
         assert_eq!(result, Some(1953));
     }
 
+    // --- Jitter tolerance characterization tests ---
+    //
+    // These tests document the noise budget: the default tolerance of 25 LSBs means
+    // ±0.6% of full scale (on a 12-bit / 4095-step range). Any sustained ADC noise
+    // below this threshold produces no output updates. Real movement of ≥26 steps
+    // from the last emitted position is always reported.
+    //
+    // To adjust the default, change `AnalogLatch::new()` and update the constant below.
+    const DEFAULT_TOLERANCE: u16 = 25;
+
+    #[test]
+    fn test_default_tolerance_value() {
+        // The default tolerance is explicitly tested here so any change to `new()` is visible.
+        let latch = AnalogLatch::new(2000, TakeoverMode::Pickup);
+        assert_eq!(latch.jitter_tolerance, DEFAULT_TOLERANCE);
+    }
+
+    /// Simulates a fader held at a fixed position while the ADC produces jittery readings.
+    /// Noise within ±tolerance should never emit a value.
+    #[test]
+    fn test_held_fader_noise_no_false_updates() {
+        let position: u16 = 2000;
+        let mut latch = AnalogLatch::new(position, TakeoverMode::Pickup);
+        // Simulate 100 noisy samples around the hold position, all within tolerance
+        let noise: [i16; 20] = [
+            1, -1, 2, -2, 3, -3, 5, -5, 10, -10, 15, -15, 20, -20, 24, -24, 25, -25, 0, 0,
+        ];
+        for &delta in noise.iter().cycle().take(100) {
+            let noisy = (position as i16 + delta).clamp(0, 4095) as u16;
+            let result = latch.update(noisy, LatchLayer::Main, position);
+            assert_eq!(
+                result, None,
+                "False update at delta={delta}: noisy={noisy}, position={position}"
+            );
+        }
+    }
+
+    /// Noise just above tolerance (26 LSBs) must trigger an update.
+    #[test]
+    fn test_movement_just_above_tolerance_triggers_update() {
+        let position: u16 = 2000;
+        let mut latch = AnalogLatch::new(position, TakeoverMode::Pickup);
+        let just_over = position + DEFAULT_TOLERANCE + 1;
+        let result = latch.update(just_over, LatchLayer::Main, position);
+        assert_eq!(result, Some(just_over), "Expected update at tolerance+1");
+    }
+
+    /// Slow creep: values that increment one step at a time should accumulate
+    /// until they exceed the tolerance window from the last emitted position.
+    #[test]
+    fn test_slow_creep_accumulates_to_tolerance() {
+        let position: u16 = 1000;
+        let mut latch = AnalogLatch::new(position, TakeoverMode::Pickup);
+        let mut last_emitted = position;
+        let mut updates = 0u16;
+
+        // Walk the fader from 1000 to 1100 in 1-step increments
+        for v in (position + 1)..=(position + 100) {
+            if let Some(new_val) = latch.update(v, LatchLayer::Main, last_emitted) {
+                last_emitted = new_val;
+                updates += 1;
+            }
+        }
+        // With tolerance=25, 100-step sweep should produce ~4 updates (at 26, 52, 78, 104)
+        assert!(updates > 0, "No updates emitted during 100-step sweep");
+        assert!(
+            updates <= 4,
+            "Too many updates ({updates}) for a 100-step sweep with tolerance={DEFAULT_TOLERANCE}"
+        );
+        // Final emitted value should be close to or equal to 1100
+        assert!(
+            last_emitted >= 1000 + DEFAULT_TOLERANCE,
+            "Final emitted value {last_emitted} not past initial tolerance window"
+        );
+    }
+
     #[test]
     fn test_workflow_session_start() {
         // Fresh boot, saved value differs from fader position
         let saved_value = 3000u16;
         let fader_physical_position = 500u16;
 
-        // Jump mode: immediately jumps on first movement (must exceed jitter tolerance of 20)
+        // Jump mode: immediately jumps on first movement (must exceed jitter tolerance of 25)
         let mut jump = AnalogLatch::new(fader_physical_position, TakeoverMode::Jump);
         jump.update(fader_physical_position, LatchLayer::Main, saved_value);
-        assert_eq!(jump.update(525, LatchLayer::Main, saved_value), Some(525));
+        assert_eq!(jump.update(526, LatchLayer::Main, saved_value), Some(526));
 
         // Pickup mode: must sweep past saved value
         let mut pickup = AnalogLatch::new(fader_physical_position, TakeoverMode::Pickup);
