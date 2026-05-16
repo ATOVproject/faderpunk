@@ -185,13 +185,21 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-    let (fader_saved, shift_fader_saved, mute) =
-        storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.mute_saved));
+    let (fader_saved, shift_fader_saved, mute, div_saved) = storage.query(|s| {
+        (
+            s.fader_saved,
+            s.shift_fader_saved,
+            s.mute_saved,
+            s.div_saved,
+        )
+    });
 
     num_beat_glob.set((fader_saved[0] as u32 * 15 / 4095) as u8 + 1);
     num_step_glob.set((fader_saved[1] as u32 * num_beat_glob.get() as u32 / 4095) as u8);
 
     rotation_glob.set((shift_fader_saved[0] as u32 * num_beat_glob.get() as u32 / 4095) as u8);
+
+    div_glob.set(resolution[div_saved as usize / 345]);
 
     glob_muted.set(mute);
 
@@ -449,7 +457,13 @@ pub async fn run(
                             * num_beat_glob.get() as u32
                             / 4095) as u8,
                     );
-                    glob_muted.set(storage.query(|s| s.mute_saved));
+                    let muted = storage.query(|s| s.mute_saved);
+                    glob_muted.set(muted);
+                    if muted {
+                        leds.unset(1, Led::Button);
+                    } else {
+                        leds.set(1, Led::Button, led_color, LED_BRIGHTNESS);
+                    }
 
                     let division = storage.query(|s| s.div_saved);
                     div_glob.set(resolution[division as usize / 345]);
