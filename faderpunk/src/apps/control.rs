@@ -251,7 +251,8 @@ pub async fn run(
         let mut main_layer_value = fader.get_value();
         let mut fad_val = 0;
         let mut out: u16 = 0;
-        let mut last_out = 0;
+        let mut last_midi = 0u32;
+        let mut last_i2c = 0u16;
 
         loop {
             app.delay_millis(1).await;
@@ -333,11 +334,19 @@ pub async fn run(
             } else {
                 attenuate_bipolar(main_layer_value, att_layer_value)
             };
-            if last_out != (midi_out as u32 * 127) / 4095 {
+            let midi_val = if nrpn {
+                midi_out as u32
+            } else {
+                (midi_out as u32 * 127) / 4095
+            };
+            if last_midi != midi_val {
                 midi.send_cc(midi_cc, midi_out).await;
-                i2c.send_fader_value(0, out, range);
+                last_midi = midi_val;
             }
-            last_out = (midi_out as u32 * 127) / 4095;
+            if last_i2c != midi_out {
+                i2c.send_fader_value(0, midi_out, range);
+                last_i2c = midi_out;
+            }
 
             // Update LEDs
             match latch_active_layer {
