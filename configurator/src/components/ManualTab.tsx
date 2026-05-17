@@ -1188,6 +1188,100 @@ Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are sh
       },
     ],
   },
+  {
+    appId: 24,
+    title: "GenSeq",
+    description: "Generative sequencer with Turing machine registers",
+    color: "Blue",
+    icon: "sequence-square",
+    params: ["MIDI Channel", "Base Note", "Color", "MIDI Out"],
+    storage: [
+      "Pitch attenuator",
+      "Length attenuator",
+      "Beat density",
+      "Pitch loop length",
+      "Legato density",
+      "Accent density",
+      "Clock resolution",
+      "Octave shift",
+      "Gate length",
+      "Pitch register (persisted)",
+      "Length register",
+      "Legato register",
+    ],
+    text: `GenSeq is a generative melodic sequencer built around three Turing machine shift registers that evolve over time. It outputs quantized pitch CV, a gate signal, and an accent CV, and also sends MIDI notes.
+
+**How it works:** Three 16-bit shift registers control different aspects of the sequence. The pitch register determines the note played each cycle. The length register drives a Euclidean rhythm generator, setting how many steps the pattern spans. The legato register shapes both the legato (slide) pattern and, through a rotated copy of its bits, the accent pattern. Beat density is set directly by the fader rather than a register, giving immediate control over how densely the rhythm is filled.
+
+At the start of each cycle, all registers optionally rotate and flip one bit depending on mutation probability. Holding a button raises that register's mutation chance—creating live, evolving sequences. When no buttons are held the registers loop, repeating the current pattern exactly. The pitch register is saved to the current scene each time it completes a full loop, so your melodic phrase is retained on recall.
+
+**Outputs:** Jack 1 outputs quantized pitch CV (0–10V, 1V/Oct). Jack 2 outputs a gate—on for the duration set by the gate length parameter. Jack 3 outputs accent CV: 10V on accented steps, 0V otherwise. MIDI note on/off messages are sent simultaneously, with higher velocity on accented notes.
+
+**Latch layers:** Each fader has three functions selected by what you hold:
+- **Normal** — primary performance controls
+- **Shift held** — secondary controls for pattern shaping
+- **Button 1 held** — tertiary controls (resolution, octave, gate length); LED colors show the current value
+
+**LED colors in Button 1 layer:** Button 1 LED shows the current resolution by color (red=1/1, orange, yellow, green, cyan, blue, violet, pink=1/32). Button 2 LED shows octave shift by color (blue=−2, cyan=−1, green=0, yellow=+1, red=+2). Button 3 top LED shows gate length as brightness.
+
+**Scene recall:** On scene load, the pitch register is restored at the next sequence boundary, so the recalled melody re-enters in time. The length and legato registers restart from their saved initial states.`,
+    channels: [
+      {
+        jackTitle: "CV Output",
+        jackDescription: "Quantized pitch, 0–10V (1V/Oct)",
+        faderTitle: "Pitch attenuator",
+        faderDescription:
+          "Scales the pitch register output before quantization — higher narrows the pitch range",
+        faderPlusShiftTitle: "Pitch loop length",
+        faderPlusShiftDescription:
+          "Sets how many pitch register rotations before the sequence repeats (1–16 steps)",
+        faderPlusFnTitle: "Clock resolution",
+        faderPlusFnDescription:
+          "Selects the step resolution: 1/1, 1/2, 1/4T, 1/4, 1/6, 1/8, 1/12, 1/16 — button LED color shows current value",
+        fnTitle: "Mutate pitch",
+        fnDescription:
+          "Hold to increase pitch register mutation probability to 50% — release to lock the current sequence",
+        ledTop: "Pitch register level (brightness = note position in register)",
+        ledBottom: "",
+      },
+      {
+        jackTitle: "Gate Output",
+        jackDescription: "Gate signal, 0–10V",
+        faderTitle: "Length attenuator",
+        faderDescription:
+          "Scales the Euclidean pattern length derived from the length register — lower values shorten the pattern",
+        faderPlusShiftTitle: "Legato density",
+        faderPlusShiftDescription:
+          "Controls how many steps in the pattern trigger a legato (slide) — derived from legato register",
+        faderPlusFnTitle: "Octave shift",
+        faderPlusFnDescription:
+          "Transposes the CV and MIDI output by −2 to +2 octaves — button LED color shows current octave",
+        fnTitle: "Mutate length",
+        fnDescription:
+          "Hold to increase length register mutation probability — shifts the Euclidean pattern over time",
+        ledTop: "Gate activity",
+        ledBottom: "",
+      },
+      {
+        jackTitle: "Accent CV Output",
+        jackDescription: "10V on accented steps, 0V otherwise",
+        faderTitle: "Beat density",
+        faderDescription:
+          "Sets what percentage of the Euclidean pattern steps trigger a gate (0–100% of pattern length)",
+        faderPlusShiftTitle: "Accent density",
+        faderPlusShiftDescription:
+          "Controls how many beats receive an accent — derived from a rotated copy of the legato register",
+        faderPlusFnTitle: "Gate length",
+        faderPlusFnDescription:
+          "Sets how long the gate stays high as a percentage of the step length (1–99%) — top LED brightness shows current value",
+        fnTitle: "Mutate legato & accent",
+        fnDescription:
+          "Hold to mutate the legato register — affects both legato slides and accent pattern simultaneously",
+        ledTop: "Legato state (on when current step is legato)",
+        ledBottom: "",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
