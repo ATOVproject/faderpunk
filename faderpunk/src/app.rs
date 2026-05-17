@@ -458,6 +458,14 @@ impl MidiOutput {
         };
         self.send_midi_msg(msg).await;
     }
+
+    /// Sends a MIDI Program Change message.
+    pub async fn send_program_change(&self, program: MidiCc) {
+        let msg = MidiMessage::ProgramChange {
+            program: program.into(),
+        };
+        self.send_midi_msg(msg).await;
+    }
 }
 
 pub enum AppMidiEvent {
