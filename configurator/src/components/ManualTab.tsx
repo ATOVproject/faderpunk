@@ -1416,6 +1416,148 @@ The resolution parameter controls how many samples are recorded per bar. Higher 
       },
     ],
   },
+  {
+    appId: 26,
+    title: "GenSeq",
+    description: "Generative sequencer with Turing machine registers",
+    color: "Blue",
+    icon: "sequence-square",
+    params: ["MIDI Channel", "Base Note", "Color", "MIDI Out"],
+    storage: [
+      "Pitch range",
+      "Length attenuator",
+      "Beat density",
+      "Pitch loop length (fader)",
+      "Legato density threshold",
+      "Accent density threshold",
+      "Clock resolution",
+      "Octave shift",
+      "Gate length",
+      "Pitch register (persisted)",
+      "Length register",
+      "Pitch TM register width (1–16)",
+      "Length TM register width (1–16)",
+      "Muted",
+    ],
+    text: `GenSeq is a generative melodic sequencer built around two Turing machines. One controls the space between notes and the other controls which note is played. Legato and accents evolve automatically from the same material, so the whole sequence — melody, rhythm, slides and accents — grows from just two seeds.
+
+#### Faders
+
+* **Fader 1 (Pitch range):** How far apart the lowest and highest notes can be, like the CV attenuator on a Turing machine. Fully down clusters all notes near the base note; fully up opens the full pitch range.
+* **Fader 2 (Phrase length):** How long the rhythmic pattern is. The internal register evolves this automatically — use the attenuator to keep it shorter.
+* **Fader 3 (Beat density):** How many notes fall inside the phrase, from a single pulse up to every step.
+
+#### Buttons
+
+* **Button 1 — hold:** Randomizes the pitch sequence. Release to lock the current melody in place.
+* **Button 2 — hold:** Randomizes the phrase length and rhythm.
+* **Button 3 — press:** Toggles mute. While muted no new gates open and the CV holds its last value. Button LED off = muted, dim = active.
+
+#### Slides and accents
+
+Slides and accents are generated automatically from the evolving pitch and rhythm material.
+
+* **Shift + Fader 2:** How many notes slide into each other (legato density).
+* **Shift + Fader 3:** How many notes are accented.
+
+#### Shift layer (hold Shift)
+
+* **Fader 1:** Pitch loop length — how many cycles before the melody repeats (1–16). Also set by Shift+Button 1 counting (see below).
+* **Fader 2:** Legato density.
+* **Fader 3:** Accent density.
+
+#### Button 1 layer (hold Button 1)
+
+* **Fader 1:** Clock resolution — Ch 1 bottom flashes orange (straight) or blue (triplet) in sync with the clock.
+* **Fader 2:** Octave shift (−2 to +2) — Ch 2 button color shows the current octave (blue=−2, cyan=−1, green=0, yellow=+1, red=+2).
+* **Fader 3:** Gate length (1–99%) — Ch 3 top brightness shows the current value.
+
+#### Setting register lengths
+
+Hold Shift and press buttons to count — each press adds one step. Release Shift to commit. Button LEDs brighten with each press to show the count.
+
+* **Shift + Button 1:** Sets how many cycles the pitch melody runs before repeating (1–16).
+* **Shift + Button 2:** Sets the rhythm register length (1–16). Setting this to 1 activates bypass mode: Fader 2 then directly controls the phrase length (1–16 steps) instead of evolving it generatively.
+
+#### LED feedback
+
+**Main layer:**
+* **Ch 1 Top:** Pitch level — brightness tracks the current note position.
+* **Ch 2 Top:** Gate indicator — lit while the gate is open.
+* **Ch 3 Top:** Legato indicator — lit when the current step is a slide.
+
+**Shift held:**
+* **Ch 1 Top:** Pitch loop length (white, brightness).
+* **Ch 2 Top:** Legato density (cyan, brightness).
+* **Ch 3 Top:** Accent density (yellow, brightness).
+* **Button 1 / Button 2:** Brightness shows the current count while setting register lengths.
+
+**Button 1 held:**
+* **Ch 1 Bottom:** Flashes orange (straight division) or blue (triplet) in sync with the clock.
+* **Ch 2 Button:** Current octave by color.
+* **Ch 3 Top:** Gate length as brightness.
+
+#### Scene recall
+
+On load, the pitch sequence is restored at the next phrase boundary so the recalled melody re-enters in time. The rhythm register restarts from its saved state.`,
+    channels: [
+      {
+        jackTitle: "CV Output",
+        jackDescription: "Quantized pitch, 0–10V (1V/Oct)",
+        faderTitle: "Pitch range",
+        faderDescription:
+          "Controls the spread between the lowest and highest notes — fully down clusters all notes near the base note, fully up uses the full pitch range",
+        faderPlusShiftTitle: "Pitch loop length",
+        faderPlusShiftDescription:
+          "Sets how many pitch register rotations before the melody repeats (1–16). Also set by Shift+Button 1 counting.",
+        faderPlusFnTitle: "Clock resolution",
+        faderPlusFnDescription:
+          "Selects the step rate: 1/1, 1/2, 1/4T, 1/4, 1/6, 1/8, 1/12, 1/16 — bottom LED flashes orange (straight) or blue (triplet)",
+        fnTitle: "Mutate pitch",
+        fnDescription:
+          "Hold to raise pitch register mutation probability to 50% — release to lock the current melody",
+        ledTop: "Pitch register level (brightness = current note height)",
+        ledBottom:
+          "Flashes orange (straight) or blue (triplet) in sync with the clock while in Button 1 layer",
+      },
+      {
+        jackTitle: "Gate Output",
+        jackDescription: "Gate signal, 0–10V",
+        faderTitle: "Length attenuator",
+        faderDescription:
+          "Scales the Euclidean pattern length from the length register. In bypass mode (length TM width = 1) directly sets the pattern length (1–16 steps).",
+        faderPlusShiftTitle: "Legato density",
+        faderPlusShiftDescription:
+          "Threshold controlling how many steps are legato — higher = more slides",
+        faderPlusFnTitle: "Octave shift",
+        faderPlusFnDescription:
+          "Transposes CV and MIDI output by −2 to +2 octaves — button LED color shows current octave",
+        fnTitle: "Mutate length",
+        fnDescription:
+          "Hold to raise length register mutation probability — evolves the Euclidean pattern length over time",
+        ledTop: "Gate indicator — lit while gate is open",
+        ledBottom: "",
+      },
+      {
+        jackTitle: "Accent CV Output",
+        jackDescription: "10V on accented steps, 0V otherwise",
+        faderTitle: "Beat density",
+        faderDescription:
+          "Sets what fraction of Euclidean steps trigger a gate (1 pulse minimum to 100% of pattern length)",
+        faderPlusShiftTitle: "Accent density",
+        faderPlusShiftDescription:
+          "Threshold controlling how many steps are accented — higher = more accents",
+        faderPlusFnTitle: "Gate length",
+        faderPlusFnDescription:
+          "Sets how long the gate stays high as a percentage of the step (1–99%) — top LED brightness shows current value",
+        fnTitle: "Toggle mute",
+        fnDescription:
+          "Press to toggle mute. While muted, no new gates open and CV holds its last value. Button LED off = muted, dim = active.",
+        ledTop: "Legato indicator — lit when the current step is a legato slide",
+        ledBottom: "",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
