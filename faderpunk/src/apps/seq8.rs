@@ -39,6 +39,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "MIDI Channel 4",
 })
 .add_param(Param::MidiOut);
+// TODO: add per-track MIDI transposition param (semitone offset applied to outgoing notes)
 
 pub struct Params {
     midi_channel1: MidiChannel,
