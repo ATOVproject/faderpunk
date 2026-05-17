@@ -1,9 +1,10 @@
 use embassy_futures::{
-    join::{join3, join5},
+    join::{join4, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
+use libm::expf;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
@@ -38,6 +39,8 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "MIDI Channel 4",
 })
 .add_param(Param::MidiOut);
+// TODO: add per-track MIDI transposition param (semitone offset applied to outgoing notes)
+// TODO: allow tracks 2/4 to act as velocity lanes for tracks 1/3 — step values control note velocity of the paired track instead of outputting their own CV/gate
 
 pub struct Params {
     midi_channel1: MidiChannel,
@@ -72,17 +75,39 @@ impl AppParams for Params {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Forward,
+    Backward,
+    PingPong,
+    Random,
+}
+
+impl Direction {
+    fn from_fader(value: u16) -> Self {
+        match value / 1024 {
+            0 => Direction::Forward,
+            1 => Direction::Backward,
+            2 => Direction::PingPong,
+            _ => Direction::Random,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     seq: Arr<u16, 64>,
     gateseq: Arr<bool, 64>,
     legato_seq: Arr<bool, 64>,
     // Alt layer - fader-scale values (0-4095)
-    length_fader: [u16; 4], // F0: derive seq_length = val/256+1
-    gate_fader: [u16; 4],   // F1: derive gate_length
-    oct_fader: [u16; 4],    // F2: derive oct = val/1000
-    range_fader: [u16; 4],  // F3: derive range = val/1000+1
-    res_fader: [u16; 4],    // F4: derive res_index = val/512
+    length_fader: [u16; 4],      // F0: derive seq_length = val/256+1
+    gate_fader: [u16; 4],        // F1: derive gate_length
+    oct_fader: [u16; 4],         // F2: derive oct = val/1000
+    range_fader: [u16; 4],       // F3: derive range = val/1000+1
+    res_fader: [u16; 4],         // F4: derive res_index = val/512
+    direction_fader: [u16; 4],   // F5: derive Direction = val/1024
+    probability_fader: [u16; 4], // F6: probability 5%..100% (linear)
+    slide_fader: [u16; 4],       // F7: 303-style slide time (0 = instant)
 }
 
 impl Default for Storage {
@@ -92,26 +117,94 @@ impl Default for Storage {
             gateseq: Arr::new([true; 64]),
             legato_seq: Arr::new([false; 64]),
             // Default fader values - positioned to produce sensible defaults
-            length_fader: [3840; 4], // -> length 16 (3840/256+1 = 16)
-            gate_fader: [2032; 4],   // -> gate_length 127 (127*16 = 2032)
-            oct_fader: [0; 4],       // -> oct 0
-            range_fader: [2000; 4],  // -> range 3 (2000/1000+1 = 3)
-            res_fader: [2048; 4],    // -> res_index 4 (2048/512 = 4)
+            length_fader: [3840; 4],      // -> length 16 (3840/256+1 = 16)
+            gate_fader: [2032; 4],        // -> gate_length 127 (127*16 = 2032)
+            oct_fader: [0; 4],            // -> oct 0
+            range_fader: [2000; 4],       // -> range 3 (2000/1000+1 = 3)
+            res_fader: [2048; 4],         // -> res_index 4 (2048/512 = 4)
+            direction_fader: [0; 4],      // -> Direction::Forward
+            probability_fader: [4095; 4], // -> 100%
+            slide_fader: [0; 4],          // -> instant (no slide)
         }
+    }
+}
+
+/// Maps the per-track probability fader (0..=4095) to a die-roll threshold (0..=4096).
+/// Fader 0 → 5%, fader 4095 → 100%.
+fn probability_threshold(fader: u16) -> u16 {
+    205 + ((fader as u32 * 3891) / 4095) as u16
+}
+
+/// 303-style slide coefficient. RC-filter exponential approach. Same approach as
+/// midi2cv's glide: coeff = 1 - exp(-1/tau), applied each 1ms tick.
+/// Fader 0 → 1.0 (instant). Fader 4095 → tau ~205 ticks (~600ms to settle).
+fn calc_slide_coeff(fader: u16) -> f32 {
+    if fader == 0 {
+        1.0
+    } else {
+        let tau = 1.0 + (fader as f32 * 0.05);
+        1.0 - expf(-1.0 / tau)
+    }
+}
+
+/// Maps a raw step counter to a position within `length`, respecting `direction`.
+fn step_position(direction: Direction, step: usize, length: u8, die_roll: u16) -> usize {
+    let l = length as usize;
+    if l == 0 {
+        return 0;
+    }
+    match direction {
+        Direction::Forward => step % l,
+        Direction::Backward => (l - 1) - (step % l),
+        Direction::PingPong => {
+            // Endpoints are repeated. For L=3: 0,1,2,2,1,0,0,1,2,2,1,0,...
+            // Period = 2*L; first half ascends, second half descends.
+            let period = 2 * l;
+            let phase = step % period;
+            if phase < l {
+                phase
+            } else {
+                period - 1 - phase
+            }
+        }
+        Direction::Random => (die_roll as usize) % l,
     }
 }
 
 impl AppStorage for Storage {}
 
+/// Derives runtime parameters from stored fader values.
+fn derive_runtime_params(
+    length_faders: [u16; 4],
+    gate_faders: [u16; 4],
+    res_faders: [u16; 4],
+    resolution: &[usize; 8],
+) -> ([u8; 4], [usize; 4], [u8; 4]) {
+    let mut seq_length = [0u8; 4];
+    let mut clockres = [0usize; 4];
+    let mut gatel = [0u8; 4];
+    for n in 0..4 {
+        seq_length[n] = (length_faders[n] / 256 + 1) as u8;
+        clockres[n] = resolution[(res_faders[n] / 512) as usize];
+        gatel[n] = (clockres[n] * (gate_faders[n] as usize) / 4096) as u8;
+        gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
+    }
+    (seq_length, clockres, gatel)
+}
+
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id, Params {
-        midi_channel1: MidiChannel::from(1),
-        midi_channel2: MidiChannel::from(2),
-        midi_channel3: MidiChannel::from(3),
-        midi_channel4: MidiChannel::from(4),
-        midi_out: MidiOut::default(),
-    });
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            midi_channel1: MidiChannel::from(1),
+            midi_channel2: MidiChannel::from(2),
+            midi_channel3: MidiChannel::from(3),
+            midi_channel4: MidiChannel::from(4),
+            midi_out: MidiOut::default(),
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
@@ -150,6 +243,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let mut clk = app.use_clock();
+    let die = app.use_die();
     let ticks = clk.get_ticker();
     let led = app.use_leds();
 
@@ -176,7 +270,6 @@ pub async fn run(
     let quantizer = app.use_quantizer(range);
 
     let page_glob: Global<usize> = app.make_global(0);
-    let led_flag_glob: Global<bool> = app.make_global(true);
     let latch_layer_glob: Global<LatchLayer> = app.make_global(LatchLayer::Main);
     let seq_glob: Global<[u16; 64]> = app.make_global([0; 64]);
     let gateseq_glob: Global<[bool; 64]> = app.make_global([true; 64]);
@@ -184,12 +277,26 @@ pub async fn run(
 
     let seq_length_glob: Global<[u8; 4]> = app.make_global([16; 4]);
     let gatelength_glob: Global<[u8; 4]> = app.make_global([128; 4]);
+    let clockres_glob = app.make_global([6usize; 4]);
+    let direction_glob: Global<[Direction; 4]> = app.make_global([Direction::Forward; 4]);
+    // Cached die-roll thresholds (0..=4096); recomputed when F6 changes.
+    let probability_glob: Global<[u16; 4]> = app.make_global([4096; 4]);
+    // Per-tick exponential coefficient for the slide (1.0 = instant).
+    let slide_coeff_glob: Global<[f32; 4]> = app.make_global([1.0; 4]);
+    // CV target set by clock_handler at note-on; slide_handler interpolates toward it.
+    let target_cv_glob: Global<[u16; 4]> = app.make_global([0; 4]);
+    // Set true at note-on when the previously played step had legato enabled.
+    let sliding_glob: Global<[bool; 4]> = app.make_global([false; 4]);
+    // Actual playing position per track (post direction). LED display reads this
+    // so the highlighted step matches the audible step regardless of direction.
+    let playing_pos_glob: Global<[usize; 4]> = app.make_global([0; 4]);
 
-    let clockres_glob = app.make_global([6, 6, 6, 6]);
-
-    let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
+    let resolution = [24usize, 16, 12, 8, 6, 4, 3, 2];
 
     let mut lastnote = [MidiNote::default(); 4];
+    let mut last_step_index = [0usize; 4];
+    // Was the just-played step a legato step? Drives whether to slide into the next.
+    let mut prev_step_legato = [false; 4];
     let mut gatelength1 = gatelength_glob.get();
 
     // Initialize latches for all 8 faders
@@ -205,6 +312,9 @@ pub async fn run(
         _oct_faders,
         _range_faders,
         res_faders,
+        direction_faders,
+        probability_faders,
+        slide_faders,
     ) = storage.query(|s| {
         (
             s.seq,
@@ -215,6 +325,9 @@ pub async fn run(
             s.oct_fader,
             s.range_fader,
             s.res_fader,
+            s.direction_fader,
+            s.probability_fader,
+            s.slide_fader,
         )
     });
 
@@ -222,23 +335,18 @@ pub async fn run(
     gateseq_glob.set(gateseq_saved.get());
     legatoseq_glob.set(legato_seq_saved.get());
 
-    // Derive runtime parameters from fader values
-    let mut seq_length_saved = [0u8; 4];
-    let mut clockres = [0usize; 4];
-    let mut gatel = [0u8; 4];
-    for n in 0..4 {
-        seq_length_saved[n] = (length_faders[n] / 256 + 1) as u8;
-        clockres[n] = resolution[(res_faders[n] / 512) as usize];
-        gatel[n] = (clockres[n] * (gate_faders[n] as usize) / 4096) as u8;
-        gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
-    }
-    seq_length_glob.set(seq_length_saved);
-    clockres_glob.set(clockres);
-    gatelength_glob.set(gatel);
+    let (seq_length_init, clockres_init, gatel_init) =
+        derive_runtime_params(length_faders, gate_faders, res_faders, &resolution);
+    seq_length_glob.set(seq_length_init);
+    clockres_glob.set(clockres_init);
+    gatelength_glob.set(gatel_init);
+    direction_glob.set(direction_faders.map(Direction::from_fader));
+    probability_glob.set(probability_faders.map(probability_threshold));
+    slide_coeff_glob.set(slide_faders.map(calc_slide_coeff));
 
     let shift_handler = async {
         loop {
-            app.delay_millis(1).await;
+            app.delay_millis(16).await;
             let layer = if buttons.is_shift_pressed() {
                 LatchLayer::Alt
             } else {
@@ -255,7 +363,6 @@ pub async fn run(
             let seq_idx = page / 2;
             let latch_layer = latch_layer_glob.get();
 
-            // Determine target value based on layer and fader
             let target_value = match latch_layer {
                 LatchLayer::Main => {
                     let seq = seq_glob.get();
@@ -270,7 +377,6 @@ pub async fn run(
             {
                 match latch_layer {
                     LatchLayer::Main => {
-                        // Update step value
                         let mut seq = seq_glob.get();
                         seq[chan + (page * 8)] = new_value;
                         seq_glob.set(seq);
@@ -290,6 +396,9 @@ pub async fn run(
                                 seq_length_glob: &seq_length_glob,
                                 gatelength_glob: &gatelength_glob,
                                 clockres_glob: &clockres_glob,
+                                direction_glob: &direction_glob,
+                                probability_glob: &probability_glob,
+                                slide_coeff_glob: &slide_coeff_glob,
                                 resolution: &resolution,
                             },
                         );
@@ -297,33 +406,28 @@ pub async fn run(
                     LatchLayer::Third => {}
                 }
             }
-            led_flag_glob.set(true);
         }
     };
 
     let button_handler = async {
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
-            let mut gateseq = gateseq_glob.get();
-            let mut legato_seq = legatoseq_glob.get();
-
-            // let mut gateseq = gateseq_glob.get_array();
             let page = page_glob.get();
-            if !is_shift_pressed {
-                gateseq[chan + (page * 8)] = !gateseq[chan + (page * 8)];
-                gateseq_glob.set(gateseq);
 
+            if !is_shift_pressed {
+                let mut gateseq = gateseq_glob.get();
+                let mut legato_seq = legatoseq_glob.get();
+
+                gateseq[chan + (page * 8)] = !gateseq[chan + (page * 8)];
                 legato_seq[chan + (page * 8)] = false;
+
+                gateseq_glob.set(gateseq);
                 legatoseq_glob.set(legato_seq);
 
                 storage.modify_and_save(|s| {
                     s.gateseq.set(gateseq);
                     s.legato_seq.set(legato_seq);
                 });
-
-                // gateseq_glob.set_array(gateseq);
-                // gateseq_glob.save();
-                led_flag_glob.set(true);
             } else {
                 page_glob.set(chan);
             }
@@ -333,103 +437,85 @@ pub async fn run(
     let button_long_press_handler = async {
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_long_press().await;
-
             let page = page_glob.get();
 
             if !is_shift_pressed {
                 let mut legato_seq = legatoseq_glob.get();
-                legato_seq[chan + (page * 8)] = !legato_seq[chan + (page * 8)];
-                legatoseq_glob.set(legato_seq);
-
                 let mut gateseq = gateseq_glob.get();
+
+                legato_seq[chan + (page * 8)] = !legato_seq[chan + (page * 8)];
                 gateseq[chan + (page * 8)] = true;
+
+                legatoseq_glob.set(legato_seq);
                 gateseq_glob.set(gateseq);
 
-                storage.modify_and_save(|s| s.gateseq.set(gateseq));
-                storage.modify_and_save(|s| s.legato_seq.set(legato_seq));
-
-                // gateseq_glob.set_array(gateseq);
-                // gateseq_glob.save();
+                storage.modify_and_save(|s| {
+                    s.gateseq.set(gateseq);
+                    s.legato_seq.set(legato_seq);
+                });
             }
         }
     };
 
     let led_handler = async {
+        let intensities = [
+            Brightness::Low,
+            Brightness::Mid,
+            Brightness::High,
+            Brightness::High,
+        ];
+        let colors = [Color::Yellow, Color::Pink, Color::Cyan, Color::White];
+
         loop {
-            let intensities = [
-                Brightness::Low,
-                Brightness::Mid,
-                Brightness::High,
-                Brightness::High,
-            ];
-            let colors = [Color::Yellow, Color::Pink, Color::Cyan, Color::White];
             app.delay_millis(16).await;
             let clockres = clockres_glob.get();
             let clockn = ticks() as usize;
+            let page = page_glob.get();
 
             if buttons.is_shift_pressed() {
                 let seq_length = seq_length_glob.get();
+                let playing_pos = playing_pos_glob.get();
+                let current_step = playing_pos[page / 2] as u8;
 
-                let page = page_glob.get();
-                let mut bright = Brightness::Mid;
-                for n in 0..=7 {
-                    if n == page {
-                        bright = intensities[3];
+                for n in 0..8 {
+                    let bright = if n == page {
+                        intensities[3]
                     } else {
-                        bright = intensities[1];
-                    }
+                        intensities[1]
+                    };
                     led.set(n, Led::Button, colors[n / 2], bright);
                 }
+                let led_color = if matches!(clockres[page / 2], 2 | 4 | 8 | 16) {
+                    Color::Orange
+                } else {
+                    Color::Blue
+                };
                 for n in 0..=15 {
+                    let mut bright = Brightness::Off;
                     if n < seq_length[page / 2] {
                         bright = Brightness::Mid;
                     }
-                    if n == (clockn / clockres[page / 2]) as u8 % seq_length[page / 2] {
+                    if n == current_step {
                         bright = Brightness::High;
                     }
                     if n >= seq_length[page / 2] {
                         bright = Brightness::Off;
                     }
-
-                    let led_color = if matches!(clockres[page / 2], 2 | 4 | 8 | 16) {
-                        Color::Orange
-                    } else {
-                        Color::Blue
-                    };
                     if n < 8 {
                         led.set(n as usize, Led::Top, led_color, bright)
                     } else {
                         led.set(n as usize - 8, Led::Bottom, led_color, bright)
                     }
                 }
-            }
-
-            if !buttons.is_shift_pressed() {
-                // LED stuff
-                let page = page_glob.get();
-
+            } else {
                 let seq = seq_glob.get();
                 let gateseq = gateseq_glob.get();
-                let seq_length = seq_length_glob.get();
-
-                let mut color = colors[0];
-
-                if page / 2 == 0 {
-                    color = colors[0];
-                }
-                if page / 2 == 1 {
-                    color = colors[1];
-                }
-                if page / 2 == 2 {
-                    color = colors[2];
-                }
-                if page / 2 == 3 {
-                    color = colors[3];
-                }
-
                 let legato_seq = legatoseq_glob.get();
+                let seq_length = seq_length_glob.get();
+                let playing_pos = playing_pos_glob.get();
+                let color = colors[page / 2];
 
-                for n in 0..=7 {
+                for n in 0..8 {
                     led.set(
                         n,
                         Led::Top,
@@ -437,40 +523,37 @@ pub async fn run(
                         Brightness::Custom((seq[n + (page * 8)] / 16) as u8 / 2),
                     );
 
-                    if gateseq[n + (page * 8)] {
-                        led.set(n, Led::Button, color, intensities[1]);
-                    }
-                    if !gateseq[n + (page * 8)] {
-                        led.set(n, Led::Button, color, intensities[0]);
-                    }
-                    if legato_seq[n + (page * 8)] {
-                        led.set(n, Led::Button, color, intensities[2]);
-                    }
+                    let button_bright = if legato_seq[n + (page * 8)] {
+                        intensities[2]
+                    } else if gateseq[n + (page * 8)] {
+                        intensities[1]
+                    } else {
+                        intensities[0]
+                    };
+                    led.set(n, Led::Button, color, button_bright);
 
                     let index = seq_length[page / 2] as usize - (page % 2 * 8);
-
                     if n >= index || index > 16 {
                         led.unset(n, Led::Button);
                     }
 
-                    if (clockn / clockres[n / 2] % seq_length[n / 2] as usize) % 16 - (n % 2) * 8
-                        < 8
-                    {
-                        //this needs changing
-                        led.set(n, Led::Bottom, Color::Red, Brightness::Mid)
+                    // Show which page of each track is currently playing
+                    let track = n / 2;
+                    let step = playing_pos[track];
+                    let active = if n % 2 == 0 { step < 8 } else { step >= 8 };
+                    if active {
+                        led.set(n, Led::Bottom, Color::Red, Brightness::Mid);
                     } else {
                         led.unset(n, Led::Bottom);
                     }
                 }
-                //runing light on buttons
-                if ((clockn / clockres[page / 2]) % seq_length[page / 2] as usize) % 16
-                    - (page % 2) * 8
-                    < 8
-                    && clockn != 0
-                {
+
+                // Highlight the current step button on the active page
+                let step_in_seq = playing_pos[page / 2];
+                let page_offset = (page % 2) * 8;
+                if clockn != 0 && step_in_seq >= page_offset && step_in_seq < page_offset + 8 {
                     led.set(
-                        (clockn / clockres[page / 2] % seq_length[page / 2] as usize) % 16
-                            - (page % 2) * 8,
+                        step_in_seq - page_offset,
                         Led::Button,
                         Color::Red,
                         Brightness::Mid,
@@ -479,8 +562,6 @@ pub async fn run(
 
                 led.set(page, Led::Bottom, color, Brightness::High);
             }
-
-            led_flag_glob.set(false);
         }
     };
 
@@ -492,13 +573,7 @@ pub async fn run(
             let legato_seq = legatoseq_glob.get();
 
             match clk.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Reset => {
-                    for n in 0..4 {
-                        midi[n].send_note_off(lastnote[n]).await;
-                        gate_out[n].set_low().await;
-                    }
-                }
-                ClockEvent::Stop => {
+                ClockEvent::Reset | ClockEvent::Stop => {
                     for n in 0..4 {
                         midi[n].send_note_off(lastnote[n]).await;
                         gate_out[n].set_low().await;
@@ -506,15 +581,22 @@ pub async fn run(
                 }
                 ClockEvent::Tick => {
                     let clockn = ticks() as usize;
-                    for n in 0..=3 {
+                    let seq = seq_glob.get();
+                    let direction = direction_glob.get();
+                    let probability = probability_glob.get();
+                    for n in 0..4 {
                         if clockn.is_multiple_of(clockres[n]) {
-                            let clkindex =
-                                (clockn / clockres[n] % seq_length[n] as usize) + (n * 16);
+                            let step = clockn / clockres[n];
+                            let pos = step_position(direction[n], step, seq_length[n], die.roll());
+                            let clkindex = pos + (n * 16);
+                            last_step_index[n] = clkindex;
+                            let mut positions = playing_pos_glob.get();
+                            positions[n] = pos;
+                            playing_pos_glob.set(positions);
 
                             midi[n].send_note_off(lastnote[n]).await;
-                            if gateseq[clkindex] {
-                                let seq = seq_glob.get();
-
+                            let fires = gateseq[clkindex] && die.roll() < probability[n];
+                            if fires {
                                 let out = quantizer
                                     .get_quantized_note(
                                         (seq[clkindex] as u32
@@ -529,17 +611,24 @@ pub async fn run(
 
                                 midi[n].send_note_on(lastnote[n], 4095).await;
                                 gatelength1 = gatelength_glob.get();
-                                cv_out[n].set_value(out.as_counts(range));
+                                // Hand the target CV to slide_handler; slide only if
+                                // the previously played step had legato enabled.
+                                let mut targets = target_cv_glob.get();
+                                targets[n] = out.as_counts(range);
+                                target_cv_glob.set(targets);
+                                let mut slid = sliding_glob.get();
+                                slid[n] = prev_step_legato[n];
+                                sliding_glob.set(slid);
                                 gate_out[n].set_high().await;
                             } else {
                                 gate_out[n].set_low().await;
                             }
+                            prev_step_legato[n] = legato_seq[clkindex];
                         }
                         if clockn >= gatelength1[n] as usize
                             && (clockn - gatelength1[n] as usize).is_multiple_of(clockres[n])
                         {
-                            let clkindex =
-                                (((clockn - 1) / clockres[n]) % seq_length[n] as usize) + (n * 16);
+                            let clkindex = last_step_index[n];
                             if gateseq[clkindex] && !legato_seq[clkindex] {
                                 gate_out[n].set_low().await;
                                 midi[n].send_note_off(lastnote[n]).await;
@@ -565,6 +654,9 @@ pub async fn run(
                         length_faders,
                         gate_faders,
                         res_faders,
+                        direction_faders,
+                        probability_faders,
+                        slide_faders,
                     ) = storage.query(|s| {
                         (
                             s.seq,
@@ -573,6 +665,9 @@ pub async fn run(
                             s.length_fader,
                             s.gate_fader,
                             s.res_fader,
+                            s.direction_fader,
+                            s.probability_fader,
+                            s.slide_fader,
                         )
                     });
 
@@ -580,19 +675,14 @@ pub async fn run(
                     gateseq_glob.set(gateseq_saved.get());
                     legatoseq_glob.set(legato_seq_saved.get());
 
-                    // Derive runtime parameters from fader values
-                    let mut seq_length_saved = [0u8; 4];
-                    let mut clockres = [0usize; 4];
-                    let mut gatel = [0u8; 4];
-                    for n in 0..4 {
-                        seq_length_saved[n] = (length_faders[n] / 256 + 1) as u8;
-                        clockres[n] = resolution[(res_faders[n] / 512) as usize];
-                        gatel[n] = (clockres[n] * (gate_faders[n] as usize) / 4096) as u8;
-                        gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
-                    }
-                    seq_length_glob.set(seq_length_saved);
+                    let (seq_length, clockres, gatel) =
+                        derive_runtime_params(length_faders, gate_faders, res_faders, &resolution);
+                    seq_length_glob.set(seq_length);
                     clockres_glob.set(clockres);
                     gatelength_glob.set(gatel);
+                    direction_glob.set(direction_faders.map(Direction::from_fader));
+                    probability_glob.set(probability_faders.map(probability_threshold));
+                    slide_coeff_glob.set(slide_faders.map(calc_slide_coeff));
                 }
                 SceneEvent::SaveScene(scene) => {
                     storage.save_to_scene(scene).await;
@@ -601,7 +691,30 @@ pub async fn run(
         }
     };
 
-    join3(
+    // CV slide handler — runs at 1ms and exponentially interpolates each
+    // track's CV from its current value toward target_cv_glob[n] using
+    // slide_coeff_glob[n]. Only slides when sliding_glob[n] is true (set
+    // by clock_handler when the previously played step had legato).
+    let slide_handler = async {
+        let mut current: [f32; 4] = [0.0; 4];
+        loop {
+            app.delay_millis(1).await;
+            let target = target_cv_glob.get();
+            let sliding = sliding_glob.get();
+            let coeff = slide_coeff_glob.get();
+            for n in 0..4 {
+                let target_f = target[n] as f32;
+                if sliding[n] && coeff[n] < 1.0 {
+                    current[n] += (target_f - current[n]) * coeff[n];
+                } else {
+                    current[n] = target_f;
+                }
+                cv_out[n].set_value(current[n] as u16);
+            }
+        }
+    };
+
+    join4(
         join5(
             shift_handler,
             fader_handler,
@@ -611,6 +724,7 @@ pub async fn run(
         ),
         button_long_press_handler,
         scene_handler,
+        slide_handler,
     )
     .await;
 }
@@ -622,7 +736,10 @@ fn get_alt_target(chan: usize, seq_idx: usize, storage: &ManagedStorage<Storage>
         2 => storage.query(|s| s.oct_fader[seq_idx]),
         3 => storage.query(|s| s.range_fader[seq_idx]),
         4 => storage.query(|s| s.res_fader[seq_idx]),
-        _ => 0, // F5-F7 have no alt function
+        5 => storage.query(|s| s.direction_fader[seq_idx]),
+        6 => storage.query(|s| s.probability_fader[seq_idx]),
+        7 => storage.query(|s| s.slide_fader[seq_idx]),
+        _ => 0,
     }
 }
 
@@ -631,6 +748,9 @@ struct AltUpdateContext<'a> {
     seq_length_glob: &'a Global<[u8; 4]>,
     gatelength_glob: &'a Global<[u8; 4]>,
     clockres_glob: &'a Global<[usize; 4]>,
+    direction_glob: &'a Global<[Direction; 4]>,
+    probability_glob: &'a Global<[u16; 4]>,
+    slide_coeff_glob: &'a Global<[f32; 4]>,
     resolution: &'a [usize; 8],
 }
 
@@ -672,11 +792,35 @@ fn apply_alt_update(chan: usize, seq_idx: usize, value: u16, ctx: &AltUpdateCont
             let mut arr = ctx.clockres_glob.get();
             arr[seq_idx] = ctx.resolution[res_index];
             ctx.clockres_glob.set(arr);
-            // Update gate length to clamp within new resolution
+            // Re-clamp gate length within new resolution
             let clockres = ctx.clockres_glob.get();
             let mut gatel = ctx.gatelength_glob.get();
             gatel[seq_idx] = gatel[seq_idx].clamp(1, clockres[seq_idx] as u8);
             ctx.gatelength_glob.set(gatel);
+        }
+        5 => {
+            // Direction
+            ctx.storage
+                .modify_and_save(|s| s.direction_fader[seq_idx] = value);
+            let mut arr = ctx.direction_glob.get();
+            arr[seq_idx] = Direction::from_fader(value);
+            ctx.direction_glob.set(arr);
+        }
+        6 => {
+            // Probability
+            ctx.storage
+                .modify_and_save(|s| s.probability_fader[seq_idx] = value);
+            let mut arr = ctx.probability_glob.get();
+            arr[seq_idx] = probability_threshold(value);
+            ctx.probability_glob.set(arr);
+        }
+        7 => {
+            // Slide time
+            ctx.storage
+                .modify_and_save(|s| s.slide_fader[seq_idx] = value);
+            let mut arr = ctx.slide_coeff_glob.get();
+            arr[seq_idx] = calc_slide_coeff(value);
+            ctx.slide_coeff_glob.set(arr);
         }
         _ => {}
     }
