@@ -40,6 +40,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::MidiOut);
 // TODO: add per-track MIDI transposition param (semitone offset applied to outgoing notes)
+// TODO: allow tracks 2/4 to act as velocity lanes for tracks 1/3 — step values control note velocity of the paired track instead of outputting their own CV/gate
 
 pub struct Params {
     midi_channel1: MidiChannel,
