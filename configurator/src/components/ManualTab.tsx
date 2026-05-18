@@ -1188,6 +1188,64 @@ Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are sh
       },
     ],
   },
+  {
+    appId: 25,
+    title: "Automator",
+    description: "CV gesture looper",
+    color: "Cyan",
+    icon: "fader",
+    params: ["MIDI Channel", "MIDI CC", "Range", "Color", "NRPN", "MIDI Out", "Resolution"],
+    storage: ["Committed loop buffer", "Loop length", "Attenuator level", "Offset level"],
+    text: `The Automator turns your fader into a CV loop recorder. In its default state it works as a normal fader — move it, get CV out. Hold the button while playing a gesture and release to lock it in as a repeating loop. From that point the fader becomes a live performance tool for the loop: use it to offset the loop up or down, or hold Shift and move the fader to attenuate the output range.
+
+**A clock is required.** Without a clock the fader still passes through to the output, but recording is disabled and the button does nothing. Once a clock arrives, the Automator picks up from wherever it left off.
+
+#### Recording a loop
+
+Hold the button while moving the fader to shape a gesture — a filter sweep, a slow rise, a rhythmic stab. The button LED turns red while you hold. Release the button to commit: the gesture becomes a loop that repeats immediately, in sync with the clock. The loop start is quantised to the nearest 16th note so it always lands on the grid.
+
+If you want to replace the loop, just hold the button again and record a new one. The old loop keeps playing until the new one commits.
+
+To clear the loop and go back to normal fader control, press Shift + Button.
+
+#### Shaping the loop while it plays
+
+Once a loop is running, the fader no longer controls CV directly — it adds an offset to the loop output instead. Center fader position means no change; pushing it up raises the whole loop, pulling it down lowers it. This lets you transpose a pitch loop or ride a modulation loop into different territory in real time.
+
+Hold Shift and move the fader to attenuate the loop — bring the range down without changing the shape.
+
+Both offset and attenuation are saved with the loop and restored on power-up.
+
+#### Persistence
+
+The committed loop, its length, the offset, and the attenuator level are all saved to memory. If a loop was active when you powered down, the Automator starts back up in playback mode, waiting for the clock to resume.
+
+Loops are also saved and recalled per scene, so you can store different automation gestures across scenes and switch between them during a performance.
+
+#### Resolution setting
+
+The Resolution parameter sets how many clock ticks are used per sample. Lower resolution = more samples per bar = longer possible loops and smoother gestures. Higher resolution = fewer samples = grainier but uses less memory.`,
+    channels: [
+      {
+        jackTitle: "CV Output",
+        jackDescription: "CV output — fader direct in passthrough, loop playback when playing",
+        faderTitle: "CV level (passthrough) / Loop offset (playing)",
+        faderDescription:
+          "In passthrough: controls CV output directly. While a loop is playing: offsets the loop output up or down from center.",
+        faderPlusShiftTitle: "Loop attenuator",
+        faderPlusShiftDescription:
+          "While a loop is playing: reduces the output range. Has no effect in passthrough.",
+        fnTitle: "Hold to record",
+        fnDescription:
+          "Hold to capture a gesture, release to commit it as a loop. Hold again to re-record. Button turns red while recording.",
+        fnPlusShiftTitle: "Clear loop",
+        fnPlusShiftDescription:
+          "Clears the loop and returns to passthrough. Works from any state.",
+        ledTop: "Output level — app color in passthrough, red while recording, green while playing",
+        ledBottom: "Output level (bipolar range only)",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
