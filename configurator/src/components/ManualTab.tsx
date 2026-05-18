@@ -1364,6 +1364,54 @@ On a clock **Reset**, if seed lock is off, TB-3PO grabs a new random seed from t
       },
     ],
   },
+  {
+    appId: 25,
+    title: "Automator",
+    description: "CV gesture looper",
+    color: "Cyan",
+    icon: "fader",
+    params: ["MIDI Channel", "MIDI CC", "Range", "Color", "NRPN", "MIDI Out", "Resolution"],
+    storage: ["Committed loop buffer", "Loop length", "Attenuator level", "Offset level"],
+    text: `The Automator is an automation recorder. To record a loop hold the button while moving the fader and release to lock it in as a repeating loop. After recording the loop the fader becomes an offset to the output CV. Like in most apps shift + fader is an attenuator, in this case the attenuation only affects the recorded CV allowing you to introduce this modulation gradually.
+
+**A clock is required.** Without a clock the fader passes through to the output but recording is disabled and the button does nothing.
+
+#### Recording a loop
+
+Hold the button and move the fader. The LED turns red while you hold. Both the recording start and end are quantized to the nearest 16th-note, the loop length equals the button hold duration. If the maximum recording length is reached, the recording stops automatically and the loop starts playing. Hold the button again to replace the loop. Press Shift + Button to clear the loop and return to passthrough.
+
+#### Loop controls
+
+While a loop is running, the fader adds a bipolar offset to the loop. Center leaves the loop unmodified; pushing up raises the output, pulling down lowers it. Hold Shift and move the fader to set the attenuation level, in this case the attenuation only affects the recorded CV allowing you to introduce this modulation gradually. The button LED turns white for one tick at the start of each loop cycle. Both offset and attenuation are saved with the loop.
+
+#### Persistence
+
+The loop, its length, offset, and attenuation are saved to memory and restored on power-up. Loops are saved and recalled per scene.
+
+#### Resolution
+
+The resolution parameter controls how many samples are recorded per bar. Higher values give finer resolution but shorten the maximum loop length. Lower values allow longer loops at the cost of playback resolution. The CV is interpolated between samples`,
+    channels: [
+      {
+        jackTitle: "CV Output",
+        jackDescription: "CV output — fader direct in passthrough, loop playback when playing",
+        faderTitle: "CV level (passthrough) / Loop offset (playing)",
+        faderDescription:
+          "In passthrough: controls CV output directly. While a loop is playing: offsets the loop output up or down from center.",
+        faderPlusShiftTitle: "Loop attenuator",
+        faderPlusShiftDescription:
+          "While a loop is playing: reduces the output range. Has no effect in passthrough.",
+        fnTitle: "Hold to record",
+        fnDescription:
+          "Hold to capture a gesture, release to commit it as a loop. Commits automatically if the maximum length is reached. Hold again to re-record. Button turns red while recording, then flashes white for one clock tick at the start of each loop cycle.",
+        fnPlusShiftTitle: "Clear loop",
+        fnPlusShiftDescription:
+          "Clears the loop and returns to passthrough. Works from any state.",
+        ledTop: "Output level — app color in passthrough, red while recording, green while playing",
+        ledBottom: "Output level (bipolar range only)",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
