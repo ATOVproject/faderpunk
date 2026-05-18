@@ -25,9 +25,9 @@ pub const PARAMS: usize = 3;
 
 const MAX_STEPS: usize = 32;
 
-// ±5V range: 10V / 120 semitones ≈ 34 counts/semitone (1V/oct standard)
+// 0–10V range: 10V / 120 semitones ≈ 34 counts/semitone (1V/oct standard)
 const SEMITONE_COUNTS: i32 = 34;
-// Center pitch (0V in ±5V range ≈ C4)
+// Center pitch hint for quantizer input (midpoint of 0–4095 ≈ C5 at 0V=C0)
 const CENTER_CV: u16 = 2048;
 // One octave in counts
 const OCTAVE_COUNTS: i32 = 410;
@@ -98,7 +98,7 @@ pub struct Storage {
     transpose_fader: u16, // 0–4095 → transpose −24..+24 semitones
     res_saved: u16,       // 0–4095 → index into RESOLUTION table (8 segments of 512)
     lock_seed: bool,
-    hold_pitch: bool,
+    no_accents: bool,
     no_slides: bool,
 }
 
@@ -111,7 +111,7 @@ impl Default for Storage {
             transpose_fader: 2048, // 0 semitones
             res_saved: 2048,       // index 4 → RESOLUTION[4] = 6 (16th notes)
             lock_seed: false,
-            hold_pitch: true,
+            no_accents: false,
             no_slides: false,
         }
     }
@@ -317,7 +317,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let pitch_range = Range::_Neg5_5V;
+    let pitch_range = Range::_0_10V;
     let accent_range = Range::_0_5V;
 
     let (midi_out, midi_chan, led_color) = params.query(|p| (p.midi_out, p.midi_channel, p.color));
@@ -409,10 +409,10 @@ pub async fn run(
                     last_tick = now;
 
                     let pattern = pattern_glob.get();
-                    let (num_steps, hold_pitch, no_slides, transpose) = storage.query(|s| {
+                    let (num_steps, no_accents, no_slides, transpose) = storage.query(|s| {
                         (
                             (s.length_fader as u32 * 31 / 4095 + 1) as u8,
-                            s.hold_pitch,
+                            s.no_accents,
                             s.no_slides,
                             (s.transpose_fader as i32 * 48 / 4095 - 24) as i16,
                         )
@@ -433,7 +433,7 @@ pub async fn run(
                         && prev_step
                             .map(|p| step_is_slid(&pattern, p as u8))
                             .unwrap_or(false);
-                    let is_accent = step_is_accent(&pattern, step);
+                    let is_accent = !no_accents && step_is_accent(&pattern, step);
                     let target_raw = raw_pitch_cv(&pattern, step, transpose);
 
                     // Pitch / slide
@@ -442,7 +442,7 @@ pub async fn run(
                         let out = quantizer.get_quantized_note(target_raw).await;
                         slide_target_glob.set(out.as_counts(pitch_range));
                         slide_active_glob.set(true);
-                    } else if !hold_pitch || is_gated {
+                    } else if is_gated {
                         // Snap to new pitch
                         let out = quantizer.get_quantized_note(target_raw).await;
                         let counts = out.as_counts(pitch_range);
@@ -565,7 +565,11 @@ pub async fn run(
                 leds.unset(0, Led::Bottom);
             }
             prev_in_res = in_res;
-            latch_layer_glob.set(if in_res { LatchLayer::Third } else { LatchLayer::Main });
+            latch_layer_glob.set(if in_res {
+                LatchLayer::Third
+            } else {
+                LatchLayer::Main
+            });
         }
     };
 
@@ -635,12 +639,12 @@ pub async fn run(
                     }
                 }
                 1 => {
-                    let v = !storage.query(|s| s.hold_pitch);
-                    storage.modify_and_save(|s| s.hold_pitch = v);
-                }
-                2 => {
                     let v = !storage.query(|s| s.no_slides);
                     storage.modify_and_save(|s| s.no_slides = v);
+                }
+                2 => {
+                    let v = !storage.query(|s| s.no_accents);
+                    storage.modify_and_save(|s| s.no_accents = v);
                 }
                 _ => {}
             }
@@ -663,8 +667,17 @@ pub async fn run(
         loop {
             app.delay_millis(16).await;
 
-            let (density_fader, locked, hold_pitch, no_slides, length_fader, res_saved) =
-                storage.query(|s| (s.density_fader, s.lock_seed, s.hold_pitch, s.no_slides, s.length_fader, s.res_saved));
+            let (density_fader, locked, no_accents, no_slides, length_fader, res_saved) = storage
+                .query(|s| {
+                    (
+                        s.density_fader,
+                        s.lock_seed,
+                        s.no_accents,
+                        s.no_slides,
+                        s.length_fader,
+                        s.res_saved,
+                    )
+                });
             let density = (density_fader as u32 * 14 / 4095) as u8;
             let num_steps = (length_fader as u32 * 31 / 4095 + 1) as u8;
             let gate_active = gate_active_glob.get();
@@ -678,7 +691,12 @@ pub async fn run(
             if in_res_mode {
                 // Show resolution index as brightness on Top (0–7 → dim to bright)
                 let res_idx = (res_saved as usize / 512).min(7) as u8;
-                leds.set(0, Led::Top, Color::Cyan, Brightness::Custom(res_idx * 32 + 16));
+                leds.set(
+                    0,
+                    Led::Top,
+                    Color::Cyan,
+                    Brightness::Custom(res_idx * 32 + 16),
+                );
             } else {
                 leds.set(
                     0,
@@ -710,7 +728,7 @@ pub async fn run(
                 1,
                 Led::Button,
                 led_color,
-                if hold_pitch {
+                if no_slides {
                     Brightness::Mid
                 } else {
                     Brightness::Low
@@ -732,7 +750,7 @@ pub async fn run(
                 2,
                 Led::Button,
                 led_color,
-                if no_slides {
+                if no_accents {
                     Brightness::Mid
                 } else {
                     Brightness::Low
