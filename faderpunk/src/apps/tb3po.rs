@@ -19,6 +19,7 @@ use libfp::{
 use crate::app::{
     App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage, ParamStore, SceneEvent,
 };
+use crate::tasks::leds::LedMode;
 
 pub const CHANNELS: usize = 3;
 pub const PARAMS: usize = 3;
@@ -364,6 +365,7 @@ pub async fn run(
     // --- Initialise pattern from storage ---
     let init_density = (init_density_fader as u32 * 14 / 4095) as u8;
     pattern_glob.set(generate_pattern(init_seed, init_density));
+    leds.set(0, Led::Button, led_color, Brightness::Low);
 
     // Fader latches for smooth takeover
     let mut latches: [libfp::latch::AnalogLatch; CHANNELS] =
@@ -636,6 +638,11 @@ pub async fn run(
                         let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
                         pattern_glob.set(generate_pattern(new_seed, d));
                         step_glob.set(0);
+                        leds.set_mode(
+                            0,
+                            Led::Button,
+                            LedMode::FlashThenStatic(Color::White, 1, led_color, Brightness::Low),
+                        );
                     }
                 }
                 1 => {
@@ -667,8 +674,8 @@ pub async fn run(
         loop {
             app.delay_millis(16).await;
 
-            let (density_fader, locked, no_accents, no_slides, length_fader, res_saved) = storage
-                .query(|s| {
+            let (density_fader, locked, no_accents, no_slides, length_fader, res_saved, transpose_fader) =
+                storage.query(|s| {
                     (
                         s.density_fader,
                         s.lock_seed,
@@ -676,6 +683,7 @@ pub async fn run(
                         s.no_slides,
                         s.length_fader,
                         s.res_saved,
+                        s.transpose_fader,
                     )
                 });
             let density = (density_fader as u32 * 14 / 4095) as u8;
@@ -691,12 +699,7 @@ pub async fn run(
             if in_res_mode {
                 // Show resolution index as brightness on Top (0–7 → dim to bright)
                 let res_idx = (res_saved as usize / 512).min(7) as u8;
-                leds.set(
-                    0,
-                    Led::Top,
-                    Color::Cyan,
-                    Brightness::Custom(res_idx * 32 + 16),
-                );
+                leds.set(0, Led::Top, Color::Cyan, Brightness::Custom(res_idx * 32 + 16));
             } else {
                 leds.set(
                     0,
@@ -705,18 +708,18 @@ pub async fn run(
                     Brightness::Custom((density as u32 * 255 / 14) as u8),
                 );
                 if locked {
-                    leds.set(0, Led::Bottom, Color::Orange, Brightness::Mid);
+                    leds.set(0, Led::Bottom, Color::Orange, Brightness::High);
                 } else {
                     leds.unset(0, Led::Bottom);
                 }
             }
-            leds.set(0, Led::Button, led_color, Brightness::Low);
+            // Button LED managed by reseed flash — only set here on first frame (handled by init)
 
-            // Ch 1: step progress + slide indicator
+            // Ch 1: step progress (bright at step 0, dims toward end so loop reset is visible)
             let progress = if num_steps > 0 {
-                (step as u32 * 255 / num_steps as u32) as u8
+                (255u32.saturating_sub(step as u32 * 255 / num_steps as u32)) as u8
             } else {
-                0
+                255
             };
             leds.set(1, Led::Top, led_color, Brightness::Custom(progress));
             if slide_active {
@@ -728,21 +731,20 @@ pub async fn run(
                 1,
                 Led::Button,
                 led_color,
-                if no_slides {
-                    Brightness::Mid
-                } else {
-                    Brightness::Low
-                },
+                if no_slides { Brightness::Low } else { Brightness::Mid },
             );
 
-            // Ch 2: gate / accent state
-            if accent && gate_active {
-                leds.set(2, Led::Top, Color::Orange, Brightness::High);
-            } else {
-                leds.unset(2, Led::Top);
-            }
+            // Ch 2: gate on Top (primary), accent on Bottom (modifier)
+            // When gate is idle, Top shows transpose position (center=dim, extremes=bright)
             if gate_active {
-                leds.set(2, Led::Bottom, led_color, Brightness::High);
+                leds.set(2, Led::Top, led_color, Brightness::High);
+            } else {
+                let dist = (transpose_fader as i32 - 2048).unsigned_abs() as u32;
+                let b = (dist * 255 / 2048) as u8;
+                leds.set(2, Led::Top, led_color, Brightness::Custom(b));
+            }
+            if accent && gate_active {
+                leds.set(2, Led::Bottom, Color::Orange, Brightness::High);
             } else {
                 leds.unset(2, Led::Bottom);
             }
@@ -750,11 +752,7 @@ pub async fn run(
                 2,
                 Led::Button,
                 led_color,
-                if no_accents {
-                    Brightness::Mid
-                } else {
-                    Brightness::Low
-                },
+                if no_accents { Brightness::Low } else { Brightness::Mid },
             );
         }
     };
