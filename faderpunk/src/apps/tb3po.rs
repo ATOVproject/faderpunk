@@ -97,6 +97,7 @@ pub struct Storage {
     density_fader: u16,   // 0–4095 → density 0–14
     length_fader: u16,    // 0–4095 → num_steps 1–32
     transpose_fader: u16, // 0–4095 → transpose −24..+24 semitones
+    octave_fader: u16,    // 0–4095 → octave offset −4..+4 (shift + fader 3)
     res_saved: u16,       // 0–4095 → index into RESOLUTION table (8 segments of 512)
     lock_seed: bool,
     no_accents: bool,
@@ -110,6 +111,7 @@ impl Default for Storage {
             density_fader: 2048,   // density 7 (center)
             length_fader: 1920,    // ~16 steps
             transpose_fader: 2048, // 0 semitones
+            octave_fader: 2048,    // 0 octave offset
             res_saved: 2048,       // index 4 → RESOLUTION[4] = 6 (16th notes)
             lock_seed: false,
             no_accents: false,
@@ -365,7 +367,7 @@ pub async fn run(
     // --- Initialise pattern from storage ---
     let init_density = (init_density_fader as u32 * 14 / 4095) as u8;
     pattern_glob.set(generate_pattern(init_seed, init_density));
-    leds.set(0, Led::Button, led_color, Brightness::Low);
+    leds.set(0, Led::Button, led_color, Brightness::Mid);
 
     // Fader latches for smooth takeover
     let mut latches: [libfp::latch::AnalogLatch; CHANNELS] =
@@ -416,7 +418,11 @@ pub async fn run(
                             (s.length_fader as u32 * 31 / 4095 + 1) as u8,
                             s.no_accents,
                             s.no_slides,
-                            (s.transpose_fader as i32 * 48 / 4095 - 24) as i16,
+                            {
+                                let semi = s.transpose_fader as i32 * 48 / 4095 - 24;
+                                let oct = s.octave_fader as i32 * 8 / 4095 - 4;
+                                (semi + oct * 12) as i16
+                            },
                         )
                     });
 
@@ -581,9 +587,12 @@ pub async fn run(
             let chan = faders.wait_for_any_change().await;
 
             // Fader 0: Main = density, Third (B0 held) = clock resolution
-            // Faders 1, 2: always Main
+            // Fader 2: Main = semitone transpose, Alt (shift held) = octave transpose
+            // Fader 1: always Main
             let latch_layer = if chan == 0 {
                 latch_layer_glob.get()
+            } else if chan == 2 && buttons.is_shift_pressed() {
+                LatchLayer::Alt
             } else {
                 LatchLayer::Main
             };
@@ -592,6 +601,7 @@ pub async fn run(
                 (0, LatchLayer::Third) => storage.query(|s| s.res_saved),
                 (0, _) => storage.query(|s| s.density_fader),
                 (1, _) => storage.query(|s| s.length_fader),
+                (2, LatchLayer::Alt) => storage.query(|s| s.octave_fader),
                 (2, _) => storage.query(|s| s.transpose_fader),
                 _ => continue,
             };
@@ -610,6 +620,9 @@ pub async fn run(
                     }
                     (1, _) => {
                         storage.modify_and_save(|s| s.length_fader = val);
+                    }
+                    (2, LatchLayer::Alt) => {
+                        storage.modify_and_save(|s| s.octave_fader = val);
                     }
                     (2, _) => {
                         storage.modify_and_save(|s| s.transpose_fader = val);
@@ -641,7 +654,7 @@ pub async fn run(
                         leds.set_mode(
                             0,
                             Led::Button,
-                            LedMode::FlashThenStatic(Color::White, 1, led_color, Brightness::Low),
+                            LedMode::FlashThenStatic(Color::White, 1, led_color, Brightness::Mid),
                         );
                     }
                 }
@@ -715,17 +728,18 @@ pub async fn run(
             }
             // Button LED managed by reseed flash — only set here on first frame (handled by init)
 
-            // Ch 1: step progress (bright at step 0, dims toward end so loop reset is visible)
+            // Ch 1: gate on Top (slide = White, normal gate = led_color), step progress on Bottom
             let progress = if num_steps > 0 {
                 (255u32.saturating_sub(step as u32 * 255 / num_steps as u32)) as u8
             } else {
                 255
             };
-            leds.set(1, Led::Top, led_color, Brightness::Custom(progress));
-            if slide_active {
-                leds.set(1, Led::Bottom, led_color, Brightness::High);
+            leds.set(1, Led::Bottom, led_color, Brightness::Custom(progress));
+            if gate_active {
+                let gate_color = if slide_active { Color::White } else { led_color };
+                leds.set(1, Led::Top, gate_color, Brightness::High);
             } else {
-                leds.unset(1, Led::Bottom);
+                leds.unset(1, Led::Top);
             }
             leds.set(
                 1,
@@ -734,20 +748,15 @@ pub async fn run(
                 if no_slides { Brightness::Low } else { Brightness::Mid },
             );
 
-            // Ch 2: gate on Top (primary), accent on Bottom (modifier)
-            // When gate is idle, Top shows transpose position (center=dim, extremes=bright)
-            if gate_active {
-                leds.set(2, Led::Top, led_color, Brightness::High);
-            } else {
-                let dist = (transpose_fader as i32 - 2048).unsigned_abs() as u32;
-                let b = (dist * 255 / 2048) as u8;
-                leds.set(2, Led::Top, led_color, Brightness::Custom(b));
-            }
+            // Ch 2: accent on Top, transpose position on Bottom (always visible)
             if accent && gate_active {
-                leds.set(2, Led::Bottom, Color::Orange, Brightness::High);
+                leds.set(2, Led::Top, Color::Orange, Brightness::High);
             } else {
-                leds.unset(2, Led::Bottom);
+                leds.unset(2, Led::Top);
             }
+            let dist = (transpose_fader as i32 - 2048).unsigned_abs() as u32;
+            let b = (dist * 255 / 2048) as u8;
+            leds.set(2, Led::Bottom, led_color, Brightness::Custom(b));
             leds.set(
                 2,
                 Led::Button,
