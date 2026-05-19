@@ -1237,7 +1237,8 @@ Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are sh
       "Seed (pattern identity)",
       "Density",
       "Sequence length",
-      "Transpose",
+      "Transpose (semitones)",
+      "Octave transpose",
       "Clock resolution",
       "Seed lock",
       "No slides",
@@ -1265,14 +1266,14 @@ The quantizer maps all pitch output to the system-wide scale and root, so TB-3PO
 
 * **Fader 1 (Density):** Controls pattern density and pitch variety simultaneously. At low values the pattern is sparse and monotone; at high values it is dense and chromatically varied. While Button 1 is held, Fader 1 selects the clock resolution (whole note down to fast 32nds).
 * **Fader 2 (Length):** Sets the sequence length from 1 to 32 steps.
-* **Fader 3 (Transpose):** Transposes the entire pattern ±24 semitones.
+* **Fader 3 (Transpose):** Transposes the entire pattern ±24 semitones. Hold Shift while moving Fader 3 to shift by whole octaves (−4 to +4). Both offsets are summed and stored independently.
 
 #### Buttons
 
 * **Button 1 — short press:** Re-seeds the pattern. A new seed is grabbed from the internal tick counter, immediately generating a fresh pattern and resetting the step counter. Has no effect while seed lock is active.
 * **Button 1 — long press:** Toggles seed lock. When locked, clock Reset events no longer re-seed the pattern — useful for locking in a groove while still responding to transport.
-* **Button 2 — short press:** Toggles slide off. When active (button lit mid), all 303-style portamento glides are suppressed and every note snaps immediately to pitch.
-* **Button 3 — short press:** Toggles accents off. When active (button lit mid), all accent events are suppressed — the accent CV jack outputs 0 and all MIDI notes fire at normal velocity.
+* **Button 2 — short press:** Toggles slides on/off. Button lit mid = slides active; button dim = slides suppressed (every note snaps immediately to pitch).
+* **Button 3 — short press:** Toggles accents on/off. Button lit mid = accents active; button dim = accents suppressed (accent CV stays 0, MIDI fires at normal velocity).
 
 #### 303-Style Slide
 
@@ -1286,13 +1287,13 @@ On a clock **Reset**, if seed lock is off, TB-3PO grabs a new random seed from t
 
 * **Ch 1 Top:** Density level as brightness (user color)
 * **Ch 1 Bottom:** Orange = seed locked. While Button 1 is held (resolution mode), flashes in sync with the current clock division — orange for straight divisions, blue for triplets.
-* **Ch 1 Button:** Always on at low brightness (user color)
-* **Ch 2 Top:** Step progress across sequence length
-* **Ch 2 Bottom:** Lit while a slide is actively gliding
-* **Ch 2 Button:** Mid brightness = slides disabled, low = slides active
+* **Ch 1 Button:** Mid brightness (user color); flashes white on each reseed.
+* **Ch 2 Top:** Gate open indicator — user color for a normal gate, white while sliding
+* **Ch 2 Bottom:** Step progress — bright at step 1, dims toward the end of the sequence
+* **Ch 2 Button:** Mid brightness = slides active; dim = slides suppressed
 * **Ch 3 Top:** Orange when an accented gate is firing
-* **Ch 3 Bottom:** Lit while the gate is open
-* **Ch 3 Button:** Mid brightness = accents disabled, low = accents active
+* **Ch 3 Bottom:** Transpose distance from center — dim = centered (no offset), bright = far from center
+* **Ch 3 Button:** Mid brightness = accents active; dim = accents suppressed
 
 #### Acknowledgements
 
@@ -1324,22 +1325,24 @@ On a clock **Reset**, if seed lock is off, TB-3PO grabs a new random seed from t
         faderPlusFnDescription: "",
         fnTitle: "Toggle slides",
         fnDescription:
-          "Disables 303-style portamento glide. Button lit mid when slides are off.",
-        ledTop: "Step progress across sequence length",
-        ledBottom: "Lit while a slide is actively gliding",
+          "Toggles 303-style portamento glide. Button lit mid = slides active; dim = slides suppressed.",
+        ledTop: "Gate open — user color for normal gate, white while sliding",
+        ledBottom: "Step progress — bright at step 1, dims toward end of sequence",
       },
       {
         jackTitle: "Accent CV",
         jackDescription: "High when the current gated step is accented, 0 otherwise",
         faderTitle: "Transpose",
         faderDescription: "Transposes the pattern ±24 semitones",
-        faderPlusFnTitle: "",
-        faderPlusFnDescription: "",
+        faderPlusFnTitle: "Octave transpose",
+        faderPlusFnDescription:
+          "Hold Shift while moving Fader 3 to transpose by whole octaves (−4 to +4). Both offsets are summed.",
         fnTitle: "Toggle accents",
         fnDescription:
-          "Suppresses all accent events — accent CV stays 0 and MIDI fires at normal velocity. Button lit mid when accents are off.",
+          "Toggles accent events. Button lit mid = accents active; dim = accents suppressed (accent CV stays 0, MIDI fires at normal velocity).",
         ledTop: "Orange when an accented gate is firing",
-        ledBottom: "Lit while gate is open",
+        ledBottom:
+          "Transpose distance from center — dim = no offset, bright = far from center.",
       },
     ],
   },
