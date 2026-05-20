@@ -631,7 +631,11 @@ impl Quantizer {
         let value = value.clamp(0, 4095);
         let quantizer = QUANTIZER.get().lock().await;
         let mut state = self.state.borrow_mut();
-        quantizer.get_quantized_note(&mut state, value, self.range)
+        let mut pitch = quantizer.get_quantized_note(&mut state, value, self.range);
+        if quantizer.get_key() == Key::Off {
+            pitch.raw = Some(value);
+        }
+        pitch
     }
     /// Get Quantizer scale
     #[allow(dead_code)]

@@ -47,7 +47,7 @@ pub fn get_fader_value_from_config(chan: usize, config: &GlobalConfig) -> u16 {
     match chan {
         INTERNAL_BPM_FADER => (((config.clock.internal_bpm - 45.0) * 16.0) as u16).clamp(0, 4095),
         SWING_FADER => swing_to_val(config.clock.swing_amount),
-        QUANTIZER_KEY_FADER => (config.quantizer.key as u16 * 256).clamp(0, 4095),
+        QUANTIZER_KEY_FADER => (config.quantizer.key as u16 * 241).clamp(0, 4095),
         QUANTIZER_TONIC_FADER => (config.quantizer.tonic as u16 * 342).clamp(0, 4095),
         LED_BRIGHTNESS_FADER => {
             let brightness_range = (LED_BRIGHTNESS_RANGE.end - LED_BRIGHTNESS_RANGE.start) as u32;
@@ -89,7 +89,7 @@ pub fn set_global_config_via_chan(chan: usize, val: u16) {
         QUANTIZER_KEY_FADER => {
             global_config_sender.send_if_modified(|c| {
                 if let Some(config) = c {
-                    let new_key: Key = unsafe { core::mem::transmute((val / 256) as u8) };
+                    let new_key: Key = unsafe { core::mem::transmute((val / 241).min(16) as u8) };
                     if config.quantizer.key != new_key {
                         config.quantizer.key = new_key;
                         return true;
