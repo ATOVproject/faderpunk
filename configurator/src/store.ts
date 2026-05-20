@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { Value, type GlobalConfig } from "@atov/fp-config";
 
-import type { AllApps, AppLayout, ParamValues } from "./utils/types";
+import type { AllApps, AppLayout, AppSlot, ParamValues } from "./utils/types";
 import {
   connectToFaderPunk,
   getDeviceVersion,
@@ -13,14 +13,25 @@ import {
   getGlobalConfig,
   getLayout,
 } from "./utils/config";
+import { DEMO_APPS } from "./demo/catalog";
+import { defaultGlobalConfig } from "./utils/validators";
+
+const makeEmptyLayout = (): AppLayout =>
+  Array.from<AppSlot>({ length: 16 }, (_, i) => ({
+    id: i,
+    app: null,
+    startChannel: i,
+  }));
 
 interface State {
   apps: AllApps | undefined;
   autoConnect: () => Promise<boolean>;
   connect: () => Promise<void>;
+  connectSimulator: () => void;
   config: GlobalConfig | undefined;
   disconnect: () => void;
   deviceVersion: string | undefined;
+  isSimulator: boolean;
   layout: AppLayout | undefined;
   params: ParamValues | undefined;
   setConfig: (config: GlobalConfig) => void;
@@ -34,6 +45,7 @@ const initialState = {
   apps: undefined,
   config: undefined,
   deviceVersion: undefined,
+  isSimulator: false,
   layout: undefined,
   params: undefined,
   usbDevice: undefined,
@@ -86,11 +98,23 @@ export const useStore = create<State>((set) => ({
       });
     }
   },
+  connectSimulator: () => {
+    set({
+      isSimulator: true,
+      apps: DEMO_APPS,
+      layout: makeEmptyLayout(),
+      params: new Map(),
+      config: defaultGlobalConfig,
+      deviceVersion: "simulator",
+      usbDevice: undefined,
+    });
+  },
   disconnect: () => {
     set({
       apps: undefined,
       config: undefined,
       deviceVersion: undefined,
+      isSimulator: false,
       layout: undefined,
       params: undefined,
       usbDevice: undefined,

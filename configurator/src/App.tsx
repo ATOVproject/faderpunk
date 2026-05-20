@@ -13,7 +13,7 @@ import { TroubleshootingPage } from "./components/TroubleshootingPage";
 const DEVICELESS_ROUTES = ["/about", "/manual", "/update", "/troubleshooting"];
 
 const App = () => {
-  const { usbDevice, autoConnect } = useStore();
+  const { usbDevice, isSimulator, autoConnect } = useStore();
   const location = useLocation();
   useConnectionHealthCheck();
   const skipAutoConnect =
@@ -45,12 +45,22 @@ const App = () => {
       <Route
         path="/"
         element={
-          usbDevice ? <Navigate to="/configurator" replace /> : <ConnectPage />
+          usbDevice || isSimulator ? (
+            <Navigate to="/configurator" replace />
+          ) : (
+            <ConnectPage />
+          )
         }
       />
       <Route
         path="/configurator"
-        element={usbDevice ? <ConfiguratorPage /> : <Navigate to="/" replace />}
+        element={
+          usbDevice || isSimulator ? (
+            <ConfiguratorPage />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
       />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/manual" element={<ManualPage />} />

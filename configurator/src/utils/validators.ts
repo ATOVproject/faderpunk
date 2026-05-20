@@ -175,7 +175,7 @@ export const parseParamValueFromFile = (
 };
 
 // Default GlobalConfig matching libfp defaults
-const defaultGlobalConfig: GlobalConfig = {
+export const defaultGlobalConfig: GlobalConfig = {
   aux: [
     { tag: "ClockOut", value: { tag: "_1" } },
     { tag: "None" },
