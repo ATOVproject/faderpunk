@@ -1289,11 +1289,13 @@ On a clock **Reset**, if seed lock is off, TB-3PO grabs a new random seed from t
         fnDescription:
           "Toggles 303-style portamento glide. Button lit mid = slides active; dim = slides suppressed.",
         ledTop: "Gate open — user color for normal gate, white while sliding",
-        ledBottom: "Step progress — bright at step 1, dims toward end of sequence",
+        ledBottom:
+          "Step progress — bright at step 1, dims toward end of sequence",
       },
       {
         jackTitle: "Accent CV",
-        jackDescription: "High when the current gated step is accented, 0 otherwise",
+        jackDescription:
+          "High when the current gated step is accented, 0 otherwise",
         faderTitle: "Transpose",
         faderDescription: "Transposes the pattern ±24 semitones",
         faderPlusFnTitle: "Octave transpose",
