@@ -641,22 +641,19 @@ pub async fn run(
                 continue;
             }
             match chan {
-                0 => {
-                    // Reseed on short tap — but only when fader 0 is not in resolution mode
-                    if latch_layer_glob.get() != LatchLayer::Third
-                        && !storage.query(|s| s.lock_seed)
-                    {
-                        let new_seed = (ticks() & 0xFFFF) as u16;
-                        storage.modify_and_save(|s| s.seed = new_seed);
-                        let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
-                        pattern_glob.set(generate_pattern(new_seed, d));
-                        step_glob.set(0);
-                        leds.set_mode(
-                            0,
-                            Led::Button,
-                            LedMode::FlashThenStatic(Color::White, 1, led_color, Brightness::Mid),
-                        );
-                    }
+                0 if latch_layer_glob.get() != LatchLayer::Third
+                    && !storage.query(|s| s.lock_seed) =>
+                {
+                    let new_seed = (ticks() & 0xFFFF) as u16;
+                    storage.modify_and_save(|s| s.seed = new_seed);
+                    let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
+                    pattern_glob.set(generate_pattern(new_seed, d));
+                    step_glob.set(0);
+                    leds.set_mode(
+                        0,
+                        Led::Button,
+                        LedMode::FlashThenStatic(Color::White, 1, led_color, Brightness::Mid),
+                    );
                 }
                 1 => {
                     let v = !storage.query(|s| s.no_slides);
@@ -754,7 +751,7 @@ pub async fn run(
             } else {
                 leds.unset(2, Led::Top);
             }
-            let dist = (transpose_fader as i32 - 2048).unsigned_abs() as u32;
+            let dist = (transpose_fader as i32 - 2048).unsigned_abs();
             let b = (dist * 255 / 2048) as u8;
             leds.set(2, Led::Bottom, led_color, Brightness::Custom(b));
             leds.set(
