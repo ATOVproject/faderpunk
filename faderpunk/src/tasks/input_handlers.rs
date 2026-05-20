@@ -124,6 +124,18 @@ async fn run_input_handlers() {
 }
 
 pub async fn show_scale_keyboard(key: Key, tonic: Note) {
+    if key == Key::Off {
+        for ch in 0..NUM_CHANNELS {
+            set_led_overlay_mode(
+                ch,
+                Led::Bottom,
+                LedMode::Static(Color::White, Brightness::Off),
+            )
+            .await;
+        }
+        return;
+    }
+
     let mask = key.as_u16_key();
     let tonic_offset = tonic as usize;
 
