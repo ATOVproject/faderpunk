@@ -1188,6 +1188,128 @@ Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are sh
       },
     ],
   },
+  {
+    appId: 24,
+    title: "TB-3PO",
+    description: "TB-303 acid pattern generator",
+    color: "Orange",
+    icon: "softRandom",
+    params: ["MIDI Channel", "MIDI Out", "Color"],
+    storage: [
+      "Seed (pattern identity)",
+      "Density",
+      "Sequence length",
+      "Transpose (semitones)",
+      "Octave transpose",
+      "Clock resolution",
+      "Seed lock",
+      "No slides",
+      "No accents",
+    ],
+    text: `
+TB-3PO is a deterministic acid bass pattern generator, ported from the TB-3PO Hemisphere applet by Logarhythm/djphazer. It generates TB-303-style patterns — complete with gates, slides, accents, and octave shifts — from a single 16-bit seed value. Because patterns are fully deterministic, the same seed always produces the same sequence, making it easy to recall and lock in a favourite groove.
+
+#### Pattern Generation
+
+Every pattern is generated in two passes from the current seed and density:
+
+1. **Pitch pass:** assigns scale degrees (0–8) and octave-up/down flags to each of 32 steps. Higher density means more pitch variety and fewer repeated notes.
+2. **Gate/slide/accent pass:** rolls gate, slide, and accent probability for each step. Slides are less likely to run consecutively; accents cluster similarly to a real 303.
+
+The quantizer maps all pitch output to the system-wide scale and root, so TB-3PO stays in key across your whole patch.
+
+#### Outputs
+
+* **Ch 1 (Jack 0):** Pitch CV (0–10V, 1V/oct)
+* **Ch 2 (Jack 1):** Gate
+* **Ch 3 (Jack 2):** Accent CV (high when accented, 0 otherwise)
+
+#### Faders
+
+* **Fader 1 (Density):** Controls pattern density and pitch variety simultaneously. At low values the pattern is sparse and monotone; at high values it is dense and chromatically varied. While Button 1 is held, Fader 1 selects the clock resolution (whole note down to fast 32nds).
+* **Fader 2 (Length):** Sets the sequence length from 1 to 32 steps.
+* **Fader 3 (Transpose):** Transposes the entire pattern ±24 semitones. Hold Shift while moving Fader 3 to shift by whole octaves (−4 to +4). Both offsets are summed and stored independently.
+
+#### Buttons
+
+* **Button 1 — short press:** Re-seeds the pattern. A new seed is grabbed from the internal tick counter, immediately generating a fresh pattern and resetting the step counter. Has no effect while seed lock is active.
+* **Button 1 — long press:** Toggles seed lock. When locked, clock Reset events no longer re-seed the pattern — useful for locking in a groove while still responding to transport.
+* **Button 2 — short press:** Toggles slides on/off. Button lit mid = slides active; button dim = slides suppressed (every note snaps immediately to pitch).
+* **Button 3 — short press:** Toggles accents on/off. Button lit mid = accents active; button dim = accents suppressed (accent CV stays 0, MIDI fires at normal velocity).
+
+#### 303-Style Slide
+
+When a step carries the slide flag and the previous step also did, the pitch glides exponentially toward the new target rather than snapping. The gate stays open during the glide, exactly as on a real TB-303. The glide time constant is fixed at approximately 100 ms. Slide can be disabled globally with Button 2.
+
+#### Clock & Re-seeding
+
+On a clock **Reset**, if seed lock is off, TB-3PO grabs a new random seed from the tick counter and regenerates the pattern immediately — every reset is a new groove. If seed lock is on, the existing pattern is simply reset to step 1. On a clock **Stop**, the gate closes and any held MIDI note is killed.
+
+#### LED Feedback
+
+* **Ch 1 Top:** Density level as brightness (user color)
+* **Ch 1 Bottom:** Orange = seed locked. While Button 1 is held (resolution mode), flashes in sync with the current clock division — orange for straight divisions, blue for triplets.
+* **Ch 1 Button:** Mid brightness (user color); flashes white on each reseed.
+* **Ch 2 Top:** Gate open indicator — user color for a normal gate, white while sliding
+* **Ch 2 Bottom:** Step progress — bright at step 1, dims toward the end of the sequence
+* **Ch 2 Button:** Mid brightness = slides active; dim = slides suppressed
+* **Ch 3 Top:** Orange when an accented gate is firing
+* **Ch 3 Bottom:** Transpose distance from center — dim = centered (no offset), bright = far from center
+* **Ch 3 Button:** Mid brightness = accents active; dim = accents suppressed
+
+#### Acknowledgements
+
+* Original concept & code: Logarhythm / djphazer ([TB-3PO Hemisphere applet](https://github.com/djphazer/O_C-BenisphereSuite))
+`,
+    channels: [
+      {
+        jackTitle: "Pitch CV",
+        jackDescription: "0–10V quantized pitch output (1V/oct)",
+        faderTitle: "Density",
+        faderDescription:
+          "Controls gate density and pitch variety. Low = sparse/monotone, high = dense/chromatic.",
+        faderPlusFnTitle: "Clock resolution",
+        faderPlusFnDescription:
+          "Hold Button 1 to select clock resolution: whole note → fast 32nds (8 steps, orange = straight, blue = triplet)",
+        fnTitle: "Re-seed / Seed lock",
+        fnDescription:
+          "Short press: generate a new random pattern. Long press: toggle seed lock (orange bottom LED when locked).",
+        ledTop: "Density level",
+        ledBottom:
+          "Seed locked indicator (orange). In resolution mode: division flash.",
+      },
+      {
+        jackTitle: "Gate",
+        jackDescription: "Gate output — high when a step is gated or sliding",
+        faderTitle: "Sequence length",
+        faderDescription: "Sets the number of active steps (1–32)",
+        faderPlusFnTitle: "",
+        faderPlusFnDescription: "",
+        fnTitle: "Toggle slides",
+        fnDescription:
+          "Toggles 303-style portamento glide. Button lit mid = slides active; dim = slides suppressed.",
+        ledTop: "Gate open — user color for normal gate, white while sliding",
+        ledBottom:
+          "Step progress — bright at step 1, dims toward end of sequence",
+      },
+      {
+        jackTitle: "Accent CV",
+        jackDescription:
+          "High when the current gated step is accented, 0 otherwise",
+        faderTitle: "Transpose",
+        faderDescription: "Transposes the pattern ±24 semitones",
+        faderPlusFnTitle: "Octave transpose",
+        faderPlusFnDescription:
+          "Hold Shift while moving Fader 3 to transpose by whole octaves (−4 to +4). Both offsets are summed.",
+        fnTitle: "Toggle accents",
+        fnDescription:
+          "Toggles accent events. Button lit mid = accents active; dim = accents suppressed (accent CV stays 0, MIDI fires at normal velocity).",
+        ledTop: "Orange when an accented gate is firing",
+        ledBottom:
+          "Transpose distance from center — dim = no offset, bright = far from center.",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
