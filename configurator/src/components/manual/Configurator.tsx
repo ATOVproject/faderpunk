@@ -250,6 +250,11 @@ export const Configurator = () => (
       <li>Japanese</li>
       <li>Gamelan</li>
       <li>Hungarian Minor</li>
+      <li>
+        <strong>Off</strong> – CV passthrough. The incoming signal is sent
+        directly to the CV output without quantization. MIDI output (where
+        applicable) uses the nearest chromatic semitone.
+      </li>
     </List>
     <p>Refer to each app's manual to check if it uses the global quantizer.</p>
 
