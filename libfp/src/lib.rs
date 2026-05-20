@@ -349,6 +349,8 @@ pub enum Key {
     Gamelan,
     #[n(15)]
     HungarianMin,
+    #[n(16)]
+    Off,
 }
 
 impl Key {
@@ -371,6 +373,7 @@ impl Key {
             Key::Japanese => 0b110001011000,
             Key::Gamelan => 0b110100011000,
             Key::HungarianMin => 0b101100111001,
+            Key::Off => 0b111111111111,
         }
     }
 }

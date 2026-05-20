@@ -11,6 +11,9 @@ const CODEBOOK_SIZE: usize = 216;
 pub struct Pitch {
     pub octave: i8,
     pub note: Note,
+    /// When set, `as_counts()` returns this raw ADC value instead of the quantized voltage.
+    /// Used for passthrough (Key::Off) mode.
+    pub raw: Option<u16>,
 }
 
 impl Pitch {
@@ -19,6 +22,9 @@ impl Pitch {
     }
 
     pub fn as_counts(&self, range: Range) -> u16 {
+        if let Some(raw) = self.raw {
+            return raw;
+        }
         let voltage = self.as_v_oct();
         let counts = match range {
             Range::_0_10V => (voltage / 10.0) * 4095.0,
@@ -77,7 +83,9 @@ impl Quantizer {
         self.key = key;
         self.tonic = tonic;
 
-        let mask = key.as_u16_key();
+        // When Off, use chromatic internally so MIDI quantizes to nearest semitone
+        let effective_key = if key == Key::Off { Key::Chromatic } else { key };
+        let mask = effective_key.as_u16_key();
         let notes: Vec<i16, 12> = (0..12)
             .filter(|i| (mask >> (11 - i)) & 1 != 0) // Read from MSB (C) to LSB (B)
             .map(|i| i as i16)
@@ -197,6 +205,7 @@ impl Quantizer {
         Pitch {
             octave,
             note: note.into(),
+            raw: None,
         }
     }
 }
@@ -230,7 +239,8 @@ mod tests {
             q.get_quantized_note(&mut state, 0, Range::_0_10V),
             Pitch {
                 octave: 0,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
@@ -239,7 +249,8 @@ mod tests {
             q.get_quantized_note(&mut state, 410, Range::_0_10V),
             Pitch {
                 octave: 1,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
@@ -250,7 +261,8 @@ mod tests {
             q.get_quantized_note(&mut state_c0, 33, Range::_0_10V),
             Pitch {
                 octave: 0,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
@@ -260,7 +272,8 @@ mod tests {
             q.get_quantized_note(&mut state_d0, 37, Range::_0_10V),
             Pitch {
                 octave: 0,
-                note: Note::D
+                note: Note::D,
+                raw: None
             }
         );
 
@@ -272,7 +285,8 @@ mod tests {
             q.get_quantized_note(&mut state, 205, Range::_0_10V),
             Pitch {
                 octave: 0,
-                note: Note::G
+                note: Note::G,
+                raw: None
             }
         );
     }
@@ -288,7 +302,8 @@ mod tests {
             q.get_quantized_note(&mut state, 2048, Range::_Neg5_5V),
             Pitch {
                 octave: 0,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
@@ -297,7 +312,8 @@ mod tests {
             q.get_quantized_note(&mut state, 0, Range::_Neg5_5V),
             Pitch {
                 octave: -5,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
@@ -306,7 +322,8 @@ mod tests {
             q.get_quantized_note(&mut state, 4095, Range::_Neg5_5V),
             Pitch {
                 octave: 5,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
     }
@@ -323,7 +340,8 @@ mod tests {
             q.get_quantized_note(&mut state, 4095, Range::_0_10V),
             Pitch {
                 octave: 10,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
@@ -333,7 +351,8 @@ mod tests {
             q.get_quantized_note(&mut state, 0, Range::_Neg5_5V),
             Pitch {
                 octave: -5,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
@@ -343,7 +362,8 @@ mod tests {
             q.get_quantized_note(&mut state, 4095, Range::_Neg5_5V),
             Pitch {
                 octave: 5,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
     }
@@ -363,7 +383,8 @@ mod tests {
             q.get_quantized_note(&mut state, 37, Range::_0_10V),
             Pitch {
                 octave: 0,
-                note: Note::D
+                note: Note::D,
+                raw: None
             }
         );
 
@@ -374,7 +395,8 @@ mod tests {
             q.get_quantized_note(&mut state, 33, Range::_0_10V),
             Pitch {
                 octave: 0,
-                note: Note::D
+                note: Note::D,
+                raw: None
             }
         );
 
@@ -384,7 +406,8 @@ mod tests {
             q.get_quantized_note(&mut state, 10, Range::_0_10V),
             Pitch {
                 octave: 0,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
     }
@@ -395,10 +418,12 @@ mod tests {
         let c4 = Pitch {
             octave: 4,
             note: Note::C,
+            raw: None,
         };
         let a4 = Pitch {
             octave: 4,
             note: Note::A,
+            raw: None,
         };
         assert_eq!(c4.as_counts(Range::_0_10V), 1638);
         assert_eq!(a4.as_counts(Range::_0_10V), 1945);
@@ -411,16 +436,19 @@ mod tests {
         let c4 = Pitch {
             octave: 4,
             note: Note::C,
+            raw: None,
         };
         assert_eq!(c4.as_midi(), MidiNote(60));
         let a4 = Pitch {
             octave: 4,
             note: Note::A,
+            raw: None,
         };
         assert_eq!(a4.as_midi(), MidiNote(69));
         let c_minus_1 = Pitch {
             octave: -1,
             note: Note::C,
+            raw: None,
         };
         assert_eq!(c_minus_1.as_midi(), MidiNote(0));
     }
