@@ -5,12 +5,13 @@ export const getParamSchema = (param: Param) => {
   switch (param.tag) {
     case "i32": {
       const { min, max } = param.value;
+      const midpoint = Math.round((min + max) / 2);
       return z
         .object({
           tag: z.literal("i32"),
           value: z.number().int().min(min).max(max),
         })
-        .default({ tag: "i32", value: 0 });
+        .default({ tag: "i32", value: midpoint });
     }
     case "f32": {
       const { min, max } = param.value;
@@ -82,7 +83,7 @@ export const getParamSchema = (param: Param) => {
           tag: z.literal("MidiCc"),
           value: z.tuple([z.number().int().min(0).max(127)]),
         })
-        .default({ tag: "MidiCc", value: [0] });
+        .default({ tag: "MidiCc", value: [32] });
     }
     case "MidiChannel": {
       return z
@@ -90,7 +91,7 @@ export const getParamSchema = (param: Param) => {
           tag: z.literal("MidiChannel"),
           value: z.tuple([z.number().int().min(0).max(15)]),
         })
-        .default({ tag: "MidiChannel", value: [0] });
+        .default({ tag: "MidiChannel", value: [1] });
     }
     case "MidiNote": {
       return z
@@ -98,7 +99,7 @@ export const getParamSchema = (param: Param) => {
           tag: z.literal("MidiNote"),
           value: z.tuple([z.number().int().min(0).max(127)]),
         })
-        .default({ tag: "MidiNote", value: [60] });
+        .default({ tag: "MidiNote", value: [0] });
     }
     case "MidiIn": {
       // MidiIn is a tuple struct: [[usb, din]]
@@ -107,7 +108,7 @@ export const getParamSchema = (param: Param) => {
           tag: z.literal("MidiIn"),
           value: z.tuple([z.tuple([z.boolean(), z.boolean()])]),
         })
-        .default({ tag: "MidiIn", value: [[false, false]] });
+        .default({ tag: "MidiIn", value: [[true, true]] });
     }
     case "MidiOut": {
       // MidiOut is a tuple struct: [[usb, out1, out2]]
@@ -116,7 +117,7 @@ export const getParamSchema = (param: Param) => {
           tag: z.literal("MidiOut"),
           value: z.tuple([z.tuple([z.boolean(), z.boolean(), z.boolean()])]),
         })
-        .default({ tag: "MidiOut", value: [[false, false, false]] });
+        .default({ tag: "MidiOut", value: [[true, true, true]] });
     }
     case "MidiNrpn": {
       return z
@@ -217,7 +218,7 @@ export const defaultGlobalConfig: GlobalConfig = {
 };
 
 // Lenient schema that validates structure but allows any valid tag values
-const taggedObjectSchema = z.object({ tag: z.string() }).passthrough();
+const taggedObjectSchema = z.looseObject({ tag: z.string() });
 
 const globalConfigSchema = z.object({
   aux: z.array(taggedObjectSchema).length(3),

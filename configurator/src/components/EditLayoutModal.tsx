@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Value } from "@atov/fp-config";
 import classNames from "classnames";
 import { Button } from "@heroui/button";
 import { ModalBody, ModalFooter, ModalHeader } from "@heroui/modal";
@@ -282,17 +283,27 @@ export const EditLayoutModal = ({
           if (recallConfig && modalConfig.recallConfig) {
             setConfig(modalConfig.recallConfig);
           }
-        } else if (
-          modalConfig.mode === ModalMode.AddApp &&
-          newAppId !== null &&
-          apps
-        ) {
-          const newApp = apps.get(newAppId);
-          if (newApp) {
-            const defaultParams = newApp.params.map((p) =>
-              getParamSchema(p).parse(undefined),
-            );
-            setParams(newAppId, defaultParams);
+        } else {
+          // Initialize params for every app slot not present in the initial layout.
+          // This covers both a single AddApp placement and any duplicates made
+          // inside the modal via the duplicate button.
+          const existingIds = new Set(
+            initialLayout.filter((s) => s.app).map((s) => s.id),
+          );
+          for (const slot of layout) {
+            if (slot.app && !existingIds.has(slot.id)) {
+              let ccOffset = 0;
+              const defaultParams = slot.app.params.map((p) => {
+                if (p.tag === "MidiCc") {
+                  return {
+                    tag: "MidiCc",
+                    value: [32 + slot.startChannel + ccOffset++],
+                  } as Value;
+                }
+                return getParamSchema(p).parse(undefined) as Value;
+              });
+              setParams(slot.id, defaultParams);
+            }
           }
         }
         onSave(layout);
