@@ -12,16 +12,50 @@ import {
   getAllApps,
   getGlobalConfig,
   getLayout,
+  saveLayout,
+  recoverLayout,
+  serializeLayout,
+  deserializeLayout,
 } from "./utils/config";
 import { DEMO_APPS } from "./demo/catalog";
 import { defaultGlobalConfig } from "./utils/validators";
 
 const makeEmptyLayout = (): AppLayout =>
-  Array.from<AppSlot>({ length: 16 }, (_, i) => ({
-    id: i,
-    app: null,
-    startChannel: i,
-  }));
+  Array.from(
+    { length: 16 },
+    (_, i): AppSlot => ({
+      id: i,
+      app: null,
+      startChannel: i,
+    }),
+  );
+
+const SIMULATOR_STORAGE_KEY = "fp-simulator-state";
+
+const persistSimulatorState = (
+  layout: AppLayout,
+  params: ParamValues,
+  config: GlobalConfig,
+) => {
+  try {
+    localStorage.setItem(
+      SIMULATOR_STORAGE_KEY,
+      serializeLayout(saveLayout(layout, params, config)),
+    );
+  } catch {
+    // ignore storage quota errors
+  }
+};
+
+const loadPersistedSimulatorState = () => {
+  try {
+    const raw = localStorage.getItem(SIMULATOR_STORAGE_KEY);
+    if (!raw) return null;
+    return recoverLayout(deserializeLayout(raw), DEMO_APPS);
+  } catch {
+    return null;
+  }
+};
 
 interface State {
   apps: AllApps | undefined;
@@ -51,12 +85,27 @@ const initialState = {
   usbDevice: undefined,
 };
 
-export const useStore = create<State>((set) => ({
+export const useStore = create<State>((set, get) => ({
   ...initialState,
   autoConnect: async () => {
     try {
       const device = await tryAutoConnect();
-      if (!device) return false;
+      if (!device) {
+        const saved = loadPersistedSimulatorState();
+        if (saved) {
+          set({
+            isSimulator: true,
+            apps: DEMO_APPS,
+            layout: saved.layout,
+            params: saved.params,
+            config: saved.config,
+            deviceVersion: "simulator",
+            usbDevice: undefined,
+          });
+          return true;
+        }
+        return false;
+      }
 
       const deviceVersion = getDeviceVersion(device);
       set({ deviceVersion });
@@ -99,30 +148,44 @@ export const useStore = create<State>((set) => ({
     }
   },
   connectSimulator: () => {
+    const saved = loadPersistedSimulatorState();
     set({
       isSimulator: true,
       apps: DEMO_APPS,
-      layout: makeEmptyLayout(),
-      params: new Map(),
-      config: defaultGlobalConfig,
       deviceVersion: "simulator",
       usbDevice: undefined,
+      layout: saved?.layout ?? makeEmptyLayout(),
+      params: saved?.params ?? new Map(),
+      config: saved?.config ?? defaultGlobalConfig,
     });
   },
   disconnect: () => {
-    set({
-      apps: undefined,
-      config: undefined,
-      deviceVersion: undefined,
-      isSimulator: false,
-      layout: undefined,
-      params: undefined,
-      usbDevice: undefined,
-    });
+    localStorage.removeItem(SIMULATOR_STORAGE_KEY);
+    set({ ...initialState });
   },
-  setConfig: (config) => set({ config }),
-  setLayout: (layout) => set({ layout }),
-  setParams: (id, newParams) =>
-    set(({ params }) => ({ params: new Map(params).set(id, newParams) })),
-  setAllParams: (newParams) => set({ params: newParams }),
+  setConfig: (config) => {
+    set({ config });
+    const { isSimulator, layout, params } = get();
+    if (isSimulator && layout && params)
+      persistSimulatorState(layout, params, config);
+  },
+  setLayout: (layout) => {
+    set({ layout });
+    const { isSimulator, params, config } = get();
+    if (isSimulator && params && config)
+      persistSimulatorState(layout, params, config);
+  },
+  setParams: (id, newParams) => {
+    const { params, isSimulator, layout, config } = get();
+    const updated = new Map(params).set(id, newParams);
+    set({ params: updated });
+    if (isSimulator && layout && config)
+      persistSimulatorState(layout, updated, config);
+  },
+  setAllParams: (newParams) => {
+    set({ params: newParams });
+    const { isSimulator, layout, config } = get();
+    if (isSimulator && layout && config)
+      persistSimulatorState(layout, newParams, config);
+  },
 }));

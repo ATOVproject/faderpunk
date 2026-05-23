@@ -320,6 +320,7 @@ export const EditLayoutModal = ({
     apps,
     usbDevice,
     isSimulator,
+    initialLayout,
     layout,
     modalConfig.recallParams,
     modalConfig.mode,

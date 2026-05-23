@@ -30,5 +30,5 @@ export const useConnectionHealthCheck = () => {
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [usbDevice, setConfig, disconnect]);
+  }, [usbDevice, isSimulator, setConfig, disconnect]);
 };
