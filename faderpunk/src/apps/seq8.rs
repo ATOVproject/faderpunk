@@ -1,7 +1,8 @@
 use embassy_futures::{
     join::{join4, join5},
-    select::{select, select3},
+    select::{select, select3, select4, Either4},
 };
+use midly::MidiMessage;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libm::expf;
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
-    MidiChannel, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    MidiChannel, MidiIn, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -18,7 +19,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 8;
-pub const PARAMS: usize = 7;
+pub const PARAMS: usize = 12;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Sequencer",
@@ -40,8 +41,12 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::MidiOut)
 .add_param(Param::bool { name: "Track 2: velocity lane" })
-.add_param(Param::bool { name: "Track 4: velocity lane" });
-// TODO: add per-track MIDI transposition param (semitone offset applied to outgoing notes)
+.add_param(Param::bool { name: "Track 4: velocity lane" })
+.add_param(Param::MidiIn)
+.add_param(Param::MidiChannel { name: "Track 1: transpose CH" })
+.add_param(Param::MidiChannel { name: "Track 2: transpose CH" })
+.add_param(Param::MidiChannel { name: "Track 3: transpose CH" })
+.add_param(Param::MidiChannel { name: "Track 4: transpose CH" });
 
 pub struct Params {
     midi_channel1: MidiChannel,
@@ -51,6 +56,11 @@ pub struct Params {
     midi_out: MidiOut,
     vel_lane_2: bool,
     vel_lane_4: bool,
+    transpose_midi_in: MidiIn,
+    transpose_ch1: MidiChannel,
+    transpose_ch2: MidiChannel,
+    transpose_ch3: MidiChannel,
+    transpose_ch4: MidiChannel,
 }
 
 impl AppParams for Params {
@@ -66,6 +76,11 @@ impl AppParams for Params {
             midi_out: MidiOut::from_value(values[4]),
             vel_lane_2: bool::from_value(values[5]),
             vel_lane_4: bool::from_value(values[6]),
+            transpose_midi_in: MidiIn::from_value(values[7]),
+            transpose_ch1: MidiChannel::from_value(values[8]),
+            transpose_ch2: MidiChannel::from_value(values[9]),
+            transpose_ch3: MidiChannel::from_value(values[10]),
+            transpose_ch4: MidiChannel::from_value(values[11]),
         })
     }
 
@@ -78,6 +93,11 @@ impl AppParams for Params {
         vec.push(self.midi_out.into()).unwrap();
         vec.push(self.vel_lane_2.into()).unwrap();
         vec.push(self.vel_lane_4.into()).unwrap();
+        vec.push(self.transpose_midi_in.into()).unwrap();
+        vec.push(self.transpose_ch1.into()).unwrap();
+        vec.push(self.transpose_ch2.into()).unwrap();
+        vec.push(self.transpose_ch3.into()).unwrap();
+        vec.push(self.transpose_ch4.into()).unwrap();
         vec
     }
 }
@@ -212,6 +232,11 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             midi_out: MidiOut::default(),
             vel_lane_2: false,
             vel_lane_4: false,
+            transpose_midi_in: MidiIn::default(),
+            transpose_ch1: MidiChannel::from(1),
+            transpose_ch2: MidiChannel::from(2),
+            transpose_ch3: MidiChannel::from(3),
+            transpose_ch4: MidiChannel::from(4),
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -239,18 +264,35 @@ pub async fn run(
     storage: &ManagedStorage<Storage>,
 ) {
     let range = Range::_0_10V;
-    let (midi_out, midi_chan1, midi_chan2, midi_chan3, midi_chan4, vel_lane_2, vel_lane_4) =
-        params.query(|p| {
-            (
-                p.midi_out,
-                p.midi_channel1,
-                p.midi_channel2,
-                p.midi_channel3,
-                p.midi_channel4,
-                p.vel_lane_2,
-                p.vel_lane_4,
-            )
-        });
+    let (
+        midi_out,
+        midi_chan1,
+        midi_chan2,
+        midi_chan3,
+        midi_chan4,
+        vel_lane_2,
+        vel_lane_4,
+        transpose_midi_in,
+        transpose_ch1,
+        transpose_ch2,
+        transpose_ch3,
+        transpose_ch4,
+    ) = params.query(|p| {
+        (
+            p.midi_out,
+            p.midi_channel1,
+            p.midi_channel2,
+            p.midi_channel3,
+            p.midi_channel4,
+            p.vel_lane_2,
+            p.vel_lane_4,
+            p.transpose_midi_in,
+            p.transpose_ch1,
+            p.transpose_ch2,
+            p.transpose_ch3,
+            p.transpose_ch4,
+        )
+    });
     let vel_lane = [false, vel_lane_2, false, vel_lane_4];
 
     let buttons = app.use_buttons();
@@ -303,6 +345,8 @@ pub async fn run(
     // Actual playing position per track (post direction). LED display reads this
     // so the highlighted step matches the audible step regardless of direction.
     let playing_pos_glob: Global<[usize; 4]> = app.make_global([0; 4]);
+    // Per-track semitone offset set by incoming MIDI (0 = no transpose).
+    let transpo_glob: Global<[i8; 4]> = app.make_global([0i8; 4]);
 
     let resolution = [24usize, 16, 12, 8, 6, 4, 3, 2];
 
@@ -599,6 +643,7 @@ pub async fn run(
                     let probability = probability_glob.get();
                     // Reversed so velocity lane tracks (2, 4) run before their
                     // paired primary tracks (1, 3) — vel_source is ready when needed.
+                    let transpo = transpo_glob.get();
                     let mut vel_source = [4095u16; 4];
                     for n in (0..4).rev() {
                         if clockn.is_multiple_of(clockres[n]) {
@@ -639,7 +684,8 @@ pub async fn run(
                                                 + (storage.query(|s| s.oct_fader[n]) / 1000) * 410,
                                         )
                                         .await;
-                                    lastnote[n] = out.as_midi();
+                                    let mut base = out.as_midi();
+                                    lastnote[n] = base.transpose(transpo[n]);
                                     let velocity = if n == 0 && vel_lane_2 {
                                         vel_source[1]
                                     } else if n == 2 && vel_lane_4 {
@@ -652,7 +698,9 @@ pub async fn run(
                                     // Hand the target CV to slide_handler; slide only if
                                     // the previously played step had legato enabled.
                                     let mut targets = target_cv_glob.get();
-                                    targets[n] = out.as_counts(range);
+                                    targets[n] = (out.as_counts(range) as i32
+                                        + transpo[n] as i32 * 410 / 12)
+                                        .clamp(0, 4095) as u16;
                                     target_cv_glob.set(targets);
                                     let mut slid = sliding_glob.get();
                                     slid[n] = prev_step_legato[n];
@@ -755,19 +803,62 @@ pub async fn run(
         }
     };
 
-    join4(
+    let midi_handler = async {
+        let mut mi1 = app.use_midi_input(transpose_midi_in, transpose_ch1);
+        let mut mi2 = app.use_midi_input(transpose_midi_in, transpose_ch2);
+        let mut mi3 = app.use_midi_input(transpose_midi_in, transpose_ch3);
+        let mut mi4 = app.use_midi_input(transpose_midi_in, transpose_ch4);
+        loop {
+            let (track, key) = match select4(
+                mi1.wait_for_message(),
+                mi2.wait_for_message(),
+                mi3.wait_for_message(),
+                mi4.wait_for_message(),
+            )
+            .await
+            {
+                Either4::First(MidiMessage::NoteOn { key, vel }) if vel > 0 => (0usize, key),
+                Either4::Second(MidiMessage::NoteOn { key, vel }) if vel > 0 => (1usize, key),
+                Either4::Third(MidiMessage::NoteOn { key, vel }) if vel > 0 => (2usize, key),
+                Either4::Fourth(MidiMessage::NoteOn { key, vel }) if vel > 0 => (3usize, key),
+                _ => continue,
+            };
+            let mut t = transpo_glob.get();
+            t[track] = key.as_int() as i8 - 60;
+            transpo_glob.set(t);
+        }
+    };
+
+    if transpose_midi_in.is_none() {
+        join4(
+            join5(
+                shift_handler,
+                fader_handler,
+                button_handler,
+                led_handler,
+                clock_handler,
+            ),
+            button_long_press_handler,
+            scene_handler,
+            slide_handler,
+        )
+        .await;
+    } else {
         join5(
-            shift_handler,
-            fader_handler,
-            button_handler,
-            led_handler,
-            clock_handler,
-        ),
-        button_long_press_handler,
-        scene_handler,
-        slide_handler,
-    )
-    .await;
+            join5(
+                shift_handler,
+                fader_handler,
+                button_handler,
+                led_handler,
+                clock_handler,
+            ),
+            button_long_press_handler,
+            scene_handler,
+            slide_handler,
+            midi_handler,
+        )
+        .await;
+    }
 }
 
 fn get_alt_target(chan: usize, seq_idx: usize, storage: &ManagedStorage<Storage>) -> u16 {
