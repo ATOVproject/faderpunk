@@ -18,7 +18,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 8;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 7;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Sequencer",
@@ -38,9 +38,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::MidiChannel {
     name: "MIDI Channel 4",
 })
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::bool { name: "Track 2: velocity lane" })
+.add_param(Param::bool { name: "Track 4: velocity lane" });
 // TODO: add per-track MIDI transposition param (semitone offset applied to outgoing notes)
-// TODO: allow tracks 2/4 to act as velocity lanes for tracks 1/3 — step values control note velocity of the paired track instead of outputting their own CV/gate
 
 pub struct Params {
     midi_channel1: MidiChannel,
@@ -48,6 +49,8 @@ pub struct Params {
     midi_channel3: MidiChannel,
     midi_channel4: MidiChannel,
     midi_out: MidiOut,
+    vel_lane_2: bool,
+    vel_lane_4: bool,
 }
 
 impl AppParams for Params {
@@ -61,6 +64,8 @@ impl AppParams for Params {
             midi_channel3: MidiChannel::from_value(values[2]),
             midi_channel4: MidiChannel::from_value(values[3]),
             midi_out: MidiOut::from_value(values[4]),
+            vel_lane_2: bool::from_value(values[5]),
+            vel_lane_4: bool::from_value(values[6]),
         })
     }
 
@@ -71,6 +76,8 @@ impl AppParams for Params {
         vec.push(self.midi_channel3.into()).unwrap();
         vec.push(self.midi_channel4.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.vel_lane_2.into()).unwrap();
+        vec.push(self.vel_lane_4.into()).unwrap();
         vec
     }
 }
@@ -203,6 +210,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             midi_channel3: MidiChannel::from(3),
             midi_channel4: MidiChannel::from(4),
             midi_out: MidiOut::default(),
+            vel_lane_2: false,
+            vel_lane_4: false,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -230,15 +239,19 @@ pub async fn run(
     storage: &ManagedStorage<Storage>,
 ) {
     let range = Range::_0_10V;
-    let (midi_out, midi_chan1, midi_chan2, midi_chan3, midi_chan4) = params.query(|p| {
-        (
-            p.midi_out,
-            p.midi_channel1,
-            p.midi_channel2,
-            p.midi_channel3,
-            p.midi_channel4,
-        )
-    });
+    let (midi_out, midi_chan1, midi_chan2, midi_chan3, midi_chan4, vel_lane_2, vel_lane_4) =
+        params.query(|p| {
+            (
+                p.midi_out,
+                p.midi_channel1,
+                p.midi_channel2,
+                p.midi_channel3,
+                p.midi_channel4,
+                p.vel_lane_2,
+                p.vel_lane_4,
+            )
+        });
+    let vel_lane = [false, vel_lane_2, false, vel_lane_4];
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
@@ -584,7 +597,10 @@ pub async fn run(
                     let seq = seq_glob.get();
                     let direction = direction_glob.get();
                     let probability = probability_glob.get();
-                    for n in 0..4 {
+                    // Reversed so velocity lane tracks (2, 4) run before their
+                    // paired primary tracks (1, 3) — vel_source is ready when needed.
+                    let mut vel_source = [4095u16; 4];
+                    for n in (0..4).rev() {
                         if clockn.is_multiple_of(clockres[n]) {
                             let step = clockn / clockres[n];
                             let pos = step_position(direction[n], step, seq_length[n], die.roll());
@@ -594,32 +610,55 @@ pub async fn run(
                             positions[n] = pos;
                             playing_pos_glob.set(positions);
 
-                            midi[n].send_note_off(lastnote[n]).await;
+                            if !vel_lane[n] {
+                                midi[n].send_note_off(lastnote[n]).await;
+                            }
                             let fires = gateseq[clkindex] && die.roll() < probability[n];
                             if fires {
-                                let out = quantizer
-                                    .get_quantized_note(
-                                        (seq[clkindex] as u32
-                                            * ((storage.query(|s| s.range_fader[n]) / 1000 + 1)
-                                                as u32)
-                                            * 410
-                                            / 4095) as u16
-                                            + (storage.query(|s| s.oct_fader[n]) / 1000) * 410,
-                                    )
-                                    .await;
-                                lastnote[n] = out.as_midi();
-
-                                midi[n].send_note_on(lastnote[n], 4095).await;
-                                gatelength1 = gatelength_glob.get();
-                                // Hand the target CV to slide_handler; slide only if
-                                // the previously played step had legato enabled.
-                                let mut targets = target_cv_glob.get();
-                                targets[n] = out.as_counts(range);
-                                target_cv_glob.set(targets);
-                                let mut slid = sliding_glob.get();
-                                slid[n] = prev_step_legato[n];
-                                sliding_glob.set(slid);
-                                gate_out[n].set_high().await;
+                                if vel_lane[n] {
+                                    // Velocity lane: skip quantizer, use raw step value.
+                                    // Gate fires; MIDI is suppressed.
+                                    let raw = seq[clkindex];
+                                    vel_source[n] = raw.max(1);
+                                    let mut targets = target_cv_glob.get();
+                                    targets[n] = raw;
+                                    target_cv_glob.set(targets);
+                                    gatelength1 = gatelength_glob.get();
+                                    let mut slid = sliding_glob.get();
+                                    slid[n] = prev_step_legato[n];
+                                    sliding_glob.set(slid);
+                                    gate_out[n].set_high().await;
+                                } else {
+                                    let out = quantizer
+                                        .get_quantized_note(
+                                            (seq[clkindex] as u32
+                                                * ((storage.query(|s| s.range_fader[n]) / 1000 + 1)
+                                                    as u32)
+                                                * 410
+                                                / 4095) as u16
+                                                + (storage.query(|s| s.oct_fader[n]) / 1000) * 410,
+                                        )
+                                        .await;
+                                    lastnote[n] = out.as_midi();
+                                    let velocity = if n == 0 && vel_lane_2 {
+                                        vel_source[1]
+                                    } else if n == 2 && vel_lane_4 {
+                                        vel_source[3]
+                                    } else {
+                                        4095
+                                    };
+                                    midi[n].send_note_on(lastnote[n], velocity).await;
+                                    gatelength1 = gatelength_glob.get();
+                                    // Hand the target CV to slide_handler; slide only if
+                                    // the previously played step had legato enabled.
+                                    let mut targets = target_cv_glob.get();
+                                    targets[n] = out.as_counts(range);
+                                    target_cv_glob.set(targets);
+                                    let mut slid = sliding_glob.get();
+                                    slid[n] = prev_step_legato[n];
+                                    sliding_glob.set(slid);
+                                    gate_out[n].set_high().await;
+                                }
                             } else {
                                 gate_out[n].set_low().await;
                             }
@@ -631,7 +670,9 @@ pub async fn run(
                             let clkindex = last_step_index[n];
                             if gateseq[clkindex] && !legato_seq[clkindex] {
                                 gate_out[n].set_low().await;
-                                midi[n].send_note_off(lastnote[n]).await;
+                                if !vel_lane[n] {
+                                    midi[n].send_note_off(lastnote[n]).await;
+                                }
                             }
                         }
                     }
