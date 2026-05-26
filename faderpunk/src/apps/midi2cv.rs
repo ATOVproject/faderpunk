@@ -5,14 +5,15 @@ use embassy_futures::{
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 
-use libm::expf;
 use midly::{num::u7, MidiMessage};
 use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{bits_7_16, clickless, scale_bits_14_12, scale_bits_7_12},
+    utils::{
+        apply_slide, bits_7_16, clickless, fader_to_slide_coeff, scale_bits_14_12, scale_bits_7_12,
+    },
     AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiNote, Param, Range,
     Value, APP_MAX_PARAMS,
 };
@@ -162,26 +163,6 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
     select(app_loop, app.exit_handler(exit_signal)).await;
 }
 
-/// RC filter glide calculation.
-/// Returns the coefficient for exponential approach based on glide time.
-/// At glide=0, returns 1.0 (instant). At glide=100, returns a small value for slow glide.
-fn calc_glide_coeff(glide: i32) -> f32 {
-    if glide == 0 {
-        1.0
-    } else {
-        // RC time constant: larger glide value = slower approach
-        // With 1ms tick rate, we need coefficients that give ~150ms settling
-        // coeff = 1 - e^(-1/tau) where tau is in ticks
-        let tau = 1.0 + (glide as f32 * 0.5);
-        1.0 - expf(-1.0 / tau)
-    }
-}
-
-/// Apply RC filter glide: moves current toward target exponentially
-fn apply_glide(current: f32, target: f32, coeff: f32) -> f32 {
-    current + (target - current) * coeff
-}
-
 pub async fn run(
     app: &App<CHANNELS>,
     params: &ParamStore<Params>,
@@ -208,9 +189,7 @@ pub async fn run(
     let offset_glob = app.make_global(0);
     let pitch_glob = app.make_global(0);
     let glide_active_glob = app.make_global(false);
-    let glide_coeff_glob = app.make_global(calc_glide_coeff(
-        storage.query(|s| s.alt_layer_val) as i32 * 100 / 4095,
-    ));
+    let glide_coeff_glob = app.make_global(fader_to_slide_coeff(storage.query(|s| s.alt_layer_val)));
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
@@ -316,7 +295,7 @@ pub async fn run(
                     let glide_coeff = glide_coeff_glob.get();
 
                     if glide_active_glob.get() {
-                        glide_current = apply_glide(glide_current, pitch_target, glide_coeff);
+                        glide_current = apply_slide(glide_current, pitch_target, glide_coeff);
                     } else {
                         glide_current = pitch_target;
                     }
@@ -404,8 +383,7 @@ pub async fn run(
                     LatchLayer::Alt => {
                         storage.modify_and_save(|s| s.alt_layer_val = new_value);
                         if mode == 1 {
-                            let glide = new_value as i32 * 100 / 4095;
-                            glide_coeff_glob.set(calc_glide_coeff(glide));
+                            glide_coeff_glob.set(fader_to_slide_coeff(new_value));
                         }
                     }
                     LatchLayer::Third => {}

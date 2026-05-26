@@ -5,12 +5,12 @@ use embassy_futures::{
 use midly::MidiMessage;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
-use libm::expf;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
-    MidiChannel, MidiIn, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, utils::fader_to_slide_coeff, AppIcon, Brightness,
+    ClockDivision, Color, Config, MidiChannel, MidiIn, MidiNote, MidiOut, Param, Range, Value,
+    APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -160,18 +160,6 @@ impl Default for Storage {
 /// Fader 0 → 5%, fader 4095 → 100%.
 fn probability_threshold(fader: u16) -> u16 {
     205 + ((fader as u32 * 3891) / 4095) as u16
-}
-
-/// 303-style slide coefficient. RC-filter exponential approach. Same approach as
-/// midi2cv's glide: coeff = 1 - exp(-1/tau), applied each 1ms tick.
-/// Fader 0 → 1.0 (instant). Fader 4095 → tau ~205 ticks (~600ms to settle).
-fn calc_slide_coeff(fader: u16) -> f32 {
-    if fader == 0 {
-        1.0
-    } else {
-        let tau = 1.0 + (fader as f32 * 0.05);
-        1.0 - expf(-1.0 / tau)
-    }
 }
 
 /// Maps a raw step counter to a position within `length`, respecting `direction`.
@@ -399,7 +387,7 @@ pub async fn run(
     gatelength_glob.set(gatel_init);
     direction_glob.set(direction_faders.map(Direction::from_fader));
     probability_glob.set(probability_faders.map(probability_threshold));
-    slide_coeff_glob.set(slide_faders.map(calc_slide_coeff));
+    slide_coeff_glob.set(slide_faders.map(fader_to_slide_coeff));
 
     let shift_handler = async {
         loop {
@@ -771,7 +759,7 @@ pub async fn run(
                     gatelength_glob.set(gatel);
                     direction_glob.set(direction_faders.map(Direction::from_fader));
                     probability_glob.set(probability_faders.map(probability_threshold));
-                    slide_coeff_glob.set(slide_faders.map(calc_slide_coeff));
+                    slide_coeff_glob.set(slide_faders.map(fader_to_slide_coeff));
                 }
                 SceneEvent::SaveScene(scene) => {
                     storage.save_to_scene(scene).await;
@@ -951,7 +939,7 @@ fn apply_alt_update(chan: usize, seq_idx: usize, value: u16, ctx: &AltUpdateCont
             ctx.storage
                 .modify_and_save(|s| s.slide_fader[seq_idx] = value);
             let mut arr = ctx.slide_coeff_glob.get();
-            arr[seq_idx] = calc_slide_coeff(value);
+            arr[seq_idx] = fader_to_slide_coeff(value);
             ctx.slide_coeff_glob.set(arr);
         }
         _ => {}
