@@ -343,6 +343,9 @@ pub async fn run(
     // Was the just-played step a legato step? Drives whether to slide into the next.
     let mut prev_step_legato = [false; 4];
     let mut gatelength1 = gatelength_glob.get();
+    // Persistent velocity from velocity-lane tracks. Held across ticks so primary
+    // tracks 1/3 keep the last value when paired lane 2/4 doesn't fire or rests.
+    let mut vel_source = [4095u16; 4];
 
     // Initialize latches for all 8 faders
     let mut latches: [libfp::latch::AnalogLatch; 8] =
@@ -629,10 +632,11 @@ pub async fn run(
                     let seq = seq_glob.get();
                     let direction = direction_glob.get();
                     let probability = probability_glob.get();
-                    // Reversed so velocity lane tracks (2, 4) run before their
-                    // paired primary tracks (1, 3) — vel_source is ready when needed.
+                    // Reversed so velocity lane tracks (2, 4) update vel_source
+                    // before their paired primary tracks (1, 3) consume it within
+                    // the same tick. vel_source itself is persistent — when a lane
+                    // track doesn't tick or rests, the last value carries over.
                     let transpo = transpo_glob.get();
-                    let mut vel_source = [4095u16; 4];
                     for n in (0..4).rev() {
                         if clockn.is_multiple_of(clockres[n]) {
                             let step = clockn / clockres[n];
