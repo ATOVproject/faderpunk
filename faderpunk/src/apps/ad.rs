@@ -1,5 +1,5 @@
 use embassy_futures::{
-    join::{join4, join5},
+    join::{join, join4, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -61,6 +61,7 @@ pub struct Storage {
     mode_saved: u8,
     att_saved: u16,
     min_gate_saved: u16,
+    muted: bool,
 }
 
 impl Default for Storage {
@@ -71,6 +72,7 @@ impl Default for Storage {
             mode_saved: 0,
             att_saved: 4095,
             min_gate_saved: 1,
+            muted: false,
         }
     }
 }
@@ -132,18 +134,23 @@ pub async fn run(
 
     let (curve_setting, stored_faders) = storage.query(|s| (s.curve_saved, s.fader_saved));
 
-    leds.set(
-        0,
-        Led::Button,
-        color[curve_setting[0] as usize],
-        Brightness::Mid,
-    );
-    leds.set(
-        1,
-        Led::Button,
-        color[curve_setting[1] as usize],
-        Brightness::Mid,
-    );
+    let glob_muted = app.make_global(storage.query(|s| s.muted));
+    let long_press_fired = app.make_global(false);
+
+    if !glob_muted.get() {
+        leds.set(
+            0,
+            Led::Button,
+            color[curve_setting[0] as usize],
+            Brightness::Mid,
+        );
+        leds.set(
+            1,
+            Led::Button,
+            color[curve_setting[1] as usize],
+            Brightness::Mid,
+        );
+    }
 
     let mut times: [f32; 2] = [0.0682, 0.0682];
     for n in 0..2 {
@@ -253,7 +260,7 @@ pub async fn run(
                 }
             }
             outval = attenuate(outval, storage.query(|s| s.att_saved));
-            output.set_value(outval);
+            output.set_value(if glob_muted.get() { 0 } else { outval });
             if latch_active_layer == LatchLayer::Alt {
                 leds.set(1, Led::Button, color[mode as usize], Brightness::Mid);
 
@@ -273,12 +280,16 @@ pub async fn run(
                 }
             } else {
                 for n in 0..2 {
-                    leds.set(
-                        n,
-                        Led::Button,
-                        color[curve_setting[n] as usize],
-                        Brightness::Mid,
-                    );
+                    if !glob_muted.get() {
+                        leds.set(
+                            n,
+                            Led::Button,
+                            color[curve_setting[n] as usize],
+                            Brightness::Mid,
+                        );
+                    } else {
+                        leds.unset(n, Led::Button);
+                    }
                     if outval == 0 {
                         leds.unset(n, Led::Top);
                     }
@@ -369,14 +380,25 @@ pub async fn run(
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             if !is_shift_pressed {
-                let mut curve_setting = storage.query(|s| s.curve_saved);
-
-                curve_setting[chan] = curve_setting[chan].cycle();
-
-                storage.modify_and_save(|s| {
-                    s.curve_saved = curve_setting;
-                    s.curve_saved
-                });
+                if chan == 1 {
+                    long_press_fired.set(false);
+                    buttons.wait_for_up(1).await;
+                    if !long_press_fired.get() {
+                        let mut curve_setting = storage.query(|s| s.curve_saved);
+                        curve_setting[1] = curve_setting[1].cycle();
+                        storage.modify_and_save(|s| {
+                            s.curve_saved = curve_setting;
+                            s.curve_saved
+                        });
+                    }
+                } else {
+                    let mut curve_setting = storage.query(|s| s.curve_saved);
+                    curve_setting[0] = curve_setting[0].cycle();
+                    storage.modify_and_save(|s| {
+                        s.curve_saved = curve_setting;
+                        s.curve_saved
+                    });
+                }
             } else if chan == 1 {
                 let mut mode = storage.query(|s| s.mode_saved);
                 mode = (mode + 1) % 3;
@@ -417,21 +439,27 @@ pub async fn run(
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
 
-                    let curve_setting = storage.query(|s| s.curve_saved);
-                    let stored_faders = storage.query(|s| s.fader_saved);
+                    let (curve_setting, stored_faders, muted) =
+                        storage.query(|s| (s.curve_saved, s.fader_saved, s.muted));
 
-                    leds.set(
-                        0,
-                        Led::Button,
-                        color[curve_setting[0] as usize],
-                        Brightness::Mid,
-                    );
-                    leds.set(
-                        1,
-                        Led::Button,
-                        color[curve_setting[1] as usize],
-                        Brightness::Mid,
-                    );
+                    glob_muted.set(muted);
+                    if muted {
+                        leds.unset(0, Led::Button);
+                        leds.unset(1, Led::Button);
+                    } else {
+                        leds.set(
+                            0,
+                            Led::Button,
+                            color[curve_setting[0] as usize],
+                            Brightness::Mid,
+                        );
+                        leds.set(
+                            1,
+                            Led::Button,
+                            color[curve_setting[1] as usize],
+                            Brightness::Mid,
+                        );
+                    }
 
                     let mut times: [f32; 2] = [0.0682, 0.0682];
                     for n in 0..2 {
@@ -444,15 +472,37 @@ pub async fn run(
         }
     };
 
+    let long_press = async {
+        loop {
+            let (chan, is_shift_pressed) = buttons.wait_for_any_long_press().await;
+            long_press_fired.set(true);
+            if chan == 1 && !is_shift_pressed {
+                let muted = glob_muted.toggle();
+                storage.modify_and_save(|s| {
+                    s.muted = muted;
+                });
+                if muted {
+                    leds.unset(0, Led::Button);
+                    leds.unset(1, Led::Button);
+                } else {
+                    let cs = storage.query(|s| s.curve_saved);
+                    leds.set(0, Led::Button, color[cs[0] as usize], Brightness::Mid);
+                    leds.set(1, Led::Button, color[cs[1] as usize], Brightness::Mid);
+                }
+            }
+        }
+    };
+
     if midi_in.is_none() {
-        join4(main_loop, fader_handler, button_handler, scene_handler).await;
+        join(
+            long_press,
+            join4(main_loop, fader_handler, button_handler, scene_handler),
+        )
+        .await;
     } else {
-        join5(
-            main_loop,
-            fader_handler,
-            button_handler,
-            midi_handler,
-            scene_handler,
+        join(
+            long_press,
+            join5(main_loop, fader_handler, button_handler, midi_handler, scene_handler),
         )
         .await;
     }

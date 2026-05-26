@@ -103,8 +103,9 @@ const apps: ManualAppData[] = [
       "Mode",
       "Attenuation",
       "Trigger to gate timing",
+      "Muted",
     ],
-    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. The 'MIDI retrigger' parameter allow for the envelope to be retriggered when MIDI notes are overlapping",
+    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. Long press on either button (no shift) mutes the envelope output; the curve change from the press is automatically reversed. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. The 'MIDI retrigger' parameter allow for the envelope to be retriggered when MIDI notes are overlapping",
     channels: [
       {
         jackTitle: "Gate Input",
@@ -113,9 +114,9 @@ const apps: ManualAppData[] = [
         faderDescription: "Sets the attack time from 0 to 4 sec",
         faderPlusShiftTitle: "Trigger to gate time",
         faderPlusShiftDescription: "0-4 sec. Infinite at maximum.",
-        fnTitle: "Attack curve selection",
+        fnTitle: "Attack curve / Mute",
         fnDescription:
-          "Linear (yellow), logarithmic (pink), exponential (blue)",
+          "Short: cycle attack curve. Long (no shift): mute output (curve reverts)",
         ledTop: "Output level in attack phase",
         ledTopPlusShift: "Trigger to gate time (flash)",
         ledBottom: "Gate input state",
@@ -128,9 +129,9 @@ const apps: ManualAppData[] = [
         faderDescription: "Sets the decay time from 0 to 4 sec",
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range.",
-        fnTitle: "Decay curve selection",
+        fnTitle: "Decay curve / Mute",
         fnDescription:
-          "Linear (yellow), logarithmic (pink), exponential (blue)",
+          "Short: cycle decay curve. Long (no shift): mute output (curve reverts)",
         ledTop: "Output level in decay phase",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "inactive",
