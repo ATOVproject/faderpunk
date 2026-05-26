@@ -620,8 +620,8 @@ const apps: ManualAppData[] = [
     color: "Pink",
     icon: "env-follower",
     params: ["Color", "Range"],
-    storage: ["Attack", "Attenuvertion", "Offset", "Input Gain"],
-    text: "This app is an envelope follower with input and output ranges of ±5V. Jack 1 is the input, Jack 2 is the output. It includes offset and attenuverter functionality, making it ideal for driving VCAs or implementing sidechain compression. The attenuverter has a maximum gain of 2x. Main functions include Fader 1 for attack and Fader 2 for decay. Shift + Fader 1 sets offset, Shift + Fader 2 sets attenuvertion. Button 1 kills the offset, Button 2 sets the attenuvertion. Button 1 + Fader 1 adjusts input gain from 1x to 3x.",
+    storage: ["Attack", "Attenuvertion", "Offset", "Input Gain", "Muted"],
+    text: "This app is an envelope follower with input and output ranges of ±5V. Jack 1 is the input, Jack 2 is the output. It includes offset and attenuverter functionality, making it ideal for driving VCAs or implementing sidechain compression. The attenuverter has a maximum gain of 2x. Main functions include Fader 1 for attack and Fader 2 for decay. Shift + Fader 1 sets offset, Shift + Fader 2 sets attenuvertion. Button 2 (no shift) mutes the output. Shift + Button 1 resets the offset to neutral, Shift + Button 2 resets the attenuation to unity. Button 1 + Fader 1 adjusts input gain from 1x to 3x.",
     channels: [
       {
         jackTitle: "Input",
@@ -633,8 +633,10 @@ const apps: ManualAppData[] = [
         faderPlusFnTitle: "Input Gain",
         faderPlusFnDescription:
           "Adjusts input gain from 1x to 3x using Button 1 + Fader 1",
-        fnTitle: "Kill Offset",
-        fnDescription: "Button 1 disables the offset",
+        fnTitle: "",
+        fnDescription: "",
+        fnPlusShiftTitle: "Reset Offset",
+        fnPlusShiftDescription: "Shift + Button 1 resets offset to neutral",
         ledTop: "Positive input",
         ledBottom: "Negative input",
       },
@@ -646,8 +648,10 @@ const apps: ManualAppData[] = [
         faderPlusShiftTitle: "Attenuverter",
         faderPlusShiftDescription:
           "Scales and inverts the envelope signal (max gain 2x)",
-        fnTitle: "Set Attenuverter",
-        fnDescription: "Button 2 enables or configures the attenuvertion",
+        fnTitle: "Mute",
+        fnDescription: "Short press (no shift) mutes/unmutes the output",
+        fnPlusShiftTitle: "Reset Attenuation",
+        fnPlusShiftDescription: "Shift + Button 2 resets attenuation to unity",
         ledTop: "Positive output",
         ledBottom: "Negative output",
       },
