@@ -305,7 +305,11 @@ jobs:
   # --- Update version.json on GitHub Pages (for landing page runtime check) ---
   update-version-json:
     needs: [detect-changes, release]
-    if: needs.detect-changes.outputs.faderpunk == 'true' && needs.detect-changes.outputs.configurator != 'true'
+    if: |
+      always() &&
+      needs.release.result == 'success' &&
+      needs.detect-changes.outputs.faderpunk == 'true' &&
+      needs.detect-changes.outputs.configurator != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout gh-pages branch
