@@ -12,8 +12,8 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
-    MidiChannel, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, utils::apply_slide, AppIcon, Brightness, ClockDivision,
+    Color, Config, MidiChannel, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -280,15 +280,8 @@ fn raw_pitch_cv(p: &AcidPattern, step: u8, transpose: i16) -> u16 {
     cv.clamp(0, 4095) as u16
 }
 
-// --- Glide (copied from midi2cv.rs; will move to libfp in a future PR) ---
-
-/// Apply RC-filter exponential glide: moves current toward target by coeff each tick.
-fn apply_glide(current: f32, target: f32, coeff: f32) -> f32 {
-    current + (target - current) * coeff
-}
-
-/// Fixed 303-style slide coefficient: 1 - e^(-1/21) ≈ 0.0465 → ~100 ms time constant.
-/// Derived from calc_glide_coeff(40) in midi2cv.rs (glide=40 → tau=21 ms).
+/// Fixed 303-style slide coefficient: `libfp::utils::rc_coeff(21.0)` ≈ 0.0465
+/// → ~100 ms time constant. `rc_coeff` isn't const-evaluable, so the value is inlined.
 const SLIDE_COEFF: f32 = 0.0465_f32;
 
 // --- Embassy Task ---
@@ -549,7 +542,7 @@ pub async fn run(
             // Pitch slide interpolation
             let target = slide_target_glob.get() as f32;
             if slide_active_glob.get() {
-                glide_current = apply_glide(glide_current, target, SLIDE_COEFF);
+                glide_current = apply_slide(glide_current, target, SLIDE_COEFF);
                 if (glide_current - target).abs() < 0.5 {
                     glide_current = target;
                     slide_active_glob.set(false);
