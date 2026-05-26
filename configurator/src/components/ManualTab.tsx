@@ -181,22 +181,33 @@ const apps: ManualAppData[] = [
       "MIDI Channel 2",
       "MIDI Channel 3",
       "MIDI Channel 4",
+      "MIDI Out",
+      "Track 2: velocity lane",
+      "Track 4: velocity lane",
+      "Transpose MIDI In",
+      "Track 1: transpose CH",
+      "Track 2: transpose CH",
+      "Track 3: transpose CH",
+      "Track 4: transpose CH",
     ],
     storage: [
       "Sequences (Gate/CV)",
       "Legato",
       "Sequence lengths",
-      "Sequence resolution",
       "Gate lengths",
-      "Ranges",
       "Octaves",
+      "Ranges",
+      "Sequence resolutions",
+      "Directions",
+      "Probabilities",
+      "Slide times",
     ],
-    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, and you can navigate between them using Shift + Buttons. The CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, and so on. MIDI channels for each sequencer can be set individually in the parameters. Faders are used to set note values, buttons define the gate pattern, and long button presses enable legato. Shift modifies settings for the selected sequencer: Shift + Fader 1 sets step length, Fader 2 sets gate length, Fader 3 selects octave, Fader 4 defines the sequence range (1–5 octaves), and Fader 5 sets the sequence resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th). In Shift mode, resolution type is color-coded on sequence LEDs: orange for triplet divisions and blue for straight divisions. Buttons are used to select pages, with two pages available per sequencer. The output of each sequencer is quantized to the scale set in the global quantizer.",
+    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, navigated with **Shift + Buttons**. CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, 5&6 for sequencer 3, and 7&8 for sequencer 4. Faders set note values, buttons define the gate pattern, and **long button presses** enable legato between steps. CV output is quantized to the scale set in the global quantizer.\n\n#### Shift mode\n\nWith Shift held, all 8 faders control settings for the currently selected sequencer:\n\n- **Fader 1** — step length (1–16 steps)\n- **Fader 2** — gate length\n- **Fader 3** — octave offset (0–5 octaves)\n- **Fader 4** — sequence range (1–5 octaves)\n- **Fader 5** — clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th)\n- **Fader 6** — direction (Forward / Backward / Ping-Pong / Random)\n- **Fader 7** — trigger probability (5%–100%)\n- **Fader 8** — 303-style slide time (0 = instant)\n\nTop LEDs show sequence length. Resolution LED color: **orange** = triplet division, **blue** = straight division.\n\n#### MIDI transposition\n\nEach track can be live-transposed via incoming MIDI. Assign a dedicated transpose MIDI channel per track in the parameters. Receiving a NoteOn on that channel shifts the track's output relative to **C4** — middle C = no change, notes above/below transpose up/down by semitones. Transposition applies to both CV and MIDI output.\n\n#### Velocity lane mode (tracks 2 and 4)\n\nWhen enabled, a track acts as a velocity lane for its paired primary track (track 2 → track 1, track 4 → track 3):\n\n- **Fader** — controls the MIDI velocity sent to the paired track, not a note value\n- **CV output** — unquantized voltage proportional to fader position (0–10V)\n- **Gate button** — controls whether velocity advances on that step (on) or holds the previous value (off)\n- MIDI notes are suppressed on the velocity lane track itself",
     channels: [
       {
         jackTitle: "CV Output",
-        jackDescription: "Quantized output",
-        faderTitle: "Note",
+        jackDescription: "Quantized note output",
+        faderTitle: "Note / Velocity",
         faderDescription: "Sets the note at this step",
         faderPlusShiftTitle: "Sequence length",
         faderPlusShiftDescription:
@@ -212,8 +223,8 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "Gate Output",
-        jackDescription: "Quantized output",
-        faderTitle: "Note",
+        jackDescription: "Gate output",
+        faderTitle: "Note / Velocity",
         faderDescription: "Sets the note at this step",
         faderPlusShiftTitle: "Gate length",
         fnTitle: "Gate/Legato",
@@ -227,11 +238,13 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "CV Output",
-        jackDescription: "Quantized output",
-        faderTitle: "Note",
-        faderDescription: "Sets the note at this step",
+        jackDescription:
+          "Quantized note output, or unquantized velocity CV when velocity lane is enabled",
+        faderTitle: "Note / Velocity",
+        faderDescription:
+          "Sets the note at this step, or velocity level when velocity lane is enabled",
         faderPlusShiftTitle: "Octave",
-        faderPlusShiftDescription: "offset the whole sequence by 0-5 Octaves",
+        faderPlusShiftDescription: "Offset the whole sequence by 0–5 octaves",
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
@@ -243,11 +256,12 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "Gate Output",
-        jackDescription: "Quantized output",
-        faderTitle: "Note",
-        faderDescription: "Sets the note at this step",
+        jackDescription: "Gate output",
+        faderTitle: "Note / Velocity",
+        faderDescription:
+          "Sets the note at this step, or velocity level when velocity lane is enabled",
         faderPlusShiftTitle: "Sequence Range",
-        faderPlusShiftDescription: "set sequence range (1-5 octave)",
+        faderPlusShiftDescription: "Set sequence range (1–5 octaves)",
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
@@ -259,12 +273,12 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "CV Output",
-        jackDescription: "Quantized output",
-        faderTitle: "Note",
+        jackDescription: "Quantized note output",
+        faderTitle: "Note / Velocity",
         faderDescription: "Sets the note at this step",
-        faderPlusShiftTitle: "Sequence speed",
+        faderPlusShiftTitle: "Sequence resolution",
         faderPlusShiftDescription:
-          "Set sequence resolution  32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th",
+          "Set sequence resolution: 32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th",
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
@@ -276,10 +290,12 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "Gate Output",
-        jackDescription: "Quantized output",
-        faderTitle: "Note",
+        jackDescription: "Gate output",
+        faderTitle: "Note / Velocity",
         faderDescription: "Sets the note at this step",
-
+        faderPlusShiftTitle: "Direction",
+        faderPlusShiftDescription:
+          "Set sequence direction: Forward, Backward, Ping-Pong, or Random",
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
@@ -291,9 +307,14 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "CV Output",
-        jackDescription: "Quantized output",
-        faderTitle: "Note",
-        faderDescription: "Sets the note at this step",
+        jackDescription:
+          "Quantized note output, or unquantized velocity CV when velocity lane is enabled",
+        faderTitle: "Note / Velocity",
+        faderDescription:
+          "Sets the note at this step, or velocity level when velocity lane is enabled",
+        faderPlusShiftTitle: "Probability",
+        faderPlusShiftDescription:
+          "Set trigger probability for this sequencer (5%–100%)",
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
@@ -305,9 +326,13 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "Gate Output",
-        jackDescription: "Quantized output",
-        faderTitle: "Note",
-        faderDescription: "Sets the note at this step",
+        jackDescription: "Gate output",
+        faderTitle: "Note / Velocity",
+        faderDescription:
+          "Sets the note at this step, or velocity level when velocity lane is enabled",
+        faderPlusShiftTitle: "Slide time",
+        faderPlusShiftDescription:
+          "Set 303-style portamento slide time (0 = instant)",
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
