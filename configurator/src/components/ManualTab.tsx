@@ -413,8 +413,8 @@ const apps: ManualAppData[] = [
       "Base note",
       "NRPN",
     ],
-    storage: ["Attenuation", "Length", "Register"],
-    text: "Similar to the previous one, this is a classic Turing machine but extended to use two slots. The first jack is a clock input and the second is the CV output. The physical clock input allows for non-linear timing, custom dividers, or interaction with MIDI note lengths. The app can send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. MIDI note on messages are sent on rising edges and note off messages on falling edges. Main functions: Fader 1 sets probability, Fader 2 sets output range. Shift + Button sets sequence length. The output is quantized by the global quantizer.",
+    storage: ["Attenuation", "Length", "Register", "Muted"],
+    text: "Similar to the previous one, this is a classic Turing machine but extended to use two slots. The first jack is a clock input and the second is the CV output. The physical clock input allows for non-linear timing, custom dividers, or interaction with MIDI note lengths. The app can send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. MIDI note on messages are sent on rising edges and note off messages on falling edges. Main functions: Fader 1 sets probability, Fader 2 sets output range. Shift + Button sets sequence length. Short press (no shift) on button 2 mutes the output. The output is quantized by the global quantizer.",
     channels: [
       {
         jackTitle: "Gate input",
@@ -433,6 +433,8 @@ const apps: ManualAppData[] = [
         jackDescription: "0 to 10V CV",
         faderTitle: "Attenuation",
         faderDescription: "Reduces the output range",
+        fnTitle: "Mute",
+        fnDescription: "Short press (no shift) mutes/unmutes the output",
         ledTop: "Output level indicator",
         ledBottom: "",
       },
