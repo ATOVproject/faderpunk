@@ -460,7 +460,7 @@ pub async fn run(
 
             output.set_value(out);
 
-            if last_out / 32 != out / 32 {
+            if out as u32 * 127 / 4095 != last_out as u32 * 127 / 4095 {
                 midi.send_cc(midi_cc, out).await;
             }
             last_out = out;
