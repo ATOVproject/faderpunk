@@ -1445,6 +1445,9 @@ export const ManualTab = () => {
           <li>
             <Link to="#apps">Apps</Link>
             <List>
+              <li>
+                <Link to="#muting-apps">Muting apps</Link>
+              </li>
               {apps.map((app) => (
                 <li key={app.title}>
                   <Link to={`#app-${app.appId}`}>{app.title}</Link>
