@@ -4,12 +4,13 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
+use midly::num::u7;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, scale_bits_12_7, split_unsigned_value},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
     Range, Value, Waveform, APP_MAX_PARAMS,
 };
@@ -161,7 +162,7 @@ pub async fn run(
     leds.set(0, Led::Button, color, Brightness::Mid);
 
     let mut count = 0;
-    let mut last_out = 0;
+    let mut last_cc = u7::new(0);
 
     let update_speed = async || {
         glob_lfo_speed.set((curve.at(storage.query(|s| s.layer_speed)) as f32) * 0.015 + 0.0682);
@@ -212,10 +213,11 @@ pub async fn run(
 
             output.set_value(val);
             if midi_out.is_some() {
-                if last_out / 32 != val / 32 {
+                let cc = scale_bits_12_7(val);
+                if cc != last_cc {
                     midi.send_cc(midi_cc, val).await;
+                    last_cc = cc;
                 }
-                last_out = val;
             }
 
             let led = if range == Range::_Neg5_5V {
