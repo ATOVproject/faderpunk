@@ -1,4 +1,5 @@
 use embassy_time::Duration;
+use libm::expf;
 use midly::num::u7;
 
 use crate::Curve;
@@ -211,6 +212,31 @@ pub fn euclidean_at(num_steps: u8, num_beats: u8, rotation: u8, clock: u32) -> b
     let pattern = euclidean_pattern(num_steps, num_beats, rotation, 0);
     let pos = (clock % num_steps as u32) as u8;
     (pattern & (1 << pos)) != 0
+}
+
+/// RC-filter coefficient for an exponential approach with the given `tau` (in ticks).
+/// `tau <= 0` returns 1.0 (instant). Apply each tick: `current += (target - current) * coeff`.
+pub fn rc_coeff(tau: f32) -> f32 {
+    if tau <= 0.0 {
+        1.0
+    } else {
+        1.0 - expf(-1.0 / tau)
+    }
+}
+
+/// Maps a 12-bit fader (0..=4095) to a slide/glide coefficient using an RC approach.
+/// Fader 0 → instant (1.0). Fader 4095 → tau ~205 ticks (~600ms at 1ms tick).
+pub fn fader_to_slide_coeff(fader: u16) -> f32 {
+    if fader == 0 {
+        1.0
+    } else {
+        rc_coeff(1.0 + fader as f32 * 0.05)
+    }
+}
+
+/// Exponential approach step: moves `current` toward `target` by `coeff`.
+pub fn apply_slide(current: f32, target: f32, coeff: f32) -> f32 {
+    current + (target - current) * coeff
 }
 
 /// Very short slew meant to avoid clicks
