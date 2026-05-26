@@ -68,8 +68,8 @@ const apps: ManualAppData[] = [
       "NRPN",
       "Send MIDI",
     ],
-    storage: ["Clocked", "Attenuation", "Speed", "Waveform"],
-    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
+    storage: ["Clocked", "Attenuation", "Speed", "Waveform", "Muted"],
+    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Long press (no shift) mutes the output; the waveform change triggered by the press is automatically reversed. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
     channels: [
       {
         jackTitle: "Output",
@@ -79,11 +79,11 @@ const apps: ManualAppData[] = [
           "Sets the LFO speed, top is maximum and bottom slowest",
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range",
-        fnTitle: "Waveform selection",
+        fnTitle: "Waveform / Mute",
         fnDescription:
-          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
-        fnPlusShiftTitle: "Reset - Clocked mode",
-        fnPlusShiftDescription: "Short reset - Long clock mode",
+          "Short: cycle waveform. Long (no shift): mute output (waveform reverts)",
+        fnPlusShiftTitle: "Reset / Clocked mode",
+        fnPlusShiftDescription: "Short: reset LFO. Long: toggle clocked mode",
         ledTop: "Positive level indicator",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "Negative level indicator",

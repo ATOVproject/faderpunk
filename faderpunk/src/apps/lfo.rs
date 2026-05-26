@@ -80,6 +80,7 @@ pub struct Storage {
     layer_attenuation: u16,
     layer_speed: u16,
     wave: Waveform,
+    muted: bool,
 }
 
 impl Default for Storage {
@@ -89,6 +90,7 @@ impl Default for Storage {
             layer_attenuation: 4095,
             layer_speed: 2000,
             wave: Waveform::Sine,
+            muted: false,
         }
     }
 }
@@ -159,7 +161,12 @@ pub async fn run(
 
     let color = get_color_for(wave);
 
-    leds.set(0, Led::Button, color, Brightness::Mid);
+    let glob_muted = app.make_global(storage.query(|s| s.muted));
+    let long_press_fired = app.make_global(false);
+
+    if !glob_muted.get() {
+        leds.set(0, Led::Button, color, Brightness::Mid);
+    }
 
     let mut count = 0;
     let mut last_cc = u7::new(0);
@@ -211,11 +218,16 @@ pub async fn run(
                 attenuate(wave.at(next_pos as usize), attenuation)
             };
 
-            output.set_value(val);
+            let effective_val = if glob_muted.get() {
+                if range == Range::_Neg5_5V { 2047 } else { 0 }
+            } else {
+                val
+            };
+            output.set_value(effective_val);
             if midi_out.is_some() {
-                let cc = scale_bits_12_7(val);
+                let cc = scale_bits_12_7(effective_val);
                 if cc != last_cc {
-                    midi.send_cc(midi_cc, val).await;
+                    midi.send_cc(midi_cc, effective_val).await;
                     last_cc = cc;
                 }
             }
@@ -228,7 +240,9 @@ pub async fn run(
 
             let color = get_color_for(wave);
 
-            if sync && next_pos as u16 > 2048 {
+            if glob_muted.get() {
+                leds.unset(0, Led::Button);
+            } else if sync && next_pos as u16 > 2048 {
                 leds.set(0, Led::Button, color, Brightness::Low);
             } else {
                 leds.set(0, Led::Button, color, Brightness::Mid);
@@ -289,13 +303,19 @@ pub async fn run(
             buttons.wait_for_down(0).await;
 
             if !buttons.is_shift_pressed() {
-                let wave = storage.modify_and_save(|s| {
-                    s.wave = s.wave.cycle();
-                    s.wave
-                });
+                long_press_fired.set(false);
+                buttons.wait_for_up(0).await;
 
-                let color = get_color_for(wave);
-                leds.set(0, Led::Button, color, Brightness::Mid);
+                if !long_press_fired.get() {
+                    let wave = storage.modify_and_save(|s| {
+                        s.wave = s.wave.cycle();
+                        s.wave
+                    });
+                    if !glob_muted.get() {
+                        let color = get_color_for(wave);
+                        leds.set(0, Led::Button, color, Brightness::Mid);
+                    }
+                }
             } else {
                 glob_lfo_pos.set(0.0);
             }
@@ -313,6 +333,19 @@ pub async fn run(
                 });
                 if clocked {
                     leds.set_mode(0, Led::Button, LedMode::Flash(color, Some(4)));
+                }
+            } else {
+                long_press_fired.set(true);
+                let muted = glob_muted.toggle();
+                storage.modify_and_save(|s| {
+                    s.muted = muted;
+                });
+                if muted {
+                    leds.unset(0, Led::Button);
+                } else {
+                    let wave = storage.query(|s| s.wave);
+                    let color = get_color_for(wave);
+                    leds.set(0, Led::Button, color, Brightness::Mid);
                 }
             }
         }
@@ -336,10 +369,15 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let wave_saved = storage.query(|s| s.wave);
+                    let (wave_saved, muted) = storage.query(|s| (s.wave, s.muted));
                     update_speed().await;
-                    let color = get_color_for(wave_saved);
-                    leds.set(0, Led::Button, color, Brightness::Mid);
+                    glob_muted.set(muted);
+                    if muted {
+                        leds.unset(0, Led::Button);
+                    } else {
+                        let color = get_color_for(wave_saved);
+                        leds.set(0, Led::Button, color, Brightness::Mid);
+                    }
                 }
                 SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
