@@ -964,7 +964,7 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
       "CV mute",
       "CV destination",
     ],
-    text: "**Clock Divider+** is an extension of Clock Divider that uses two channels: one CV input channel and one trigger output channel. The output channel behaves like the original divider, including MIDI note output and gate length control, while the input channel can be assigned to different jobs.\n\nThe **Divisions** parameter lets you choose the available divider set: **Straight**, **Triplets**, or **Both**. This affects what the main fader and CV offset can select.\n\nIn normal operation, **CV destination = Division** and the input CV offsets the current divider setting around the main fader value. This makes it easy to push the rhythm denser or sparser from modulation without losing your base timing.\n\nWith **CV destination = External clock**, incoming CV rising edges (around 1V threshold) are used as the clock source, similar to the external clock mode in Random+. In this mode, the divider no longer follows the internal/global tick stream and instead counts external pulses.\n\nControls follow the plus-app layout: channel 1 handles input attenuation and input mute, channel 2 handles divider range and output mute. Shift + Button 1 cycles CV destination, shown by color (division: yellow, external clock: pink).",
+    text: "**Clock Divider+** is an extension of Clock Divider that uses two channels: one CV input channel and one trigger output channel. The output channel behaves like the original divider, including MIDI note output and gate length control, while the input channel can be assigned to different jobs.\n\nThe **Divisions** parameter lets you choose the available divider set: **Straight**, **Triplets**, or **Both**. This affects what the main fader and CV offset can select.\n\nIn normal operation, **CV destination = Division** and the input CV offsets the current divider setting around the main fader value. This makes it easy to push the rhythm denser or sparser from modulation without losing your base timing.\n\nWith **CV destination = External clock**, incoming CV rising edges (around 1V threshold) are used as the clock source, similar to the external clock mode in Random+. In this mode, the divider no longer follows the internal/global tick stream and instead counts external pulses.\n\nControls follow the plus-app layout: channel 1 handles input attenuation and input mute, channel 2 handles divider range and output mute (short press, no shift). Shift + Button 1 cycles CV destination, shown by color (division: yellow, external clock: pink).",
     channels: [
       {
         jackTitle: "Input",
@@ -992,10 +992,10 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
         faderPlusShiftDescription: "Sets the upper divider limit",
         faderPlusFnTitle: "Minimum division",
         faderPlusFnDescription: "Sets the lower divider limit",
-        fnTitle: "",
+        fnTitle: "Mute",
         fnDescription: "",
-        fnPlusShiftTitle: "Mute",
-        fnPlusShiftDescription: "Mutes trigger and MIDI output",
+        fnPlusShiftTitle: "",
+        fnPlusShiftDescription: "",
         ledTop: "Trigger activity indicator",
         ledTopPlusShift: "Maximum division indicator",
         ledBottom: "",
