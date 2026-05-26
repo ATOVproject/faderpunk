@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
-    MidiChannel, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    MidiChannel, MidiNote, MidiOut, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -17,7 +17,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 8;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 6;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Sequencer",
@@ -37,7 +37,8 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::MidiChannel {
     name: "MIDI Channel 4",
 })
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::VoltPerOct);
 
 pub struct Params {
     midi_channel1: MidiChannel,
@@ -45,6 +46,7 @@ pub struct Params {
     midi_channel3: MidiChannel,
     midi_channel4: MidiChannel,
     midi_out: MidiOut,
+    vpo: VoltPerOct,
 }
 
 impl AppParams for Params {
@@ -58,6 +60,7 @@ impl AppParams for Params {
             midi_channel3: MidiChannel::from_value(values[2]),
             midi_channel4: MidiChannel::from_value(values[3]),
             midi_out: MidiOut::from_value(values[4]),
+            vpo: VoltPerOct::from_value(values[5]),
         })
     }
 
@@ -68,6 +71,7 @@ impl AppParams for Params {
         vec.push(self.midi_channel3.into()).unwrap();
         vec.push(self.midi_channel4.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
         vec
     }
 }
@@ -111,6 +115,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         midi_channel3: MidiChannel::from(3),
         midi_channel4: MidiChannel::from(4),
         midi_out: MidiOut::default(),
+        vpo: VoltPerOct::Standard,
     });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
@@ -137,13 +142,14 @@ pub async fn run(
     storage: &ManagedStorage<Storage>,
 ) {
     let range = Range::_0_10V;
-    let (midi_out, midi_chan1, midi_chan2, midi_chan3, midi_chan4) = params.query(|p| {
+    let (midi_out, midi_chan1, midi_chan2, midi_chan3, midi_chan4, vpo) = params.query(|p| {
         (
             p.midi_out,
             p.midi_channel1,
             p.midi_channel2,
             p.midi_channel3,
             p.midi_channel4,
+            p.vpo,
         )
     });
 
@@ -173,7 +179,7 @@ pub async fn run(
         app.make_gate_jack(7, 4095).await,
     ];
 
-    let quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range, vpo);
 
     let page_glob: Global<usize> = app.make_global(0);
     let led_flag_glob: Global<bool> = app.make_global(true);
@@ -529,7 +535,7 @@ pub async fn run(
 
                                 midi[n].send_note_on(lastnote[n], 4095).await;
                                 gatelength1 = gatelength_glob.get();
-                                cv_out[n].set_value(out.as_counts(range));
+                                cv_out[n].set_value(out.as_counts(range, vpo));
                                 gate_out[n].set_high().await;
                             } else {
                                 gate_out[n].set_low().await;

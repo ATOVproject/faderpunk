@@ -16,7 +16,7 @@ use libfp::{
     quantizer::{Pitch, QuantizerState},
     utils::{scale_bits_12_7, scale_bits_14_12},
     Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
-    Range, TakeoverMode,
+    Range, TakeoverMode, VoltPerOct,
 };
 
 use crate::{
@@ -616,13 +616,15 @@ impl Die {
 
 pub struct Quantizer {
     range: Range,
+    vpo: VoltPerOct,
     state: RefCell<QuantizerState>,
 }
 
 impl Quantizer {
-    pub fn new(range: Range) -> Self {
+    pub fn new(range: Range, vpo: VoltPerOct) -> Self {
         Self {
             range,
+            vpo,
             state: RefCell::new(QuantizerState::default()),
         }
     }
@@ -631,7 +633,7 @@ impl Quantizer {
         let value = value.clamp(0, 4095);
         let quantizer = QUANTIZER.get().lock().await;
         let mut state = self.state.borrow_mut();
-        quantizer.get_quantized_note(&mut state, value, self.range)
+        quantizer.get_quantized_note(&mut state, value, self.range, self.vpo)
     }
     /// Get Quantizer scale
     #[allow(dead_code)]
@@ -776,8 +778,8 @@ impl<const N: usize> App<N> {
         Clock::new()
     }
 
-    pub fn use_quantizer(&self, range: Range) -> Quantizer {
-        Quantizer::new(range)
+    pub fn use_quantizer(&self, range: Range, vpo: VoltPerOct) -> Quantizer {
+        Quantizer::new(range, vpo)
     }
 
     pub fn use_midi_input(&self, midi_in: MidiIn, midi_channel: MidiChannel) -> MidiInput {

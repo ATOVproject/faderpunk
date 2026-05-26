@@ -10,12 +10,12 @@ use libfp::{
 };
 use serde::{Deserialize, Serialize};
 
-use libfp::{ext::FromValue, Config, Param, Range, Value};
+use libfp::{ext::FromValue, Config, Param, Range, Value, VoltPerOct};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 6;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
@@ -50,7 +50,8 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::VoltPerOct);
 
 pub struct Params {
     range: Range,
@@ -58,6 +59,7 @@ pub struct Params {
     midi_out: MidiOut,
     delay: i32,
     color: Color,
+    vpo: VoltPerOct,
 }
 
 impl AppParams for Params {
@@ -71,6 +73,7 @@ impl AppParams for Params {
             delay: i32::from_value(values[2]),
             color: Color::from_value(values[3]),
             midi_out: MidiOut::from_value(values[4]),
+            vpo: VoltPerOct::from_value(values[5]),
         })
     }
 
@@ -81,6 +84,7 @@ impl AppParams for Params {
         vec.push(self.delay.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
         vec
     }
 }
@@ -112,6 +116,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         midi_out: MidiOut::default(),
         delay: 0,
         color: Color::Orange,
+        vpo: VoltPerOct::Standard,
     });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
@@ -141,8 +146,8 @@ pub async fn run(
     let faders = app.use_faders();
     let leds = app.use_leds();
 
-    let (range, midi_out, midi_channel, delay, led_color) =
-        params.query(|p| (p.range, p.midi_out, p.midi_channel, p.delay, p.color));
+    let (range, midi_out, midi_channel, delay, led_color, vpo) =
+        params.query(|p| (p.range, p.midi_out, p.midi_channel, p.delay, p.color, p.vpo));
 
     let midi = app.use_midi_output(midi_out, midi_channel, false);
 
@@ -159,7 +164,7 @@ pub async fn run(
         leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
     }
     let input = app.make_in_jack(0, range).await;
-    let quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range, vpo);
 
     let gate_in = app.make_in_jack(1, Range::_0_10V).await;
 

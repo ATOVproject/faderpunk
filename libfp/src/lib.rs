@@ -918,6 +918,7 @@ pub enum Param {
     },
     MidiOut,
     MidiNrpn,
+    VoltPerOct,
 }
 
 #[allow(non_camel_case_types)]
@@ -939,6 +940,7 @@ pub enum Value {
     MidiNote(MidiNote),
     MidiOut(MidiOut),
     MidiNrpn(bool),
+    VoltPerOct(VoltPerOct),
 }
 
 impl From<Curve> for Value {
@@ -1157,6 +1159,29 @@ impl FromValue for Range {
     fn from_value(value: Value) -> Self {
         match value {
             Value::Range(r) => r,
+            _ => Self::default(),
+        }
+    }
+}
+
+/// Pitch CV standard: 1V/Oct (Eurorack) or 1.2V/Oct (Buchla)
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PostcardBindings, PartialEq)]
+pub enum VoltPerOct {
+    #[default]
+    Standard,
+    Buchla,
+}
+
+impl From<VoltPerOct> for Value {
+    fn from(value: VoltPerOct) -> Self {
+        Value::VoltPerOct(value)
+    }
+}
+
+impl FromValue for VoltPerOct {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::VoltPerOct(v) => v,
             _ => Self::default(),
         }
     }

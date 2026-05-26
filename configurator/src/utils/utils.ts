@@ -5,6 +5,7 @@ import {
   type Note,
   type Range,
   type Value,
+  type VoltPerOct,
   type Waveform,
 } from "@atov/fp-config";
 
@@ -85,6 +86,9 @@ export const getDefaultValue = (val: Value) => {
     case "MidiNrpn": {
       return val.value;
     }
+    case "VoltPerOct": {
+      return val.value.tag;
+    }
   }
 };
 
@@ -139,6 +143,8 @@ const getParamValue = (
       return { tag: "MidiMode", value: { tag: value as MidiModeTag } };
     case "MidiNrpn":
       return { tag: "MidiNrpn", value: value as boolean };
+    case "VoltPerOct":
+      return { tag: "VoltPerOct", value: { tag: value as VoltPerOct["tag"] } };
     default:
       return undefined;
   }
