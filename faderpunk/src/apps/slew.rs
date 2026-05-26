@@ -16,7 +16,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 1;
+pub const PARAMS: usize = 2;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
@@ -38,10 +38,15 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Violet,
         Color::Yellow,
     ],
+})
+.add_param(Param::Range {
+    name: "Range",
+    variants: &[Range::_0_10V, Range::_Neg5_5V],
 });
 
 pub struct Params {
     color: Color,
+    range: Range,
 }
 
 impl AppParams for Params {
@@ -51,12 +56,14 @@ impl AppParams for Params {
         }
         Some(Self {
             color: Color::from_value(values[0]),
+            range: Range::from_value(values[1]),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.range.into()).unwrap();
         vec
     }
 }
@@ -84,6 +91,7 @@ impl AppStorage for Storage {}
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id, Params {
         color: Color::Green,
+        range: Range::_Neg5_5V,
     });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
     param_store.load().await;
@@ -108,13 +116,13 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let led_color = params.query(|p| p.color);
+    let (led_color, range) = params.query(|p| (p.color, p.range));
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let input = app.make_in_jack(0, Range::_Neg5_5V).await;
-    let output = app.make_out_jack(1, Range::_Neg5_5V).await;
+    let input = app.make_in_jack(0, range).await;
+    let output = app.make_out_jack(1, range).await;
 
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
