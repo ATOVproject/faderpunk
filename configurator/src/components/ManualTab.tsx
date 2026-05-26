@@ -1036,8 +1036,9 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
       "Attenuation",
       "Speed",
       "Waveform",
+      "Output Muted",
     ],
-    text: "This app is a variation of the simple LFO, adding an assignable CV input. The first channel processes the CV input, with the fader controlling its attenuation and the button acting as a mute. Use Shift + Button 1 to set the CV destination, indicated by the button color: speed (yellow), phase (pink), amplitude (cyan) or reset (red). Note that the speed CV is through 0, meaning that the waveform will invert and speed up again when the CV input is negative. When in 'reset' mode, the LFO resets when a rising edge passing the 1V threshold is detected. It is also worth knowing that even in reset mode this input is affected by the CV attenuation and 'mute' state allowing to change the rising edge detection level. As in the standard LFO, you can select the waveform by pressing the second button, with LED colors showing the shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). Adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Free-running speed ranges from 14 Hz to one cycle per minute; clocked mode offers resolutions like 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. App parameters let you set overall speed—Normal, Slow (÷2), or Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. Output can be bipolar (-5V to +5V) or unipolar (0V to 10V), affecting the attenuator's center when sending MIDI CC (0 for unipolar, 64 for bipolar). The app can also output MIDI CC, with freely configurable channel and CC number.",
+    text: "This app is a variation of the simple LFO, adding an assignable CV input. The first channel processes the CV input, with the fader controlling its attenuation and the button acting as a mute. Use Shift + Button 1 to set the CV destination, indicated by the button color: speed (yellow), phase (pink), amplitude (cyan) or reset (red). Note that the speed CV is through 0, meaning that the waveform will invert and speed up again when the CV input is negative. When in 'reset' mode, the LFO resets when a rising edge passing the 1V threshold is detected. It is also worth knowing that even in reset mode this input is affected by the CV attenuation and 'mute' state allowing to change the rising edge detection level. As in the standard LFO, you can select the waveform by pressing the second button, with LED colors showing the shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). Long press (no shift) on the output channel button mutes the LFO output; the waveform change from the press is automatically reversed. Adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Free-running speed ranges from 14 Hz to one cycle per minute; clocked mode offers resolutions like 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. App parameters let you set overall speed—Normal, Slow (÷2), or Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. Output can be bipolar (-5V to +5V) or unipolar (0V to 10V), affecting the attenuator's center when sending MIDI CC (0 for unipolar, 64 for bipolar). The app can also output MIDI CC, with freely configurable channel and CC number.",
     channels: [
       {
         jackTitle: "Input",
@@ -1063,11 +1064,11 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
           "Sets the LFO speed, top is maximum and bottom slowest",
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range",
-        fnTitle: "Waveform selection",
+        fnTitle: "Waveform / Mute",
         fnDescription:
-          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
-        fnPlusShiftTitle: "Reset - Clocked mode",
-        fnPlusShiftDescription: "Short reset - Long clock mode",
+          "Short: cycle waveform. Long (no shift): mute output (waveform reverts)",
+        fnPlusShiftTitle: "Reset / Clocked mode",
+        fnPlusShiftDescription: "Short: reset LFO. Long: toggle clocked mode",
         ledTop: "Positive level indicator",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "Negative level indicator",
