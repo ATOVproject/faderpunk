@@ -148,7 +148,7 @@ const apps: ManualAppData[] = [
     icon: "random",
     params: ["Range", "MIDI Channel", "MIDI CC", "NRPN"],
     storage: ["Speed", "Muted", "Attenuation", "Slew", "Clocked"],
-    text: "This app sends random CC and CV values at regular intervals, either in free-running mode or synced to a clock. The timing is set using the fader, and the MIDI channel and CC number can be configured in the parameters. Shift + Fader attenuates both CV and CC outputs, while Button + Fader accesses the onboard slew limiter, which smooths changes in both CV and CC values. Shift + Button toggles mute/unmute for the outputs. The output range can be set to unipolar or bipolar in the parameters, which also determines the mute behavior—settling at 0 in unipolar mode and in the middle in bipolar mode, similar to the Control app. Shift + Button long press switches between free-running and tempo-synced operation.",
+    text: "This app sends random CC and CV values at regular intervals, either in free-running mode or synced to a clock. The timing is set using the fader, and the MIDI channel and CC number can be configured in the parameters. Shift + Fader attenuates both CV and CC outputs, while Button + Fader accesses the onboard slew limiter, which smooths changes in both CV and CC values. Button (no shift) toggles mute/unmute. The output range can be set to unipolar or bipolar in the parameters, which also determines the mute behavior—settling at 0 in unipolar mode and in the middle in bipolar mode, similar to the Control app. Shift + long press switches between free-running and tempo-synced operation.",
     channels: [
       {
         jackTitle: "Output",
@@ -159,10 +159,10 @@ const apps: ManualAppData[] = [
         faderPlusShiftDescription: "Reduces the output range",
         faderPlusFnTitle: "Slew",
         faderPlusFnDescription: "Slew limiter timing.",
-        fnTitle: "",
-        fnDescription: "",
-        fnPlusShiftTitle: "Mute - Clocked mode",
-        fnPlusShiftDescription: "Short mute - Long clock mode",
+        fnTitle: "Mute",
+        fnDescription: "Short press (no shift) toggles mute",
+        fnPlusShiftTitle: "Clocked mode",
+        fnPlusShiftDescription: "Long press: toggle free-running/clocked",
         ledTop: "Positive level indicator",
         ledTopPlusShift: "Attenuation level in red",
         ledTopPlusFn: "Slew level in green",
