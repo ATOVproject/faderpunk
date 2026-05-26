@@ -202,8 +202,9 @@ const apps: ManualAppData[] = [
       "Directions",
       "Probabilities",
       "Slide times",
+      "Muted (per track)",
     ],
-    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, navigated with **Shift + Buttons**. CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, 5&6 for sequencer 3, and 7&8 for sequencer 4. Faders set note values, buttons define the gate pattern, and **long button presses** enable legato between steps. CV output is quantized to the scale set in the global quantizer.\n\n#### Shift mode\n\nWith Shift held, all 8 faders control settings for the currently selected sequencer:\n\n- **Fader 1** — step length (1–16 steps)\n- **Fader 2** — gate length\n- **Fader 3** — octave offset (0–5 octaves)\n- **Fader 4** — sequence range (1–5 octaves)\n- **Fader 5** — clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th)\n- **Fader 6** — direction (Forward / Backward / Ping-Pong / Random)\n- **Fader 7** — trigger probability (5%–100%)\n- **Fader 8** — 303-style slide time (0 = instant)\n\nTop LEDs show sequence length. Resolution LED color: **orange** = triplet division, **blue** = straight division.\n\n#### MIDI transposition\n\nEach track can be live-transposed via incoming MIDI. Assign a dedicated transpose MIDI channel per track in the parameters. Receiving a NoteOn on that channel shifts the track's output relative to **C4** — middle C = no change, notes above/below transpose up/down by semitones. Transposition applies to both CV and MIDI output.\n\n#### Velocity lane mode (tracks 2 and 4)\n\nWhen enabled, a track acts as a velocity lane for its paired primary track (track 2 → track 1, track 4 → track 3):\n\n- **Fader** — controls the MIDI velocity sent to the paired track, not a note value\n- **CV output** — unquantized voltage proportional to fader position (0–10V)\n- **Gate button** — controls whether velocity advances on that step (on) or holds the previous value (off)\n- MIDI notes are suppressed on the velocity lane track itself",
+    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, navigated with **Shift + Buttons** (short press). CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, 5&6 for sequencer 3, and 7&8 for sequencer 4. Faders set note values, buttons define the gate pattern, and **long button presses** enable legato between steps. CV output is quantized to the scale set in the global quantizer.\n\n#### Shift mode\n\nWith Shift held, all 8 faders control settings for the currently selected sequencer:\n\n- **Fader 1** — step length (1–16 steps)\n- **Fader 2** — gate length\n- **Fader 3** — octave offset (0–5 octaves)\n- **Fader 4** — sequence range (1–5 octaves)\n- **Fader 5** — clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th)\n- **Fader 6** — direction (Forward / Backward / Ping-Pong / Random)\n- **Fader 7** — trigger probability (5%–100%)\n- **Fader 8** — 303-style slide time (0 = instant)\n\nTop LEDs show sequence length. Resolution LED color: **orange** = triplet division, **blue** = straight division.\n\n#### Muting tracks\n\n**Shift + long press** on an even button (0, 2, 4, or 6) mutes the corresponding track (1–4). While muted, gates and CV are suppressed and the top and position LEDs turn off; the gate pattern remains visible so the sequence can still be edited. Mute state is saved per scene.\n\n#### MIDI transposition\n\nEach track can be live-transposed via incoming MIDI. Assign a dedicated transpose MIDI channel per track in the parameters. Receiving a NoteOn on that channel shifts the track's output relative to **C4** — middle C = no change, notes above/below transpose up/down by semitones. Transposition applies to both CV and MIDI output.\n\n#### Velocity lane mode (tracks 2 and 4)\n\nWhen enabled, a track acts as a velocity lane for its paired primary track (track 2 → track 1, track 4 → track 3):\n\n- **Fader** — controls the MIDI velocity sent to the paired track, not a note value\n- **CV output** — unquantized voltage proportional to fader position (0–10V)\n- **Gate button** — controls whether velocity advances on that step (on) or holds the previous value (off)\n- MIDI notes are suppressed on the velocity lane track itself",
     channels: [
       {
         jackTitle: "CV Output",
@@ -216,7 +217,8 @@ const apps: ManualAppData[] = [
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
-        fnPlusShiftTitle: "Select Seq 1, page 1",
+        fnPlusShiftTitle: "Seq 1 page 1 / Mute Seq 1",
+        fnPlusShiftDescription: "Short: select page. Long: mute/unmute sequencer 1",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -249,7 +251,8 @@ const apps: ManualAppData[] = [
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
-        fnPlusShiftTitle: "Select Seq 2, page 1",
+        fnPlusShiftTitle: "Seq 2 page 1 / Mute Seq 2",
+        fnPlusShiftDescription: "Short: select page. Long: mute/unmute sequencer 2",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -283,7 +286,8 @@ const apps: ManualAppData[] = [
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
-        fnPlusShiftTitle: "Select Seq 3, page 1",
+        fnPlusShiftTitle: "Seq 3 page 1 / Mute Seq 3",
+        fnPlusShiftDescription: "Short: select page. Long: mute/unmute sequencer 3",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -319,7 +323,8 @@ const apps: ManualAppData[] = [
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
-        fnPlusShiftTitle: "Select Seq 4, page 1",
+        fnPlusShiftTitle: "Seq 4 page 1 / Mute Seq 4",
+        fnPlusShiftDescription: "Short: select page. Long: mute/unmute sequencer 4",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",

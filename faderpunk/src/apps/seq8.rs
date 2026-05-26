@@ -143,6 +143,7 @@ pub struct Storage {
     direction_fader: [u16; 4],   // F5: derive Direction = val/1024
     probability_fader: [u16; 4], // F6: probability 5%..100% (linear)
     slide_fader: [u16; 4],       // F7: 303-style slide time (0 = instant)
+    muted: [bool; 4],
 }
 
 impl Default for Storage {
@@ -160,6 +161,7 @@ impl Default for Storage {
             direction_fader: [0; 4],      // -> Direction::Forward
             probability_fader: [4095; 4], // -> 100%
             slide_fader: [0; 4],          // -> instant (no slide)
+            muted: [false; 4],
         }
     }
 }
@@ -328,10 +330,12 @@ pub async fn run(
     let counts_per_oct = vpo.counts_per_oct() as u32;
 
     let page_glob: Global<usize> = app.make_global(0);
+    let prev_page_glob: Global<usize> = app.make_global(0);
     let latch_layer_glob: Global<LatchLayer> = app.make_global(LatchLayer::Main);
     let seq_glob: Global<[u16; 64]> = app.make_global([0; 64]);
     let gateseq_glob: Global<[bool; 64]> = app.make_global([true; 64]);
     let legatoseq_glob: Global<[bool; 64]> = app.make_global([false; 64]);
+    let muted_glob: Global<[bool; 4]> = app.make_global(storage.query(|s| s.muted));
 
     let seq_length_glob: Global<[u8; 4]> = app.make_global([16; 4]);
     let gatelength_glob: Global<[u8; 4]> = app.make_global([128; 4]);
@@ -492,6 +496,7 @@ pub async fn run(
                     s.legato_seq.set(legato_seq);
                 });
             } else {
+                prev_page_glob.set(page_glob.get());
                 page_glob.set(chan);
             }
         }
@@ -516,6 +521,14 @@ pub async fn run(
                     s.gateseq.set(gateseq);
                     s.legato_seq.set(legato_seq);
                 });
+            } else if chan % 2 == 0 {
+                // Shift + long press on even button (0,2,4,6) → mute track
+                page_glob.set(prev_page_glob.get());
+                let track = chan / 2;
+                let mut muted = muted_glob.get();
+                muted[track] = !muted[track];
+                muted_glob.set(muted);
+                storage.modify_and_save(|s| s.muted = muted);
             }
         }
     };
@@ -538,15 +551,20 @@ pub async fn run(
             if buttons.is_shift_pressed() {
                 let seq_length = seq_length_glob.get();
                 let playing_pos = playing_pos_glob.get();
+                let muted = muted_glob.get();
                 let current_step = playing_pos[page / 2] as u8;
 
                 for n in 0..8 {
-                    let bright = if n == page {
-                        intensities[3]
+                    if muted[n / 2] {
+                        led.unset(n, Led::Button);
                     } else {
-                        intensities[1]
-                    };
-                    led.set(n, Led::Button, colors[n / 2], bright);
+                        let bright = if n == page {
+                            intensities[3]
+                        } else {
+                            intensities[1]
+                        };
+                        led.set(n, Led::Button, colors[n / 2], bright);
+                    }
                 }
                 let led_color = if matches!(clockres[page / 2], 2 | 4 | 8 | 16) {
                     Color::Orange
@@ -559,7 +577,7 @@ pub async fn run(
                         bright = Brightness::Mid;
                     }
                     if n == current_step {
-                        bright = Brightness::High;
+                        bright = Brightness::Low;
                     }
                     if n >= seq_length[page / 2] {
                         bright = Brightness::Off;
@@ -576,35 +594,46 @@ pub async fn run(
                 let legato_seq = legatoseq_glob.get();
                 let seq_length = seq_length_glob.get();
                 let playing_pos = playing_pos_glob.get();
+                let muted = muted_glob.get();
                 let color = colors[page / 2];
+                let track_muted = muted[page / 2];
 
                 for n in 0..8 {
-                    led.set(
-                        n,
-                        Led::Top,
-                        color,
-                        Brightness::Custom((seq[n + (page * 8)] / 16) as u8 / 2),
-                    );
-
-                    let button_bright = if legato_seq[n + (page * 8)] {
-                        intensities[2]
-                    } else if gateseq[n + (page * 8)] {
-                        intensities[1]
+                    if track_muted {
+                        led.unset(n, Led::Top);
                     } else {
-                        intensities[0]
-                    };
-                    led.set(n, Led::Button, color, button_bright);
+                        led.set(
+                            n,
+                            Led::Top,
+                            color,
+                            Brightness::Custom((seq[n + (page * 8)] / 16) as u8 / 2),
+                        );
+                    }
+
+                    if track_muted {
+                        led.set(n, Led::Button, color, Brightness::Low);
+                    } else {
+                        let button_bright = if legato_seq[n + (page * 8)] {
+                            intensities[2]
+                        } else if gateseq[n + (page * 8)] {
+                            intensities[1]
+                        } else {
+                            intensities[0]
+                        };
+                        led.set(n, Led::Button, color, button_bright);
+                    }
 
                     let index = seq_length[page / 2] as usize - (page % 2 * 8);
                     if n >= index || index > 16 {
                         led.unset(n, Led::Button);
                     }
 
-                    // Show which page of each track is currently playing
+                    // Show which page of each track is currently playing;
+                    // suppress for muted tracks so the indicator goes dark.
                     let track = n / 2;
                     let step = playing_pos[track];
                     let active = if n % 2 == 0 { step < 8 } else { step >= 8 };
-                    if active {
+                    if active && !muted[track] {
                         led.set(n, Led::Bottom, Color::Red, Brightness::Mid);
                     } else {
                         led.unset(n, Led::Bottom);
@@ -612,9 +641,14 @@ pub async fn run(
                 }
 
                 // Highlight the current step button on the active page
+                // (suppressed for muted tracks — no note fires).
                 let step_in_seq = playing_pos[page / 2];
                 let page_offset = (page % 2) * 8;
-                if clockn != 0 && step_in_seq >= page_offset && step_in_seq < page_offset + 8 {
+                if !track_muted
+                    && clockn != 0
+                    && step_in_seq >= page_offset
+                    && step_in_seq < page_offset + 8
+                {
                     led.set(
                         step_in_seq - page_offset,
                         Led::Button,
@@ -652,6 +686,7 @@ pub async fn run(
                     // the same tick. vel_source itself is persistent — when a lane
                     // track doesn't tick or rests, the last value carries over.
                     let transpo = transpo_glob.get();
+                    let muted = muted_glob.get();
                     for n in (0..4).rev() {
                         if clockn.is_multiple_of(clockres[n]) {
                             let step = clockn / clockres[n];
@@ -665,7 +700,7 @@ pub async fn run(
                             if !vel_lane[n] {
                                 midi[n].send_note_off(lastnote[n]).await;
                             }
-                            let fires = gateseq[clkindex] && die.roll() < probability[n];
+                            let fires = gateseq[clkindex] && !muted[n] && die.roll() < probability[n];
                             if fires {
                                 if vel_lane[n] {
                                     // Velocity lane: skip quantizer, use raw step value.
@@ -771,6 +806,7 @@ pub async fn run(
                     seq_glob.set(seq_saved.get());
                     gateseq_glob.set(gateseq_saved.get());
                     legatoseq_glob.set(legato_seq_saved.get());
+                    muted_glob.set(storage.query(|s| s.muted));
 
                     let (seq_length, clockres, gatel) =
                         derive_runtime_params(length_faders, gate_faders, res_faders, &resolution);
