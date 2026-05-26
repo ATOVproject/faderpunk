@@ -14,13 +14,13 @@ use libfp::{
     latch::LatchLayer,
     utils::{bits_7_16, clickless, scale_bits_14_12, scale_bits_7_12},
     AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiNote, Param, Range,
-    Value, APP_MAX_PARAMS,
+    Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppMidiEvent, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 9;
+pub const PARAMS: usize = 10;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 
@@ -64,7 +64,8 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::MidiIn)
 .add_param(Param::bool {
     name: "Velocity on Gate",
-});
+})
+.add_param(Param::VoltPerOct);
 
 pub struct Params {
     mode: usize,
@@ -76,6 +77,7 @@ pub struct Params {
     bend_range: i32,
     color: Color,
     gate_vel: bool,
+    vpo: VoltPerOct,
 }
 
 impl AppParams for Params {
@@ -93,6 +95,7 @@ impl AppParams for Params {
             color: Color::from_value(values[6]),
             midi_in: MidiIn::from_value(values[7]),
             gate_vel: bool::from_value(values[8]),
+            vpo: VoltPerOct::from_value(values[9]),
         })
     }
 
@@ -107,6 +110,7 @@ impl AppParams for Params {
         vec.push(self.color.into()).unwrap();
         vec.push(self.midi_in.into()).unwrap();
         vec.push(self.gate_vel.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
         vec
     }
 }
@@ -142,6 +146,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         bend_range: 12,
         color: Color::Cyan,
         gate_vel: false,
+        vpo: VoltPerOct::Standard,
     });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
@@ -187,8 +192,8 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_in, midi_chan, midi_cc, curve, bend_range, led_color, note, mode, gate_vel) = params
-        .query(|p| {
+    let (midi_in, midi_chan, midi_cc, curve, bend_range, led_color, note, mode, gate_vel, vpo) =
+        params.query(|p| {
             (
                 p.midi_in,
                 p.midi_channel,
@@ -199,8 +204,14 @@ pub async fn run(
                 p.midi_note,
                 p.mode,
                 p.gate_vel,
+                p.vpo,
             )
         });
+
+    let counts_per_oct: u32 = match vpo {
+        VoltPerOct::Standard => 410,
+        VoltPerOct::Buchla => 492,
+    };
 
     let mut midi_in = app.use_midi_input(midi_in, midi_chan);
     let muted_glob = app.make_global(false);
@@ -444,11 +455,11 @@ pub async fn run(
                                 note_num += 1;
 
                                 let mut note_in = bits_7_16(key);
-                                note_in = (note_in as u32 * 410 / 12) as u16;
+                                note_in = (note_in as u32 * counts_per_oct / 12) as u16;
                                 let main_val = storage.query(|s| s.main_layer_val);
                                 let oct = (main_val as i32 * 10 / 4095) - 5;
                                 let note_out =
-                                    (note_in as i32 + oct * 410).clamp(0, 4095) as u16;
+                                    (note_in as i32 + oct * counts_per_oct as i32).clamp(0, 4095) as u16;
                                 pitch_glob.set(note_out);
                                 leds.set(
                                     0,
@@ -509,7 +520,7 @@ pub async fn run(
                 }
                 MidiMessage::PitchBend { bend } => match mode {
                     1 | 5 => {
-                        let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
+                        let out = (bend.as_f32() * bend_range as f32 * counts_per_oct as f32 / 12. + 2048.) as u16;
                         offset_glob.set(out);
                         leds.set(
                             0,

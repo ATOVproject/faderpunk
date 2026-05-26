@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config, Curve,
-    MidiCc, MidiChannel, MidiMode, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    MidiCc, MidiChannel, MidiMode, MidiNote, MidiOut, Param, Range, Value, VoltPerOct,
+    APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -20,7 +21,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 9;
+pub const PARAMS: usize = 10;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing",
@@ -57,7 +58,8 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
 })
 .add_param(Param::MidiNrpn)
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::VoltPerOct);
 
 pub struct Params {
     midi_mode: MidiMode,
@@ -69,6 +71,7 @@ pub struct Params {
     color: Color,
     range: Range,
     nrpn: bool,
+    vpo: VoltPerOct,
 }
 
 impl AppParams for Params {
@@ -86,6 +89,7 @@ impl AppParams for Params {
             range: Range::from_value(values[6]),
             nrpn: bool::from_value(values[7]),
             midi_out: MidiOut::from_value(values[8]),
+            vpo: VoltPerOct::from_value(values[9]),
         })
     }
 
@@ -100,6 +104,7 @@ impl AppParams for Params {
         vec.push(self.range.into()).unwrap();
         vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
         vec
     }
 }
@@ -139,6 +144,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             color: Color::Blue,
             range: Range::_0_5V,
             nrpn: false,
+            vpo: VoltPerOct::Standard,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -165,7 +171,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_out, midi_mode, midi_cc, led_color, midi_chan, base_note, gatel, range, nrpn) =
+    let (midi_out, midi_mode, midi_cc, led_color, midi_chan, base_note, gatel, range, nrpn, vpo) =
         params.query(|p| {
             (
                 p.midi_out,
@@ -177,6 +183,7 @@ pub async fn run(
                 p.gatel as u32,
                 p.range,
                 p.nrpn,
+                p.vpo,
             )
         });
 
@@ -186,7 +193,7 @@ pub async fn run(
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
     let die = app.use_die();
-    let quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range, vpo);
 
     let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
 
@@ -257,7 +264,7 @@ pub async fn run(
 
                         let out = quantizer.get_quantized_note(att_reg).await;
 
-                        jack.set_value(out.as_counts(range));
+                        jack.set_value(out.as_counts(range, vpo));
                         leds.set(
                             0,
                             Led::Top,

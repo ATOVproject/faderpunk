@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
-    MidiChannel, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    MidiChannel, MidiNote, MidiOut, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -17,7 +17,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 7;
+pub const PARAMS: usize = 8;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 
@@ -58,7 +58,8 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::VoltPerOct);
 
 pub struct Params {
     midi_channel: MidiChannel,
@@ -68,6 +69,7 @@ pub struct Params {
     gatel: i32,
     outmode: usize,
     color: Color,
+    vpo: VoltPerOct,
 }
 
 impl AppParams for Params {
@@ -83,6 +85,7 @@ impl AppParams for Params {
             outmode: usize::from_value(values[4]),
             color: Color::from_value(values[5]),
             midi_out: MidiOut::from_value(values[6]),
+            vpo: VoltPerOct::from_value(values[7]),
         })
     }
 
@@ -95,6 +98,7 @@ impl AppParams for Params {
         vec.push(self.outmode.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
         vec
     }
 }
@@ -129,6 +133,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         gatel: 50,
         outmode: 0,
         color: Color::Rose,
+        vpo: VoltPerOct::Standard,
     });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
@@ -155,7 +160,7 @@ pub async fn run(
     storage: &ManagedStorage<Storage>,
 ) {
     let range = Range::_0_10V;
-    let (midi_out, midi_chan, gatel, base_note, span, outmode, led_color) = params.query(|p| {
+    let (midi_out, midi_chan, gatel, base_note, span, outmode, led_color, vpo) = params.query(|p| {
         (
             p.midi_out,
             p.midi_channel,
@@ -164,12 +169,13 @@ pub async fn run(
             p.span,
             p.outmode,
             p.color,
+            p.vpo,
         )
     });
 
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
-    let quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range, vpo);
 
     let fader = app.use_faders();
     let buttons = app.use_buttons();
@@ -205,7 +211,7 @@ pub async fn run(
 
         let out = quantizer.get_quantized_note(fadval).await;
         if outmode == 0 {
-            jack.set_value(out.as_counts(range));
+            jack.set_value(out.as_counts(range, vpo));
         } else {
             jack.set_value(4095)
         }

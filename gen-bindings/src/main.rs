@@ -43,6 +43,7 @@ fn main() {
             libfp::ResetSrc,
             libfp::TakeoverMode,
             libfp::Value,
+            libfp::VoltPerOct,
             libfp::Waveform
         ),
     )
