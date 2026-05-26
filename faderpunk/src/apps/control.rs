@@ -397,47 +397,51 @@ pub async fn run(
 
     let button_handler = async {
         loop {
-            if button_mode == 3 {
-                // Program Change mode: High while held, Mid at rest
-                leds.set(0, Led::Button, led_color, Brightness::Mid);
-                buttons.wait_for_down(0).await;
-                leds.set(0, Led::Button, led_color, Brightness::High);
-                midi_button.send_program_change(button_cc).await;
-
-                buttons.wait_for_up(0).await;
-                leds.set(0, Led::Button, led_color, Brightness::Mid);
-            } else if button_mode == 2 {
-                // Momentary mode: handle both press and release
-                buttons.wait_for_down(0).await;
-                leds.set(0, Led::Button, led_color, Brightness::Mid);
-                midi_button.send_cc(button_cc, 4095).await;
-
-                buttons.wait_for_up(0).await;
-                leds.unset(0, Led::Button);
-                midi_button.send_cc(button_cc, 0).await;
-            } else {
-                // Mode 0 (Mute) or Mode 1 (CC toggle): toggle on configured edge
-                if on_release {
-                    buttons.wait_for_up(0).await;
-                } else {
-                    buttons.wait_for_down(0).await;
-                }
-
-                let muted = storage.modify_and_save(|s| {
-                    s.muted = !s.muted;
-                    s.muted
-                });
-                muted_glob.set(muted);
-
-                if muted {
-                    leds.unset(0, Led::Button);
-                    if button_mode == 1 {
-                        midi_button.send_cc(button_cc, 0).await;
-                    }
-                } else {
+            match button_mode {
+                3 => {
+                    // Program Change mode: High while held, Mid at rest
                     leds.set(0, Led::Button, led_color, Brightness::Mid);
-                    if button_mode == 1 {
-                        midi_button.send_cc(button_cc, 4095).await;
+                    buttons.wait_for_down(0).await;
+                    leds.set(0, Led::Button, led_color, Brightness::High);
+                    midi_button.send_program_change(button_cc).await;
+
+                    buttons.wait_for_up(0).await;
+                    leds.set(0, Led::Button, led_color, Brightness::Mid);
+                }
+                2 => {
+                    // Momentary mode: handle both press and release
+                    buttons.wait_for_down(0).await;
+                    leds.set(0, Led::Button, led_color, Brightness::Mid);
+                    midi_button.send_cc(button_cc, 4095).await;
+
+                    buttons.wait_for_up(0).await;
+                    leds.unset(0, Led::Button);
+                    midi_button.send_cc(button_cc, 0).await;
+                }
+                _ => {
+                    // Mode 0 (Mute) or Mode 1 (CC toggle): toggle on configured edge
+                    if on_release {
+                        buttons.wait_for_up(0).await;
+                    } else {
+                        buttons.wait_for_down(0).await;
+                    }
+
+                    let muted = storage.modify_and_save(|s| {
+                        s.muted = !s.muted;
+                        s.muted
+                    });
+                    muted_glob.set(muted);
+
+                    if muted {
+                        leds.unset(0, Led::Button);
+                        if button_mode == 1 {
+                            midi_button.send_cc(button_cc, 0).await;
+                        }
+                    } else {
+                        leds.set(0, Led::Button, led_color, Brightness::Mid);
+                        if button_mode == 1 {
+                            midi_button.send_cc(button_cc, 4095).await;
+                        }
                     }
                 }
             }
