@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     ext::FromValue, latch::LatchLayer, utils::fader_to_slide_coeff, AppIcon, Brightness,
     ClockDivision, Color, Config, MidiChannel, MidiIn, MidiNote, MidiOut, Param, Range, Value,
-    APP_MAX_PARAMS,
+    VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -19,7 +19,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 8;
-pub const PARAMS: usize = 12;
+pub const PARAMS: usize = 14;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Sequencer",
@@ -46,7 +46,9 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::MidiChannel { name: "Track 1: transpose CH" })
 .add_param(Param::MidiChannel { name: "Track 2: transpose CH" })
 .add_param(Param::MidiChannel { name: "Track 3: transpose CH" })
-.add_param(Param::MidiChannel { name: "Track 4: transpose CH" });
+.add_param(Param::MidiChannel { name: "Track 4: transpose CH" })
+.add_param(Param::VoltPerOct)
+.add_param(Param::bool { name: "Bypass quantizer" });
 
 pub struct Params {
     midi_channel1: MidiChannel,
@@ -61,6 +63,8 @@ pub struct Params {
     transpose_ch2: MidiChannel,
     transpose_ch3: MidiChannel,
     transpose_ch4: MidiChannel,
+    vpo: VoltPerOct,
+    bypass: bool,
 }
 
 impl AppParams for Params {
@@ -81,6 +85,8 @@ impl AppParams for Params {
             transpose_ch2: MidiChannel::from_value(values[9]),
             transpose_ch3: MidiChannel::from_value(values[10]),
             transpose_ch4: MidiChannel::from_value(values[11]),
+            vpo: VoltPerOct::from_value(values[12]),
+            bypass: bool::from_value(values[13]),
         })
     }
 
@@ -98,6 +104,8 @@ impl AppParams for Params {
         vec.push(self.transpose_ch2.into()).unwrap();
         vec.push(self.transpose_ch3.into()).unwrap();
         vec.push(self.transpose_ch4.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
+        vec.push(self.bypass.into()).unwrap();
         vec
     }
 }
@@ -225,6 +233,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             transpose_ch2: MidiChannel::from(2),
             transpose_ch3: MidiChannel::from(3),
             transpose_ch4: MidiChannel::from(4),
+            vpo: VoltPerOct::Standard,
+            bypass: false,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -265,6 +275,8 @@ pub async fn run(
         transpose_ch2,
         transpose_ch3,
         transpose_ch4,
+        vpo,
+        bypass,
     ) = params.query(|p| {
         (
             p.midi_out,
@@ -279,6 +291,8 @@ pub async fn run(
             p.transpose_ch2,
             p.transpose_ch3,
             p.transpose_ch4,
+            p.vpo,
+            p.bypass,
         )
     });
     let vel_lane = [false, vel_lane_2, false, vel_lane_4];
@@ -310,7 +324,8 @@ pub async fn run(
         app.make_gate_jack(7, 4095).await,
     ];
 
-    let quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range, vpo, bypass);
+    let counts_per_oct = vpo.counts_per_oct() as u32;
 
     let page_glob: Global<usize> = app.make_global(0);
     let latch_layer_glob: Global<LatchLayer> = app.make_global(LatchLayer::Main);
@@ -671,9 +686,10 @@ pub async fn run(
                                             (seq[clkindex] as u32
                                                 * ((storage.query(|s| s.range_fader[n]) / 1000 + 1)
                                                     as u32)
-                                                * 410
+                                                * counts_per_oct
                                                 / 4095) as u16
-                                                + (storage.query(|s| s.oct_fader[n]) / 1000) * 410,
+                                                + (storage.query(|s| s.oct_fader[n]) / 1000)
+                                                    * counts_per_oct as u16,
                                         )
                                         .await;
                                     let mut base = out.as_midi();
@@ -690,8 +706,8 @@ pub async fn run(
                                     // Hand the target CV to slide_handler; slide only if
                                     // the previously played step had legato enabled.
                                     let mut targets = target_cv_glob.get();
-                                    targets[n] = (out.as_counts(range) as i32
-                                        + transpo[n] as i32 * 410 / 12)
+                                    targets[n] = (out.as_counts(range, vpo) as i32
+                                        + transpo[n] as i32 * counts_per_oct as i32 / 12)
                                         .clamp(0, 4095) as u16;
                                     target_cv_glob.set(targets);
                                     let mut slid = sliding_glob.get();
