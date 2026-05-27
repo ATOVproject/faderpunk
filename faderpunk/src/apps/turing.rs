@@ -3,7 +3,7 @@
 //clock res
 
 use embassy_futures::{
-    join::join5,
+    join::{join, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -20,7 +20,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 9;
+pub const PARAMS: usize = 10;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing",
@@ -57,7 +57,8 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
 })
 .add_param(Param::MidiNrpn)
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::bool { name: "Gate Out" });
 
 pub struct Params {
     midi_mode: MidiMode,
@@ -69,6 +70,7 @@ pub struct Params {
     color: Color,
     range: Range,
     nrpn: bool,
+    gate_out: bool,
 }
 
 impl AppParams for Params {
@@ -86,6 +88,7 @@ impl AppParams for Params {
             range: Range::from_value(values[6]),
             nrpn: bool::from_value(values[7]),
             midi_out: MidiOut::from_value(values[8]),
+            gate_out: bool::from_value(values[9]),
         })
     }
 
@@ -100,6 +103,7 @@ impl AppParams for Params {
         vec.push(self.range.into()).unwrap();
         vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.gate_out.into()).unwrap();
         vec
     }
 }
@@ -110,6 +114,7 @@ pub struct Storage {
     length_saved: u16,
     register_saved: u16,
     res_saved: u16,
+    gate_threshold_mode: bool,
 }
 
 impl Default for Storage {
@@ -119,6 +124,7 @@ impl Default for Storage {
             length_saved: 8,
             register_saved: 0,
             res_saved: 2048,
+            gate_threshold_mode: true,
         }
     }
 }
@@ -139,6 +145,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             color: Color::Blue,
             range: Range::_0_5V,
             nrpn: false,
+            gate_out: false,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -165,20 +172,31 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_out, midi_mode, midi_cc, led_color, midi_chan, base_note, gatel, range, nrpn) =
-        params.query(|p| {
-            (
-                p.midi_out,
-                p.midi_mode,
-                p.midi_cc,
-                p.color,
-                p.midi_channel,
-                p.midi_note,
-                p.gatel as u32,
-                p.range,
-                p.nrpn,
-            )
-        });
+    let (
+        midi_out,
+        midi_mode,
+        midi_cc,
+        led_color,
+        midi_chan,
+        base_note,
+        gatel,
+        range,
+        nrpn,
+        gate_out,
+    ) = params.query(|p| {
+        (
+            p.midi_out,
+            p.midi_mode,
+            p.midi_cc,
+            p.color,
+            p.midi_channel,
+            p.midi_note,
+            p.gatel as u32,
+            p.range,
+            p.nrpn,
+            p.gate_out,
+        )
+    });
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
@@ -202,7 +220,16 @@ pub async fn run(
 
     leds.set(0, Led::Button, led_color, Brightness::Mid);
 
-    let jack = app.make_out_jack(0, Range::_0_10V).await;
+    let cv_jack = if !gate_out {
+        Some(app.make_out_jack(0, Range::_0_10V).await)
+    } else {
+        None
+    };
+    let gate_jack = if gate_out {
+        Some(app.make_gate_jack(0, 4095).await)
+    } else {
+        None
+    };
 
     let curve = Curve::Exponential;
 
@@ -221,6 +248,9 @@ pub async fn run(
                 ClockEvent::Reset => {
                     if midi_mode == MidiMode::Note {
                         midi.send_note_off(midi_note.get()).await;
+                    }
+                    if gate_out {
+                        gate_jack.as_ref().unwrap().set_low().await;
                     }
                     register = storage.query(|s| s.register_saved);
                 }
@@ -243,34 +273,61 @@ pub async fn run(
                             if register != reg_old {
                                 storage.modify_and_save(|s| s.register_saved = register);
                             }
+                            leds.set(0, Led::Bottom, Color::White, Brightness::Mid);
                         }
                         let prob = prob_glob.get();
                         let rand = die.roll().clamp(100, 3900);
 
-                        let rotation = rotate_select_bit(register, prob, rand, length);
-                        register = rotation.0;
+                        let (new_reg, _, gate_bit) =
+                            rotate_select_bit(register, prob, rand, length);
+                        register = new_reg;
 
-                        let register_scalled = scale_to_12bit(register, length as u8);
-                        att_reg = ((register_scalled as u32
+                        let register_scaled = scale_to_12bit(register, length as u8);
+                        att_reg = ((register_scaled as u32
                             * curve.at(storage.query(|s| s.att_saved)) as u32)
                             / 4095) as u16;
 
-                        let out = quantizer.get_quantized_note(att_reg).await;
-
-                        jack.set_value(out.as_counts(range));
-                        leds.set(
-                            0,
-                            Led::Top,
-                            led_color,
-                            Brightness::Custom((register_scalled / 16) as u8),
-                        );
-                        match midi_mode {
-                            MidiMode::Note => {
-                                let note = midi_note.set(out.as_midi() + base_note);
-                                midi.send_note_on(note, 4095).await;
+                        if gate_out {
+                            let gate_fires = if storage.query(|s| s.gate_threshold_mode) {
+                                register_scaled < storage.query(|s| s.att_saved)
+                            } else {
+                                gate_bit
+                            };
+                            if gate_fires {
+                                gate_jack.as_ref().unwrap().set_high().await;
+                                leds.set(0, Led::Top, led_color, Brightness::High);
+                            } else {
+                                gate_jack.as_ref().unwrap().set_low().await;
+                                leds.set(0, Led::Top, led_color, Brightness::Off);
                             }
-                            MidiMode::Cc => {
-                                midi.send_cc(midi_cc, att_reg).await;
+                            match midi_mode {
+                                MidiMode::Note => {
+                                    if gate_fires {
+                                        let note = midi_note.set(base_note);
+                                        midi.send_note_on(note, 4095).await;
+                                    }
+                                }
+                                MidiMode::Cc => {
+                                    midi.send_cc(midi_cc, att_reg).await;
+                                }
+                            }
+                        } else {
+                            let out = quantizer.get_quantized_note(att_reg).await;
+                            cv_jack.as_ref().unwrap().set_value(out.as_counts(range));
+                            leds.set(
+                                0,
+                                Led::Top,
+                                led_color,
+                                Brightness::Custom((register_scaled / 16) as u8),
+                            );
+                            match midi_mode {
+                                MidiMode::Note => {
+                                    let note = midi_note.set(out.as_midi() + base_note);
+                                    midi.send_note_on(note, 4095).await;
+                                }
+                                MidiMode::Cc => {
+                                    midi.send_cc(midi_cc, att_reg).await;
+                                }
                             }
                         }
 
@@ -288,10 +345,19 @@ pub async fn run(
                         if midi_mode == MidiMode::Note {
                             midi.send_note_off(midi_note.get()).await;
                         }
+                        if gate_out {
+                            gate_jack.as_ref().unwrap().set_low().await;
+                            leds.set(0, Led::Top, led_color, Brightness::Off);
+                        }
                     }
                 }
-                ClockEvent::Stop if midi_mode == MidiMode::Note => {
-                    midi.send_note_off(midi_note.get()).await;
+                ClockEvent::Stop => {
+                    if midi_mode == MidiMode::Note {
+                        midi.send_note_off(midi_note.get()).await;
+                    }
+                    if gate_out {
+                        gate_jack.as_ref().unwrap().set_low().await;
+                    }
                 }
                 _ => {}
             }
@@ -367,6 +433,14 @@ pub async fn run(
                     shift_old = true;
                     rec_flag.set(true);
                     length_rec.set(0);
+                    if gate_out {
+                        let gate_color = if storage.query(|s| s.gate_threshold_mode) {
+                            Color::Yellow
+                        } else {
+                            Color::Blue
+                        };
+                        leds.set(0, Led::Button, gate_color, Brightness::Mid);
+                    }
                 }
                 leds.set(
                     0,
@@ -382,6 +456,9 @@ pub async fn run(
                 if length >= 1 {
                     length_glob.set(length);
                     storage.modify_and_save(|s| s.length_saved = length);
+                }
+                if gate_out {
+                    leds.set(0, Led::Button, led_color, Brightness::Mid);
                 }
             }
 
@@ -411,10 +488,29 @@ pub async fn run(
         }
     };
 
-    join5(fut1, fut2, fut3, fut4, scene_handler).await;
+    let fut_long_press = async {
+        loop {
+            let (_, shift) = buttons.wait_for_any_long_press().await;
+            if shift && gate_out {
+                rec_flag.set(false);
+                length_rec.set(0);
+                storage.modify_and_save(|s| {
+                    s.gate_threshold_mode = !s.gate_threshold_mode;
+                });
+                let gate_color = if storage.query(|s| s.gate_threshold_mode) {
+                    Color::Yellow
+                } else {
+                    Color::Blue
+                };
+                leds.set(0, Led::Button, gate_color, Brightness::Mid);
+            }
+        }
+    };
+
+    join(join5(fut1, fut2, fut3, fut4, scene_handler), fut_long_press).await;
 }
 
-fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
+fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool, bool) {
     let bit_index = (16 - bit_index).clamp(0, 16);
 
     // Extract the original bit
@@ -432,9 +528,9 @@ fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
     // Insert the (possibly inverted) bit into the MSB
     let result = shifted | ((bit as u16) << 15);
 
-    // Return the new value and whether the bit was flipped
+    // Return the new value, whether the bit was flipped, and the output bit
     let flipped = bit != original_bit;
-    (result, flipped)
+    (result, flipped, bit != 0)
 }
 
 fn scale_to_12bit(input: u16, x: u8) -> u16 {

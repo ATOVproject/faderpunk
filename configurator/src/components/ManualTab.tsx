@@ -359,26 +359,38 @@ const apps: ManualAppData[] = [
       "Color",
       "Range",
       "NRPN",
+      "MIDI Out",
+      "Gate Out",
     ],
-    storage: ["Attenuation", "Length", "Register", "Resolution"],
-    text: "This app is inspired by the concept of a Turing machine as used in modular synthesizers—a type of probabilistic sequencer that generates evolving patterns based on controlled randomness. It can be set to send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. The fader controls the probability of bit flips: when fully down, the sequence loops without changes; when fully up, bit flips occur constantly and the sequence length doubles; in the middle, there’s a 50/50 chance of flipping, resulting in the most randomness. Holding Shift and pressing the button a number of times sets the sequence length—for example, holding Shift and pressing three times sets a 3-step sequence, which is applied upon releasing Shift. The output is quantized for both CV and MIDI notes according to the global quantizer. Parameters include MIDI channel, base note (lowest MIDI note the Turing machine can generate), gate percentage (MIDI only), and color. Main functions include using the fader to set probability, Shift + Fader to set range, Shift + Button to set sequence length, and Button + Fader to set clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th). While setting clock resolution, the bottom LED is orange for triplet divisions and blue for straight divisions. All app state is stored in scenes, including the sequences themselves—making this, as far as we know, the only Turing machine with preset saving.",
+    storage: [
+      "Attenuation",
+      "Length",
+      "Register",
+      "Resolution",
+      "Gate threshold mode",
+    ],
+    text: "A probabilistic sequencer inspired by the Turing machine concept in modular synthesis. A shift register of up to 16 bits evolves over time based on a probability setting, generating melodic and rhythmic patterns that can stay fixed, drift slowly, or change continuously. CV output is always active and quantized to the global quantizer scale. MIDI CC or MIDI notes can be sent simultaneously.\n\n#### Probability\n\nThe **fader** controls the likelihood of bit flips on each clock tick:\n\n- **Bottom** — no flips, the sequence repeats identically\n- **Middle** — 50/50 chance per step, maximum randomness\n- **Top** — constant flips; the effective sequence length also doubles\n\nThe top LED brightness reflects the current output level. A white flash on the bottom LED marks the start of each sequence cycle.\n\n#### Sequence length\n\nHold **Shift** and press the button once per step to record a new length. Each press increments the count; releasing Shift commits it. For example: hold Shift, press three times, release → 3-step sequence. The sequence register and length are both saved per scene.\n\n#### Clock resolution\n\nHold the **button** and move the **fader** to set the clock resolution: 32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th. While adjusting, the bottom LED shows the division type — **orange** for triplets, **blue** for straight.\n\n#### Shift layer\n\nHolding **Shift** activates a second fader layer. The fader now controls **attenuation**, which reduces the CV output range and — in Gate Out mode — doubles as a gate density control. The top LED turns red and reflects the attenuation level.\n\n#### Gate Out mode\n\nWhen **Gate Out** is enabled in the parameters, the output jack outputs a gate signal instead of CV. Two sub-modes are available, toggled at runtime with **Shift + Long press**:\n\n- **Threshold mode** (default, button LED **yellow** while Shift held) — gate fires when the register value falls below the attenuation level. Higher attenuation = fewer gates; lower attenuation = denser gates.\n- **Bit mode** (button LED **blue** while Shift held) — gate fires when the output bit of the shift register is high, producing rhythmic patterns locked to the register's content. The attenuation level has no effect in this mode.\n\nIn Gate Out mode, MIDI sends the **Base Note** parameter on each gate-on event rather than a quantized pitch.",
     channels: [
       {
-        jackTitle: "Output",
-        jackDescription: "0 to 10V CV",
+        jackTitle: "CV / Gate Output",
+        jackDescription:
+          "0–10V quantized CV (Gate Out off) or gate signal (Gate Out on)",
         faderTitle: "Probability",
         faderDescription:
           "Bottom: no bit flip, Top: constant bit flips and doubled sequence length; Middle: max randomness",
-        faderPlusShiftTitle: "Attenuation",
-        faderPlusShiftDescription: "Reduces the output range",
+        faderPlusShiftTitle: "Attenuation / Gate density",
+        faderPlusShiftDescription:
+          "Reduces CV output range; in Gate Out mode controls gate density (threshold mode)",
         faderPlusFnTitle: "Speed",
         faderPlusFnDescription:
           "32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th",
         fnPlusShiftTitle: "Sequence Length",
-        fnPlusShiftDescription: "Press button x times sets length to x",
-        ledTop: "Output level indicator",
+        fnPlusShiftDescription:
+          "Short press x times while holding Shift sets length to x. Long press (Gate Out on): toggle threshold / bit gate mode",
+        ledTop:
+          "CV output level (CV mode) / Gate state — on/off (Gate Out mode)",
         ledTopPlusShift: "Attenuation level in red",
-        ledBottom: "",
+        ledBottom: "White flash at sequence repeat point",
         ledBottomPlusShift: "Flash at tempo",
       },
     ],
