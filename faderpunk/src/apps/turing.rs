@@ -16,8 +16,14 @@ use libfp::{
 };
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
+    App, AppParams, AppStorage, ClockEvent, GateJack, Led, ManagedStorage, OutJack, ParamStore,
+    SceneEvent,
 };
+
+enum Output {
+    Cv(OutJack),
+    Gate(GateJack),
+}
 
 pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 10;
@@ -220,15 +226,10 @@ pub async fn run(
 
     leds.set(0, Led::Button, led_color, Brightness::Mid);
 
-    let cv_jack = if !gate_out {
-        Some(app.make_out_jack(0, Range::_0_10V).await)
+    let output = if gate_out {
+        Output::Gate(app.make_gate_jack(0, 4095).await)
     } else {
-        None
-    };
-    let gate_jack = if gate_out {
-        Some(app.make_gate_jack(0, 4095).await)
-    } else {
-        None
+        Output::Cv(app.make_out_jack(0, Range::_0_10V).await)
     };
 
     let curve = Curve::Exponential;
@@ -249,8 +250,8 @@ pub async fn run(
                     if midi_mode == MidiMode::Note {
                         midi.send_note_off(midi_note.get()).await;
                     }
-                    if gate_out {
-                        gate_jack.as_ref().unwrap().set_low().await;
+                    if let Output::Gate(j) = &output {
+                        j.set_low().await;
                     }
                     register = storage.query(|s| s.register_saved);
                 }
@@ -287,46 +288,49 @@ pub async fn run(
                             * curve.at(storage.query(|s| s.att_saved)) as u32)
                             / 4095) as u16;
 
-                        if gate_out {
-                            let gate_fires = if storage.query(|s| s.gate_threshold_mode) {
-                                register_scaled < storage.query(|s| s.att_saved)
-                            } else {
-                                gate_bit
-                            };
-                            if gate_fires {
-                                gate_jack.as_ref().unwrap().set_high().await;
-                                leds.set(0, Led::Top, led_color, Brightness::High);
-                            } else {
-                                gate_jack.as_ref().unwrap().set_low().await;
-                                leds.set(0, Led::Top, led_color, Brightness::Off);
-                            }
-                            match midi_mode {
-                                MidiMode::Note => {
-                                    if gate_fires {
-                                        let note = midi_note.set(base_note);
-                                        midi.send_note_on(note, 4095).await;
+                        match &output {
+                            Output::Gate(j) => {
+                                let gate_fires = if storage.query(|s| s.gate_threshold_mode) {
+                                    register_scaled < storage.query(|s| s.att_saved)
+                                } else {
+                                    gate_bit
+                                };
+                                if gate_fires {
+                                    j.set_high().await;
+                                    leds.set(0, Led::Top, led_color, Brightness::High);
+                                } else {
+                                    j.set_low().await;
+                                    leds.set(0, Led::Top, led_color, Brightness::Off);
+                                }
+                                match midi_mode {
+                                    MidiMode::Note => {
+                                        if gate_fires {
+                                            let note = midi_note.set(base_note);
+                                            midi.send_note_on(note, 4095).await;
+                                        }
+                                    }
+                                    MidiMode::Cc => {
+                                        midi.send_cc(midi_cc, att_reg).await;
                                     }
                                 }
-                                MidiMode::Cc => {
-                                    midi.send_cc(midi_cc, att_reg).await;
-                                }
                             }
-                        } else {
-                            let out = quantizer.get_quantized_note(att_reg).await;
-                            cv_jack.as_ref().unwrap().set_value(out.as_counts(range));
-                            leds.set(
-                                0,
-                                Led::Top,
-                                led_color,
-                                Brightness::Custom((register_scaled / 16) as u8),
-                            );
-                            match midi_mode {
-                                MidiMode::Note => {
-                                    let note = midi_note.set(out.as_midi() + base_note);
-                                    midi.send_note_on(note, 4095).await;
-                                }
-                                MidiMode::Cc => {
-                                    midi.send_cc(midi_cc, att_reg).await;
+                            Output::Cv(j) => {
+                                let out = quantizer.get_quantized_note(att_reg).await;
+                                j.set_value(out.as_counts(range));
+                                leds.set(
+                                    0,
+                                    Led::Top,
+                                    led_color,
+                                    Brightness::Custom((register_scaled / 16) as u8),
+                                );
+                                match midi_mode {
+                                    MidiMode::Note => {
+                                        let note = midi_note.set(out.as_midi() + base_note);
+                                        midi.send_note_on(note, 4095).await;
+                                    }
+                                    MidiMode::Cc => {
+                                        midi.send_cc(midi_cc, att_reg).await;
+                                    }
                                 }
                             }
                         }
@@ -345,8 +349,8 @@ pub async fn run(
                         if midi_mode == MidiMode::Note {
                             midi.send_note_off(midi_note.get()).await;
                         }
-                        if gate_out {
-                            gate_jack.as_ref().unwrap().set_low().await;
+                        if let Output::Gate(j) = &output {
+                            j.set_low().await;
                             leds.set(0, Led::Top, led_color, Brightness::Off);
                         }
                     }
@@ -355,8 +359,8 @@ pub async fn run(
                     if midi_mode == MidiMode::Note {
                         midi.send_note_off(midi_note.get()).await;
                     }
-                    if gate_out {
-                        gate_jack.as_ref().unwrap().set_low().await;
+                    if let Output::Gate(j) = &output {
+                        j.set_low().await;
                     }
                 }
                 _ => {}
