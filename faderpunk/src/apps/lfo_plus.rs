@@ -103,6 +103,7 @@ pub struct Storage {
     in_att: u16,
     in_mute: bool,
     dest: usize,
+    out_muted: bool,
 }
 
 impl Default for Storage {
@@ -115,6 +116,7 @@ impl Default for Storage {
             in_att: 4095,
             in_mute: false,
             dest: 0, // 0 => speed, 1 => phase, 2 => amp, 3 => reset
+            out_muted: false,
         }
     }
 }
@@ -198,7 +200,12 @@ pub async fn run(
 
     let color = get_color_for(wave);
 
-    leds.set(1, Led::Button, color, Brightness::Mid);
+    let glob_out_muted = app.make_global(storage.query(|s| s.out_muted));
+    let long_press_fired = app.make_global(false);
+
+    if !glob_out_muted.get() {
+        leds.set(1, Led::Button, color, Brightness::Mid);
+    }
 
     glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
     glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
@@ -294,11 +301,17 @@ pub async fn run(
                 )
             };
 
-            output.set_value(val);
+            let out_muted = glob_out_muted.get();
+            let effective_val = if out_muted {
+                if range.is_bipolar() { 2047 } else { 0 }
+            } else {
+                val
+            };
+            output.set_value(effective_val);
             if midi_out.is_some() {
-                let cc = scale_bits_12_7(val);
+                let cc = scale_bits_12_7(effective_val);
                 if cc != last_cc {
-                    midi.send_cc(midi_cc, val).await;
+                    midi.send_cc(midi_cc, effective_val).await;
                     last_cc = cc;
                 }
             }
@@ -311,7 +324,9 @@ pub async fn run(
 
             let color = get_color_for(wave);
 
-            if sync && next_pos as u16 > 2048 {
+            if out_muted {
+                leds.unset(1, Led::Button);
+            } else if sync && next_pos as u16 > 2048 {
                 leds.set(1, Led::Button, color, Brightness::Low);
             } else {
                 leds.set(1, Led::Button, color, Brightness::Mid);
@@ -419,13 +434,18 @@ pub async fn run(
                     });
                 }
                 if chan == 1 {
-                    let wave = storage.modify_and_save(|s| {
-                        s.wave = s.wave.cycle();
-                        s.wave
-                    });
-
-                    let color = get_color_for(wave);
-                    leds.set(1, Led::Button, color, Brightness::Mid);
+                    long_press_fired.set(false);
+                    buttons.wait_for_up(1).await;
+                    if !long_press_fired.get() {
+                        let wave = storage.modify_and_save(|s| {
+                            s.wave = s.wave.cycle();
+                            s.wave
+                        });
+                        if !glob_out_muted.get() {
+                            let color = get_color_for(wave);
+                            leds.set(1, Led::Button, color, Brightness::Mid);
+                        }
+                    }
                 }
             } else {
                 if chan == 0 {
@@ -453,6 +473,19 @@ pub async fn run(
                     let current_color = get_color_for(current_wave);
                     leds.set_mode(1, Led::Button, LedMode::Flash(current_color, Some(4)));
                 }
+            } else if chan == 1 && !shift {
+                long_press_fired.set(true);
+                let muted = glob_out_muted.toggle();
+                storage.modify_and_save(|s| {
+                    s.out_muted = muted;
+                });
+                if muted {
+                    leds.unset(1, Led::Button);
+                } else {
+                    let wave = storage.query(|s| s.wave);
+                    let color = get_color_for(wave);
+                    leds.set(1, Led::Button, color, Brightness::Mid);
+                }
             }
         }
     };
@@ -475,14 +508,19 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let speed = storage.query(|s| s.layer_speed);
-                    let wave_saved = storage.query(|s| s.wave);
+                    let (speed, wave_saved, out_muted) =
+                        storage.query(|s| (s.layer_speed, s.wave, s.out_muted));
 
                     glob_lfo_speed.set(curve.at(speed) as f32 * 0.015 + 0.0682);
                     glob_div.set(resolution[(speed as usize / 500).clamp(0, 8)]);
+                    glob_out_muted.set(out_muted);
 
-                    let color = get_color_for(wave_saved);
-                    leds.set(1, Led::Button, color, Brightness::Mid);
+                    if out_muted {
+                        leds.unset(1, Led::Button);
+                    } else {
+                        let color = get_color_for(wave_saved);
+                        leds.set(1, Led::Button, color, Brightness::Mid);
+                    }
                 }
                 SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }

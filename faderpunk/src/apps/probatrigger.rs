@@ -86,7 +86,7 @@ impl AppParams for Params {
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     fader_saved: u16,
-    mute_saved: bool,
+    muted: bool,
     prob_saved: u16,
 }
 
@@ -94,7 +94,7 @@ impl Default for Storage {
     fn default() -> Self {
         Self {
             fader_saved: 3000,
-            mute_saved: false,
+            muted: false,
             prob_saved: 4096,
         }
     }
@@ -165,7 +165,7 @@ pub async fn run(
 
     let mut rndval = die.roll();
 
-    let (res, mute, prob) = storage.query(|s| (s.fader_saved, s.mute_saved, s.prob_saved));
+    let (res, mute, prob) = storage.query(|s| (s.fader_saved, s.muted, s.prob_saved));
 
     glob_muted.set(mute);
     prob_glob.set(prob);
@@ -247,8 +247,8 @@ pub async fn run(
             let muted = glob_muted.toggle();
 
             storage.modify_and_save(|s| {
-                s.mute_saved = muted;
-                s.mute_saved
+                s.muted = muted;
+                s.muted
             });
 
             if muted {
@@ -295,7 +295,7 @@ pub async fn run(
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                     let (res, mute, prob) =
-                        storage.query(|s| (s.fader_saved, s.mute_saved, s.prob_saved));
+                        storage.query(|s| (s.fader_saved, s.muted, s.prob_saved));
 
                     glob_muted.set(mute);
                     prob_glob.set(prob);

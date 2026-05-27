@@ -99,7 +99,7 @@ pub struct Storage {
     fader_saved: [u16; 2],
     shift_fader_saved: [u16; 2],
     div_saved: u16,
-    mute_saved: bool,
+    muted: bool,
     mode: bool,
 }
 
@@ -109,7 +109,7 @@ impl Default for Storage {
             fader_saved: [2000; 2],
             shift_fader_saved: [0, 4095],
             div_saved: 3000,
-            mute_saved: false,
+            muted: false,
             mode: true,
         }
     }
@@ -189,7 +189,7 @@ pub async fn run(
         (
             s.fader_saved,
             s.shift_fader_saved,
-            s.mute_saved,
+            s.muted,
             s.div_saved,
         )
     });
@@ -335,12 +335,13 @@ pub async fn run(
                     let muted = glob_muted.toggle();
 
                     storage.modify_and_save(|s| {
-                        s.mute_saved = muted;
-                        s.mute_saved
+                        s.muted = muted;
+                        s.muted
                     });
 
                     if muted {
                         jack[0].set_low().await;
+                        jack[1].set_low().await;
                         leds.unset_chan(1);
                     } else {
                         leds.set(1, Led::Button, led_color, LED_BRIGHTNESS);
@@ -457,7 +458,7 @@ pub async fn run(
                             * num_beat_glob.get() as u32
                             / 4095) as u8,
                     );
-                    let muted = storage.query(|s| s.mute_saved);
+                    let muted = storage.query(|s| s.muted);
                     glob_muted.set(muted);
                     if muted {
                         leds.unset(1, Led::Button);

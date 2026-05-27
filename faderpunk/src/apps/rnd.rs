@@ -81,7 +81,7 @@ impl AppParams for Params {
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     fader_saved: u16,
-    mute_save: bool,
+    muted: bool,
     att_saved: u16,
     slew_saved: u16,
     clocked: bool,
@@ -91,7 +91,7 @@ impl Default for Storage {
     fn default() -> Self {
         Self {
             fader_saved: 3000,
-            mute_save: false,
+            muted: false,
             att_saved: 4096,
             slew_saved: 0,
             clocked: true,
@@ -150,6 +150,7 @@ pub async fn run(
     let output = app.make_out_jack(0, range).await;
 
     let glob_muted = app.make_global(false);
+    let long_press_fired = app.make_global(false);
     let div_glob = app.make_global(6);
     let val_glob = app.make_global(0);
     let glob_button_color = app.make_global(Color::White);
@@ -163,7 +164,7 @@ pub async fn run(
     let curve = Curve::Exponential;
     let fader_curve = Curve::Exponential;
 
-    let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_save));
+    let (res, mute) = storage.query(|s| (s.fader_saved, s.muted));
 
     glob_muted.set(mute);
     div_glob.set(resolution[res as usize / 345]);
@@ -222,17 +223,19 @@ pub async fn run(
     let fut2 = async {
         loop {
             buttons.wait_for_any_down().await;
-            if buttons.is_shift_pressed() {
-                let muted = glob_muted.toggle();
-
-                storage.modify_and_save(|s| {
-                    s.mute_save = muted;
-                });
-
-                if muted {
-                    leds.unset_all();
-                } else {
-                    leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
+            if !buttons.is_shift_pressed() {
+                long_press_fired.set(false);
+                buttons.wait_for_up(0).await;
+                if !long_press_fired.get() {
+                    let muted = glob_muted.toggle();
+                    storage.modify_and_save(|s| {
+                        s.muted = muted;
+                    });
+                    if muted {
+                        leds.unset_all();
+                    } else {
+                        leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
+                    }
                 }
             }
         }
@@ -240,20 +243,12 @@ pub async fn run(
     let long_press = async {
         loop {
             buttons.wait_for_any_long_press().await;
-
+            long_press_fired.set(true);
             if buttons.is_shift_pressed() {
                 let clocked = storage.query(|s: &Storage| s.clocked);
-
-                let muted = glob_muted.toggle();
                 storage.modify_and_save(|s| {
                     s.clocked = !clocked;
-                    s.mute_save = muted;
                 });
-                if muted {
-                    leds.unset_all();
-                } else {
-                    leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
-                }
             }
         }
     };
@@ -295,7 +290,7 @@ pub async fn run(
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                     let (res, mute, _) =
-                        storage.query(|s| (s.fader_saved, s.mute_save, s.att_saved));
+                        storage.query(|s| (s.fader_saved, s.muted, s.att_saved));
 
                     glob_muted.set(mute);
                     div_glob.set(resolution[res as usize / 345]);

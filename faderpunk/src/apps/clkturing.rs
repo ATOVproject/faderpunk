@@ -2,7 +2,7 @@
 // Quantizer
 
 use embassy_futures::{
-    join::join5,
+    join::{join, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -106,6 +106,7 @@ pub struct Storage {
     att_saved: u16,
     length_saved: u16,
     register_saved: u16,
+    muted: bool,
 }
 
 impl Default for Storage {
@@ -114,6 +115,7 @@ impl Default for Storage {
             att_saved: 3000,
             length_saved: 8,
             register_saved: 0,
+            muted: false,
         }
     }
 }
@@ -192,8 +194,15 @@ pub async fn run(
 
     let quantizer = app.use_quantizer(range, vpo, bypass);
 
+    let glob_muted = app.make_global(storage.query(|s| s.muted));
+    let long_press_fired = app.make_global(false);
+
     leds.set(0, Led::Button, led_color, Brightness::Mid);
-    leds.set(1, Led::Button, led_color, Brightness::Mid);
+    if glob_muted.get() {
+        leds.unset(1, Led::Button);
+    } else {
+        leds.set(1, Led::Button, led_color, Brightness::Mid);
+    }
 
     let input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
@@ -231,28 +240,31 @@ pub async fn run(
 
                 let out = quantizer.get_quantized_note(att_reg).await;
 
-                output.set_value(out.as_counts(range, vpo));
-                leds.set(
-                    0,
-                    Led::Top,
-                    led_color,
-                    Brightness::Custom((register_scalled / 16) as u8),
-                );
-                leds.set(
-                    1,
-                    Led::Top,
-                    led_color,
-                    Brightness::Custom((att_reg / 16) as u8),
-                );
+                let muted = glob_muted.get();
+                if !muted {
+                    output.set_value(out.as_counts(range, vpo));
+                    leds.set(
+                        0,
+                        Led::Top,
+                        led_color,
+                        Brightness::Custom((register_scalled / 16) as u8),
+                    );
+                    leds.set(
+                        1,
+                        Led::Top,
+                        led_color,
+                        Brightness::Custom((att_reg / 16) as u8),
+                    );
 
-                if let MidiMode::Note = midi_mode {
-                    let note = base_note + out.as_midi();
-                    midi.send_note_on(note, 4095).await;
-                    midi_note.set(note);
-                }
+                    if let MidiMode::Note = midi_mode {
+                        let note = base_note + out.as_midi();
+                        midi.send_note_on(note, 4095).await;
+                        midi_note.set(note);
+                    }
 
-                if let MidiMode::Cc = midi_mode {
-                    midi.send_cc(midi_cc, att_reg).await;
+                    if let MidiMode::Cc = midi_mode {
+                        midi.send_cc(midi_cc, att_reg).await;
+                    }
                 }
 
                 leds.set(0, Led::Bottom, Color::Red, Brightness::High);
@@ -308,11 +320,27 @@ pub async fn run(
 
     let fut3 = async {
         loop {
-            let shift = buttons.wait_for_down(0).await;
-            let mut length = length_rec.get();
-            if shift && rec_flag.get() {
-                length += 1;
-                length_rec.set(length.min(16));
+            let (chan, shift) = buttons.wait_for_any_down().await;
+            if chan == 0 {
+                let mut length = length_rec.get();
+                if shift && rec_flag.get() {
+                    length += 1;
+                    length_rec.set(length.min(16));
+                }
+            } else if chan == 1 && !shift {
+                long_press_fired.set(false);
+                buttons.wait_for_up(1).await;
+                if !long_press_fired.get() {
+                    let muted = glob_muted.toggle();
+                    storage.modify_and_save(|s| {
+                        s.muted = muted;
+                    });
+                    if muted {
+                        leds.unset(1, Led::Button);
+                    } else {
+                        leds.set(1, Led::Button, led_color, Brightness::Mid);
+                    }
+                }
             }
         }
     };
@@ -345,12 +373,19 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let (length, register) = storage.query(|s| (s.length_saved, s.register_saved));
+                    let (length, register, muted) =
+                        storage.query(|s| (s.length_saved, s.register_saved, s.muted));
 
                     length_glob.set(length);
                     register_glob.set(register);
                     recall_flag.set(true);
                     prob_glob.set(0);
+                    glob_muted.set(muted);
+                    if muted {
+                        leds.unset(1, Led::Button);
+                    } else {
+                        leds.set(1, Led::Button, led_color, Brightness::Mid);
+                    }
                 }
 
                 SceneEvent::SaveScene(scene) => {
@@ -360,7 +395,14 @@ pub async fn run(
         }
     };
 
-    join5(fut1, fut2, fut3, fut4, scene_handler).await;
+    let long_press = async {
+        loop {
+            buttons.wait_for_any_long_press().await;
+            long_press_fired.set(true);
+        }
+    };
+
+    join(long_press, join5(fut1, fut2, fut3, fut4, scene_handler)).await;
 }
 
 fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {

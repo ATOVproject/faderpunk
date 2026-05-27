@@ -68,8 +68,8 @@ const apps: ManualAppData[] = [
       "NRPN",
       "Send MIDI",
     ],
-    storage: ["Clocked", "Attenuation", "Speed", "Waveform"],
-    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
+    storage: ["Clocked", "Attenuation", "Speed", "Waveform", "Muted"],
+    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Long press (no shift) mutes the output. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
     channels: [
       {
         jackTitle: "Output",
@@ -79,11 +79,10 @@ const apps: ManualAppData[] = [
           "Sets the LFO speed, top is maximum and bottom slowest",
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range",
-        fnTitle: "Waveform selection",
-        fnDescription:
-          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
-        fnPlusShiftTitle: "Reset - Clocked mode",
-        fnPlusShiftDescription: "Short reset - Long clock mode",
+        fnTitle: "Waveform / Mute",
+        fnDescription: "Short: cycle waveform. Long (no shift): mute output",
+        fnPlusShiftTitle: "Reset / Clocked mode",
+        fnPlusShiftDescription: "Short: reset LFO. Long: toggle clocked mode",
         ledTop: "Positive level indicator",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "Negative level indicator",
@@ -103,8 +102,9 @@ const apps: ManualAppData[] = [
       "Mode",
       "Attenuation",
       "Trigger to gate timing",
+      "Muted",
     ],
-    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. The 'MIDI retrigger' parameter allow for the envelope to be retriggered when MIDI notes are overlapping",
+    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. Long press on Button 2 (no shift) mutes the envelope output. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. The 'MIDI retrigger' parameter allow for the envelope to be retriggered when MIDI notes are overlapping",
     channels: [
       {
         jackTitle: "Gate Input",
@@ -113,9 +113,8 @@ const apps: ManualAppData[] = [
         faderDescription: "Sets the attack time from 0 to 4 sec",
         faderPlusShiftTitle: "Trigger to gate time",
         faderPlusShiftDescription: "0-4 sec. Infinite at maximum.",
-        fnTitle: "Attack curve selection",
-        fnDescription:
-          "Linear (yellow), logarithmic (pink), exponential (blue)",
+        fnTitle: "Attack curve",
+        fnDescription: "Short: cycle attack curve",
         ledTop: "Output level in attack phase",
         ledTopPlusShift: "Trigger to gate time (flash)",
         ledBottom: "Gate input state",
@@ -128,9 +127,8 @@ const apps: ManualAppData[] = [
         faderDescription: "Sets the decay time from 0 to 4 sec",
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range.",
-        fnTitle: "Decay curve selection",
-        fnDescription:
-          "Linear (yellow), logarithmic (pink), exponential (blue)",
+        fnTitle: "Decay curve / Mute",
+        fnDescription: "Short: cycle decay curve. Long (no shift): mute output",
         ledTop: "Output level in decay phase",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "inactive",
@@ -148,7 +146,7 @@ const apps: ManualAppData[] = [
     icon: "random",
     params: ["Range", "MIDI Channel", "MIDI CC", "NRPN"],
     storage: ["Speed", "Muted", "Attenuation", "Slew", "Clocked"],
-    text: "This app sends random CC and CV values at regular intervals, either in free-running mode or synced to a clock. The timing is set using the fader, and the MIDI channel and CC number can be configured in the parameters. Shift + Fader attenuates both CV and CC outputs, while Button + Fader accesses the onboard slew limiter, which smooths changes in both CV and CC values. Shift + Button toggles mute/unmute for the outputs. The output range can be set to unipolar or bipolar in the parameters, which also determines the mute behavior—settling at 0 in unipolar mode and in the middle in bipolar mode, similar to the Control app. Shift + Button long press switches between free-running and tempo-synced operation.",
+    text: "This app sends random CC and CV values at regular intervals, either in free-running mode or synced to a clock. The timing is set using the fader, and the MIDI channel and CC number can be configured in the parameters. Shift + Fader attenuates both CV and CC outputs, while Button + Fader accesses the onboard slew limiter, which smooths changes in both CV and CC values. Button (no shift) toggles mute/unmute. The output range can be set to unipolar or bipolar in the parameters, which also determines the mute behavior—settling at 0 in unipolar mode and in the middle in bipolar mode, similar to the Control app. Shift + long press switches between free-running and tempo-synced operation.",
     channels: [
       {
         jackTitle: "Output",
@@ -159,10 +157,10 @@ const apps: ManualAppData[] = [
         faderPlusShiftDescription: "Reduces the output range",
         faderPlusFnTitle: "Slew",
         faderPlusFnDescription: "Slew limiter timing.",
-        fnTitle: "",
-        fnDescription: "",
-        fnPlusShiftTitle: "Mute - Clocked mode",
-        fnPlusShiftDescription: "Short mute - Long clock mode",
+        fnTitle: "Mute",
+        fnDescription: "Short press (no shift) toggles mute",
+        fnPlusShiftTitle: "Clocked mode",
+        fnPlusShiftDescription: "Long press: toggle free-running/clocked",
         ledTop: "Positive level indicator",
         ledTopPlusShift: "Attenuation level in red",
         ledTopPlusFn: "Slew level in green",
@@ -201,8 +199,9 @@ const apps: ManualAppData[] = [
       "Directions",
       "Probabilities",
       "Slide times",
+      "Muted (per track)",
     ],
-    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, navigated with **Shift + Buttons**. CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, 5&6 for sequencer 3, and 7&8 for sequencer 4. Faders set note values, buttons define the gate pattern, and **long button presses** enable legato between steps. CV output is quantized to the scale set in the global quantizer.\n\n#### Shift mode\n\nWith Shift held, all 8 faders control settings for the currently selected sequencer:\n\n- **Fader 1** — step length (1–16 steps)\n- **Fader 2** — gate length\n- **Fader 3** — octave offset (0–5 octaves)\n- **Fader 4** — sequence range (1–5 octaves)\n- **Fader 5** — clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th)\n- **Fader 6** — direction (Forward / Backward / Ping-Pong / Random)\n- **Fader 7** — trigger probability (5%–100%)\n- **Fader 8** — 303-style slide time (0 = instant)\n\nTop LEDs show sequence length. Resolution LED color: **orange** = triplet division, **blue** = straight division.\n\n#### MIDI transposition\n\nEach track can be live-transposed via incoming MIDI. Assign a dedicated transpose MIDI channel per track in the parameters. Receiving a NoteOn on that channel shifts the track's output relative to **C4** — middle C = no change, notes above/below transpose up/down by semitones. Transposition applies to both CV and MIDI output.\n\n#### Velocity lane mode (tracks 2 and 4)\n\nWhen enabled, a track acts as a velocity lane for its paired primary track (track 2 → track 1, track 4 → track 3):\n\n- **Fader** — controls the MIDI velocity sent to the paired track, not a note value\n- **CV output** — unquantized voltage proportional to fader position (0–10V)\n- **Gate button** — controls whether velocity advances on that step (on) or holds the previous value (off)\n- MIDI notes are suppressed on the velocity lane track itself",
+    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, navigated with **Shift + Buttons** (short press). CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, 5&6 for sequencer 3, and 7&8 for sequencer 4. Faders set note values, buttons define the gate pattern, and **long button presses** enable legato between steps. CV output is quantized to the scale set in the global quantizer.\n\n#### Shift mode\n\nWith Shift held, all 8 faders control settings for the currently selected sequencer:\n\n- **Fader 1** — step length (1–16 steps)\n- **Fader 2** — gate length\n- **Fader 3** — octave offset (0–5 octaves)\n- **Fader 4** — sequence range (1–5 octaves)\n- **Fader 5** — clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th)\n- **Fader 6** — direction (Forward / Backward / Ping-Pong / Random)\n- **Fader 7** — trigger probability (5%–100%)\n- **Fader 8** — 303-style slide time (0 = instant)\n\nTop LEDs show sequence length. Resolution LED color: **orange** = triplet division, **blue** = straight division.\n\n#### Muting tracks\n\n**Shift + long press** on an even button (0, 2, 4, or 6) mutes the corresponding track (1–4). While muted, gates and CV are suppressed and the top and position LEDs turn off; the gate pattern remains visible so the sequence can still be edited. Mute state is saved per scene.\n\n#### MIDI transposition\n\nEach track can be live-transposed via incoming MIDI. Assign a dedicated transpose MIDI channel per track in the parameters. Receiving a NoteOn on that channel shifts the track's output relative to **C4** — middle C = no change, notes above/below transpose up/down by semitones. Transposition applies to both CV and MIDI output.\n\n#### Velocity lane mode (tracks 2 and 4)\n\nWhen enabled, a track acts as a velocity lane for its paired primary track (track 2 → track 1, track 4 → track 3):\n\n- **Fader** — controls the MIDI velocity sent to the paired track, not a note value\n- **CV output** — unquantized voltage proportional to fader position (0–10V)\n- **Gate button** — controls whether velocity advances on that step (on) or holds the previous value (off)\n- MIDI notes are suppressed on the velocity lane track itself",
     channels: [
       {
         jackTitle: "CV Output",
@@ -215,7 +214,9 @@ const apps: ManualAppData[] = [
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
-        fnPlusShiftTitle: "Select Seq 1, page 1",
+        fnPlusShiftTitle: "Seq 1 page 1 / Mute Seq 1",
+        fnPlusShiftDescription:
+          "Short: select page. Long: mute/unmute sequencer 1",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -248,7 +249,9 @@ const apps: ManualAppData[] = [
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
-        fnPlusShiftTitle: "Select Seq 2, page 1",
+        fnPlusShiftTitle: "Seq 2 page 1 / Mute Seq 2",
+        fnPlusShiftDescription:
+          "Short: select page. Long: mute/unmute sequencer 2",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -282,7 +285,9 @@ const apps: ManualAppData[] = [
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
-        fnPlusShiftTitle: "Select Seq 3, page 1",
+        fnPlusShiftTitle: "Seq 3 page 1 / Mute Seq 3",
+        fnPlusShiftDescription:
+          "Short: select page. Long: mute/unmute sequencer 3",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -318,7 +323,9 @@ const apps: ManualAppData[] = [
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
-        fnPlusShiftTitle: "Select Seq 4, page 1",
+        fnPlusShiftTitle: "Seq 4 page 1 / Mute Seq 4",
+        fnPlusShiftDescription:
+          "Short: select page. Long: mute/unmute sequencer 4",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -368,8 +375,9 @@ const apps: ManualAppData[] = [
       "Register",
       "Resolution",
       "Gate threshold mode",
+      "Muted",
     ],
-    text: "A probabilistic sequencer inspired by the Turing machine concept in modular synthesis. A shift register of up to 16 bits evolves over time based on a probability setting, generating melodic and rhythmic patterns that can stay fixed, drift slowly, or change continuously. CV output is always active and quantized to the global quantizer scale. MIDI CC or MIDI notes can be sent simultaneously.\n\n#### Probability\n\nThe **fader** controls the likelihood of bit flips on each clock tick:\n\n- **Bottom** — no flips, the sequence repeats identically\n- **Middle** — 50/50 chance per step, maximum randomness\n- **Top** — constant flips; the effective sequence length also doubles\n\nThe top LED brightness reflects the current output level. A white flash on the bottom LED marks the start of each sequence cycle.\n\n#### Sequence length\n\nHold **Shift** and press the button once per step to record a new length. Each press increments the count; releasing Shift commits it. For example: hold Shift, press three times, release → 3-step sequence. The sequence register and length are both saved per scene.\n\n#### Clock resolution\n\nHold the **button** and move the **fader** to set the clock resolution: 32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th. While adjusting, the bottom LED shows the division type — **orange** for triplets, **blue** for straight.\n\n#### Shift layer\n\nHolding **Shift** activates a second fader layer. The fader now controls **attenuation**, which reduces the CV output range and — in Gate Out mode — doubles as a gate density control. The top LED turns red and reflects the attenuation level.\n\n#### Gate Out mode\n\nWhen **Gate Out** is enabled in the parameters, the output jack outputs a gate signal instead of CV. Two sub-modes are available, toggled at runtime with **Shift + Long press**:\n\n- **Threshold mode** (default, button LED **yellow** while Shift held) — gate fires when the register value falls below the attenuation level. Higher attenuation = fewer gates; lower attenuation = denser gates.\n- **Bit mode** (button LED **blue** while Shift held) — gate fires when the output bit of the shift register is high, producing rhythmic patterns locked to the register's content. The attenuation level has no effect in this mode.\n\nIn Gate Out mode, MIDI sends the **Base Note** parameter on each gate-on event rather than a quantized pitch.",
+    text: "A probabilistic sequencer inspired by the Turing machine concept in modular synthesis. A shift register of up to 16 bits evolves over time based on a probability setting, generating melodic and rhythmic patterns that can stay fixed, drift slowly, or change continuously. CV output is always active and quantized to the global quantizer scale. MIDI CC or MIDI notes can be sent simultaneously.\n\n#### Probability\n\nThe **fader** controls the likelihood of bit flips on each clock tick:\n\n- **Bottom** — no flips, the sequence repeats identically\n- **Middle** — 50/50 chance per step, maximum randomness\n- **Top** — constant flips; the effective sequence length also doubles\n\nThe top LED brightness reflects the current output level. A white flash on the bottom LED marks the start of each sequence cycle.\n\n#### Mute\n\nA **short press** (without Shift) toggles mute. When muted, the CV output holds its last value rather than dropping to 0, and the button LED turns off. Mute state is saved per scene.\n\n#### Sequence length\n\nHold **Shift** and press the button once per step to record a new length. Each press increments the count; releasing Shift commits it. For example: hold Shift, press three times, release → 3-step sequence. The sequence register and length are both saved per scene.\n\n#### Clock resolution\n\nHold the **button** and move the **fader** to set the clock resolution: 32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th. While adjusting, the bottom LED shows the division type — **orange** for triplets, **blue** for straight.\n\n#### Shift layer\n\nHolding **Shift** activates a second fader layer. The fader now controls **attenuation**, which reduces the CV output range and — in Gate Out mode — doubles as a gate density control. The top LED turns red and reflects the attenuation level.\n\n#### Gate Out mode\n\nWhen **Gate Out** is enabled in the parameters, the output jack outputs a gate signal instead of CV. Two sub-modes are available, toggled at runtime with **Shift + Long press**:\n\n- **Threshold mode** (default, button LED **yellow** while Shift held) — gate fires when the register value falls below the attenuation level. Higher attenuation = fewer gates; lower attenuation = denser gates.\n- **Bit mode** (button LED **blue** while Shift held) — gate fires when the output bit of the shift register is high, producing rhythmic patterns locked to the register’s content. The attenuation level has no effect in this mode.\n\nIn Gate Out mode, MIDI sends the **Base Note** parameter on each gate-on event rather than a quantized pitch.",
     channels: [
       {
         jackTitle: "CV / Gate Output",
@@ -384,6 +392,8 @@ const apps: ManualAppData[] = [
         faderPlusFnTitle: "Speed",
         faderPlusFnDescription:
           "32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th",
+        fnTitle: "Mute",
+        fnDescription: "Short press (no shift) mutes/unmutes the output",
         fnPlusShiftTitle: "Sequence Length",
         fnPlusShiftDescription:
           "Short press x times while holding Shift sets length to x. Long press (Gate Out on): toggle threshold / bit gate mode",
@@ -410,8 +420,8 @@ const apps: ManualAppData[] = [
       "Base note",
       "NRPN",
     ],
-    storage: ["Attenuation", "Length", "Register"],
-    text: "Similar to the previous one, this is a classic Turing machine but extended to use two slots. The first jack is a clock input and the second is the CV output. The physical clock input allows for non-linear timing, custom dividers, or interaction with MIDI note lengths. The app can send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. MIDI note on messages are sent on rising edges and note off messages on falling edges. Main functions: Fader 1 sets probability, Fader 2 sets output range. Shift + Button sets sequence length. The output is quantized by the global quantizer.",
+    storage: ["Attenuation", "Length", "Register", "Muted"],
+    text: "Similar to the previous one, this is a classic Turing machine but extended to use two slots. The first jack is a clock input and the second is the CV output. The physical clock input allows for non-linear timing, custom dividers, or interaction with MIDI note lengths. The app can send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. MIDI note on messages are sent on rising edges and note off messages on falling edges. Main functions: Fader 1 sets probability, Fader 2 sets output range. Shift + Button sets sequence length. Short press (no shift) on button 2 mutes the output; the CV holds its last value rather than dropping to 0. The output is quantized by the global quantizer.",
     channels: [
       {
         jackTitle: "Gate input",
@@ -430,6 +440,8 @@ const apps: ManualAppData[] = [
         jackDescription: "0 to 10V CV",
         faderTitle: "Attenuation",
         faderDescription: "Reduces the output range",
+        fnTitle: "Mute",
+        fnDescription: "Short press (no shift) mutes/unmutes the output",
         ledTop: "Output level indicator",
         ledBottom: "",
       },
@@ -620,8 +632,8 @@ const apps: ManualAppData[] = [
     color: "Pink",
     icon: "env-follower",
     params: ["Color", "Range"],
-    storage: ["Attack", "Attenuvertion", "Offset", "Input Gain"],
-    text: "This app is an envelope follower with input and output ranges of ±5V. Jack 1 is the input, Jack 2 is the output. It includes offset and attenuverter functionality, making it ideal for driving VCAs or implementing sidechain compression. The attenuverter has a maximum gain of 2x. Main functions include Fader 1 for attack and Fader 2 for decay. Shift + Fader 1 sets offset, Shift + Fader 2 sets attenuvertion. Button 1 kills the offset, Button 2 sets the attenuvertion. Button 1 + Fader 1 adjusts input gain from 1x to 3x.",
+    storage: ["Attack", "Attenuvertion", "Offset", "Input Gain", "Muted"],
+    text: "This app is an envelope follower with input and output ranges of ±5V. Jack 1 is the input, Jack 2 is the output. It includes offset and attenuverter functionality, making it ideal for driving VCAs or implementing sidechain compression. The attenuverter has a maximum gain of 2x. Main functions include Fader 1 for attack and Fader 2 for decay. Shift + Fader 1 sets offset, Shift + Fader 2 sets attenuvertion. Button 2 (no shift) mutes the output. Shift + Button 1 resets the offset to neutral, Shift + Button 2 resets the attenuation to unity. Button 1 + Fader 1 adjusts input gain from 1x to 3x.",
     channels: [
       {
         jackTitle: "Input",
@@ -633,8 +645,10 @@ const apps: ManualAppData[] = [
         faderPlusFnTitle: "Input Gain",
         faderPlusFnDescription:
           "Adjusts input gain from 1x to 3x using Button 1 + Fader 1",
-        fnTitle: "Kill Offset",
-        fnDescription: "Button 1 disables the offset",
+        fnTitle: "",
+        fnDescription: "",
+        fnPlusShiftTitle: "Reset Offset",
+        fnPlusShiftDescription: "Shift + Button 1 resets offset to neutral",
         ledTop: "Positive input",
         ledBottom: "Negative input",
       },
@@ -646,8 +660,10 @@ const apps: ManualAppData[] = [
         faderPlusShiftTitle: "Attenuverter",
         faderPlusShiftDescription:
           "Scales and inverts the envelope signal (max gain 2x)",
-        fnTitle: "Set Attenuverter",
-        fnDescription: "Button 2 enables or configures the attenuvertion",
+        fnTitle: "Mute",
+        fnDescription: "Short press (no shift) mutes/unmutes the output",
+        fnPlusShiftTitle: "Reset Attenuation",
+        fnPlusShiftDescription: "Shift + Button 2 resets attenuation to unity",
         ledTop: "Positive output",
         ledBottom: "Negative output",
       },
@@ -796,7 +812,7 @@ const apps: ManualAppData[] = [
     icon: "note-box",
     params: ["MIDI Channel", "MIDI Note", "GATE %", "Divisions", "Color"],
     storage: ["Division", "Muted", "Maximum division", "Minimum division"],
-    text: "This is a simple clock divider app that was suggested by youtuber and Discord member Synthdad. The app allows for a performative control of clock division/multiplication allowing for 'build ups and drops' for example. The maximum and minimum divisions can be user set using shift + fader and button + fader respectively. These are saved into the scenes allowing you to set different ranges depending on your needs. The **Divisions** parameter selects which divider set is available to the fader: **Straight**, **Triplets**, or **Both**.",
+    text: "This is a simple clock divider app that was suggested by youtuber and Discord member Synthdad. The app allows for a performative control of clock division/multiplication allowing for 'build ups and drops' for example. The maximum and minimum divisions can be user set using shift + fader and button + fader respectively. These are saved into the scenes allowing you to set different ranges depending on your needs. Button (no shift) mutes the output. The **Divisions** parameter selects which divider set is available to the fader: **Straight**, **Triplets**, or **Both**.",
     channels: [
       {
         jackTitle: "Trigger out",
@@ -806,9 +822,9 @@ const apps: ManualAppData[] = [
           "32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar, 2 bars, 4 bars",
         faderPlusFnTitle: "Minimum division",
         faderPlusShiftTitle: "Maximum division",
-        fnTitle: "",
+        fnTitle: "Mute",
         fnDescription: "",
-        fnPlusShiftTitle: "Mute",
+        fnPlusShiftTitle: "",
         ledTop: "Trigger activity indicator",
         ledTopPlusShift: "Maximum division (orange: triplet, blue: straight)",
         ledBottomPlusShift:
@@ -964,7 +980,7 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
       "CV mute",
       "CV destination",
     ],
-    text: "**Clock Divider+** is an extension of Clock Divider that uses two channels: one CV input channel and one trigger output channel. The output channel behaves like the original divider, including MIDI note output and gate length control, while the input channel can be assigned to different jobs.\n\nThe **Divisions** parameter lets you choose the available divider set: **Straight**, **Triplets**, or **Both**. This affects what the main fader and CV offset can select.\n\nIn normal operation, **CV destination = Division** and the input CV offsets the current divider setting around the main fader value. This makes it easy to push the rhythm denser or sparser from modulation without losing your base timing.\n\nWith **CV destination = External clock**, incoming CV rising edges (around 1V threshold) are used as the clock source, similar to the external clock mode in Random+. In this mode, the divider no longer follows the internal/global tick stream and instead counts external pulses.\n\nControls follow the plus-app layout: channel 1 handles input attenuation and input mute, channel 2 handles divider range and output mute. Shift + Button 1 cycles CV destination, shown by color (division: yellow, external clock: pink).",
+    text: "**Clock Divider+** is an extension of Clock Divider that uses two channels: one CV input channel and one trigger output channel. The output channel behaves like the original divider, including MIDI note output and gate length control, while the input channel can be assigned to different jobs.\n\nThe **Divisions** parameter lets you choose the available divider set: **Straight**, **Triplets**, or **Both**. This affects what the main fader and CV offset can select.\n\nIn normal operation, **CV destination = Division** and the input CV offsets the current divider setting around the main fader value. This makes it easy to push the rhythm denser or sparser from modulation without losing your base timing.\n\nWith **CV destination = External clock**, incoming CV rising edges (around 1V threshold) are used as the clock source, similar to the external clock mode in Random+. In this mode, the divider no longer follows the internal/global tick stream and instead counts external pulses.\n\nControls follow the plus-app layout: channel 1 handles input attenuation and input mute, channel 2 handles divider range and output mute (short press, no shift). Shift + Button 1 cycles CV destination, shown by color (division: yellow, external clock: pink).",
     channels: [
       {
         jackTitle: "Input",
@@ -992,10 +1008,10 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
         faderPlusShiftDescription: "Sets the upper divider limit",
         faderPlusFnTitle: "Minimum division",
         faderPlusFnDescription: "Sets the lower divider limit",
-        fnTitle: "",
+        fnTitle: "Mute",
         fnDescription: "",
-        fnPlusShiftTitle: "Mute",
-        fnPlusShiftDescription: "Mutes trigger and MIDI output",
+        fnPlusShiftTitle: "",
+        fnPlusShiftDescription: "",
         ledTop: "Trigger activity indicator",
         ledTopPlusShift: "Maximum division indicator",
         ledBottom: "",
@@ -1026,8 +1042,9 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
       "Attenuation",
       "Speed",
       "Waveform",
+      "Output Muted",
     ],
-    text: "This app is a variation of the simple LFO, adding an assignable CV input. The first channel processes the CV input, with the fader controlling its attenuation and the button acting as a mute. Use Shift + Button 1 to set the CV destination, indicated by the button color: speed (yellow), phase (pink), amplitude (cyan) or reset (red). Note that the speed CV is through 0, meaning that the waveform will invert and speed up again when the CV input is negative. When in 'reset' mode, the LFO resets when a rising edge passing the 1V threshold is detected. It is also worth knowing that even in reset mode this input is affected by the CV attenuation and 'mute' state allowing to change the rising edge detection level. As in the standard LFO, you can select the waveform by pressing the second button, with LED colors showing the shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). Adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Free-running speed ranges from 14 Hz to one cycle per minute; clocked mode offers resolutions like 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. App parameters let you set overall speed—Normal, Slow (÷2), or Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. Output can be bipolar (-5V to +5V) or unipolar (0V to 10V), affecting the attenuator's center when sending MIDI CC (0 for unipolar, 64 for bipolar). The app can also output MIDI CC, with freely configurable channel and CC number.",
+    text: "This app is a variation of the simple LFO, adding an assignable CV input. The first channel processes the CV input, with the fader controlling its attenuation and the button acting as a mute. Use Shift + Button 1 to set the CV destination, indicated by the button color: speed (yellow), phase (pink), amplitude (cyan) or reset (red). Note that the speed CV is through 0, meaning that the waveform will invert and speed up again when the CV input is negative. When in 'reset' mode, the LFO resets when a rising edge passing the 1V threshold is detected. It is also worth knowing that even in reset mode this input is affected by the CV attenuation and 'mute' state allowing to change the rising edge detection level. As in the standard LFO, you can select the waveform by pressing the second button, with LED colors showing the shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). Long press (no shift) on the output channel button mutes the LFO output. Adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Free-running speed ranges from 14 Hz to one cycle per minute; clocked mode offers resolutions like 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. App parameters let you set overall speed—Normal, Slow (÷2), or Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. Output can be bipolar (-5V to +5V) or unipolar (0V to 10V), affecting the attenuator's center when sending MIDI CC (0 for unipolar, 64 for bipolar). The app can also output MIDI CC, with freely configurable channel and CC number.",
     channels: [
       {
         jackTitle: "Input",
@@ -1053,11 +1070,10 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
           "Sets the LFO speed, top is maximum and bottom slowest",
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range",
-        fnTitle: "Waveform selection",
-        fnDescription:
-          "Sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white)",
-        fnPlusShiftTitle: "Reset - Clocked mode",
-        fnPlusShiftDescription: "Short reset - Long clock mode",
+        fnTitle: "Waveform / Mute",
+        fnDescription: "Short: cycle waveform. Long (no shift): mute output",
+        fnPlusShiftTitle: "Reset / Clocked mode",
+        fnPlusShiftDescription: "Short: reset LFO. Long: toggle clocked mode",
         ledTop: "Positive level indicator",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "Negative level indicator",
@@ -1445,6 +1461,9 @@ export const ManualTab = () => {
           <li>
             <Link to="#apps">Apps</Link>
             <List>
+              <li>
+                <Link to="#muting-apps">Muting apps</Link>
+              </li>
               {apps.map((app) => (
                 <li key={app.title}>
                   <Link to={`#app-${app.appId}`}>{app.title}</Link>

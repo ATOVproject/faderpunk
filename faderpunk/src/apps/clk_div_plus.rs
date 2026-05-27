@@ -103,7 +103,7 @@ impl AppParams for Params {
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     fader_saved: u16,
-    mute_saved: bool,
+    muted: bool,
     max_div: u16,
     min_div: u16,
     in_att: u16,
@@ -115,7 +115,7 @@ impl Default for Storage {
     fn default() -> Self {
         Self {
             fader_saved: 3000,
-            mute_saved: false,
+            muted: false,
             max_div: 4095,
             min_div: 0,
             in_att: 4095,
@@ -188,6 +188,7 @@ pub async fn run(
     let jack = app.make_gate_jack(1, 4095).await;
 
     let glob_muted = app.make_global(false);
+    let long_press_fired = app.make_global(false);
     let div_glob = app.make_global(6);
     let max_glob = app.make_global(6);
     let min_glob = app.make_global(6);
@@ -199,7 +200,7 @@ pub async fn run(
     let resolution = resolution_for_mode(division_mode);
 
     let (res, mute, min, max) =
-        storage.query(|s| (s.fader_saved, s.mute_saved, s.min_div, s.max_div));
+        storage.query(|s| (s.fader_saved, s.muted, s.min_div, s.max_div));
 
     min_glob.set(value_to_resolution(min, resolution));
     max_glob.set(value_to_resolution(max, resolution));
@@ -318,18 +319,20 @@ pub async fn run(
                 }
             }
 
-            if chan == 1 && shift {
-                let muted = glob_muted.toggle();
-
-                storage.modify_and_save(|s| {
-                    s.mute_saved = muted;
-                });
-
-                if muted {
-                    jack.set_low().await;
-                    leds.unset(1, Led::Button);
-                } else {
-                    leds.set(1, Led::Button, led_color, LED_BRIGHTNESS);
+            if chan == 1 && !shift {
+                long_press_fired.set(false);
+                buttons.wait_for_up(1).await;
+                if !long_press_fired.get() {
+                    let muted = glob_muted.toggle();
+                    storage.modify_and_save(|s| {
+                        s.muted = muted;
+                    });
+                    if muted {
+                        jack.set_low().await;
+                        leds.unset(1, Led::Button);
+                    } else {
+                        leds.set(1, Led::Button, led_color, LED_BRIGHTNESS);
+                    }
                 }
             }
         }
@@ -404,7 +407,7 @@ pub async fn run(
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
                     let (res, mute, min, max, in_mute) = storage
-                        .query(|s| (s.fader_saved, s.mute_saved, s.min_div, s.max_div, s.in_mute));
+                        .query(|s| (s.fader_saved, s.muted, s.min_div, s.max_div, s.in_mute));
 
                     glob_muted.set(mute);
                     div_glob.set(value_to_resolution(res, resolution));
@@ -596,14 +599,24 @@ pub async fn run(
         }
     };
 
+    let long_press = async {
+        loop {
+            buttons.wait_for_any_long_press().await;
+            long_press_fired.set(true);
+        }
+    };
+
     join(
         clock_handler,
-        join5(
-            button_handler,
-            fader_handler,
-            scene_handler,
-            shift_handler,
-            engine_loop,
+        join(
+            long_press,
+            join5(
+                button_handler,
+                fader_handler,
+                scene_handler,
+                shift_handler,
+                engine_loop,
+            ),
         ),
     )
     .await;
