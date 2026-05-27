@@ -204,6 +204,7 @@ export default function App() {
             <div className="flex justify-center gap-3">
               <button
                 onClick={() => {
+                  sessionStorage.setItem("fp-skip-autoconnect", "1");
                   window.location.href =
                     versionPath(latestVersion) + "#/update";
                 }}
