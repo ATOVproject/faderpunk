@@ -241,14 +241,16 @@ pub async fn run(
 
     let fut1 = async {
         let mut att_reg: u16;
+        let mut note_on_active = false;
         loop {
             let div = div_glob.get();
             length = length_glob.get();
 
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    if midi_mode == MidiMode::Note {
+                    if midi_mode == MidiMode::Note && note_on_active {
                         midi.send_note_off(midi_note.get()).await;
+                        note_on_active = false;
                     }
                     if let Output::Gate(j) = &output {
                         j.set_low().await;
@@ -268,7 +270,10 @@ pub async fn run(
                                 length = storage.query(|s| s.length_saved);
                                 length_glob.set(length);
                                 div_glob.set(resolution[res as usize / 512]);
-                                midi.send_note_off(midi_note.get()).await;
+                                if note_on_active {
+                                    midi.send_note_off(midi_note.get()).await;
+                                    note_on_active = false;
+                                }
                             }
 
                             if register != reg_old {
@@ -307,6 +312,7 @@ pub async fn run(
                                         if gate_fires {
                                             let note = midi_note.set(base_note);
                                             midi.send_note_on(note, 4095).await;
+                                            note_on_active = true;
                                         }
                                     }
                                     MidiMode::Cc => {
@@ -327,6 +333,7 @@ pub async fn run(
                                     MidiMode::Note => {
                                         let note = midi_note.set(out.as_midi() + base_note);
                                         midi.send_note_on(note, 4095).await;
+                                        note_on_active = true;
                                     }
                                     MidiMode::Cc => {
                                         midi.send_cc(midi_cc, att_reg).await;
@@ -346,8 +353,9 @@ pub async fn run(
                     if clkn % div == (div * gatel as usize / 100).clamp(1, div - 1) {
                         leds.unset(0, Led::Bottom);
 
-                        if midi_mode == MidiMode::Note {
+                        if midi_mode == MidiMode::Note && note_on_active {
                             midi.send_note_off(midi_note.get()).await;
+                            note_on_active = false;
                         }
                         if let Output::Gate(j) = &output {
                             j.set_low().await;
@@ -356,8 +364,9 @@ pub async fn run(
                     }
                 }
                 ClockEvent::Stop => {
-                    if midi_mode == MidiMode::Note {
+                    if midi_mode == MidiMode::Note && note_on_active {
                         midi.send_note_off(midi_note.get()).await;
+                        note_on_active = false;
                     }
                     if let Output::Gate(j) = &output {
                         j.set_low().await;
