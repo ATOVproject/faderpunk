@@ -349,6 +349,9 @@ pub enum Key {
     Gamelan,
     #[n(15)]
     HungarianMin,
+    /// CV passes through unmodified; MIDI output still uses nearest chromatic semitone.
+    #[n(16)]
+    Off,
 }
 
 impl Key {
@@ -371,6 +374,55 @@ impl Key {
             Key::Japanese => 0b110001011000,
             Key::Gamelan => 0b110100011000,
             Key::HungarianMin => 0b101100111001,
+            // Off: internally treated as Chromatic for MIDI output
+            Key::Off => 0b111111111111,
+        }
+    }
+}
+
+/// Volts-per-octave standard. Selects pitch calibration for quantizer and pitch apps.
+/// `Standard` = 1V/Oct (Eurorack), `Buchla` = 1.2V/Oct.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
+pub enum VoltPerOct {
+    #[default]
+    Standard,
+    Buchla,
+}
+
+impl VoltPerOct {
+    pub fn counts_per_oct(self) -> i16 {
+        match self {
+            VoltPerOct::Standard => 410,
+            VoltPerOct::Buchla => 492,
+        }
+    }
+
+    pub fn semitones_per_volt(self) -> f32 {
+        match self {
+            VoltPerOct::Standard => 12.0,
+            VoltPerOct::Buchla => 10.0,
+        }
+    }
+
+    pub fn voltage_scale(self) -> f32 {
+        match self {
+            VoltPerOct::Standard => 1.0,
+            VoltPerOct::Buchla => 1.2,
+        }
+    }
+}
+
+impl From<VoltPerOct> for Value {
+    fn from(value: VoltPerOct) -> Self {
+        Value::VoltPerOct(value)
+    }
+}
+
+impl FromValue for VoltPerOct {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::VoltPerOct(v) => v,
+            _ => Self::default(),
         }
     }
 }
@@ -918,6 +970,7 @@ pub enum Param {
     },
     MidiOut,
     MidiNrpn,
+    VoltPerOct,
 }
 
 #[allow(non_camel_case_types)]
@@ -939,6 +992,7 @@ pub enum Value {
     MidiNote(MidiNote),
     MidiOut(MidiOut),
     MidiNrpn(bool),
+    VoltPerOct(VoltPerOct),
 }
 
 impl From<Curve> for Value {

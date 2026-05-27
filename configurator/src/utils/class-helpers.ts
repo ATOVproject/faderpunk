@@ -65,6 +65,7 @@ export const QUANTIZER_KEY_COLORS: Record<string, string> = {
   Japanese: "bg-palette-violet",
   Gamelan: "bg-palette-light-blue",
   HungarianMin: "bg-palette-rose",
+  Off: "bg-black",
 };
 
 export const QUANTIZER_TONIC_COLORS: Record<string, string> = {

@@ -16,7 +16,7 @@ use libfp::{
     quantizer::{Pitch, QuantizerState},
     utils::{scale_bits_12_7, scale_bits_14_12},
     Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
-    Range, TakeoverMode,
+    Range, TakeoverMode, VoltPerOct,
 };
 
 use crate::{
@@ -624,22 +624,34 @@ impl Die {
 
 pub struct Quantizer {
     range: Range,
+    vpo: VoltPerOct,
+    bypass: bool,
     state: RefCell<QuantizerState>,
 }
 
 impl Quantizer {
-    pub fn new(range: Range) -> Self {
+    pub fn new(range: Range, vpo: VoltPerOct, bypass: bool) -> Self {
         Self {
             range,
+            vpo,
+            bypass,
             state: RefCell::new(QuantizerState::default()),
         }
     }
-    /// Quantize a note
+    /// Quantize a note.
+    ///
+    /// Returns a `Pitch` with `raw` set when either the global scale is `Key::Off`
+    /// or the per-app `bypass` flag is true — `as_counts()` will then return the
+    /// original ADC value instead of the quantized voltage.
     pub async fn get_quantized_note(&self, value: u16) -> Pitch {
         let value = value.clamp(0, 4095);
         let quantizer = QUANTIZER.get().lock().await;
         let mut state = self.state.borrow_mut();
-        quantizer.get_quantized_note(&mut state, value, self.range)
+        let mut pitch = quantizer.get_quantized_note(&mut state, value, self.range, self.vpo);
+        if self.bypass || quantizer.get_key() == Key::Off {
+            pitch.raw = Some(value);
+        }
+        pitch
     }
     /// Get Quantizer scale
     #[allow(dead_code)]
@@ -784,8 +796,8 @@ impl<const N: usize> App<N> {
         Clock::new()
     }
 
-    pub fn use_quantizer(&self, range: Range) -> Quantizer {
-        Quantizer::new(range)
+    pub fn use_quantizer(&self, range: Range, vpo: VoltPerOct, bypass: bool) -> Quantizer {
+        Quantizer::new(range, vpo, bypass)
     }
 
     pub fn use_midi_input(&self, midi_in: MidiIn, midi_channel: MidiChannel) -> MidiInput {

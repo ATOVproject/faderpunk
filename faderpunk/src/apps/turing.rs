@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config, Curve,
-    MidiCc, MidiChannel, MidiMode, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    MidiCc, MidiChannel, MidiMode, MidiNote, MidiOut, Param, Range, Value, VoltPerOct,
+    APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -20,7 +21,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 10;
+pub const PARAMS: usize = 12;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Turing",
@@ -58,7 +59,9 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::MidiNrpn)
 .add_param(Param::MidiOut)
-.add_param(Param::bool { name: "Gate Out" });
+.add_param(Param::bool { name: "Gate Out" })
+.add_param(Param::VoltPerOct)
+.add_param(Param::bool { name: "Bypass quantizer" });
 
 pub struct Params {
     midi_mode: MidiMode,
@@ -71,6 +74,8 @@ pub struct Params {
     range: Range,
     nrpn: bool,
     gate_out: bool,
+    vpo: VoltPerOct,
+    bypass: bool,
 }
 
 impl AppParams for Params {
@@ -89,6 +94,8 @@ impl AppParams for Params {
             nrpn: bool::from_value(values[7]),
             midi_out: MidiOut::from_value(values[8]),
             gate_out: bool::from_value(values[9]),
+            vpo: VoltPerOct::from_value(values[10]),
+            bypass: bool::from_value(values[11]),
         })
     }
 
@@ -104,6 +111,8 @@ impl AppParams for Params {
         vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec.push(self.gate_out.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
+        vec.push(self.bypass.into()).unwrap();
         vec
     }
 }
@@ -146,6 +155,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             range: Range::_0_5V,
             nrpn: false,
             gate_out: false,
+            vpo: VoltPerOct::Standard,
+            bypass: false,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -183,6 +194,8 @@ pub async fn run(
         range,
         nrpn,
         gate_out,
+        vpo,
+        bypass,
     ) = params.query(|p| {
         (
             p.midi_out,
@@ -195,6 +208,8 @@ pub async fn run(
             p.range,
             p.nrpn,
             p.gate_out,
+            p.vpo,
+            p.bypass,
         )
     });
 
@@ -204,7 +219,7 @@ pub async fn run(
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
     let die = app.use_die();
-    let quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range, vpo, bypass);
 
     let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
 
@@ -313,7 +328,7 @@ pub async fn run(
                             }
                         } else {
                             let out = quantizer.get_quantized_note(att_reg).await;
-                            cv_jack.as_ref().unwrap().set_value(out.as_counts(range));
+                            cv_jack.as_ref().unwrap().set_value(out.as_counts(range, vpo));
                             leds.set(
                                 0,
                                 Led::Top,

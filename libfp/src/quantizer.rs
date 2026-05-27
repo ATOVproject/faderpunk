@@ -1,7 +1,7 @@
 // V/oct quantizer, based on the ideas in
 // https://github.com/pichenettes/eurorack/blob/master/braids/quantizer_scales.h
 
-use crate::{Key, MidiNote, Note, Range};
+use crate::{Key, MidiNote, Note, Range, VoltPerOct};
 use heapless::Vec;
 use libm::roundf;
 
@@ -11,6 +11,9 @@ const CODEBOOK_SIZE: usize = 216;
 pub struct Pitch {
     pub octave: i8,
     pub note: Note,
+    /// When set, `as_counts()` returns this raw ADC value instead of the quantized voltage.
+    /// Used for global (`Key::Off`) and per-app bypass passthrough mode.
+    pub raw: Option<u16>,
 }
 
 impl Pitch {
@@ -18,12 +21,16 @@ impl Pitch {
         self.octave as f32 + (self.note as u8 as f32 / 12.0)
     }
 
-    pub fn as_counts(&self, range: Range) -> u16 {
+    pub fn as_counts(&self, range: Range, vpo: VoltPerOct) -> u16 {
+        if let Some(raw) = self.raw {
+            return raw;
+        }
         let voltage = self.as_v_oct();
+        let scaled = voltage * vpo.voltage_scale();
         let counts = match range {
-            Range::_0_10V => (voltage / 10.0) * 4095.0,
-            Range::_0_5V => (voltage / 5.0) * 4095.0,
-            Range::_Neg5_5V => ((voltage + 5.0) / 10.0) * 4095.0,
+            Range::_0_10V => (scaled / 10.0) * 4095.0,
+            Range::_0_5V => (scaled / 5.0) * 4095.0,
+            Range::_Neg5_5V => ((scaled + 5.0) / 10.0) * 4095.0,
         };
 
         roundf(counts).clamp(0.0, 4095.0) as u16
@@ -77,7 +84,9 @@ impl Quantizer {
         self.key = key;
         self.tonic = tonic;
 
-        let mask = key.as_u16_key();
+        // When Off, use chromatic internally so MIDI quantizes to nearest semitone
+        let effective_key = if key == Key::Off { Key::Chromatic } else { key };
+        let mask = effective_key.as_u16_key();
         let notes: Vec<i16, 12> = (0..12)
             .filter(|i| (mask >> (11 - i)) & 1 != 0) // Read from MSB (C) to LSB (B)
             .map(|i| i as i16)
@@ -141,6 +150,7 @@ impl Quantizer {
         state: &mut QuantizerState,
         value: u16,
         range: Range,
+        vpo: VoltPerOct,
     ) -> Pitch {
         // Version keeps track of the scale changes, if version does not match, reset state
         if state.version != self.version {
@@ -153,9 +163,8 @@ impl Quantizer {
             Range::_Neg5_5V => (value as f32 * (10.0 / 4095.0)) - 5.0,
         };
 
-        // Convert voltage to our fixed-point pitch representation (semitones * 128)
-        // We assume 1V/Oct, and 0V corresponds to C0 (semitone 0)
-        let pitch = roundf(input_voltage * 12.0 * 128.0) as i32;
+        // Convert voltage to semitones * 128 fixed-point. 0V = C0.
+        let pitch = roundf(input_voltage * vpo.semitones_per_volt() * 128.0) as i32;
 
         if pitch < state.previous_boundary || pitch > state.next_boundary {
             // Input is outside the current note's hysteresis boundary; find a new note
@@ -197,6 +206,7 @@ impl Quantizer {
         Pitch {
             octave,
             note: note.into(),
+            raw: None,
         }
     }
 }
@@ -227,19 +237,21 @@ mod tests {
 
         // 0V -> should be C0
         assert_eq!(
-            q.get_quantized_note(&mut state, 0, Range::_0_10V),
+            q.get_quantized_note(&mut state, 0, Range::_0_10V, VoltPerOct::Standard),
             Pitch {
                 octave: 0,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
         // ~1V -> should be C1
         assert_eq!(
-            q.get_quantized_note(&mut state, 410, Range::_0_10V),
+            q.get_quantized_note(&mut state, 410, Range::_0_10V, VoltPerOct::Standard),
             Pitch {
                 octave: 1,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
@@ -247,20 +259,22 @@ mod tests {
         // 0.08V -> ~33 counts. Should snap down to C0
         let mut state_c0 = QuantizerState::default();
         assert_eq!(
-            q.get_quantized_note(&mut state_c0, 33, Range::_0_10V),
+            q.get_quantized_note(&mut state_c0, 33, Range::_0_10V, VoltPerOct::Standard),
             Pitch {
                 octave: 0,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
         // 0.09V -> ~37 counts. Should snap up to D0
         let mut state_d0 = QuantizerState::default();
         assert_eq!(
-            q.get_quantized_note(&mut state_d0, 37, Range::_0_10V),
+            q.get_quantized_note(&mut state_d0, 37, Range::_0_10V, VoltPerOct::Standard),
             Pitch {
                 octave: 0,
-                note: Note::D
+                note: Note::D,
+                raw: None
             }
         );
 
@@ -269,10 +283,11 @@ mod tests {
         // Should quantize to closest note in scale: either F0 or G0.
         // 0.5V = 205 counts. F0=170 counts, G0=239 counts. 205 is closer to G0
         assert_eq!(
-            q.get_quantized_note(&mut state, 205, Range::_0_10V),
+            q.get_quantized_note(&mut state, 205, Range::_0_10V, VoltPerOct::Standard),
             Pitch {
                 octave: 0,
-                note: Note::G
+                note: Note::G,
+                raw: None
             }
         );
     }
@@ -285,28 +300,31 @@ mod tests {
 
         // ADC midpoint 2048 should map to 0V. Closest note in A minor is C0
         assert_eq!(
-            q.get_quantized_note(&mut state, 2048, Range::_Neg5_5V),
+            q.get_quantized_note(&mut state, 2048, Range::_Neg5_5V, VoltPerOct::Standard),
             Pitch {
                 octave: 0,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
         // -5V -> 0 counts. Should be C-5. Closest note is C-5
         assert_eq!(
-            q.get_quantized_note(&mut state, 0, Range::_Neg5_5V),
+            q.get_quantized_note(&mut state, 0, Range::_Neg5_5V, VoltPerOct::Standard),
             Pitch {
                 octave: -5,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
         // ~5V -> 4095 counts. Should be C5. Closest note is C5
         assert_eq!(
-            q.get_quantized_note(&mut state, 4095, Range::_Neg5_5V),
+            q.get_quantized_note(&mut state, 4095, Range::_Neg5_5V, VoltPerOct::Standard),
             Pitch {
                 octave: 5,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
     }
@@ -320,30 +338,33 @@ mod tests {
         // Test the top of the 0-10V range
         // 10V -> 4095 counts. Should be C10
         assert_eq!(
-            q.get_quantized_note(&mut state, 4095, Range::_0_10V),
+            q.get_quantized_note(&mut state, 4095, Range::_0_10V, VoltPerOct::Standard),
             Pitch {
                 octave: 10,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
         // Test the bottom of the bipolar -5V to 5V range
         // -5V -> 0 counts. Should be C-5
         assert_eq!(
-            q.get_quantized_note(&mut state, 0, Range::_Neg5_5V),
+            q.get_quantized_note(&mut state, 0, Range::_Neg5_5V, VoltPerOct::Standard),
             Pitch {
                 octave: -5,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
 
         // Test the top of the bipolar -5V to 5V range
         // ~5V -> 4095 counts. Should be C5
         assert_eq!(
-            q.get_quantized_note(&mut state, 4095, Range::_Neg5_5V),
+            q.get_quantized_note(&mut state, 4095, Range::_Neg5_5V, VoltPerOct::Standard),
             Pitch {
                 octave: 5,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
     }
@@ -360,10 +381,11 @@ mod tests {
 
         // Quantize a value just ABOVE the midpoint. It should snap to D0
         assert_eq!(
-            q.get_quantized_note(&mut state, 37, Range::_0_10V),
+            q.get_quantized_note(&mut state, 37, Range::_0_10V, VoltPerOct::Standard),
             Pitch {
                 octave: 0,
-                note: Note::D
+                note: Note::D,
+                raw: None
             }
         );
 
@@ -371,20 +393,22 @@ mod tests {
         // A stateless quantizer would snap back to C0
         // With hysteresis, it should STAY on D0 because it hasn't crossed the new, lower boundary
         assert_eq!(
-            q.get_quantized_note(&mut state, 33, Range::_0_10V),
+            q.get_quantized_note(&mut state, 33, Range::_0_10V, VoltPerOct::Standard),
             Pitch {
                 octave: 0,
-                note: Note::D
+                note: Note::D,
+                raw: None
             }
         );
 
         // Only when we provide a value far away from the boundary does it snap back
         // 10 counts is ~0.024V, clearly closer to C0
         assert_eq!(
-            q.get_quantized_note(&mut state, 10, Range::_0_10V),
+            q.get_quantized_note(&mut state, 10, Range::_0_10V, VoltPerOct::Standard),
             Pitch {
                 octave: 0,
-                note: Note::C
+                note: Note::C,
+                raw: None
             }
         );
     }
@@ -395,15 +419,17 @@ mod tests {
         let c4 = Pitch {
             octave: 4,
             note: Note::C,
+            raw: None,
         };
         let a4 = Pitch {
             octave: 4,
             note: Note::A,
+            raw: None,
         };
-        assert_eq!(c4.as_counts(Range::_0_10V), 1638);
-        assert_eq!(a4.as_counts(Range::_0_10V), 1945);
-        assert_eq!(c4.as_counts(Range::_0_5V), 3276);
-        assert_eq!(c4.as_counts(Range::_Neg5_5V), 3686);
+        assert_eq!(c4.as_counts(Range::_0_10V, VoltPerOct::Standard), 1638);
+        assert_eq!(a4.as_counts(Range::_0_10V, VoltPerOct::Standard), 1945);
+        assert_eq!(c4.as_counts(Range::_0_5V, VoltPerOct::Standard), 3276);
+        assert_eq!(c4.as_counts(Range::_Neg5_5V, VoltPerOct::Standard), 3686);
     }
 
     #[test]
@@ -411,16 +437,19 @@ mod tests {
         let c4 = Pitch {
             octave: 4,
             note: Note::C,
+            raw: None,
         };
         assert_eq!(c4.as_midi(), MidiNote(60));
         let a4 = Pitch {
             octave: 4,
             note: Note::A,
+            raw: None,
         };
         assert_eq!(a4.as_midi(), MidiNote(69));
         let c_minus_1 = Pitch {
             octave: -1,
             note: Note::C,
+            raw: None,
         };
         assert_eq!(c_minus_1.as_midi(), MidiNote(0));
     }
@@ -474,9 +503,9 @@ mod tests {
         let mut state = QuantizerState::default();
 
         // Perform some quantization operations
-        q.get_quantized_note(&mut state, 410, Range::_0_10V);
-        q.get_quantized_note(&mut state, 820, Range::_0_10V);
-        q.get_quantized_note(&mut state, 1230, Range::_0_10V);
+        q.get_quantized_note(&mut state, 410, Range::_0_10V, VoltPerOct::Standard);
+        q.get_quantized_note(&mut state, 820, Range::_0_10V, VoltPerOct::Standard);
+        q.get_quantized_note(&mut state, 1230, Range::_0_10V, VoltPerOct::Standard);
 
         // Key and tonic should remain unchanged
         assert_eq!(q.get_key(), Key::Mixolydian);

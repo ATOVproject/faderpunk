@@ -130,6 +130,17 @@ export const getParamSchema = (param: Param) => {
           value: { tag: "Note" },
         });
     }
+    case "VoltPerOct": {
+      return z
+        .object({
+          tag: z.literal("VoltPerOct"),
+          value: z.object({ tag: z.enum(["Standard", "Buchla"]) }),
+        })
+        .catch({
+          tag: "VoltPerOct",
+          value: { tag: "Standard" },
+        });
+    }
     default: {
       return z.never();
     }

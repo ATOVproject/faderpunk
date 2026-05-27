@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, utils::apply_slide, AppIcon, Brightness, ClockDivision,
-    Color, Config, MidiChannel, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    Color, Config, MidiChannel, MidiNote, MidiOut, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -323,7 +323,7 @@ pub async fn run(
     let leds = app.use_leds();
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
-    let quantizer = app.use_quantizer(pitch_range);
+    let quantizer = app.use_quantizer(pitch_range, VoltPerOct::Standard, false);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let pitch_out = app.make_out_jack(0, pitch_range).await;
@@ -441,12 +441,12 @@ pub async fn run(
                     if is_slid_prev {
                         // Glide: output_task will interpolate toward new target
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        slide_target_glob.set(out.as_counts(pitch_range));
+                        slide_target_glob.set(out.as_counts(pitch_range, VoltPerOct::Standard));
                         slide_active_glob.set(true);
                     } else if is_gated {
                         // Snap to new pitch
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        let counts = out.as_counts(pitch_range);
+                        let counts = out.as_counts(pitch_range, VoltPerOct::Standard);
                         slide_target_glob.set(counts);
                         slide_active_glob.set(false);
                     }

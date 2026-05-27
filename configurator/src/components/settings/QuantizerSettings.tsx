@@ -37,6 +37,7 @@ const keyItems: QuantizerKeyItem[] = [
   { key: "Japanese", value: "Japanese" },
   { key: "Gamelan", value: "Gamelan" },
   { key: "HungarianMin", value: "Hungarian Minor" },
+  { key: "Off", value: "Off (passthrough)" },
 ];
 
 const tonicItems: QuantizerTonicItem[] = [

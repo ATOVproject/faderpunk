@@ -21,6 +21,7 @@ import { ParamMidiMode } from "./ParamMidiMode.tsx";
 import { ParamMidiNote } from "./ParamMidiNote.tsx";
 import { ParamMidiNrpn } from "./ParamMidiNrpn.tsx";
 import { ParamMidiOut } from "./ParamMidiOut.tsx";
+import { ParamVoltPerOct } from "./ParamVoltPerOct.tsx";
 
 interface Props {
   defaultValue:
@@ -197,6 +198,15 @@ export const AppParam = ({
       return (
         <ParamMidiNrpn
           defaultValue={defaultValue as boolean}
+          paramIndex={paramIndex}
+          register={register}
+        />
+      );
+    }
+    case "VoltPerOct": {
+      return (
+        <ParamVoltPerOct
+          defaultValue={defaultValue as string}
           paramIndex={paramIndex}
           register={register}
         />
