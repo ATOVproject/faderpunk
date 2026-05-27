@@ -537,13 +537,13 @@ const apps: ManualAppData[] = [
     description: "Offset and attenuverter module",
     color: "Rose",
     icon: "attenuate",
-    params: ["Color"],
+    params: ["Color", "Range"],
     storage: ["Attenuation", "Offset", "Offset toggle", "Attenuation toggle"],
-    text: "This app provides offset and attenuverter functionality. The input and output range is ±5V, and the attenuverter has a maximum gain of 2x. Color can be set in the configurator. Jack 1 is the input, Jack 2 is the output. Main functions include Fader 1 for offset and Fader 2 for attenuvertion. Button 1 toggles the offset on or off, Button 2 toggles the attenuvertion on or off. When both of these are off the app acts as a simple pass through.",
+    text: "This app provides offset and attenuverter functionality. The input and output range is configurable as either ±5V (default) or 0–10V via the Range parameter, and the attenuverter has a maximum gain of 2x. Color can be set in the configurator. Jack 1 is the input, Jack 2 is the output. Main functions include Fader 1 for offset and Fader 2 for attenuvertion. Button 1 toggles the offset on or off, Button 2 toggles the attenuvertion on or off. When both of these are off the app acts as a simple pass through.",
     channels: [
       {
         jackTitle: "Input",
-        jackDescription: "Accepts ±5V signals",
+        jackDescription: "Accepts ±5V or 0–10V signals (set by Range)",
         faderTitle: "Offset",
         faderDescription: "Applies a DC offset to the input signal",
         fnTitle: "Kill Offset",
@@ -553,7 +553,7 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "Output",
-        jackDescription: "Outputs ±5V signals",
+        jackDescription: "Outputs ±5V or 0–10V signals (set by Range)",
         faderTitle: "Attenuverter",
         faderDescription: "Scales and inverts the input signal (max gain 2x)",
         fnTitle: "Kill Attenuverter",
@@ -570,13 +570,13 @@ const apps: ManualAppData[] = [
     description: "Slows CV changes with offset and attenuverter",
     color: "Green",
     icon: "soft-random",
-    params: ["Color"],
+    params: ["Color", "Range"],
     storage: ["Attack", "Attenuvertion", "Offset"],
-    text: "This app combines a slew limiter with offset and attenuverter functions. Input and output range is ±5V. Jack 1 is the input, Jack 2 is the output. Color can be set in the configurator. Main functions include Fader 1 for attack and Fader 2 for decay. Shift + Fader 1 sets offset, Shift + Fader 2 sets attenuvertion. Button 1 kills the offset, Button 2 sets the attenuvertion.",
+    text: "This app combines a slew limiter with offset and attenuverter functions. Input and output range is configurable as either ±5V (default) or 0–10V via the Range parameter. Jack 1 is the input, Jack 2 is the output. Color can be set in the configurator. Main functions include Fader 1 for attack and Fader 2 for decay. Shift + Fader 1 sets offset, Shift + Fader 2 sets attenuvertion. Button 1 kills the offset, Button 2 sets the attenuvertion.",
     channels: [
       {
         jackTitle: "Input",
-        jackDescription: "Accepts ±5V signals",
+        jackDescription: "Accepts ±5V or 0–10V signals (set by Range)",
         faderTitle: "Attack",
         faderDescription: "Sets the attack time of the slew limiter",
         faderPlusShiftTitle: "Offset",
@@ -588,7 +588,7 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "Output",
-        jackDescription: "Outputs ±5V signals",
+        jackDescription: "Outputs ±5V or 0–10V signals (set by Range)",
         faderTitle: "Decay",
         faderDescription: "Sets the decay time of the slew limiter",
         faderPlusShiftTitle: "Attenuverter",
@@ -647,13 +647,13 @@ const apps: ManualAppData[] = [
     description: "Quantize CV passing through",
     color: "Blue",
     icon: "quantize",
-    params: ["Color"],
+    params: ["Color", "Range"],
     storage: ["Octave shift", "Semitone shift", "Offset toggles"],
-    text: "This app is a simple quantizer that processes CV signals within a ±5V range. Jack 1 is the input, Jack 2 is the output. The quantizer applies pitch quantization to the incoming CV. Fader 1 performs semitone shifts (0–12 semitones), and Fader 2 performs octave shifts (±5 octaves). These shifts are applied before quantization. Button 1 toggles semitone shift, and Button 2 toggles octave shift.",
+    text: "This app is a simple quantizer that processes CV signals. The input and output range is configurable as either ±5V (default) or 0–10V via the Range parameter. Jack 1 is the input, Jack 2 is the output. The quantizer applies pitch quantization to the incoming CV. Fader 1 performs semitone shifts (0–12 semitones), and Fader 2 performs octave shifts (±5 octaves). These shifts are applied before quantization. Button 1 toggles semitone shift, and Button 2 toggles octave shift.",
     channels: [
       {
         jackTitle: "Input",
-        jackDescription: "Accepts ±5V CV signals",
+        jackDescription: "Accepts ±5V or 0–10V CV signals (set by Range)",
         faderTitle: "Semitone Shift",
         faderDescription: "Shifts the CV by 0–12 semitones before quantization",
         fnTitle: "Toggle Semitone Shift",
@@ -663,7 +663,7 @@ const apps: ManualAppData[] = [
       },
       {
         jackTitle: "Output",
-        jackDescription: "Outputs quantized ±5V CV signals",
+        jackDescription: "Outputs quantized ±5V or 0–10V CV signals (set by Range)",
         faderTitle: "Octave Shift",
         faderDescription: "Shifts the CV by ±5 octaves before quantization",
         fnTitle: "Toggle Octave Shift",
