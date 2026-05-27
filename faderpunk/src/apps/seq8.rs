@@ -180,6 +180,10 @@ pub async fn run(
     ];
 
     let quantizer = app.use_quantizer(range, vpo);
+    let counts_per_oct: u32 = match vpo {
+        VoltPerOct::Standard => 410,
+        VoltPerOct::Buchla => 492,
+    };
 
     let page_glob: Global<usize> = app.make_global(0);
     let led_flag_glob: Global<bool> = app.make_global(true);
@@ -526,9 +530,10 @@ pub async fn run(
                                         (seq[clkindex] as u32
                                             * ((storage.query(|s| s.range_fader[n]) / 1000 + 1)
                                                 as u32)
-                                            * 410
+                                            * counts_per_oct
                                             / 4095) as u16
-                                            + (storage.query(|s| s.oct_fader[n]) / 1000) * 410,
+                                            + (storage.query(|s| s.oct_fader[n]) / 1000)
+                                                * counts_per_oct as u16,
                                     )
                                     .await;
                                 lastnote[n] = out.as_midi();
