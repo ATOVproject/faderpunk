@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import { useStore } from "./store";
 import { useConnectionHealthCheck } from "./hooks/useConnectionHealthCheck";
@@ -10,12 +10,22 @@ import { ManualPage } from "./components/ManualPage";
 import { UpdatePage } from "./components/UpdatePage";
 import { TroubleshootingPage } from "./components/TroubleshootingPage";
 
+const DEVICELESS_ROUTES = ["/about", "/manual", "/update", "/troubleshooting"];
+
 const App = () => {
   const { usbDevice, autoConnect } = useStore();
+  const location = useLocation();
   useConnectionHealthCheck();
-  const [isAutoConnecting, setIsAutoConnecting] = useState(true);
+  const skipAutoConnect =
+    DEVICELESS_ROUTES.includes(location.pathname) ||
+    sessionStorage.getItem("fp-skip-autoconnect") === "1";
+  const [isAutoConnecting, setIsAutoConnecting] = useState(!skipAutoConnect);
 
   useEffect(() => {
+    if (skipAutoConnect) {
+      sessionStorage.removeItem("fp-skip-autoconnect");
+      return;
+    }
     const attemptAutoConnect = async () => {
       if (!usbDevice) {
         await autoConnect();
