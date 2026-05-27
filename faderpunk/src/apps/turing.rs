@@ -282,14 +282,14 @@ pub async fn run(
                             rotate_select_bit(register, prob, rand, length);
                         register = new_reg;
 
-                        let register_scalled = scale_to_12bit(register, length as u8);
-                        att_reg = ((register_scalled as u32
+                        let register_scaled = scale_to_12bit(register, length as u8);
+                        att_reg = ((register_scaled as u32
                             * curve.at(storage.query(|s| s.att_saved)) as u32)
                             / 4095) as u16;
 
                         if gate_out {
                             let gate_fires = if storage.query(|s| s.gate_threshold_mode) {
-                                register_scalled < storage.query(|s| s.att_saved)
+                                register_scaled < storage.query(|s| s.att_saved)
                             } else {
                                 gate_bit
                             };
@@ -318,7 +318,7 @@ pub async fn run(
                                 0,
                                 Led::Top,
                                 led_color,
-                                Brightness::Custom((register_scalled / 16) as u8),
+                                Brightness::Custom((register_scaled / 16) as u8),
                             );
                             match midi_mode {
                                 MidiMode::Note => {
