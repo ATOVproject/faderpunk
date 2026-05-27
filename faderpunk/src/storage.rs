@@ -34,7 +34,7 @@ const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..SCHEMA_HEADER_RANGE.s
 /// header is what tells us whether that layout matches the running firmware.
 const SCHEMA_HEADER_RANGE: Range<u32> = 131_056..131_072;
 
-const APP_STORAGE_MAX_BYTES: u32 = 400;
+const APP_STORAGE_MAX_BYTES: u32 = 448;
 const APP_PARAMS_MAX_BYTES: u32 = 128;
 const SCENES_PER_APP: u32 = 16;
 
