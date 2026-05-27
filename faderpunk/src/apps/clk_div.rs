@@ -1,5 +1,5 @@
 use embassy_futures::{
-    join::join5,
+    join::{join, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -97,7 +97,7 @@ impl AppParams for Params {
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     fader_saved: u16,
-    mute_saved: bool,
+    muted: bool,
     max_div: u16,
     min_div: u16,
 }
@@ -106,7 +106,7 @@ impl Default for Storage {
     fn default() -> Self {
         Self {
             fader_saved: 3000,
-            mute_saved: false,
+            muted: false,
             max_div: 4095,
             min_div: 0,
         }
@@ -172,6 +172,7 @@ pub async fn run(
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let glob_muted = app.make_global(false);
+    let long_press_fired = app.make_global(false);
     let div_glob = app.make_global(6_u32);
     let max_glob = app.make_global(6_u32);
     let min_glob = app.make_global(6_u32);
@@ -182,7 +183,7 @@ pub async fn run(
     let resolution = resolution_for_mode(division_mode);
 
     let (res, mute, min, max) =
-        storage.query(|s| (s.fader_saved, s.mute_saved, s.min_div, s.max_div));
+        storage.query(|s| (s.fader_saved, s.muted, s.min_div, s.max_div));
 
     min_glob.set(value_to_resolution(min, resolution));
     max_glob.set(value_to_resolution(max, resolution));
@@ -278,21 +279,29 @@ pub async fn run(
     let fut2 = async {
         loop {
             buttons.wait_for_any_down().await;
-            if buttons.is_shift_pressed() {
-                let muted = glob_muted.toggle();
-
-                storage.modify_and_save(|s| {
-                    s.mute_saved = muted;
-                    s.mute_saved
-                });
-
-                if muted {
-                    jack.set_low().await;
-                    leds.unset(0, Led::Button);
-                } else {
-                    leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
+            if !buttons.is_shift_pressed() {
+                long_press_fired.set(false);
+                buttons.wait_for_up(0).await;
+                if !long_press_fired.get() {
+                    let muted = glob_muted.toggle();
+                    storage.modify_and_save(|s| {
+                        s.muted = muted;
+                    });
+                    if muted {
+                        jack.set_low().await;
+                        leds.unset(0, Led::Button);
+                    } else {
+                        leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
+                    }
                 }
             }
+        }
+    };
+
+    let long_press = async {
+        loop {
+            buttons.wait_for_any_long_press().await;
+            long_press_fired.set(true);
         }
     };
 
@@ -340,7 +349,7 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let (res, mute) = storage.query(|s| (s.fader_saved, s.mute_saved));
+                    let (res, mute) = storage.query(|s| (s.fader_saved, s.muted));
 
                     glob_muted.set(mute);
                     div_glob.set(value_to_resolution(res, resolution));
@@ -376,5 +385,5 @@ pub async fn run(
         }
     };
 
-    join5(fut1, fut2, fut3, scene_handler, shift).await;
+    join(long_press, join5(fut1, fut2, fut3, scene_handler, shift)).await;
 }

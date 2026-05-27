@@ -124,6 +124,7 @@ pub struct Storage {
     register_saved: u16,
     res_saved: u16,
     gate_threshold_mode: bool,
+    muted: bool,
 }
 
 impl Default for Storage {
@@ -134,6 +135,7 @@ impl Default for Storage {
             register_saved: 0,
             res_saved: 2048,
             gate_threshold_mode: true,
+            muted: false,
         }
     }
 }
@@ -233,7 +235,13 @@ pub async fn run(
 
     let resolution = [24, 16, 12, 8, 6, 4, 3, 2];
 
-    leds.set(0, Led::Button, led_color, Brightness::Mid);
+    let glob_muted = app.make_global(storage.query(|s| s.muted));
+    let long_press_fired = app.make_global(false);
+    if glob_muted.get() {
+        leds.unset(0, Led::Button);
+    } else {
+        leds.set(0, Led::Button, led_color, Brightness::Mid);
+    }
 
     let cv_jack = if !gate_out {
         Some(app.make_out_jack(0, Range::_0_10V).await)
@@ -328,20 +336,23 @@ pub async fn run(
                             }
                         } else {
                             let out = quantizer.get_quantized_note(att_reg).await;
-                            cv_jack.as_ref().unwrap().set_value(out.as_counts(range, vpo));
-                            leds.set(
-                                0,
-                                Led::Top,
-                                led_color,
-                                Brightness::Custom((register_scaled / 16) as u8),
-                            );
-                            match midi_mode {
-                                MidiMode::Note => {
-                                    let note = midi_note.set(out.as_midi() + base_note);
-                                    midi.send_note_on(note, 4095).await;
-                                }
-                                MidiMode::Cc => {
-                                    midi.send_cc(midi_cc, att_reg).await;
+                            let muted = glob_muted.get();
+                            if !muted {
+                                cv_jack.as_ref().unwrap().set_value(out.as_counts(range, vpo));
+                                leds.set(
+                                    0,
+                                    Led::Top,
+                                    led_color,
+                                    Brightness::Custom((register_scaled / 16) as u8),
+                                );
+                                match midi_mode {
+                                    MidiMode::Note => {
+                                        let note = midi_note.set(out.as_midi() + base_note);
+                                        midi.send_note_on(note, 4095).await;
+                                    }
+                                    MidiMode::Cc => {
+                                        midi.send_cc(midi_cc, att_reg).await;
+                                    }
                                 }
                             }
                         }
@@ -423,6 +434,20 @@ pub async fn run(
             if shift && rec_flag.get() {
                 length += 1;
                 length_rec.set(length.min(16));
+            } else if !shift {
+                long_press_fired.set(false);
+                buttons.wait_for_up(0).await;
+                if !long_press_fired.get() {
+                    let muted = glob_muted.toggle();
+                    storage.modify_and_save(|s| {
+                        s.muted = muted;
+                    });
+                    if muted {
+                        leds.unset(0, Led::Button);
+                    } else {
+                        leds.set(0, Led::Button, led_color, Brightness::Mid);
+                    }
+                }
             }
         }
     };
@@ -494,6 +519,13 @@ pub async fn run(
                     storage.load_from_scene(scene).await;
                     recall_flag.set(true);
                     prob_glob.set(0);
+                    let muted = storage.query(|s| s.muted);
+                    glob_muted.set(muted);
+                    if muted {
+                        leds.unset(0, Led::Button);
+                    } else {
+                        leds.set(0, Led::Button, led_color, Brightness::Mid);
+                    }
                 }
 
                 SceneEvent::SaveScene(scene) => {
@@ -506,6 +538,7 @@ pub async fn run(
     let fut_long_press = async {
         loop {
             let (_, shift) = buttons.wait_for_any_long_press().await;
+            long_press_fired.set(true);
             if shift && gate_out {
                 rec_flag.set(false);
                 length_rec.set(0);

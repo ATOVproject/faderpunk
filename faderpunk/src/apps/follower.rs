@@ -74,6 +74,7 @@ pub struct Storage {
     att_saved: u16,
     offset_saved: u16,
     gain_saved: u16,
+    muted: bool,
 }
 
 impl Default for Storage {
@@ -83,6 +84,7 @@ impl Default for Storage {
             att_saved: 4095,
             offset_saved: 2047,
             gain_saved: 0,
+            muted: false,
         }
     }
 }
@@ -130,11 +132,16 @@ pub async fn run(
     let output = app.make_out_jack(1, range).await;
 
     let glob_latch_layer = app.make_global(LatchLayer::Main);
+    let glob_muted = app.make_global(storage.query(|s| s.muted));
 
     let mut oldval = 0.;
 
     leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
-    leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
+    if glob_muted.get() {
+        leds.unset(1, Led::Button);
+    } else {
+        leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
+    }
 
     let fut1 = async {
         loop {
@@ -170,7 +177,14 @@ pub async fn run(
 
             let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
 
-            output.set_value(outval);
+            let muted = glob_muted.get();
+            output.set_value(if !muted {
+                outval
+            } else if range.is_bipolar() {
+                2047
+            } else {
+                0
+            });
 
             if latch_active_layer == LatchLayer::Main {
                 if range.is_bipolar() {
@@ -196,7 +210,11 @@ pub async fn run(
                     );
                 }
                 leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
-                leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
+                if !muted {
+                    leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
+                } else {
+                    leds.unset(1, Led::Button);
+                }
             }
             if latch_active_layer == LatchLayer::Alt {
                 let off_led = split_signed_value(offset);
@@ -228,7 +246,11 @@ pub async fn run(
                 leds.set(1, Led::Top, led_color, Brightness::Custom(out_led[0]));
                 leds.set(1, Led::Bottom, led_color, Brightness::Custom(out_led[1]));
                 leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
-                leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
+                if !muted {
+                    leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
+                } else {
+                    leds.unset(1, Led::Button);
+                }
             }
         }
     };
@@ -300,6 +322,17 @@ pub async fn run(
         loop {
             let (chan, is_shift_pressed) = buttons.wait_for_any_down().await;
             if !is_shift_pressed {
+                if chan == 1 {
+                    let muted = glob_muted.toggle();
+                    storage.modify_and_save(|s| {
+                        s.muted = muted;
+                    });
+                    if muted {
+                        leds.unset(1, Led::Button);
+                    } else {
+                        leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
+                    }
+                }
             } else {
                 if chan == 0 {
                     storage.modify_and_save(|s| {
@@ -322,6 +355,13 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
+                    let muted = storage.query(|s| s.muted);
+                    glob_muted.set(muted);
+                    if muted {
+                        leds.unset(1, Led::Button);
+                    } else {
+                        leds.set(1, Led::Button, led_color, BUTTON_BRIGHTNESS);
+                    }
                 }
                 SceneEvent::SaveScene(scene) => storage.save_to_scene(scene).await,
             }
