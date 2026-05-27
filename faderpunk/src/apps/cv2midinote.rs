@@ -165,6 +165,10 @@ pub async fn run(
     }
     let input = app.make_in_jack(0, range).await;
     let quantizer = app.use_quantizer(range, vpo);
+    let counts_per_oct: i32 = match vpo {
+        VoltPerOct::Standard => 410,
+        VoltPerOct::Buchla => 492,
+    };
 
     let gate_in = app.make_in_jack(1, Range::_0_10V).await;
 
@@ -190,9 +194,12 @@ pub async fn run(
                 if !muted_glob.get() {
                     app.delay_millis(delay as u64).await;
                     note = input.get_value() as i32;
-                    let oct = (storage.query(|s| s.fader_saved[1]) as i32 * 10 / 4095 - 5) * 410;
+                    let oct =
+                        (storage.query(|s| s.fader_saved[1]) as i32 * 10 / 4095 - 5)
+                            * counts_per_oct;
                     let st = if !storage.query(|s| s.offset_toggle) {
-                        (storage.query(|s| s.fader_saved[0]) as i32 * 12 / 4095) * 410 / 12
+                        (storage.query(|s| s.fader_saved[0]) as i32 * 12 / 4095) * counts_per_oct
+                            / 12
                     } else {
                         0
                     };

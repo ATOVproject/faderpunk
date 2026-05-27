@@ -130,6 +130,11 @@ pub async fn run(
         }
     }
 
+    let counts_per_oct: i16 = match vpo {
+        VoltPerOct::Standard => 410,
+        VoltPerOct::Buchla => 492,
+    };
+
     let main_loop = async {
         loop {
             app.delay_millis(1).await;
@@ -139,13 +144,15 @@ pub async fn run(
             let oct = if storage.query(|s| s.offset_toggles[1]) {
                 0
             } else {
-                (((storage.query(|s| s.oct) * 10 / 4095) as f32 - 5.) * 410.) as i16
+                (((storage.query(|s| s.oct) * 10 / 4095) as f32 - 5.) * counts_per_oct as f32)
+                    as i16
             };
 
             let st = if storage.query(|s| s.offset_toggles[0]) {
                 0
             } else {
-                ((storage.query(|s| s.st) * 12 / 4095) as f32 * 410. / 12.) as i16
+                ((storage.query(|s| s.st) * 12 / 4095) as f32 * counts_per_oct as f32 / 12.)
+                    as i16
             };
 
             let outval = quantizer
@@ -160,7 +167,7 @@ pub async fn run(
                 0,
                 Led::Top,
                 led_color,
-                Brightness::Custom((st * 255 / 410) as u8),
+                Brightness::Custom((st * 255 / counts_per_oct) as u8),
             );
         }
     };
