@@ -11,23 +11,24 @@ export const Apps = ({ apps }: Props) => (
     <H3 id="muting-apps">Muting apps</H3>
     <p>
       Most apps support muting their output. When muted, the output is held at a
-      neutral voltage — 0 V for unipolar outputs (0 to 10 V and 0 to 5V range), or the
-      midpoint (0 V) for bipolar outputs (−5 to +5 V range). MIDI output is also
-      suppressed. Mute state is saved per-scene and survives power cycles.
+      neutral voltage — 0 V for unipolar outputs (0 to 10 V and 0 to 5V range),
+      or the midpoint (0 V) for bipolar outputs (−5 to +5 V range). MIDI output
+      is also suppressed. Mute state is saved per-scene and survives power
+      cycles.
     </p>
     <p className="mt-2">The gesture depends on the app:</p>
     <List>
       <li>
-        <strong>Short press (no shift)</strong> — Clock Divider, Clock
-        Divider+, Random CC/CV, Random Triggers, Euclid, Envelope Follower,
-        Turing, Turing+
+        <strong>Short press (no shift)</strong> — Clock Divider, Clock Divider+,
+        Random CC/CV, Random Triggers, Euclid, Envelope Follower, Turing,
+        Turing+
       </li>
       <li>
         <strong>Long press (no shift)</strong> — AD Envelope, LFO, LFO+
       </li>
       <li>
-        <strong>Shift + long press on button 0 / 2 / 4 / 6</strong> —
-        Sequencer (mutes track 1 / 2 / 3 / 4 respectively)
+        <strong>Shift + long press on button 0 / 2 / 4 / 6</strong> — Sequencer
+        (mutes track 1 / 2 / 3 / 4 respectively)
       </li>
     </List>
     <p className="mb-8">

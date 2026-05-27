@@ -80,8 +80,7 @@ const apps: ManualAppData[] = [
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range",
         fnTitle: "Waveform / Mute",
-        fnDescription:
-          "Short: cycle waveform. Long (no shift): mute output",
+        fnDescription: "Short: cycle waveform. Long (no shift): mute output",
         fnPlusShiftTitle: "Reset / Clocked mode",
         fnPlusShiftDescription: "Short: reset LFO. Long: toggle clocked mode",
         ledTop: "Positive level indicator",
@@ -129,8 +128,7 @@ const apps: ManualAppData[] = [
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range.",
         fnTitle: "Decay curve / Mute",
-        fnDescription:
-          "Short: cycle decay curve. Long (no shift): mute output",
+        fnDescription: "Short: cycle decay curve. Long (no shift): mute output",
         ledTop: "Output level in decay phase",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "inactive",
@@ -217,7 +215,8 @@ const apps: ManualAppData[] = [
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
         fnPlusShiftTitle: "Seq 1 page 1 / Mute Seq 1",
-        fnPlusShiftDescription: "Short: select page. Long: mute/unmute sequencer 1",
+        fnPlusShiftDescription:
+          "Short: select page. Long: mute/unmute sequencer 1",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -251,7 +250,8 @@ const apps: ManualAppData[] = [
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
         fnPlusShiftTitle: "Seq 2 page 1 / Mute Seq 2",
-        fnPlusShiftDescription: "Short: select page. Long: mute/unmute sequencer 2",
+        fnPlusShiftDescription:
+          "Short: select page. Long: mute/unmute sequencer 2",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -286,7 +286,8 @@ const apps: ManualAppData[] = [
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
         fnPlusShiftTitle: "Seq 3 page 1 / Mute Seq 3",
-        fnPlusShiftDescription: "Short: select page. Long: mute/unmute sequencer 3",
+        fnPlusShiftDescription:
+          "Short: select page. Long: mute/unmute sequencer 3",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -323,7 +324,8 @@ const apps: ManualAppData[] = [
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
         fnPlusShiftTitle: "Seq 4 page 1 / Mute Seq 4",
-        fnPlusShiftDescription: "Short: select page. Long: mute/unmute sequencer 4",
+        fnPlusShiftDescription:
+          "Short: select page. Long: mute/unmute sequencer 4",
         ledTop: "Note level",
         ledTopPlusShift: "Sequence Length",
         ledBottom: "Active page",
@@ -1069,8 +1071,7 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
         faderPlusShiftTitle: "Attenuation",
         faderPlusShiftDescription: "Reduces the output range",
         fnTitle: "Waveform / Mute",
-        fnDescription:
-          "Short: cycle waveform. Long (no shift): mute output",
+        fnDescription: "Short: cycle waveform. Long (no shift): mute output",
         fnPlusShiftTitle: "Reset / Clocked mode",
         fnPlusShiftDescription: "Short: reset LFO. Long: toggle clocked mode",
         ledTop: "Positive level indicator",
