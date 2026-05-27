@@ -9,13 +9,14 @@ use libfp::{
     MidiNote, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
+use libm;
 
-use libfp::{ext::FromValue, Config, Param, Range, Value};
+use libfp::{ext::FromValue, Config, Param, Range, Value, VoltPerOct};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 5;
+pub const PARAMS: usize = 7;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
@@ -50,7 +51,9 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::VoltPerOct)
+.add_param(Param::bool { name: "Bypass quantizer" });
 
 pub struct Params {
     range: Range,
@@ -58,6 +61,8 @@ pub struct Params {
     midi_out: MidiOut,
     delay: i32,
     color: Color,
+    vpo: VoltPerOct,
+    bypass: bool,
 }
 
 impl AppParams for Params {
@@ -71,6 +76,8 @@ impl AppParams for Params {
             delay: i32::from_value(values[2]),
             color: Color::from_value(values[3]),
             midi_out: MidiOut::from_value(values[4]),
+            vpo: VoltPerOct::from_value(values[5]),
+            bypass: bool::from_value(values[6]),
         })
     }
 
@@ -81,6 +88,8 @@ impl AppParams for Params {
         vec.push(self.delay.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
+        vec.push(self.bypass.into()).unwrap();
         vec
     }
 }
@@ -112,6 +121,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         midi_out: MidiOut::default(),
         delay: 0,
         color: Color::Orange,
+        vpo: VoltPerOct::Standard,
+        bypass: false,
     });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
@@ -141,8 +152,8 @@ pub async fn run(
     let faders = app.use_faders();
     let leds = app.use_leds();
 
-    let (range, midi_out, midi_channel, delay, led_color) =
-        params.query(|p| (p.range, p.midi_out, p.midi_channel, p.delay, p.color));
+    let (range, midi_out, midi_channel, delay, led_color, vpo, bypass) =
+        params.query(|p| (p.range, p.midi_out, p.midi_channel, p.delay, p.color, p.vpo, p.bypass));
 
     let midi = app.use_midi_output(midi_out, midi_channel, false);
 
@@ -159,7 +170,8 @@ pub async fn run(
         leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
     }
     let input = app.make_in_jack(0, range).await;
-    let quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range, vpo, false);
+    let counts_per_oct = vpo.counts_per_oct() as i32;
 
     let gate_in = app.make_in_jack(1, Range::_0_10V).await;
 
@@ -185,15 +197,30 @@ pub async fn run(
                 if !muted_glob.get() {
                     app.delay_millis(delay as u64).await;
                     note = input.get_value() as i32;
-                    let oct = (storage.query(|s| s.fader_saved[1]) as i32 * 10 / 4095 - 5) * 410;
+                    let oct = (storage.query(|s| s.fader_saved[1]) as i32 * 10 / 4095 - 5)
+                        * counts_per_oct;
                     let st = if !storage.query(|s| s.offset_toggle) {
-                        (storage.query(|s| s.fader_saved[0]) as i32 * 12 / 4095) * 410 / 12
+                        (storage.query(|s| s.fader_saved[0]) as i32 * 12 / 4095) * counts_per_oct
+                            / 12
                     } else {
                         0
                     };
                     note = (note + oct + st).clamp(0, 4095);
 
-                    midi_out = quantizer.get_quantized_note(note as u16).await.as_midi();
+                    midi_out = if bypass {
+                        // Chromatic bypass: quantize to nearest semitone regardless of global scale.
+                        // Mirrors the quantizer's internal voltage→semitone conversion.
+                        let voltage = match range {
+                            Range::_0_10V => note as f32 * (10.0 / 4095.0),
+                            Range::_0_5V => note as f32 * (5.0 / 4095.0),
+                            Range::_Neg5_5V => note as f32 * (10.0 / 4095.0) - 5.0,
+                        };
+                        let semitone =
+                            libm::roundf(voltage * vpo.semitones_per_volt()) as i32;
+                        MidiNote::from(semitone.clamp(0, 127))
+                    } else {
+                        quantizer.get_quantized_note(note as u16).await.as_midi()
+                    };
 
                     midi.send_note_on(midi_out, 4095).await;
                     note_on = true;

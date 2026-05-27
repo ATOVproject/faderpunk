@@ -6,7 +6,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
     ext::FromValue, latch::LatchLayer, utils::split_unsigned_value, AppIcon, Brightness, Color,
-    APP_MAX_PARAMS,
+    VoltPerOct, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,7 @@ use libfp::{Config, Param, Range, Value};
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 2;
+pub const PARAMS: usize = 4;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Quantizer",
@@ -39,11 +39,17 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Range {
     name: "Range",
     variants: &[Range::_0_10V, Range::_Neg5_5V],
+})
+.add_param(Param::VoltPerOct)
+.add_param(Param::bool {
+    name: "Bypass quantizer",
 });
 
 pub struct Params {
     color: Color,
     range: Range,
+    vpo: VoltPerOct,
+    bypass: bool,
 }
 
 impl AppParams for Params {
@@ -54,6 +60,8 @@ impl AppParams for Params {
         Some(Self {
             color: Color::from_value(values[0]),
             range: Range::from_value(values[1]),
+            vpo: VoltPerOct::from_value(values[2]),
+            bypass: bool::from_value(values[3]),
         })
     }
 
@@ -61,6 +69,8 @@ impl AppParams for Params {
         let mut vec = Vec::new();
         vec.push(self.color.into()).unwrap();
         vec.push(self.range.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
+        vec.push(self.bypass.into()).unwrap();
         vec
     }
 }
@@ -86,10 +96,16 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id, Params {
-        color: Color::Blue,
-        range: Range::_Neg5_5V,
-    });
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            color: Color::Blue,
+            range: Range::_Neg5_5V,
+            vpo: VoltPerOct::Standard,
+            bypass: false,
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
@@ -114,14 +130,15 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (led_color, range) = params.query(|p| (p.color, p.range));
+    let (led_color, range, vpo, bypass) = params.query(|p| (p.color, p.range, p.vpo, p.bypass));
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
     leds.set(0, Led::Button, led_color, Brightness::Mid);
     leds.set(1, Led::Button, led_color, Brightness::Mid);
 
-    let quantizer = app.use_quantizer(range);
+    let quantizer = app.use_quantizer(range, vpo, bypass);
+    let counts_per_oct = vpo.counts_per_oct();
     let _input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
     for chan in 0..2 {
@@ -141,28 +158,30 @@ pub async fn run(
             let oct = if storage.query(|s| s.offset_toggles[1]) {
                 0
             } else {
-                (((storage.query(|s| s.oct) * 10 / 4095) as f32 - 5.) * 410.) as i16
+                (((storage.query(|s| s.oct) * 10 / 4095) as f32 - 5.) * counts_per_oct as f32)
+                    as i16
             };
 
             let st = if storage.query(|s| s.offset_toggles[0]) {
                 0
             } else {
-                ((storage.query(|s| s.st) * 12 / 4095) as f32 * 410. / 12.) as i16
+                ((storage.query(|s| s.st) * 12 / 4095) as f32 * counts_per_oct as f32 / 12.)
+                    as i16
             };
 
             let outval = quantizer
                 .get_quantized_note((inval + oct + st).clamp(0, 4095) as u16)
                 .await;
 
-            output.set_value(outval.as_counts(range));
-            let oct_led = split_unsigned_value(outval.as_counts(range));
+            output.set_value(outval.as_counts(range, vpo));
+            let oct_led = split_unsigned_value(outval.as_counts(range, vpo));
             leds.set(1, Led::Top, led_color, Brightness::Custom(oct_led[0]));
             leds.set(1, Led::Bottom, led_color, Brightness::Custom(oct_led[1]));
             leds.set(
                 0,
                 Led::Top,
                 led_color,
-                Brightness::Custom((st * 255 / 410) as u8),
+                Brightness::Custom((st * 255 / counts_per_oct) as u8),
             );
         }
     };

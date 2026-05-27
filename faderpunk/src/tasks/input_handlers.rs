@@ -124,6 +124,18 @@ async fn run_input_handlers() {
 }
 
 pub async fn show_scale_keyboard(key: Key, tonic: Note) {
+    if key == Key::Off {
+        for ch in 0..NUM_CHANNELS {
+            set_led_overlay_mode(
+                ch,
+                Led::Bottom,
+                LedMode::Static(Color::White, Brightness::Off),
+            )
+            .await;
+        }
+        return;
+    }
+
     let mask = key.as_u16_key();
     let tonic_offset = tonic as usize;
 
@@ -178,11 +190,15 @@ pub async fn show_config_top_leds(config: &GlobalConfig) {
     )
     .await;
 
-    let key_color = Color::from(config.quantizer.key as usize);
+    let (key_color, key_brightness) = if config.quantizer.key == Key::Off {
+        (Color::White, Brightness::Off)
+    } else {
+        (Color::from(config.quantizer.key as usize), Brightness::Mid)
+    };
     set_led_overlay_mode(
         QUANTIZER_KEY_FADER,
         Led::Top,
-        LedMode::Static(key_color, Brightness::Mid),
+        LedMode::Static(key_color, key_brightness),
     )
     .await;
 
