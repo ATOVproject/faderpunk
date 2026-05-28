@@ -248,3 +248,88 @@ pub fn clickless(prev: u16, input: u16) -> u16 {
         ((prev as u32 * 15 + input as u32) / 16) as u16
     }
 }
+
+/// Linearly interpolates between two adjacent loop samples at 1 ms resolution.
+///
+/// `tick_interval_ms`: measured duration of the last clock tick (ms).
+/// `ppqn`: the clock division in use. Caps the interpolation window at the
+/// interval expected at 20 BPM for that division, so output holds at `next`
+/// rather than drifting if the clock stalls.
+pub fn interp_loop_sample(
+    prev: u16,
+    next: u16,
+    elapsed_ms: u32,
+    tick_interval_ms: u32,
+    ppqn: u8,
+) -> u16 {
+    let max_ms = 60_000 / (20_u32 * ppqn as u32).max(1);
+    let interval = tick_interval_ms.clamp(1, max_ms);
+    let phase = elapsed_ms.min(interval) as f32 / interval as f32;
+    (prev as f32 + (next as f32 - prev as f32) * phase).clamp(0.0, 4095.0) as u16
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interp_midpoint() {
+        let out = interp_loop_sample(0, 4000, 50, 100, 1);
+        assert!((out as i32 - 2000).abs() < 5);
+    }
+
+    #[test]
+    fn interp_clamps_past_interval() {
+        assert_eq!(interp_loop_sample(0, 3000, 200, 100, 1), 3000);
+    }
+
+    #[test]
+    fn interp_equal_samples_are_constant() {
+        assert_eq!(interp_loop_sample(1000, 1000, 1, 100, 1), 1000);
+        assert_eq!(interp_loop_sample(1000, 1000, 50, 100, 1), 1000);
+        assert_eq!(interp_loop_sample(1000, 1000, 200, 100, 1), 1000);
+    }
+
+    /// Simulates the tick_id-based interpolation state machine.
+    /// Returns the maximum single-step output change observed across all 1ms polls.
+    fn simulate_max_step(buffer: &[u16], interval_ms: u32, ppqn: u8) -> i32 {
+        let mut elapsed_ms: u32 = 0;
+        let mut last_tick_id: u8 = 0;
+        let mut tick_id: u8 = 0;
+        let mut loop_prev: u16 = buffer[0];
+        let mut loop_target: u16 = loop_prev;
+        let mut prev_out: u16 = buffer[0];
+        let mut max_step: i32 = 0;
+        for &sample in buffer {
+            loop_prev = loop_target;
+            loop_target = sample;
+            tick_id = tick_id.wrapping_add(1);
+            for _ in 0..interval_ms {
+                if tick_id != last_tick_id {
+                    elapsed_ms = 0;
+                    last_tick_id = tick_id;
+                }
+                elapsed_ms += 1;
+                let out = interp_loop_sample(loop_prev, loop_target, elapsed_ms, interval_ms, ppqn);
+                let step = (out as i32 - prev_out as i32).abs();
+                if step > max_step {
+                    max_step = step;
+                }
+                prev_out = out;
+            }
+        }
+        max_step
+    }
+
+    #[test]
+    fn no_jump_on_equal_consecutive_samples() {
+        // [1000, 1000, 2000]: equal samples followed by movement.
+        // At 100ms interval, max step per ms ≈ 10; a snap would be ~1000.
+        assert!(simulate_max_step(&[1000, 1000, 2000], 100, 1) < 20);
+    }
+
+    #[test]
+    fn no_jump_on_normal_movement() {
+        assert!(simulate_max_step(&[0, 1000, 2000, 3000], 100, 1) < 20);
+    }
+}
