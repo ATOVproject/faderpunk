@@ -1,26 +1,25 @@
+import type { GlobalConfig } from "@atov/fp-config";
 import { Input, Textarea } from "@heroui/input";
-
-import { GlobalConfig } from "@atov/fp-config";
-import {
-  AllApps,
-  LayoutFile,
-  ModalMode,
-  ParamValues,
-  RecoveredLayout,
-  type AppLayout,
-} from "../utils/types";
-import { ButtonPrimary, ButtonSecondary } from "./Button";
+import { useCallback, useState } from "react";
 import { useModalContext } from "../contexts/ModalContext";
+import { useStore } from "../store";
 import {
   deserializeLayout,
   recoverLayout,
   saveLayout,
   serializeLayout,
 } from "../utils/config";
-import { useStore } from "../store";
+import {
+  type AllApps,
+  type AppLayout,
+  type LayoutFile,
+  ModalMode,
+  type ParamValues,
+  type RecoveredLayout,
+} from "../utils/types";
+import { ButtonPrimary, ButtonSecondary } from "./Button";
 import { FileInput } from "./FileInput";
 import { inputProps } from "./input/defaultProps";
-import { useCallback, useState } from "react";
 
 const saveFile = (
   layout: AppLayout,
@@ -167,7 +166,8 @@ export const SaveLoadSetup = () => {
                     recallDescription: loadedDescription,
                   });
                   setLoadedFile(undefined);
-                } catch {
+                } catch (error) {
+                  console.log(error);
                   setError("Could not read config file");
                 }
               }}
