@@ -58,7 +58,7 @@ async fn wait_for_button_press(channel: usize) -> bool {
 
 async fn wait_for_start_cmd(msg_receiver: &mut I2cFollowerReceiver) {
     loop {
-        if let I2cFollowerMessage::CalibStart = msg_receiver.receive().await {
+        if let I2cFollowerMessage::Start = msg_receiver.receive().await {
             return;
         }
     }
@@ -312,7 +312,7 @@ async fn run_automatic_calibration(
     let mut current_ch: Option<usize> = None;
     loop {
         match receiver.receive().await {
-            I2cFollowerMessage::CalibChannelUpdate(ch) => {
+            I2cFollowerMessage::ChannelUpdate(ch) => {
                 if Some(ch) != current_ch {
                     if let Some(prev) = current_ch {
                         reset_led(prev, Led::Button);
@@ -321,14 +321,14 @@ async fn run_automatic_calibration(
                     current_ch = Some(ch);
                 }
             }
-            I2cFollowerMessage::CalibSetRegressionValues(input_values, output_values) => {
+            I2cFollowerMessage::SetRegressionValues(input_values, output_values) => {
                 info!("Received calibration data.");
                 if let Some(prev) = current_ch {
                     reset_led(prev, Led::Button);
                 }
                 return (input_values, output_values);
             }
-            I2cFollowerMessage::CalibStart => {}
+            I2cFollowerMessage::Start => {}
         }
     }
 }
@@ -375,7 +375,7 @@ async fn run_test_mode(calibration_data: &MaxCalibration) -> ! {
 
     // Set initial channel output (step 0, 0-10V)
     let ideal = TEST_STEPS_0_10V[0];
-    for ch in 2..CHANNELS {
+    for (ch, dac_val) in MAX_VALUES_DAC.iter().enumerate().take(CHANNELS).skip(2) {
         let (slope, intercept) = calibration_data.outputs[ch][0];
         let hw = if ideal == 0 {
             0
@@ -383,7 +383,7 @@ async fn run_test_mode(calibration_data: &MaxCalibration) -> ! {
             ((ideal as i64 * slope + intercept + CALIBRATION_SCALE_FACTOR / 2) >> 16).clamp(0, 4095)
                 as u16
         };
-        MAX_VALUES_DAC[ch].store(hw, Ordering::Relaxed);
+        dac_val.store(hw, Ordering::Relaxed);
     }
     info!(
         "Test [0-10V] step 1/{}: count={}",
@@ -477,7 +477,7 @@ async fn run_test_mode(calibration_data: &MaxCalibration) -> ! {
                 );
                 v
             };
-            for ch in 2..CHANNELS {
+            for (ch, dac_val) in MAX_VALUES_DAC.iter().enumerate().take(CHANNELS).skip(2) {
                 let (slope, intercept) = calibration_data.outputs[ch][range];
                 let hw = if range == 0 && ideal == 0 {
                     0
@@ -485,7 +485,7 @@ async fn run_test_mode(calibration_data: &MaxCalibration) -> ! {
                     ((ideal as i64 * slope + intercept + CALIBRATION_SCALE_FACTOR / 2) >> 16)
                         .clamp(0, 4095) as u16
                 };
-                MAX_VALUES_DAC[ch].store(hw, Ordering::Relaxed);
+                dac_val.store(hw, Ordering::Relaxed);
             }
         }
 

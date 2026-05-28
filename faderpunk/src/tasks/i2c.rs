@@ -35,11 +35,11 @@ pub type I2cDevice = I2cSlave<'static, I2C0>;
 
 #[allow(clippy::large_enum_variant)]
 pub enum I2cFollowerMessage {
-    CalibStart,
-    CalibSetRegressionValues(RegressionValuesInput, RegressionValuesOutput),
+    Start,
+    SetRegressionValues(RegressionValuesInput, RegressionValuesOutput),
     /// Sent whenever a DacSetVoltage command targets a channel during calibration,
     /// so the calibration task can light the corresponding button LED.
-    CalibChannelUpdate(usize),
+    ChannelUpdate(usize),
 }
 
 pub enum I2cLeaderMessage {
@@ -228,11 +228,11 @@ async fn process_write(command: WriteCommand, sender: &mut I2cFollowerSender) {
     match command {
         WriteCommand::CalibStart => {
             // Send command to i2c follower channel
-            sender.send(I2cFollowerMessage::CalibStart).await;
+            sender.send(I2cFollowerMessage::Start).await;
         }
         WriteCommand::CalibSetRegValues(input_values, output_values) => {
             sender
-                .send(I2cFollowerMessage::CalibSetRegressionValues(
+                .send(I2cFollowerMessage::SetRegressionValues(
                     input_values,
                     output_values,
                 ))
@@ -250,7 +250,7 @@ async fn process_write(command: WriteCommand, sender: &mut I2cFollowerSender) {
             MAX_VALUES_DAC[channel].store(value, Ordering::Relaxed);
             if CALIBRATING.load(Ordering::Relaxed) {
                 // Non-blocking: drop if channel is full (LED update is best-effort)
-                let _ = sender.try_send(I2cFollowerMessage::CalibChannelUpdate(channel % 17));
+                let _ = sender.try_send(I2cFollowerMessage::ChannelUpdate(channel % 17));
             }
         }
         WriteCommand::SysReset => {
