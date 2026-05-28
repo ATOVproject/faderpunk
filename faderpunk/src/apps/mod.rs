@@ -23,4 +23,5 @@ register_apps!(
     22 => lfo_plus,
     23 => fp_grids,
     24 => tb3po,
+    25 => automator,
 );
