@@ -118,6 +118,14 @@ export const getParamSchema = (param: Param) => {
         })
         .default({ tag: "MidiOut", value: [[false, false, false]] });
     }
+    case "MidiNrpn": {
+      return z
+        .object({
+          tag: z.literal("MidiNrpn"),
+          value: z.boolean(),
+        })
+        .default({ tag: "MidiNrpn", value: false });
+    }
     case "MidiMode": {
       // MidiMode is still enum-like with tag-based variants
       return z
