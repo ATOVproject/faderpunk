@@ -26,7 +26,7 @@ use postcard::{from_bytes, to_slice};
 
 use crate::tasks::calibration::run_calibration;
 use crate::tasks::global_config::get_global_config;
-use crate::tasks::max::{MaxCmd, MAX_CHANNEL, MAX_VALUES_ADC};
+use crate::tasks::max::{MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC};
 use crate::Irqs;
 
 use super::max::MAX_VALUES_DAC;
@@ -37,6 +37,9 @@ pub type I2cDevice = I2cSlave<'static, I2C0>;
 pub enum I2cFollowerMessage {
     CalibStart,
     CalibSetRegressionValues(RegressionValuesInput, RegressionValuesOutput),
+    /// Sent whenever a DacSetVoltage command targets a channel during calibration,
+    /// so the calibration task can light the corresponding button LED.
+    CalibChannelUpdate(usize),
 }
 
 pub enum I2cLeaderMessage {
@@ -245,6 +248,10 @@ async fn process_write(command: WriteCommand, sender: &mut I2cFollowerSender) {
                 })
                 .await;
             MAX_VALUES_DAC[channel].store(value, Ordering::Relaxed);
+            if CALIBRATING.load(Ordering::Relaxed) {
+                // Non-blocking: drop if channel is full (LED update is best-effort)
+                let _ = sender.try_send(I2cFollowerMessage::CalibChannelUpdate(channel % 17));
+            }
         }
         WriteCommand::SysReset => {
             cortex_m::peripheral::SCB::sys_reset();
