@@ -58,7 +58,7 @@ async fn wait_for_button_press(channel: usize) -> bool {
 
 async fn wait_for_start_cmd(msg_receiver: &mut I2cFollowerReceiver) {
     loop {
-        if let I2cFollowerMessage::CalibStart = msg_receiver.receive().await {
+        if let I2cFollowerMessage::Start = msg_receiver.receive().await {
             return;
         }
     }
@@ -146,12 +146,10 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
     let mut output_results = RegressionValuesOutput::default();
 
     for i in 0..CHANNELS {
-        set_led_color(i, Led::Button, Color::Red);
+        for &p in LED_POS.iter() {
+            reset_led(i, p);
+        }
     }
-
-    set_led_color(0, Led::Button, Color::Green);
-    reset_led(0, Led::Bottom);
-    reset_led(0, Led::Top);
 
     info!("Remove voltage source NOW, then press button");
     wait_for_button_press(0).await;
@@ -159,6 +157,9 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
     let dac_ranges = [DACRANGE::Rg0_10v, DACRANGE::RgNeg5_5v];
     let voltages_arrays = [VOLTAGES_OUT_0_10V, VOLTAGES_NEG5_5V];
     let values_arrays = [VALUES_OUT_0_10V, VALUES_NEG5_5V];
+
+    // Bottom LED = range 0 (0-10V) progress, Top LED = range 1 (±5V) progress
+    const RANGE_LED: [Led; 2] = [Led::Bottom, Led::Top];
 
     let channels_to_calibrate: [usize; 19] =
         core::array::from_fn(|i| if i < 16 { i } else { i + 1 });
@@ -168,10 +169,10 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
         let ui_no = chan % 17;
         let prev_ui_no = (ui_no + CHANNELS - 1) % CHANNELS;
 
-        // Reset LEDs for the channel we are about to calibrate
-        for &p in LED_POS.iter() {
-            reset_led(ui_no, p);
-        }
+        // Yellow button = this channel is being calibrated
+        set_led_color(ui_no, Led::Button, Color::Yellow);
+        reset_led(ui_no, Led::Bottom);
+        reset_led(ui_no, Led::Top);
 
         for (range_idx, &dac_range) in dac_ranges.iter().enumerate() {
             let mut set_values: [u16; 3] = Default::default();
@@ -193,7 +194,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                 .zip(target_values.iter())
                 .enumerate()
             {
-                let pos = LED_POS[j];
+                let pos = RANGE_LED[range_idx];
                 flash_led(ui_no, pos, Color::Green, None);
                 info!(
                     "Move fader {} until you read the closest value to {}V, then press button",
@@ -234,10 +235,10 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                                 // "prev" button was pressed
                                 if is_shift_pressed {
                                     i -= 1;
-                                    // Reset LEDs for the channel we are leaving
-                                    reset_led(ui_no, Led::Top);
-                                    reset_led(ui_no, Led::Bottom);
-                                    set_led_color(ui_no, Led::Button, Color::Red);
+                                    // Reset all LEDs for the channel we are leaving
+                                    for &p in LED_POS.iter() {
+                                        reset_led(ui_no, p);
+                                    }
                                     continue 'channel_loop;
                                 } else {
                                     // Prev without shift, so ignore and re-wait.
@@ -248,7 +249,7 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
                     }
                 }
 
-                set_led_color(ui_no, pos, Color::Green);
+                set_led_color(ui_no, RANGE_LED[range_idx], Color::Green);
                 set_values[j] = value;
                 let error = target_value as i16 - value as i16;
                 info!("Target value: {}", target_value);
@@ -278,6 +279,9 @@ async fn run_manual_output_calibration() -> RegressionValuesOutput {
             }
         }
 
+        // Both ranges done — show green button for this channel
+        set_led_color(ui_no, Led::Button, Color::Green);
+
         if chan == 15 {
             for chan in 0..CHANNELS {
                 for position in [Led::Top, Led::Bottom, Led::Button] {
@@ -298,21 +302,207 @@ async fn run_automatic_calibration(
     receiver: &mut I2cFollowerReceiver,
 ) -> (RegressionValuesInput, RegressionValuesOutput) {
     for i in 0..CHANNELS {
-        set_led_color(i, Led::Button, Color::Yellow);
+        for &p in LED_POS.iter() {
+            reset_led(i, p);
+        }
     }
-
-    reset_led(0, Led::Button);
-    reset_led(0, Led::Bottom);
-    reset_led(0, Led::Top);
 
     info!("Waiting for calibration data...");
 
+    let mut current_ch: Option<usize> = None;
     loop {
-        if let I2cFollowerMessage::CalibSetRegressionValues(input_values, output_values) =
-            receiver.receive().await
-        {
-            info!("Received calibration data.");
-            return (input_values, output_values);
+        match receiver.receive().await {
+            I2cFollowerMessage::ChannelUpdate(ch) => {
+                if Some(ch) != current_ch {
+                    if let Some(prev) = current_ch {
+                        reset_led(prev, Led::Button);
+                    }
+                    set_led_color(ch, Led::Button, Color::Yellow);
+                    current_ch = Some(ch);
+                }
+            }
+            I2cFollowerMessage::SetRegressionValues(input_values, output_values) => {
+                info!("Received calibration data.");
+                if let Some(prev) = current_ch {
+                    reset_led(prev, Led::Button);
+                }
+                return (input_values, output_values);
+            }
+            I2cFollowerMessage::Start => {}
+        }
+    }
+}
+
+// 0-10V steps: 0, 2, 4, 6, 8, 10 V (counts = V * 409.5)
+const TEST_STEPS_0_10V: [u16; 6] = [0, 819, 1638, 2457, 3276, 4095];
+// ±5V steps: -4, -2, 0, +2, +4 V — capped at ±4V to stay within calibrated range
+// count = (V + 5) * 409.5
+const TEST_STEPS_NEG5_5V: [u16; 5] = [410, 1229, 2048, 2867, 3686];
+
+async fn run_test_mode(calibration_data: &MaxCalibration) -> ! {
+    // Initial state: both passthrough and channels start on 0-10V
+    configure_jack(
+        0,
+        Mode::Mode7(ConfigMode7(
+            AVR::InternalRef,
+            ADCRANGE::Rg0_10v,
+            NSAMPLES::Samples16,
+        )),
+    )
+    .await;
+    configure_jack(1, Mode::Mode5(ConfigMode5(DACRANGE::Rg0_10v))).await;
+    for ch in 2..CHANNELS {
+        configure_jack(ch, Mode::Mode5(ConfigMode5(DACRANGE::Rg0_10v))).await;
+    }
+    for ch in 0..CHANNELS {
+        for &p in LED_POS.iter() {
+            reset_led(ch, p);
+        }
+    }
+    set_led_color(0, Led::Button, Color::Cyan);
+    set_led_color(1, Led::Button, Color::Cyan);
+    for ch in 2..CHANNELS {
+        set_led_color(ch, Led::Button, Color::Green);
+    }
+
+    info!("Test mode active. Press button 0 to exit.");
+
+    // Single range drives both passthrough and channel outputs
+    const STEP_TICKS: usize = 200; // 2 seconds per step
+    let mut range: usize = 0;
+    let mut step: usize = 0;
+    let mut step_ticks: usize = 0;
+
+    // Set initial channel output (step 0, 0-10V)
+    let ideal = TEST_STEPS_0_10V[0];
+    for (ch, dac_val) in MAX_VALUES_DAC.iter().enumerate().take(CHANNELS).skip(2) {
+        let (slope, intercept) = calibration_data.outputs[ch][0];
+        let hw = if ideal == 0 {
+            0
+        } else {
+            ((ideal as i64 * slope + intercept + CALIBRATION_SCALE_FACTOR / 2) >> 16).clamp(0, 4095)
+                as u16
+        };
+        dac_val.store(hw, Ordering::Relaxed);
+    }
+    info!(
+        "Test [0-10V] step 1/{}: count={}",
+        TEST_STEPS_0_10V.len(),
+        ideal
+    );
+
+    let mut subscriber = EVENT_PUBSUB.subscriber().unwrap();
+
+    loop {
+        // --- Passthrough: same range as channel outputs ---
+        let (is, ii) = calibration_data.inputs[range];
+        let (os1, oi1) = calibration_data.outputs[1][range];
+        let raw = MAX_VALUES_ADC[0].load(Ordering::Relaxed);
+        let ideal_adc =
+            ((raw as i64 * is + ii + CALIBRATION_SCALE_FACTOR / 2) >> 16).clamp(0, 4095) as u16;
+        let hw_dac = if range == 0 && ideal_adc == 0 {
+            0
+        } else {
+            ((ideal_adc as i64 * os1 + oi1 + CALIBRATION_SCALE_FACTOR / 2) >> 16).clamp(0, 4095)
+                as u16
+        };
+        MAX_VALUES_DAC[1].store(hw_dac, Ordering::Relaxed);
+
+        // --- Step advance (and range switch when all steps exhausted) ---
+        step_ticks += 1;
+        if step_ticks >= STEP_TICKS {
+            step_ticks = 0;
+            let step_count = if range == 0 {
+                TEST_STEPS_0_10V.len()
+            } else {
+                TEST_STEPS_NEG5_5V.len()
+            };
+            step += 1;
+            if step >= step_count {
+                step = 0;
+                range = 1 - range;
+                // Switch passthrough jacks and channel outputs together
+                if range == 0 {
+                    configure_jack(
+                        0,
+                        Mode::Mode7(ConfigMode7(
+                            AVR::InternalRef,
+                            ADCRANGE::Rg0_10v,
+                            NSAMPLES::Samples16,
+                        )),
+                    )
+                    .await;
+                    configure_jack(1, Mode::Mode5(ConfigMode5(DACRANGE::Rg0_10v))).await;
+                    set_led_color(0, Led::Button, Color::Cyan);
+                    set_led_color(1, Led::Button, Color::Cyan);
+                    for ch in 2..CHANNELS {
+                        configure_jack(ch, Mode::Mode5(ConfigMode5(DACRANGE::Rg0_10v))).await;
+                        set_led_color(ch, Led::Button, Color::Green);
+                    }
+                } else {
+                    configure_jack(
+                        0,
+                        Mode::Mode7(ConfigMode7(
+                            AVR::InternalRef,
+                            ADCRANGE::RgNeg5_5v,
+                            NSAMPLES::Samples16,
+                        )),
+                    )
+                    .await;
+                    configure_jack(1, Mode::Mode5(ConfigMode5(DACRANGE::RgNeg5_5v))).await;
+                    set_led_color(0, Led::Button, Color::Yellow);
+                    set_led_color(1, Led::Button, Color::Yellow);
+                    for ch in 2..CHANNELS {
+                        configure_jack(ch, Mode::Mode5(ConfigMode5(DACRANGE::RgNeg5_5v))).await;
+                        set_led_color(ch, Led::Button, Color::Yellow);
+                    }
+                }
+            }
+            let ideal = if range == 0 {
+                let v = TEST_STEPS_0_10V[step];
+                info!(
+                    "Test [0-10V] step {}/{}: count={}",
+                    step + 1,
+                    TEST_STEPS_0_10V.len(),
+                    v
+                );
+                v
+            } else {
+                let v = TEST_STEPS_NEG5_5V[step];
+                info!(
+                    "Test [+/-5V] step {}/{}: count={}",
+                    step + 1,
+                    TEST_STEPS_NEG5_5V.len(),
+                    v
+                );
+                v
+            };
+            for (ch, dac_val) in MAX_VALUES_DAC.iter().enumerate().take(CHANNELS).skip(2) {
+                let (slope, intercept) = calibration_data.outputs[ch][range];
+                let hw = if range == 0 && ideal == 0 {
+                    0
+                } else {
+                    ((ideal as i64 * slope + intercept + CALIBRATION_SCALE_FACTOR / 2) >> 16)
+                        .clamp(0, 4095) as u16
+                };
+                dac_val.store(hw, Ordering::Relaxed);
+            }
+        }
+
+        // --- 10ms tick + exit check ---
+        let exit_check = async {
+            loop {
+                if let InputEvent::ButtonDown(0) = subscriber.next_message_pure().await {
+                    return;
+                }
+            }
+        };
+        match select(Timer::after_millis(10), exit_check).await {
+            Either::First(_) => {}
+            Either::Second(_) => {
+                info!("Exiting test mode.");
+                cortex_m::peripheral::SCB::sys_reset();
+            }
         }
     }
 }
@@ -349,17 +539,14 @@ pub async fn run_calibration(mut msg_receiver: I2cFollowerReceiver) {
 
     store_calibration_data(&calibration_data).await;
 
-    CALIBRATING.store(false, Ordering::Relaxed);
-
     for chan in 0..16 {
         for &p in LED_POS.iter() {
             flash_led(chan, p, Color::Green, Some(5));
         }
     }
 
-    info!("Calibration done. Restarting...");
+    info!("Calibration done. Entering test mode...");
 
-    // Wait for 2 seconds, then restart the device
     Timer::after_secs(2).await;
-    cortex_m::peripheral::SCB::sys_reset();
+    run_test_mode(&calibration_data).await;
 }
