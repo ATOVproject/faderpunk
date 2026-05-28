@@ -1370,8 +1370,21 @@ On a clock **Reset**, if seed lock is off, TB-3PO grabs a new random seed from t
     description: "CV gesture looper",
     color: "Cyan",
     icon: "fader",
-    params: ["MIDI Channel", "MIDI CC", "Range", "Color", "NRPN", "MIDI Out", "Resolution"],
-    storage: ["Committed loop buffer", "Loop length", "Attenuator level", "Offset level"],
+    params: [
+      "MIDI Channel",
+      "MIDI CC",
+      "Range",
+      "Color",
+      "NRPN",
+      "MIDI Out",
+      "Resolution",
+    ],
+    storage: [
+      "Committed loop buffer",
+      "Loop length",
+      "Attenuator level",
+      "Offset level",
+    ],
     text: `The Automator is an automation recorder. To record a loop hold the button while moving the fader and release to lock it in as a repeating loop. After recording the loop the fader becomes an offset to the output CV. Like in most apps shift + fader is an attenuator, in this case the attenuation only affects the recorded CV allowing you to introduce this modulation gradually.
 
 **A clock is required.** Without a clock the fader passes through to the output but recording is disabled and the button does nothing.
@@ -1394,7 +1407,8 @@ The resolution parameter controls how many samples are recorded per bar. Higher 
     channels: [
       {
         jackTitle: "CV Output",
-        jackDescription: "CV output — fader direct in passthrough, loop playback when playing",
+        jackDescription:
+          "CV output — fader direct in passthrough, loop playback when playing",
         faderTitle: "CV level (passthrough) / Loop offset (playing)",
         faderDescription:
           "In passthrough: controls CV output directly. While a loop is playing: offsets the loop output up or down from center.",
@@ -1407,7 +1421,8 @@ The resolution parameter controls how many samples are recorded per bar. Higher 
         fnPlusShiftTitle: "Clear loop",
         fnPlusShiftDescription:
           "Clears the loop and returns to passthrough. Works from any state.",
-        ledTop: "Output level — app color in passthrough, red while recording, green while playing",
+        ledTop:
+          "Output level — app color in passthrough, red while recording, green while playing",
         ledBottom: "Output level (bipolar range only)",
       },
     ],

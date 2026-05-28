@@ -267,7 +267,6 @@ pub async fn run(
         // restarts (param changes) without any storage reload.
         let mut rec_buf = [0u16; MAX_BUFFER_SAMPLES];
         let mut rec_head: usize = 0;
-        let mut read_head: usize = 0;
         let mut loop_len: usize = storage.query(|s| s.loop_len as usize).max(1);
         let mut loop_start_tick: u32 = 0;
         let mut last_tick: Option<Instant> = None;
@@ -298,7 +297,7 @@ pub async fn run(
                     // boundary (TICK_COUNTER % 6 == 0); all others fire immediately.
                     let cmd = cmd_glob.get();
                     if cmd != LooperCmd::None {
-                        let on_16th = tick_fn() % 6 == 0;
+                        let on_16th = tick_fn().is_multiple_of(6);
                         let ready = match cmd {
                             LooperCmd::PendingStart | LooperCmd::PendingCommit => on_16th,
                             _ => true,
@@ -314,7 +313,6 @@ pub async fn run(
                                 LooperCmd::PendingCommit => {
                                     if rec_head > 0 {
                                         loop_len = rec_head;
-                                        read_head = 0;
                                         let rec_copy = rec_buf;
                                         storage.modify_and_save(|s| {
                                             let mut buf = [0u16; MAX_BUFFER_SAMPLES];
@@ -335,7 +333,6 @@ pub async fn run(
                                 LooperCmd::ClearLoop => {
                                     loop_len = 1;
                                     rec_head = 0;
-                                    read_head = 0;
                                     storage.modify_and_save(|s| {
                                         s.has_loop = false;
                                         s.loop_len = 0;
@@ -345,7 +342,6 @@ pub async fn run(
                                     // storage.inner was already updated by the scene recall;
                                     // just sync metadata and re-anchor the phase clock.
                                     loop_len = storage.query(|s| s.loop_len as usize).max(1);
-                                    read_head = 0;
                                     loop_start_tick = tick_fn() as u32;
                                 }
                                 LooperCmd::None => {}
@@ -373,7 +369,6 @@ pub async fn run(
                                 // held) sees an empty count and stays in Playing rather than
                                 // re-committing or aborting to Passthrough.
                                 loop_len = MAX_BUFFER_SAMPLES;
-                                read_head = 0;
                                 let rec_copy = rec_buf;
                                 storage.modify_and_save(|s| {
                                     s.buffer.set(rec_copy);
@@ -389,7 +384,7 @@ pub async fn run(
                         }
                         LooperState::Playing => {
                             let clkn = (tick_fn() as u32).wrapping_sub(loop_start_tick);
-                            read_head = (clkn / clock_div as u32) as usize % loop_len;
+                            let read_head = (clkn / clock_div as u32) as usize % loop_len;
                             if read_head == 0 {
                                 leds.set(0, Led::Button, Color::White, Brightness::High);
                             } else {
@@ -413,7 +408,6 @@ pub async fn run(
                 }
                 Ok(ClockEvent::Reset) => {
                     clock_running_glob.set(true);
-                    read_head = 0;
                     loop_start_tick = 0;
                 }
                 Ok(ClockEvent::Start) => {
@@ -674,15 +668,12 @@ pub async fn run(
                 if prev_state == LooperState::Playing && state != LooperState::Playing {
                     last_midi_scaled = u32::MAX;
                 }
-                match state {
-                    LooperState::Passthrough => {
-                        // Abort path (PendingCommit with rec_head == 0): restore button.
-                        leds.set(0, Led::Button, led_color, Brightness::Mid);
-                    }
-                    // Recording: button set solid red by button_handler already.
-                    // Playing: button set to led_color by clock_handler on commit,
-                    //          or white flash on loop start — leave it alone.
-                    _ => {}
+                // Abort path (PendingCommit with rec_head == 0): restore button.
+                // Recording: button set solid red by button_handler already.
+                // Playing: button set to led_color by clock_handler on commit,
+                //          or white flash on loop start — leave it alone.
+                if state == LooperState::Passthrough {
+                    leds.set(0, Led::Button, led_color, Brightness::Mid);
                 }
                 prev_state = state;
                 prev_clock_running = clock_running;
