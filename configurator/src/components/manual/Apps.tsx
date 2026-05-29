@@ -19,12 +19,16 @@ export const Apps = ({ apps }: Props) => (
     <p className="mt-2">The gesture depends on the app:</p>
     <List>
       <li>
-        <strong>Short press (no shift)</strong> — Clock Divider, Clock Divider+,
-        Random CC/CV, Random Triggers, Euclid, Envelope Follower, Turing,
-        Turing+
+        <strong>Short press (no shift)</strong> — Control (when Button mode =
+        Mute), Clock Divider, Clock Divider+, Random CC/CV, Random Trigger,
+        Euclid, Envelope Follower, Turing, Turing+, MIDI to CV, CV2MIDI,
+        CV/OCT to MIDI, Panner, FP-Grids (per-channel trigger mutes), TB-3PO
       </li>
       <li>
         <strong>Long press (no shift)</strong> — AD Envelope, LFO, LFO+
+      </li>
+      <li>
+        <strong>Shift + short press</strong> — Random+ (output channel)
       </li>
       <li>
         <strong>Shift + long press on button 0 / 2 / 4 / 6</strong> — Sequencer
