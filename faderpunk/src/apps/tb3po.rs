@@ -3,7 +3,7 @@
 // Copyright (c) 2020, Logarhythm (original C++ implementation, MIT licensed)
 
 use embassy_futures::{
-    join::{join, join3, join5},
+    join::{join, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -99,9 +99,9 @@ pub struct Storage {
     transpose_fader: u16, // 0–4095 → transpose −24..+24 semitones
     octave_fader: u16,    // 0–4095 → octave offset −4..+4 (shift + fader 3)
     res_saved: u16,       // 0–4095 → index into RESOLUTION table (8 segments of 512)
-    lock_seed: bool,
+    #[serde(default)]
+    muted: bool,
     no_accents: bool,
-    no_slides: bool,
 }
 
 impl Default for Storage {
@@ -113,9 +113,8 @@ impl Default for Storage {
             transpose_fader: 2048, // 0 semitones
             octave_fader: 2048,    // 0 octave offset
             res_saved: 2048,       // index 4 → RESOLUTION[4] = 6 (16th notes)
-            lock_seed: false,
+            muted: false,
             no_accents: false,
-            no_slides: false,
         }
     }
 }
@@ -406,11 +405,11 @@ pub async fn run(
                     last_tick = now;
 
                     let pattern = pattern_glob.get();
-                    let (num_steps, no_accents, no_slides, transpose) = storage.query(|s| {
+                    let (num_steps, no_accents, muted, transpose) = storage.query(|s| {
                         (
                             (s.length_fader as u32 * 31 / 4095 + 1) as u8,
                             s.no_accents,
-                            s.no_slides,
+                            s.muted,
                             {
                                 let semi = s.transpose_fader as i32 * 48 / 4095 - 24;
                                 let oct = s.octave_fader as i32 * 8 / 4095 - 4;
@@ -430,10 +429,9 @@ pub async fn run(
                     step_glob.set(step);
 
                     let is_gated = step_is_gated(&pattern, step);
-                    let is_slid_prev = !no_slides
-                        && prev_step
-                            .map(|p| step_is_slid(&pattern, p as u8))
-                            .unwrap_or(false);
+                    let is_slid_prev = prev_step
+                        .map(|p| step_is_slid(&pattern, p as u8))
+                        .unwrap_or(false);
                     let is_accent = !no_accents && step_is_accent(&pattern, step);
                     let target_raw = raw_pitch_cv(&pattern, step, transpose);
 
@@ -452,7 +450,7 @@ pub async fn run(
                     }
 
                     // Gate / MIDI
-                    if is_gated || is_slid_prev {
+                    if (is_gated || is_slid_prev) && !muted {
                         accent_active_glob.set(is_accent);
 
                         // Quantise for MIDI note (use target pitch for note identity)
@@ -480,16 +478,6 @@ pub async fn run(
                 }
 
                 ClockEvent::Reset => {
-                    if !storage.query(|s| s.lock_seed) {
-                        let new_seed = (ticks() & 0xFFFF) as u16;
-                        storage.modify_and_save(|s| s.seed = new_seed);
-                        let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
-                        pattern_glob.set(generate_pattern(new_seed, d));
-                    } else {
-                        let (s, df) = storage.query(|s| (s.seed, s.density_fader));
-                        let d = (df as u32 * 14 / 4095) as u8;
-                        pattern_glob.set(generate_pattern(s, d));
-                    }
                     step_glob.set(0);
                     slide_active_glob.set(false);
                     gate_off_ms_glob.set(0);
@@ -530,7 +518,7 @@ pub async fn run(
                     // Keep gate on during a slide (like the 303)
                     let pattern = pattern_glob.get();
                     let step = step_glob.get();
-                    if storage.query(|s| s.no_slides) || !step_is_slid(&pattern, step) {
+                    if !step_is_slid(&pattern, step) {
                         gate_active_glob.set(false);
                         gate_out.set_low().await;
                         midi.send_note_off(last_midi_note_glob.get()).await;
@@ -539,19 +527,20 @@ pub async fn run(
                 }
             }
 
-            // Pitch slide interpolation
-            let target = slide_target_glob.get() as f32;
-            if slide_active_glob.get() {
-                glide_current = apply_slide(glide_current, target, SLIDE_COEFF);
-                if (glide_current - target).abs() < 0.5 {
+            // Pitch slide interpolation — frozen while muted
+            if !storage.query(|s| s.muted) {
+                let target = slide_target_glob.get() as f32;
+                if slide_active_glob.get() {
+                    glide_current = apply_slide(glide_current, target, SLIDE_COEFF);
+                    if (glide_current - target).abs() < 0.5 {
+                        glide_current = target;
+                        slide_active_glob.set(false);
+                    }
+                } else {
                     glide_current = target;
-                    slide_active_glob.set(false);
                 }
-            } else {
-                glide_current = target;
+                pitch_out.set_value(glide_current as u16);
             }
-
-            pitch_out.set_value(glide_current as u16);
         }
     };
 
@@ -634,9 +623,7 @@ pub async fn run(
                 continue;
             }
             match chan {
-                0 if latch_layer_glob.get() != LatchLayer::Third
-                    && !storage.query(|s| s.lock_seed) =>
-                {
+                0 if latch_layer_glob.get() != LatchLayer::Third => {
                     let new_seed = (ticks() & 0xFFFF) as u16;
                     storage.modify_and_save(|s| s.seed = new_seed);
                     let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
@@ -649,8 +636,8 @@ pub async fn run(
                     );
                 }
                 1 => {
-                    let v = !storage.query(|s| s.no_slides);
-                    storage.modify_and_save(|s| s.no_slides = v);
+                    let muted = !storage.query(|s| s.muted);
+                    storage.modify_and_save(|s| s.muted = muted);
                 }
                 2 => {
                     let v = !storage.query(|s| s.no_accents);
@@ -661,29 +648,17 @@ pub async fn run(
         }
     };
 
-    // --- Button long-press task: B0 toggles lock_seed ---
-    let button_long_task = async {
-        loop {
-            let (chan, _) = buttons.wait_for_any_long_press().await;
-            if chan == 0 {
-                let v = !storage.query(|s| s.lock_seed);
-                storage.modify_and_save(|s| s.lock_seed = v);
-            }
-        }
-    };
-
     // --- LED task (16 ms) ---
     let led_task = async {
         loop {
             app.delay_millis(16).await;
 
-            let (density_fader, locked, no_accents, no_slides, length_fader, res_saved, transpose_fader) =
+            let (density_fader, muted, no_accents, length_fader, res_saved, transpose_fader) =
                 storage.query(|s| {
                     (
                         s.density_fader,
-                        s.lock_seed,
+                        s.muted,
                         s.no_accents,
-                        s.no_slides,
                         s.length_fader,
                         s.res_saved,
                         s.transpose_fader,
@@ -710,11 +685,7 @@ pub async fn run(
                     led_color,
                     Brightness::Custom((density as u32 * 255 / 14) as u8),
                 );
-                if locked {
-                    leds.set(0, Led::Bottom, Color::Orange, Brightness::High);
-                } else {
-                    leds.unset(0, Led::Bottom);
-                }
+                leds.unset(0, Led::Bottom);
             }
             // Button LED managed by reseed flash — only set here on first frame (handled by init)
 
@@ -731,12 +702,11 @@ pub async fn run(
             } else {
                 leds.unset(1, Led::Top);
             }
-            leds.set(
-                1,
-                Led::Button,
-                led_color,
-                if no_slides { Brightness::Low } else { Brightness::Mid },
-            );
+            if muted {
+                leds.unset(1, Led::Button);
+            } else {
+                leds.set(1, Led::Button, led_color, Brightness::Mid);
+            }
 
             // Ch 2: accent on Top, transpose position on Bottom (always visible)
             if accent && gate_active {
@@ -777,7 +747,7 @@ pub async fn run(
 
     join(
         join5(clock_task, output_task, fader_task, layer_task, button_task),
-        join3(button_long_task, led_task, scene_task),
+        join(led_task, scene_task),
     )
     .await;
 }
