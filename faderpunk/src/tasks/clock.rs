@@ -433,6 +433,19 @@ async fn store_clock_running(is_running: bool) {
     .await;
 }
 
+/// Resolves the Auto-mode effective clock source based on which MIDI sources
+/// have sent a pulse recently. Priority: USB MIDI > DIN MIDI > Internal.
+fn resolve_auto_src(usb_last: Option<Instant>, din_last: Option<Instant>) -> ClockSrc {
+    let now = Instant::now();
+    if usb_last.map_or(false, |t| now.duration_since(t) < WATCHDOG_FLOOR) {
+        ClockSrc::MidiUsb
+    } else if din_last.map_or(false, |t| now.duration_since(t) < WATCHDOG_FLOOR) {
+        ClockSrc::MidiIn
+    } else {
+        ClockSrc::Internal
+    }
+}
+
 async fn run_unified_clock_engine() {
     let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
     let clock_in_sender = CLOCK_IN_CHANNEL.sender();
@@ -470,26 +483,56 @@ async fn run_unified_clock_engine() {
     let mut window_predicted = false;
     let mut config = config;
 
-    // If clock was already running at startup (persisted state) with internal source,
-    // inform the gatekeeper to synchronize its state.
-    if is_running && config.clock.clock_src == ClockSrc::Internal {
-        clock_in_sender
-            .send(ClockInEvent::Start(ClockSrc::Internal))
-            .await;
+    // Auto-mode liveness tracking: timestamps of the last pulse from each MIDI source.
+    // Both are updated whenever a pulse arrives, regardless of which source is currently
+    // "active", so fallback decisions have fresh data.
+    let mut auto_usb_last: Option<Instant> = None;
+    let mut auto_din_last: Option<Instant> = None;
+
+    // If clock was already running at startup (persisted state), inform the gatekeeper.
+    // Auto mode starts on Internal by default (no MIDI connected yet).
+    if is_running
+        && matches!(
+            config.clock.clock_src,
+            ClockSrc::Internal | ClockSrc::Auto
+        )
+    {
+        let src = if config.clock.clock_src == ClockSrc::Auto {
+            ClockSrc::Auto
+        } else {
+            ClockSrc::Internal
+        };
+        clock_in_sender.send(ClockInEvent::Start(src)).await;
     }
 
     loop {
+        // In Auto mode, resolve which source is actually driving the clock right now.
+        // For non-Auto configs this is always the configured source.
+        // Both values are Copy so they can be captured by value in the async block below
+        // and also used directly in the match arms.
+        let effective_src = if config.clock.clock_src == ClockSrc::Auto {
+            resolve_auto_src(auto_usb_last, auto_din_last)
+        } else {
+            config.clock.clock_src
+        };
+        // Tag for all outgoing ClockInEvent payloads: Auto events carry ClockSrc::Auto
+        // so the gatekeeper's `s == config.clock.clock_src` check accepts them.
+        let out_src = if config.clock.clock_src == ClockSrc::Auto {
+            ClockSrc::Auto
+        } else {
+            config.clock.clock_src
+        };
+
         // Timer future depends on mode:
-        // - Internal + running: fire on swung tick schedule (`next_tick_at`)
-        // - External + running: earliest of watchdog (`next_tick_at`) and the
-        //   front of the pending-emission queue
+        // - Internal (or Auto resolved to Internal) + running: swung tick schedule
+        // - External + running: earliest of watchdog and the pending-emission queue
         // - Otherwise: pend forever
         let timer_fut = async {
             if !is_running {
                 core::future::pending::<()>().await;
                 return;
             }
-            if config.clock.clock_src == ClockSrc::Internal {
+            if effective_src == ClockSrc::Internal {
                 Timer::at(next_tick_at.min(next_midi_tick_at)).await;
             } else if last_pulse.is_some() && measured_ext_period.is_some() {
                 // Watchdog is armed; also consider any pending swung emission
@@ -519,13 +562,16 @@ async fn run_unified_clock_engine() {
             // Arm 1: Config changes
             Either4::First(new_config) => {
                 if config.clock.clock_src != new_config.clock.clock_src {
-                    // Source changed: reset external tracking state
+                    // Source changed: reset all tracking state
                     last_pulse = None;
                     measured_ext_period = None;
                     delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
                     history_idx = 0;
                     pending_emissions.clear();
                     tick_in_window = 0;
+                    // Reset Auto liveness trackers when entering or leaving Auto mode
+                    auto_usb_last = None;
+                    auto_din_last = None;
 
                     // Drop transport state to match the gatekeeper's behavior,
                     // which also resets is_running on source change.
@@ -534,15 +580,24 @@ async fn run_unified_clock_engine() {
                         spawner.spawn(store_clock_running(false)).ok();
                     }
 
-                    if new_config.clock.clock_src == ClockSrc::Internal {
-                        // Switching to internal: recalculate tick duration from BPM
+                    if matches!(
+                        new_config.clock.clock_src,
+                        ClockSrc::Internal | ClockSrc::Auto
+                    ) {
+                        // Switching to Internal or Auto (which starts on Internal):
+                        // recalculate tick duration from BPM and re-anchor.
                         current_tick_duration =
                             bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
                         window_start_at = Instant::now();
                         next_midi_tick_at = window_start_at;
+                        next_tick_at = window_start_at;
                     }
-                } else if config.clock.clock_src == ClockSrc::Internal {
-                    // BPM or swing change while on internal source.
+                } else if matches!(
+                    config.clock.clock_src,
+                    ClockSrc::Internal | ClockSrc::Auto
+                ) && effective_src == ClockSrc::Internal
+                {
+                    // BPM or swing change while on internal source (or Auto resolved to Internal).
                     let new_tick_duration =
                         bpm_to_clock_duration(new_config.clock.internal_bpm, INTERNAL_PPQN);
                     let bpm_changed = current_tick_duration != new_tick_duration;
@@ -566,9 +621,13 @@ async fn run_unified_clock_engine() {
                 config = new_config;
             }
 
-            // Arm 2: Transport commands from UI (only effective for internal clock)
+            // Arm 2: Transport commands from UI
+            // Effective for Internal clock, and for Auto when resolved to Internal.
             Either4::Second(cmd) => {
-                if config.clock.clock_src != ClockSrc::Internal {
+                let allows_ui_transport = config.clock.clock_src == ClockSrc::Internal
+                    || (config.clock.clock_src == ClockSrc::Auto
+                        && effective_src == ClockSrc::Internal);
+                if !allows_ui_transport {
                     continue;
                 }
 
@@ -585,13 +644,9 @@ async fn run_unified_clock_engine() {
                         tick_in_window = 0;
                         next_tick_at = window_start_at;
                         next_midi_tick_at = window_start_at;
-                        clock_in_sender
-                            .send(ClockInEvent::Start(ClockSrc::Internal))
-                            .await;
+                        clock_in_sender.send(ClockInEvent::Start(out_src)).await;
                     } else {
-                        clock_in_sender
-                            .send(ClockInEvent::Stop(ClockSrc::Internal))
-                            .await;
+                        clock_in_sender.send(ClockInEvent::Stop(out_src)).await;
                     }
                     is_running = next_is_running;
                     spawner.spawn(store_clock_running(is_running)).ok();
@@ -601,10 +656,24 @@ async fn run_unified_clock_engine() {
             // Arm 3: Sync engine events (from ext pins and MIDI)
             Either4::Third(sync_event) => match sync_event {
                 SyncEngineEvent::Transport(event) => {
-                    // Only forward transport events that match the active clock source
-                    if event.source() != config.clock.clock_src {
+                    // In Auto mode accept transport from either MIDI source; otherwise
+                    // require an exact match with the configured source.
+                    let is_for_active = if config.clock.clock_src == ClockSrc::Auto {
+                        matches!(event.source(), ClockSrc::MidiUsb | ClockSrc::MidiIn)
+                    } else {
+                        event.source() == config.clock.clock_src
+                    };
+                    if !is_for_active {
                         continue;
                     }
+                    // Retag the event so the gatekeeper sees the configured source tag.
+                    let event = match event {
+                        ClockInEvent::Start(_) => ClockInEvent::Start(out_src),
+                        ClockInEvent::Stop(_) => ClockInEvent::Stop(out_src),
+                        ClockInEvent::Continue(_) => ClockInEvent::Continue(out_src),
+                        ClockInEvent::Reset(_) => ClockInEvent::Reset(out_src),
+                        other => other,
+                    };
                     clock_in_sender.send(event).await;
                     match event {
                         ClockInEvent::Start(_) => {
@@ -638,8 +707,45 @@ async fn run_unified_clock_engine() {
                         continue;
                     }
 
-                    // Only process pulses from the active clock source
-                    if source != config.clock.clock_src {
+                    if config.clock.clock_src == ClockSrc::Auto {
+                        // Update per-source liveness; ignore analog sources in Auto mode.
+                        match source {
+                            ClockSrc::MidiUsb => auto_usb_last = Some(timestamp),
+                            ClockSrc::MidiIn => auto_din_last = Some(timestamp),
+                            _ => continue,
+                        }
+                        let new_eff = resolve_auto_src(auto_usb_last, auto_din_last);
+                        if new_eff != effective_src {
+                            // Effective source switched — reset all tracking state.
+                            last_pulse = None;
+                            measured_ext_period = None;
+                            delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
+                            history_idx = 0;
+                            pending_emissions.clear();
+                            tick_in_window = 0;
+                            window_predicted = false;
+                            if new_eff == ClockSrc::Internal {
+                                // Restore internal BPM (external tracking overwrites
+                                // current_tick_duration) and re-anchor the window.
+                                // Setting next_tick_at = now makes the internal timer
+                                // fire on the very next loop iteration — zero-gap fallback.
+                                current_tick_duration = bpm_to_clock_duration(
+                                    config.clock.internal_bpm,
+                                    INTERNAL_PPQN,
+                                );
+                                window_start_at = Instant::now();
+                                next_tick_at = window_start_at;
+                                next_midi_tick_at = window_start_at;
+                                continue; // internal path takes over next iteration
+                            }
+                            // Switched to a new MIDI source — process this pulse below.
+                        }
+                        // Only forward pulses from the currently resolved source.
+                        if source != new_eff {
+                            continue;
+                        }
+                    } else if source != config.clock.clock_src {
+                        // Non-Auto: discard pulses from inactive sources.
                         continue;
                     }
 
@@ -677,7 +783,7 @@ async fn run_unified_clock_engine() {
                     //   which has no prior period to base a prediction on.
 
                     // Forward every raw pulse as an unswung MIDI clock tick.
-                    clock_in_sender.send(ClockInEvent::MidiTick(source)).await;
+                    clock_in_sender.send(ClockInEvent::MidiTick(out_src)).await;
 
                     let swing = config.clock.swing_amount;
                     if tick_in_window == 0 {
@@ -711,14 +817,14 @@ async fn run_unified_clock_engine() {
                                 // window, even if swing or the measured
                                 // period change mid-window. The next window
                                 // picks the mode fresh.
-                                clock_in_sender.send(ClockInEvent::Tick(source)).await;
+                                clock_in_sender.send(ClockInEvent::Tick(out_src)).await;
                                 window_predicted = false;
                             }
                         }
                     } else if !window_predicted {
                         // Mid-window pulse under an unpredicted window —
                         // forward it straight.
-                        clock_in_sender.send(ClockInEvent::Tick(source)).await;
+                        clock_in_sender.send(ClockInEvent::Tick(out_src)).await;
                     }
                     // else: mid-window pulse under an active prediction —
                     // emission is already queued, nothing to do here.
@@ -762,20 +868,22 @@ async fn run_unified_clock_engine() {
             },
 
             // Arm 4: Timer fired
+            // Use `effective_src` (computed at the top of the loop) so that Auto mode
+            // resolved to Internal uses the internal clock path.
             Either4::Fourth(_) => {
-                if config.clock.clock_src == ClockSrc::Internal && is_running {
+                if effective_src == ClockSrc::Internal && is_running {
                     let now = Instant::now();
                     // Unswung MIDI clock: fires at the nominal (straight) cadence
                     if now >= next_midi_tick_at {
                         clock_in_sender
-                            .send(ClockInEvent::MidiTick(ClockSrc::Internal))
+                            .send(ClockInEvent::MidiTick(out_src))
                             .await;
                         next_midi_tick_at += current_tick_duration;
                     }
                     // Swung internal tick: fires at the swing-adjusted time
                     if now >= next_tick_at {
                         clock_in_sender
-                            .send(ClockInEvent::Tick(ClockSrc::Internal))
+                            .send(ClockInEvent::Tick(out_src))
                             .await;
                         tick_in_window += 1;
                         if tick_in_window >= 2 * SWING_HALF_INTERVAL {
@@ -797,7 +905,7 @@ async fn run_unified_clock_engine() {
                         if front <= now {
                             pending_emissions.pop_front();
                             clock_in_sender
-                                .send(ClockInEvent::Tick(config.clock.clock_src))
+                                .send(ClockInEvent::Tick(out_src))
                                 .await;
                             true
                         } else {
@@ -808,15 +916,48 @@ async fn run_unified_clock_engine() {
                     };
 
                     if !popped && last_pulse.is_some() && now >= next_tick_at {
-                        // Watchdog: external clock lost
-                        clock_in_sender
-                            .send(ClockInEvent::Stop(config.clock.clock_src))
-                            .await;
-                        last_pulse = None;
-                        is_running = false;
-                        pending_emissions.clear();
-                        tick_in_window = 0;
-                        spawner.spawn(store_clock_running(false)).ok();
+                        if config.clock.clock_src == ClockSrc::Auto {
+                            // Auto mode: seamless fallback — don't stop the clock.
+                            // Invalidate the dead source, re-resolve, and keep playing.
+                            match effective_src {
+                                ClockSrc::MidiUsb => auto_usb_last = None,
+                                ClockSrc::MidiIn => auto_din_last = None,
+                                _ => {}
+                            }
+                            last_pulse = None;
+                            measured_ext_period = None;
+                            delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
+                            history_idx = 0;
+                            pending_emissions.clear();
+                            tick_in_window = 0;
+                            let next = resolve_auto_src(auto_usb_last, auto_din_last);
+                            if next == ClockSrc::MidiIn {
+                                // Another MIDI source is still live — arm its watchdog
+                                // from its last known pulse so the engine doesn't stall.
+                                last_pulse = auto_din_last;
+                            } else {
+                                // Fall back to Internal: restore BPM and re-anchor.
+                                // next_tick_at = now  →  timer fires next iteration.
+                                current_tick_duration = bpm_to_clock_duration(
+                                    config.clock.internal_bpm,
+                                    INTERNAL_PPQN,
+                                );
+                                window_start_at = Instant::now();
+                                next_tick_at = window_start_at;
+                                next_midi_tick_at = window_start_at;
+                            }
+                            // is_running unchanged — no Stop — seamless continuation
+                        } else {
+                            // Non-Auto: existing behavior — stop the clock.
+                            clock_in_sender
+                                .send(ClockInEvent::Stop(config.clock.clock_src))
+                                .await;
+                            last_pulse = None;
+                            is_running = false;
+                            pending_emissions.clear();
+                            tick_in_window = 0;
+                            spawner.spawn(store_clock_running(false)).ok();
+                        }
                     }
                 }
             }
