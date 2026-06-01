@@ -192,6 +192,8 @@ pub enum ClockSrc {
     MidiIn,
     #[n(6)]
     MidiUsb,
+    #[n(7)]
+    Auto,
 }
 
 impl From<ResetSrc> for ClockSrc {

@@ -24,6 +24,7 @@ interface ResetSrcItems {
 }
 
 const clockSrcItems: ClockSrcItem[] = [
+  { key: "Auto", value: "Auto", icon: "shuffle" },
   { key: "None", value: "None" },
   { key: "Atom", value: "Atom", icon: "atom", iconClass: "text-cyan-fp" },
   {
