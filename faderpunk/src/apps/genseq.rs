@@ -7,10 +7,9 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    constants::BJORKLUND_PATTERNS,
     ext::FromValue,
     latch::LatchLayer,
-    utils::attenuate,
+    utils::{attenuate, euclidean_at, rotate_select_bit, scale_to_12bit},
     AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param,
     Range, Value, VoltPerOct, APP_MAX_PARAMS,
 };
@@ -343,7 +342,7 @@ pub async fn run(
                             < storage.query(|s| s.accent_att);
 
                         let is_beat =
-                            euclidean_filter(euclid_length, euclid_beat, 0, clkn_euclid as u32);
+                            euclidean_at(euclid_length, euclid_beat, 0, clkn_euclid as u32);
 
                         if is_beat && !glob_muted.get() {
                             if gate_on {
@@ -632,19 +631,6 @@ pub async fn run(
     join4(fut1, fut2, fut3, scene_handler).await;
 }
 
-/// Rotate shift register right by 1; conditionally flip the MSB based on probability.
-/// Returns (new_register, was_bit_flipped).
-fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
-    let bit_index = (16 - bit_index).clamp(0, 16);
-    let original_bit = ((x >> bit_index) & 1) as u8;
-    let mut bit = original_bit;
-    if a > b {
-        bit ^= 1;
-    }
-    let result = (x >> 1) | ((bit as u16) << 15);
-    (result, bit != original_bit)
-}
-
 /// Scale the length register to the 0–16 range used for euclid_length.
 /// When bit_length == 1, bypasses the register and returns 16 (full scale) so
 /// length_att becomes a direct euclidean length control.
@@ -654,38 +640,4 @@ fn length_register_scaled(register: u16, bit_length: u8) -> u16 {
     } else {
         (scale_to_12bit(register, bit_length) as u32 * 16 / 4095) as u16
     }
-}
-
-/// Extract the top `x` bits of `input` and scale linearly to 12-bit (0–4095).
-fn scale_to_12bit(input: u16, x: u8) -> u16 {
-    let x = x.clamp(1, 16);
-    let top_x_bits = input >> (16 - x);
-    let max_x_val = (1u32 << x) - 1;
-    ((top_x_bits as u32 * 4095) / max_x_val) as u16
-}
-
-/// Rotate a pattern of `width` bits left by `rotation` steps.
-fn rotl32(value: u32, width: u8, rotation: u8) -> u32 {
-    let rotation = rotation % width;
-    ((value << rotation) | (value >> (width - rotation))) & ((1 << width) - 1)
-}
-
-/// Look up the Bjorklund (Euclidean) pattern for the given step/beat counts.
-fn euclidean_pattern(num_steps: u8, num_beats: u8, rotation: u8, padding: u8) -> u32 {
-    let steps = num_steps.max(2);
-    let beats = num_beats.min(steps);
-    let index = ((steps - 2) as usize) * 33 + beats as usize;
-    let mut pattern = BJORKLUND_PATTERNS.get(index).copied().unwrap_or(0);
-    if rotation > 0 {
-        let rot = rotation % (steps + padding);
-        pattern = rotl32(pattern, steps + padding, rot);
-    }
-    pattern
-}
-
-/// Return true if there is a beat at `clock` position in the Euclidean pattern.
-fn euclidean_filter(num_steps: u8, num_beats: u8, rotation: u8, clock: u32) -> bool {
-    let pattern = euclidean_pattern(num_steps, num_beats, rotation, 0);
-    let pos = (clock % num_steps.max(1) as u32) as u8;
-    (pattern & (1 << pos)) != 0
 }
