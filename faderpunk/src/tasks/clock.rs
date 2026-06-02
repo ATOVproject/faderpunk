@@ -443,9 +443,9 @@ async fn store_clock_running(is_running: bool) {
 /// have sent a pulse recently. Priority: USB MIDI > DIN MIDI > Internal.
 fn resolve_auto_src(usb_last: Option<Instant>, din_last: Option<Instant>) -> ClockSrc {
     let now = Instant::now();
-    if usb_last.map_or(false, |t| now.duration_since(t) < AUTO_WATCHDOG_FLOOR) {
+    if usb_last.is_some_and(|t| now.duration_since(t) < AUTO_WATCHDOG_FLOOR) {
         ClockSrc::MidiUsb
-    } else if din_last.map_or(false, |t| now.duration_since(t) < AUTO_WATCHDOG_FLOOR) {
+    } else if din_last.is_some_and(|t| now.duration_since(t) < AUTO_WATCHDOG_FLOOR) {
         ClockSrc::MidiIn
     } else {
         ClockSrc::Internal
@@ -497,12 +497,7 @@ async fn run_unified_clock_engine() {
 
     // If clock was already running at startup (persisted state), inform the gatekeeper.
     // Auto mode starts on Internal by default (no MIDI connected yet).
-    if is_running
-        && matches!(
-            config.clock.clock_src,
-            ClockSrc::Internal | ClockSrc::Auto
-        )
-    {
+    if is_running && matches!(config.clock.clock_src, ClockSrc::Internal | ClockSrc::Auto) {
         let src = if config.clock.clock_src == ClockSrc::Auto {
             ClockSrc::Auto
         } else {
@@ -598,10 +593,8 @@ async fn run_unified_clock_engine() {
                         next_midi_tick_at = window_start_at;
                         next_tick_at = window_start_at;
                     }
-                } else if matches!(
-                    config.clock.clock_src,
-                    ClockSrc::Internal | ClockSrc::Auto
-                ) && effective_src == ClockSrc::Internal
+                } else if matches!(config.clock.clock_src, ClockSrc::Internal | ClockSrc::Auto)
+                    && effective_src == ClockSrc::Internal
                 {
                     // BPM or swing change while on internal source (or Auto resolved to Internal).
                     let new_tick_duration =
@@ -628,11 +621,12 @@ async fn run_unified_clock_engine() {
             }
 
             // Arm 2: Transport commands from UI
-            // Effective for Internal clock, and for Auto when resolved to Internal.
+            // Effective for Internal clock and for Auto mode (always — the user
+            // must be able to start/stop regardless of which source is currently
+            // resolved, e.g. after MIDI stops or before any clock has arrived).
             Either4::Second(cmd) => {
-                let allows_ui_transport = config.clock.clock_src == ClockSrc::Internal
-                    || (config.clock.clock_src == ClockSrc::Auto
-                        && effective_src == ClockSrc::Internal);
+                let allows_ui_transport =
+                    matches!(config.clock.clock_src, ClockSrc::Internal | ClockSrc::Auto);
                 if !allows_ui_transport {
                     continue;
                 }
@@ -664,13 +658,27 @@ async fn run_unified_clock_engine() {
                 SyncEngineEvent::Transport(event) => {
                     // In Auto mode accept transport from either MIDI source; otherwise
                     // require an exact match with the configured source.
+                    let original_src = event.source();
                     let is_for_active = if config.clock.clock_src == ClockSrc::Auto {
-                        matches!(event.source(), ClockSrc::MidiUsb | ClockSrc::MidiIn)
+                        matches!(original_src, ClockSrc::MidiUsb | ClockSrc::MidiIn)
                     } else {
-                        event.source() == config.clock.clock_src
+                        original_src == config.clock.clock_src
                     };
                     if !is_for_active {
                         continue;
+                    }
+                    // In Auto mode, clear the liveness of a source that sends Stop or
+                    // Reset so that effective_src resolves to Internal immediately —
+                    // without this the 500 ms liveness window would block the UI play
+                    // button until the last-seen timestamp expires.
+                    if config.clock.clock_src == ClockSrc::Auto
+                        && matches!(event, ClockInEvent::Stop(_) | ClockInEvent::Reset(_))
+                    {
+                        match original_src {
+                            ClockSrc::MidiUsb => auto_usb_last = None,
+                            ClockSrc::MidiIn => auto_din_last = None,
+                            _ => {}
+                        }
                     }
                     // Retag the event so the gatekeeper sees the configured source tag.
                     let event = match event {
@@ -735,10 +743,8 @@ async fn run_unified_clock_engine() {
                                 // current_tick_duration) and re-anchor the window.
                                 // Setting next_tick_at = now makes the internal timer
                                 // fire on the very next loop iteration — zero-gap fallback.
-                                current_tick_duration = bpm_to_clock_duration(
-                                    config.clock.internal_bpm,
-                                    INTERNAL_PPQN,
-                                );
+                                current_tick_duration =
+                                    bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
                                 window_start_at = Instant::now();
                                 next_tick_at = window_start_at;
                                 next_midi_tick_at = window_start_at;
@@ -886,16 +892,12 @@ async fn run_unified_clock_engine() {
                     let now = Instant::now();
                     // Unswung MIDI clock: fires at the nominal (straight) cadence
                     if now >= next_midi_tick_at {
-                        clock_in_sender
-                            .send(ClockInEvent::MidiTick(out_src))
-                            .await;
+                        clock_in_sender.send(ClockInEvent::MidiTick(out_src)).await;
                         next_midi_tick_at += current_tick_duration;
                     }
                     // Swung internal tick: fires at the swing-adjusted time
                     if now >= next_tick_at {
-                        clock_in_sender
-                            .send(ClockInEvent::Tick(out_src))
-                            .await;
+                        clock_in_sender.send(ClockInEvent::Tick(out_src)).await;
                         tick_in_window += 1;
                         if tick_in_window >= 2 * SWING_HALF_INTERVAL {
                             tick_in_window = 0;
@@ -915,9 +917,7 @@ async fn run_unified_clock_engine() {
                     let popped = if let Some(&front) = pending_emissions.front() {
                         if front <= now {
                             pending_emissions.pop_front();
-                            clock_in_sender
-                                .send(ClockInEvent::Tick(out_src))
-                                .await;
+                            clock_in_sender.send(ClockInEvent::Tick(out_src)).await;
                             true
                         } else {
                             false
@@ -949,10 +949,8 @@ async fn run_unified_clock_engine() {
                             } else {
                                 // Fall back to Internal: restore BPM and re-anchor.
                                 // next_tick_at = now  →  timer fires next iteration.
-                                current_tick_duration = bpm_to_clock_duration(
-                                    config.clock.internal_bpm,
-                                    INTERNAL_PPQN,
-                                );
+                                current_tick_duration =
+                                    bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
                                 window_start_at = Instant::now();
                                 next_tick_at = window_start_at;
                                 next_midi_tick_at = window_start_at;
