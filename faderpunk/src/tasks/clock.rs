@@ -156,6 +156,12 @@ const WATCHDOG_MULTIPLIER: u32 = 8;
 /// Raise this to support slower clocks; lower it for faster Stop detection.
 const WATCHDOG_FLOOR: Duration = Duration::from_millis(2000);
 
+/// Tighter watchdog floor used exclusively in Auto mode, where sources are
+/// always MIDI (24 PPQN). At 30 BPM a pulse arrives every ~83 ms; 8× that is
+/// ~667 ms, so 500 ms still covers comfortably down to ~7 BPM while allowing
+/// the Auto fallback to snap in half a second instead of two.
+const AUTO_WATCHDOG_FLOOR: Duration = Duration::from_millis(500);
+
 /// Half of the swing window, in 24-PPQN ticks. With `H = 6`, the swing window
 /// is one 8th note (12 ticks) and swing is applied at the 16th-note level.
 const SWING_HALF_INTERVAL: u32 = 6;
@@ -437,9 +443,9 @@ async fn store_clock_running(is_running: bool) {
 /// have sent a pulse recently. Priority: USB MIDI > DIN MIDI > Internal.
 fn resolve_auto_src(usb_last: Option<Instant>, din_last: Option<Instant>) -> ClockSrc {
     let now = Instant::now();
-    if usb_last.map_or(false, |t| now.duration_since(t) < WATCHDOG_FLOOR) {
+    if usb_last.map_or(false, |t| now.duration_since(t) < AUTO_WATCHDOG_FLOOR) {
         ClockSrc::MidiUsb
-    } else if din_last.map_or(false, |t| now.duration_since(t) < WATCHDOG_FLOOR) {
+    } else if din_last.map_or(false, |t| now.duration_since(t) < AUTO_WATCHDOG_FLOOR) {
         ClockSrc::MidiIn
     } else {
         ClockSrc::Internal
@@ -857,12 +863,17 @@ async fn run_unified_clock_engine() {
 
                     last_pulse = Some(timestamp);
                     // Schedule watchdog: if no pulse arrives within the watchdog window,
-                    // declare external clock lost. Use a generous floor so drastic tempo
-                    // changes (or slow analog clocks) don't trip it.
+                    // declare external clock lost. Auto mode uses a tighter floor since
+                    // its sources are always MIDI; analog clocks need the full 2 s floor.
+                    let floor = if config.clock.clock_src == ClockSrc::Auto {
+                        AUTO_WATCHDOG_FLOOR
+                    } else {
+                        WATCHDOG_FLOOR
+                    };
                     let watchdog = measured_ext_period
                         .map(|p| p * WATCHDOG_MULTIPLIER)
-                        .unwrap_or(WATCHDOG_FLOOR)
-                        .max(WATCHDOG_FLOOR);
+                        .unwrap_or(floor)
+                        .max(floor);
                     next_tick_at = timestamp + watchdog;
                 }
             },
