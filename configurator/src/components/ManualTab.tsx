@@ -1553,7 +1553,8 @@ On load, the pitch sequence is restored at the next phrase boundary so the recal
         fnTitle: "Toggle mute",
         fnDescription:
           "Press to toggle mute. While muted, no new gates open and CV holds its last value. Button LED off = muted, dim = active.",
-        ledTop: "Legato indicator — lit when the current step is a legato slide",
+        ledTop:
+          "Legato indicator — lit when the current step is a legato slide",
         ledBottom: "",
       },
     ],
