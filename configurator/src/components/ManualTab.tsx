@@ -1332,7 +1332,8 @@ On a clock **Reset**, the step counter resets to step 1 — the pattern is not c
         fnTitle: "Mute",
         fnDescription: "Short press mutes/unmutes the output.",
         ledTop: "Gate open (user color)",
-        ledBottom: "Step progress — bright at step 1, dims toward end of sequence",
+        ledBottom:
+          "Step progress — bright at step 1, dims toward end of sequence",
       },
       {
         jackTitle: "Accent CV",
