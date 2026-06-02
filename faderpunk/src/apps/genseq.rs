@@ -256,7 +256,7 @@ pub async fn run(
                     register_pitch = storage.query(|s| s.register_pitch);
                 }
                 ClockEvent::Tick => {
-                    if clkn % div == 0 {
+                    if clkn.is_multiple_of(div) {
                         clkn_euclid = (clkn_euclid + 1) % euclid_length.max(1) as u16;
 
                         if clkn_euclid == 0 {
@@ -377,7 +377,7 @@ pub async fn run(
 
                     // Resolution flash on Ch0 Bottom while in Third layer
                     if matches!(glob_latch_layer.get(), LatchLayer::Third) {
-                        if clkn % div == 0 {
+                        if clkn.is_multiple_of(div) {
                             let color = if matches!(div, 2 | 4 | 8 | 16) {
                                 Color::Orange
                             } else {
@@ -577,7 +577,7 @@ pub async fn run(
                         Led::Top,
                         Color::White,
                         Brightness::Custom(
-                            (storage.query(|s| s.pitch_tm_length) as u8 * 16).saturating_sub(1),
+                            (storage.query(|s| s.pitch_tm_length) * 16).saturating_sub(1),
                         ),
                     );
                     leds.set(
