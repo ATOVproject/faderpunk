@@ -1286,8 +1286,8 @@ The quantizer maps all pitch output to the system-wide scale and root, so TB-3PO
 #### Buttons
 
 * **Button 1 — short press:** Re-seeds the pattern. A new seed is grabbed from the internal tick counter, immediately generating a fresh pattern and resetting the step counter.
-* **Button 2 — short press:** Mutes or unmutes the output. When muted, CV and gate outputs are held at 0 and MIDI output is suppressed.
-* **Button 3 — short press:** Toggles accents on/off. Button lit mid = accents active; button dim = accents suppressed (accent CV stays 0, MIDI fires at normal velocity).
+* **Button 2 — short press:** Toggles accents on/off. Button lit mid = accents active; button dim = accents suppressed (accent CV stays 0, MIDI fires at normal velocity).
+* **Button 3 — short press:** Mutes or unmutes the output. When muted, CV and gate outputs are held at 0 and MIDI output is suppressed.
 
 #### Clock & Re-seeding
 
@@ -1300,10 +1300,10 @@ On a clock **Reset**, the step counter resets to step 1 — the pattern is not c
 * **Ch 1 Button:** Mid brightness (user color); flashes white on each reseed.
 * **Ch 2 Top:** Gate open indicator (user color)
 * **Ch 2 Bottom:** Step progress — bright at step 1, dims toward the end of the sequence
-* **Ch 2 Button:** Lit = unmuted; dim = muted
+* **Ch 2 Button:** Mid brightness = accents active; dim = accents suppressed
 * **Ch 3 Top:** Orange when an accented gate is firing
 * **Ch 3 Bottom:** Transpose distance from center — dim = centered (no offset), bright = far from center
-* **Ch 3 Button:** Mid brightness = accents active; dim = accents suppressed
+* **Ch 3 Button:** Lit = unmuted; dim = muted
 
 #### Acknowledgements
 
@@ -1329,8 +1329,8 @@ On a clock **Reset**, the step counter resets to step 1 — the pattern is not c
         jackDescription: "Gate output",
         faderTitle: "Sequence length",
         faderDescription: "Sets the number of active steps (1–32)",
-        fnTitle: "Mute",
-        fnDescription: "Short press mutes/unmutes the output.",
+        fnTitle: "Toggle accents",
+        fnDescription: "Short press toggles accents on/off.",
         ledTop: "Gate open (user color)",
         ledBottom:
           "Step progress — bright at step 1, dims toward end of sequence",
@@ -1344,9 +1344,8 @@ On a clock **Reset**, the step counter resets to step 1 — the pattern is not c
         faderPlusFnTitle: "Octave transpose",
         faderPlusFnDescription:
           "Hold Shift while moving Fader 3 to transpose by whole octaves (−4 to +4). Both offsets are summed.",
-        fnTitle: "Toggle accents",
-        fnDescription:
-          "Toggles accent events. Button lit mid = accents active; dim = accents suppressed (accent CV stays 0, MIDI fires at normal velocity).",
+        fnTitle: "Mute",
+        fnDescription: "Short press mutes/unmutes the output.",
         ledTop: "Orange when an accented gate is firing",
         ledBottom:
           "Transpose distance from center — dim = no offset, bright = far from center.",
