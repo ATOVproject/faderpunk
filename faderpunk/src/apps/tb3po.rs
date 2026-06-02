@@ -636,12 +636,12 @@ pub async fn run(
                     );
                 }
                 1 => {
-                    let muted = !storage.query(|s| s.muted);
-                    storage.modify_and_save(|s| s.muted = muted);
-                }
-                2 => {
                     let v = !storage.query(|s| s.no_accents);
                     storage.modify_and_save(|s| s.no_accents = v);
+                }
+                2 => {
+                    let muted = !storage.query(|s| s.muted);
+                    storage.modify_and_save(|s| s.muted = muted);
                 }
                 _ => {}
             }
@@ -702,11 +702,12 @@ pub async fn run(
             } else {
                 leds.unset(1, Led::Top);
             }
-            if muted {
-                leds.unset(1, Led::Button);
-            } else {
-                leds.set(1, Led::Button, led_color, Brightness::Mid);
-            }
+            leds.set(
+                1,
+                Led::Button,
+                led_color,
+                if no_accents { Brightness::Low } else { Brightness::Mid },
+            );
 
             // Ch 2: accent on Top, transpose position on Bottom (always visible)
             if accent && gate_active {
@@ -717,12 +718,11 @@ pub async fn run(
             let dist = (transpose_fader as i32 - 2048).unsigned_abs();
             let b = (dist * 255 / 2048) as u8;
             leds.set(2, Led::Bottom, led_color, Brightness::Custom(b));
-            leds.set(
-                2,
-                Led::Button,
-                led_color,
-                if no_accents { Brightness::Low } else { Brightness::Mid },
-            );
+            if muted {
+                leds.unset(2, Led::Button);
+            } else {
+                leds.set(2, Led::Button, led_color, Brightness::Mid);
+            }
         }
     };
 
