@@ -291,8 +291,9 @@ pub async fn run(
                                 rotate_select_bit(register_pitch, prob_pitch, rand, length).0;
 
                             let register_scaled = scale_to_12bit(register_pitch, length as u8);
-                            let att_reg =
-                                attenuate(register_scaled, storage.query(|s| s.pitch_att));
+                            let raw_att = storage.query(|s| s.pitch_att);
+                            let curved_att = (raw_att as u32 * 4095).isqrt() as u16;
+                            let att_reg = attenuate(register_scaled, curved_att);
                             let out = quantizer.get_quantized_note(att_reg / 2).await;
 
                             let octave_offset =
