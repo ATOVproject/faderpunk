@@ -24,4 +24,5 @@ register_apps!(
     23 => fp_grids,
     24 => tb3po,
     25 => automator,
+    26 => genseq,
 );

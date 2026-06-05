@@ -214,6 +214,31 @@ pub fn euclidean_at(num_steps: u8, num_beats: u8, rotation: u8, clock: u32) -> b
     (pattern & (1 << pos)) != 0
 }
 
+/// Scale the top `x` bits of a 16-bit shift register (`x` in 1..=16) to a 12-bit value
+/// (`0..=4095`). Used by the Turing-machine apps to turn register state into a CV/level.
+pub fn scale_to_12bit(input: u16, x: u8) -> u16 {
+    let x = x.clamp(1, 16);
+    let top_x_bits = input >> (16 - x);
+    let max_x_val = (1u32 << x) - 1;
+    ((top_x_bits as u32 * 4095) / max_x_val) as u16
+}
+
+/// Turing-machine shift-register step. Rotates `x` right by one bit, re-injecting the
+/// looped bit at the MSB. The looped bit is read from the bottom of the active
+/// `length`-bit window (`length` in 1..=16) so the pattern repeats with period `length`;
+/// when `a > b` the bit is inverted (the probabilistic mutation).
+/// Returns `(new_register, was_flipped, output_bit)`.
+pub fn rotate_select_bit(x: u16, a: u16, b: u16, length: u16) -> (u16, bool, bool) {
+    let bit_index = (16 - length).clamp(0, 16);
+    let original_bit = ((x >> bit_index) & 1) as u8;
+    let mut bit = original_bit;
+    if a > b {
+        bit ^= 1;
+    }
+    let result = (x >> 1) | ((bit as u16) << 15);
+    (result, bit != original_bit, bit != 0)
+}
+
 /// RC-filter coefficient for an exponential approach with the given `tau` (in ticks).
 /// `tau <= 0` returns 1.0 (instant). Apply each tick: `current += (target - current) * coeff`.
 pub fn rc_coeff(tau: f32) -> f32 {
