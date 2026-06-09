@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
+    quantizer::Pitch,
     utils::{attenuate, euclidean_at, rotate_select_bit, scale_to_12bit},
     AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param,
     Range, Value, VoltPerOct, APP_MAX_PARAMS,
@@ -294,24 +295,41 @@ pub async fn run(
                             let raw_att = storage.query(|s| s.pitch_att);
                             let curved_att = (raw_att as u32 * 4095).isqrt() as u16;
                             let att_reg = attenuate(register_scaled, curved_att);
-                            let out = quantizer.get_quantized_note(att_reg / 2).await;
-
                             let octave_offset =
                                 (storage.query(|s| s.octave_shift) / 819).min(4) as i32 - 2;
+
+                            // When shifting down, raise the quantizer input floor so the
+                            // bottom of the pitch range maps to C0 rather than clipping
+                            // negative DAC values to 0V.
+                            let input_floor: u16 = match (-octave_offset).max(0) {
+                                1 => 410, // C1 in 0–10 V counts
+                                2 => 819, // C2 in 0–10 V counts
+                                _ => 0,
+                            };
+                            let quantizer_input =
+                                (att_reg as u32 / 2 + input_floor as u32).min(4095) as u16;
+                            let out = quantizer.get_quantized_note(quantizer_input).await;
+
+                            // Apply the octave shift in pitch space to avoid the ±1 count
+                            // rounding error from the integer counts_per_oct approximation.
+                            let shifted = Pitch {
+                                octave: (out.octave as i32 + octave_offset) as i8,
+                                note: out.note,
+                                raw: None,
+                            };
+
                             let base_note_i = u7::from(base_note).as_int() as i32;
-                            let out_note_i = u7::from(out.as_midi()).as_int() as i32;
+                            let shifted_midi_val =
+                                u7::from(shifted.as_midi()).as_int() as i32;
                             let note = MidiNote::from(
-                                (base_note_i + out_note_i - 12 + octave_offset * 12)
-                                    .clamp(0, 127),
+                                (base_note_i + shifted_midi_val - 12).clamp(0, 127),
                             );
                             midi_note.set(note);
 
                             if !glob_muted.get() {
-                                let cv_val = (out.as_counts(Range::_0_10V, VoltPerOct::Standard)
-                                    as i32
-                                    + octave_offset * 410)
-                                    .clamp(0, 4095) as u16;
-                                cv_out.set_value(cv_val);
+                                cv_out.set_value(
+                                    shifted.as_counts(Range::_0_10V, VoltPerOct::Standard),
+                                );
                             }
                             leds.set(
                                 0,
