@@ -1422,12 +1422,11 @@ The resolution parameter controls how many samples are recorded per bar. Higher 
     description: "Generative sequencer with Turing machine registers",
     color: "Blue",
     icon: "sequence-square",
-    params: ["MIDI Channel", "Base Note", "Color", "MIDI Out"],
+    params: ["MIDI Channel", "Base Note", "Color", "MIDI Out", "1V/Oct", "Bypass quantizer"],
     storage: [
       "Pitch range",
       "Length attenuator",
       "Beat density",
-      "Pitch loop length (fader)",
       "Legato density threshold",
       "Accent density threshold",
       "Clock resolution",
@@ -1451,7 +1450,7 @@ The resolution parameter controls how many samples are recorded per bar. Higher 
 
 * **Button 1 — hold:** Randomizes the pitch sequence. Release to lock the current melody in place.
 * **Button 2 — hold:** Randomizes the phrase length and rhythm.
-* **Button 3 — press:** Toggles mute. While muted no new gates open and the CV holds its last value. Button LED off = muted, dim = active.
+* **Button 3 — tap (release):** Toggles mute. While muted no new gates open and the CV holds its last value. Button LED off = muted, dim = active. Holding Button 3 to access the Button 3 layer does not trigger mute.
 
 #### Slides and accents
 
@@ -1466,10 +1465,10 @@ Slides and accents are generated automatically from the evolving pitch and rhyth
 * **Fader 2:** Legato density.
 * **Fader 3:** Accent density.
 
-#### Button 1 layer (hold Button 1)
+#### Button 3 layer (hold Button 3)
 
 * **Fader 1:** Clock resolution — Ch 1 bottom flashes orange (straight) or blue (triplet) in sync with the clock.
-* **Fader 2:** Octave shift (−2 to +2) — Ch 2 button color shows the current octave (blue=−2, cyan=−1, green=0, yellow=+1, red=+2).
+* **Fader 2:** Octave shift (−2 to +2) — Ch 2 bottom LED color shows the current octave (blue=−2, cyan=−1, green=0, yellow=+1, red=+2).
 * **Fader 3:** Gate length (1–99%) — Ch 3 top brightness shows the current value.
 
 #### Setting register lengths
@@ -1485,16 +1484,18 @@ Hold Shift and press buttons to count — each press adds one step. Release Shif
 * **Ch 1 Top:** Pitch level — brightness tracks the current note position.
 * **Ch 2 Top:** Gate indicator — lit while the gate is open.
 * **Ch 3 Top:** Legato indicator — lit when the current step is a slide.
+* **Ch 1 Bottom:** Pitch TM cycle progress — bright at the start of each pitch cycle, dims to off at the end.
+* **Ch 2 Bottom:** Length TM cycle progress — bright at the start of each length cycle, dims to off at the end.
 
 **Shift held:**
 * **Ch 1 Top:** Pitch loop length (white, brightness).
 * **Ch 2 Top:** Legato density (cyan, brightness).
 * **Ch 3 Top:** Accent density (yellow, brightness).
-* **Button 1 / Button 2:** Brightness shows the current count while setting register lengths.
+* **Button 1 / Button 2:** Shows the stored register length; switches to live count once you begin tapping.
 
-**Button 1 held:**
+**Button 3 held:**
 * **Ch 1 Bottom:** Flashes orange (straight division) or blue (triplet) in sync with the clock.
-* **Ch 2 Button:** Current octave by color.
+* **Ch 2 Bottom:** Current octave by color (blue=−2, cyan=−1, green=0, yellow=+1, red=+2).
 * **Ch 3 Top:** Gate length as brightness.
 
 #### Scene recall
@@ -1518,7 +1519,7 @@ On load, the pitch sequence is restored at the next phrase boundary so the recal
           "Hold to raise pitch register mutation probability to 50% — release to lock the current melody",
         ledTop: "Pitch register level (brightness = current note height)",
         ledBottom:
-          "Flashes orange (straight) or blue (triplet) in sync with the clock while in Button 1 layer",
+          "Flashes orange (straight) or blue (triplet) in sync with the clock while in Button 3 layer",
       },
       {
         jackTitle: "Gate Output",
@@ -1531,7 +1532,7 @@ On load, the pitch sequence is restored at the next phrase boundary so the recal
           "Threshold controlling how many steps are legato — higher = more slides",
         faderPlusFnTitle: "Octave shift",
         faderPlusFnDescription:
-          "Transposes CV and MIDI output by −2 to +2 octaves — button LED color shows current octave",
+          "Transposes CV and MIDI output by −2 to +2 octaves — bottom LED color shows current octave",
         fnTitle: "Mutate length",
         fnDescription:
           "Hold to raise length register mutation probability — evolves the Euclidean pattern length over time",
@@ -1552,7 +1553,7 @@ On load, the pitch sequence is restored at the next phrase boundary so the recal
           "Sets how long the gate stays high as a percentage of the step (1–99%) — top LED brightness shows current value",
         fnTitle: "Toggle mute",
         fnDescription:
-          "Press to toggle mute. While muted, no new gates open and CV holds its last value. Button LED off = muted, dim = active.",
+          "Tap (release) to toggle mute. While muted, no new gates open and CV holds its last value. Button LED off = muted, dim = active. Holding for Button 3 layer does not trigger mute.",
         ledTop:
           "Legato indicator — lit when the current step is a legato slide",
         ledBottom: "",
