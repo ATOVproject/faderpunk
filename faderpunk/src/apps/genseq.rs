@@ -109,7 +109,7 @@ impl AppParams for Params {
 }
 
 /// Fader layout:
-///   F0 Main=pitch_att     Alt=pitch_length_saved  Third=res_saved
+///   F0 Main=pitch_att     Alt=pitch_tm_length     Third=res_saved
 ///   F1 Main=length_att    Alt=legato_att          Third=octave_shift
 ///   F2 Main=beat_density  Alt=accent_att          Third=gate_length
 ///
@@ -129,7 +129,6 @@ pub struct Storage {
     length_att: u16,
     beat_density: u16,
     // Alt layer
-    pitch_length_saved: u16,
     legato_att: u16,
     accent_att: u16,
     // Third layer
@@ -151,7 +150,6 @@ impl Default for Storage {
             pitch_att: 3000,
             length_att: 2048,
             beat_density: 2048,
-            pitch_length_saved: 2048, // ~9 steps
             legato_att: 1024,
             accent_att: 1024,
             res_saved: 2048,  // resolution[4] = 6 PPQN
@@ -214,6 +212,9 @@ pub async fn run(
     let last_note_on = app.make_global(MidiNote::from(0));
     let glob_latch_layer = app.make_global(LatchLayer::Main);
     let glob_muted = app.make_global(storage.query(|s| s.muted));
+    let third_layer_used = app.make_global(false);
+    let pitch_tm_step_glob = app.make_global(0u8);
+    let length_tm_step_glob = app.make_global(0u8);
 
     let resolution = [24u32, 16, 12, 8, 6, 4, 3, 2];
 
@@ -254,12 +255,18 @@ pub async fn run(
         let mut legato = false;
         let mut legato_register: u16 = register_pitch ^ register_length;
         let mut accent_register: u16 = register_pitch ^ register_length.rotate_right(8);
+        let mut pitch_cycle_step: u8 = 0;
+        let mut length_cycle_step: u8 = 0;
 
         loop {
             let div = div_glob.get();
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
+                    pitch_cycle_step = 0;
+                    length_cycle_step = 0;
+                    pitch_tm_step_glob.set(0);
+                    length_tm_step_glob.set(0);
                     if gate_on {
                         gate_out.set_value(0);
                         midi.send_note_off(last_note_on.get()).await;
@@ -302,6 +309,14 @@ pub async fn run(
                             let rand = die.roll().clamp(100, 3900);
                             register_pitch =
                                 rotate_select_bit(register_pitch, prob_pitch, rand, length).0;
+
+                            // Advance TM cycle step counters for Bottom LED progress display
+                            let ptm_len = length as u8;
+                            pitch_cycle_step = (pitch_cycle_step + 1) % ptm_len;
+                            pitch_tm_step_glob.set(pitch_cycle_step);
+                            let ltm_len = beat_reg_length;
+                            length_cycle_step = (length_cycle_step + 1) % ltm_len;
+                            length_tm_step_glob.set(length_cycle_step);
 
                             let register_scaled = scale_to_12bit(register_pitch, length as u8);
                             let raw_att = storage.query(|s| s.pitch_att);
@@ -449,6 +464,9 @@ pub async fn run(
         loop {
             let chan = fader.wait_for_any_change().await;
             let layer = glob_latch_layer.get();
+            if matches!(layer, LatchLayer::Third) {
+                third_layer_used.set(true);
+            }
 
             let target = match (chan, layer) {
                 (0, LatchLayer::Main) => storage.query(|s| s.pitch_att),
@@ -507,8 +525,12 @@ pub async fn run(
             let btn1 = buttons.is_button_pressed(1);
             let btn2 = buttons.is_button_pressed(2);
 
-            // Mute toggle: btn2 short press without shift
-            if btn2 && !btn2_old && !shift {
+            // Btn2 rising edge: reset Third-layer-used flag
+            if btn2 && !btn2_old {
+                third_layer_used.set(false);
+            }
+            // Mute toggle: Btn2 release, only if no Third layer fader was moved
+            if !btn2 && btn2_old && !shift && !third_layer_used.get() {
                 let muted = !glob_muted.get();
                 glob_muted.set(muted);
                 storage.modify_and_save(|s| s.muted = muted);
@@ -551,7 +573,7 @@ pub async fn run(
 
             let layer = if shift {
                 LatchLayer::Alt
-            } else if btn0 {
+            } else if btn2 {
                 LatchLayer::Third
             } else {
                 LatchLayer::Main
@@ -575,6 +597,7 @@ pub async fn run(
                 leds.unset(1, Led::Top);
                 leds.unset(2, Led::Top);
                 leds.unset(0, Led::Bottom);
+                leds.unset(1, Led::Bottom);
             }
             was_overlay = is_overlay;
 
@@ -589,11 +612,22 @@ pub async fn run(
                     } else {
                         leds.set(2, Led::Button, led_color, Brightness::Low);
                     }
+                    // Bottom LEDs: TM cycle progress (bright at step 0, dims through cycle)
+                    let pitch_step = pitch_tm_step_glob.get() as u32;
+                    let pitch_len = storage.query(|s| s.pitch_tm_length).max(1) as u32;
+                    let p0 = (255u32.saturating_sub(pitch_step * 255 / pitch_len)) as u8;
+                    leds.set(0, Led::Bottom, led_color, Brightness::Custom(p0));
+                    let len_step = length_tm_step_glob.get() as u32;
+                    let len_len = storage.query(|s| s.length_tm_length).max(1) as u32;
+                    let p1 = (255u32.saturating_sub(len_step * 255 / len_len)) as u8;
+                    leds.set(1, Led::Bottom, led_color, Brightness::Custom(p1));
                 }
                 LatchLayer::Alt => {
-                    // Button LEDs: brightness shows live count while counting
-                    leds.set(0, Led::Button, Color::White, Brightness::Custom(pitch_len_count.saturating_mul(16)));
-                    leds.set(1, Led::Button, Color::Green, Brightness::Custom(length_len_count.saturating_mul(16)));
+                    // Button LEDs: stored length by default; switch to live count once tapping starts
+                    let pitch_disp = if pitch_len_count > 0 { pitch_len_count } else { storage.query(|s| s.pitch_tm_length) };
+                    let len_disp = if length_len_count > 0 { length_len_count } else { storage.query(|s| s.length_tm_length) };
+                    leds.set(0, Led::Button, Color::White, Brightness::Custom((pitch_disp as u16 * 16).min(255) as u8));
+                    leds.set(1, Led::Button, Color::Green, Brightness::Custom((len_disp as u16 * 16).min(255) as u8));
                     if muted {
                         leds.unset(2, Led::Button);
                     } else {
@@ -622,14 +656,11 @@ pub async fn run(
                     );
                 }
                 LatchLayer::Third => {
-                    leds.set(0, Led::Button, led_color, Brightness::Low);
+                    leds.set(0, Led::Button, led_color, if btn0 { Brightness::High } else { Brightness::Low });
+                    leds.set(1, Led::Button, led_color, if btn1 { Brightness::High } else { Brightness::Low });
+                    leds.set(2, Led::Button, led_color, Brightness::High);
                     let oct_idx = (storage.query(|s| s.octave_shift) / 819).min(4) as usize;
-                    leds.set(1, Led::Button, OCT_COLORS[oct_idx], Brightness::High);
-                    if muted {
-                        leds.unset(2, Led::Button);
-                    } else {
-                        leds.set(2, Led::Button, led_color, Brightness::Low);
-                    }
+                    leds.set(1, Led::Bottom, OCT_COLORS[oct_idx], Brightness::High);
                     leds.set(
                         2,
                         Led::Top,
@@ -649,6 +680,7 @@ pub async fn run(
                     let res = storage.query(|s| s.res_saved);
                     div_glob.set(resolution[(res / 512).min(7) as usize]);
                     recall_flag.set(true);
+                    glob_muted.set(storage.query(|s| s.muted));
                 }
                 SceneEvent::SaveScene(scene) => {
                     storage.save_to_scene(scene).await;
