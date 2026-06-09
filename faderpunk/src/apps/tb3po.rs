@@ -623,7 +623,7 @@ pub async fn run(
                 continue;
             }
             match chan {
-                0 if latch_layer_glob.get() != LatchLayer::Third => {
+                0 => {
                     let new_seed = (ticks() & 0xFFFF) as u16;
                     storage.modify_and_save(|s| s.seed = new_seed);
                     let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
