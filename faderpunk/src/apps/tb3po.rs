@@ -22,16 +22,12 @@ use crate::app::{
 use crate::tasks::leds::LedMode;
 
 pub const CHANNELS: usize = 3;
-pub const PARAMS: usize = 3;
+pub const PARAMS: usize = 4;
 
 const MAX_STEPS: usize = 32;
 
-// 0–10V range: 10V / 120 semitones ≈ 34 counts/semitone (1V/oct standard)
-const SEMITONE_COUNTS: i32 = 34;
 // Center pitch hint for quantizer input (midpoint of 0–4095 ≈ C5 at 0V=C0)
 const CENTER_CV: u16 = 2048;
-// One octave in counts
-const OCTAVE_COUNTS: i32 = 410;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "TB-3PO",
@@ -52,12 +48,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Pink,
         Color::Violet,
     ],
-});
+})
+.add_param(Param::VoltPerOct);
 
 pub struct Params {
     midi_channel: MidiChannel,
     midi_out: MidiOut,
     color: Color,
+    vpo: VoltPerOct,
 }
 
 impl Default for Params {
@@ -66,6 +64,7 @@ impl Default for Params {
             midi_channel: MidiChannel::default(),
             midi_out: MidiOut::default(),
             color: Color::Orange,
+            vpo: VoltPerOct::Standard,
         }
     }
 }
@@ -79,6 +78,7 @@ impl AppParams for Params {
             midi_channel: MidiChannel::from_value(values[0]),
             midi_out: MidiOut::from_value(values[1]),
             color: Color::from_value(values[2]),
+            vpo: VoltPerOct::from_value(values[3]),
         })
     }
 
@@ -87,6 +87,7 @@ impl AppParams for Params {
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
         vec
     }
 }
@@ -264,18 +265,20 @@ fn step_is_oct_down(p: &AcidPattern, step: u8) -> bool {
 }
 
 /// Raw pitch CV for a step before quantising (in ±5V counts 0–4095).
-fn raw_pitch_cv(p: &AcidPattern, step: u8, transpose: i16) -> u16 {
+fn raw_pitch_cv(p: &AcidPattern, step: u8, transpose: i16, vpo: VoltPerOct) -> u16 {
+    let oct = vpo.counts_per_oct() as i32;
+    let semi = oct / 12;
     let note = p.notes[step as usize] as i32;
     let cv = CENTER_CV as i32
-        + note * SEMITONE_COUNTS
+        + note * semi
         + if step_is_oct_up(p, step) {
-            OCTAVE_COUNTS
+            oct
         } else if step_is_oct_down(p, step) {
-            -OCTAVE_COUNTS
+            -oct
         } else {
             0
         }
-        + transpose as i32 * SEMITONE_COUNTS;
+        + transpose as i32 * semi;
     cv.clamp(0, 4095) as u16
 }
 
@@ -315,14 +318,15 @@ pub async fn run(
     let pitch_range = Range::_0_10V;
     let accent_range = Range::_0_5V;
 
-    let (midi_out, midi_chan, led_color) = params.query(|p| (p.midi_out, p.midi_channel, p.color));
+    let (midi_out, midi_chan, led_color, vpo) =
+        params.query(|p| (p.midi_out, p.midi_channel, p.color, p.vpo));
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
-    let quantizer = app.use_quantizer(pitch_range, VoltPerOct::Standard, false);
+    let quantizer = app.use_quantizer(pitch_range, vpo, false);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let pitch_out = app.make_out_jack(0, pitch_range).await;
@@ -433,18 +437,18 @@ pub async fn run(
                         .map(|p| step_is_slid(&pattern, p as u8))
                         .unwrap_or(false);
                     let is_accent = !no_accents && step_is_accent(&pattern, step);
-                    let target_raw = raw_pitch_cv(&pattern, step, transpose);
+                    let target_raw = raw_pitch_cv(&pattern, step, transpose, vpo);
 
                     // Pitch / slide
                     if is_slid_prev {
                         // Glide: output_task will interpolate toward new target
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        slide_target_glob.set(out.as_counts(pitch_range, VoltPerOct::Standard));
+                        slide_target_glob.set(out.as_counts(pitch_range, vpo));
                         slide_active_glob.set(true);
                     } else if is_gated {
                         // Snap to new pitch
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        let counts = out.as_counts(pitch_range, VoltPerOct::Standard);
+                        let counts = out.as_counts(pitch_range, vpo);
                         slide_target_glob.set(counts);
                         slide_active_glob.set(false);
                     }

@@ -1248,7 +1248,7 @@ Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are sh
     description: "TB-303 acid pattern generator",
     color: "Orange",
     icon: "softRandom",
-    params: ["MIDI Channel", "MIDI Out", "Color"],
+    params: ["MIDI Channel", "MIDI Out", "Color", "1V/Oct"],
     storage: [
       "Seed (pattern identity)",
       "Density",
@@ -1287,7 +1287,7 @@ The quantizer maps all pitch output to the system-wide scale and root, so TB-3PO
 
 * **Button 1 — short press:** Re-seeds the pattern. A new seed is grabbed from the internal tick counter, immediately generating a fresh pattern and resetting the step counter.
 * **Button 2 — short press:** Toggles accents on/off. Button lit mid = accents active; button dim = accents suppressed (accent CV stays 0, MIDI fires at normal velocity).
-* **Button 3 — short press:** Mutes or unmutes the output. When muted, CV and gate outputs are held at 0 and MIDI output is suppressed.
+* **Button 3 — short press:** Mutes or unmutes the output. Mute is inhibit-only: the current note rings out naturally (gate closes at end of the step), pitch CV holds its last value, and no new gates open until unmuted.
 
 #### Clock & Re-seeding
 
@@ -1345,7 +1345,7 @@ On a clock **Reset**, the step counter resets to step 1 — the pattern is not c
         faderPlusFnDescription:
           "Hold Shift while moving Fader 3 to transpose by whole octaves (−4 to +4). Both offsets are summed.",
         fnTitle: "Mute",
-        fnDescription: "Short press mutes/unmutes the output.",
+        fnDescription: "Short press mutes/unmutes. Inhibit-only: current note rings out, pitch CV holds, no new gates until unmuted.",
         ledTop: "Orange when an accented gate is firing",
         ledBottom:
           "Transpose distance from center — dim = no offset, bright = far from center.",
