@@ -21,7 +21,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 3;
-pub const PARAMS: usize = 4;
+pub const PARAMS: usize = 6;
 
 /// LED colors for the 5 octave shift steps -2..+2 (F1 Third layer)
 const OCT_COLORS: [Color; 5] = [
@@ -53,13 +53,19 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::VoltPerOct)
+.add_param(Param::bool {
+    name: "Bypass quantizer",
+});
 
 pub struct Params {
     midi_channel: MidiChannel,
     note: MidiNote,
     color: Color,
     midi_out: MidiOut,
+    vpo: VoltPerOct,
+    bypass: bool,
 }
 
 impl Default for Params {
@@ -69,6 +75,8 @@ impl Default for Params {
             note: MidiNote::from(36),
             color: Color::Blue,
             midi_out: MidiOut::default(),
+            vpo: VoltPerOct::Standard,
+            bypass: false,
         }
     }
 }
@@ -83,6 +91,8 @@ impl AppParams for Params {
             note: MidiNote::from_value(values[1]),
             color: Color::from_value(values[2]),
             midi_out: MidiOut::from_value(values[3]),
+            vpo: VoltPerOct::from_value(values[4]),
+            bypass: bool::from_value(values[5]),
         })
     }
 
@@ -92,6 +102,8 @@ impl AppParams for Params {
         vec.push(self.note.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
+        vec.push(self.bypass.into()).unwrap();
         vec
     }
 }
@@ -183,15 +195,15 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (led_color, midi_chan, base_note, midi_out) =
-        params.query(|p| (p.color, p.midi_channel, p.note, p.midi_out));
+    let (led_color, midi_chan, base_note, midi_out, vpo, bypass) =
+        params.query(|p| (p.color, p.midi_channel, p.note, p.midi_out, p.vpo, p.bypass));
 
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
     let die = app.use_die();
-    let quantizer = app.use_quantizer(Range::_0_10V, VoltPerOct::Standard, false);
+    let quantizer = app.use_quantizer(Range::_0_10V, vpo, bypass);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let prob_pitch_glob = app.make_global(0u16);
@@ -301,11 +313,9 @@ pub async fn run(
                             // When shifting down, raise the quantizer input floor so the
                             // bottom of the pitch range maps to C0 rather than clipping
                             // negative DAC values to 0V.
-                            let input_floor: u16 = match (-octave_offset).max(0) {
-                                1 => 410, // C1 in 0–10 V counts
-                                2 => 819, // C2 in 0–10 V counts
-                                _ => 0,
-                            };
+                            let input_floor =
+                                ((-octave_offset).max(0) as u16)
+                                    .saturating_mul(vpo.counts_per_oct() as u16);
                             let quantizer_input =
                                 (att_reg as u32 / 2 + input_floor as u32).min(4095) as u16;
                             let out = quantizer.get_quantized_note(quantizer_input).await;
@@ -328,7 +338,7 @@ pub async fn run(
 
                             if !glob_muted.get() {
                                 cv_out.set_value(
-                                    shifted.as_counts(Range::_0_10V, VoltPerOct::Standard),
+                                    shifted.as_counts(Range::_0_10V, vpo),
                                 );
                             }
                             leds.set(
