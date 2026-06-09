@@ -90,22 +90,7 @@ export const useStore = create<State>((set, get) => ({
   autoConnect: async () => {
     try {
       const device = await tryAutoConnect();
-      if (!device) {
-        const saved = loadPersistedSimulatorState();
-        if (saved) {
-          set({
-            isSimulator: true,
-            apps: DEMO_APPS,
-            layout: saved.layout,
-            params: saved.params,
-            config: saved.config,
-            deviceVersion: "simulator",
-            usbDevice: undefined,
-          });
-          return true;
-        }
-        return false;
-      }
+      if (!device) return false;
 
       const deviceVersion = getDeviceVersion(device);
       set({ deviceVersion });
@@ -160,7 +145,9 @@ export const useStore = create<State>((set, get) => ({
     });
   },
   disconnect: () => {
-    localStorage.removeItem(SIMULATOR_STORAGE_KEY);
+    // Reset in-memory state only. Persisted simulator work is intentionally
+    // kept so "Open Simulator" can resume it; a real-device disconnect must
+    // not wipe it either.
     set({ ...initialState });
   },
   setConfig: (config) => {
