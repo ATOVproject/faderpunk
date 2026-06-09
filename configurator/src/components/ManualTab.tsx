@@ -1345,7 +1345,8 @@ On a clock **Reset**, the step counter resets to step 1 — the pattern is not c
         faderPlusFnDescription:
           "Hold Shift while moving Fader 3 to transpose by whole octaves (−4 to +4). Both offsets are summed.",
         fnTitle: "Mute",
-        fnDescription: "Short press mutes/unmutes. Inhibit-only: current note rings out, pitch CV holds, no new gates until unmuted.",
+        fnDescription:
+          "Short press mutes/unmutes. Inhibit-only: current note rings out, pitch CV holds, no new gates until unmuted.",
         ledTop: "Orange when an accented gate is firing",
         ledBottom:
           "Transpose distance from center — dim = no offset, bright = far from center.",
