@@ -11,8 +11,8 @@ use libfp::{
     latch::LatchLayer,
     quantizer::Pitch,
     utils::{attenuate, euclidean_at, rotate_select_bit, scale_to_12bit},
-    AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param,
-    Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiChannel, MidiNote, MidiOut,
+    Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 use midly::num::u7;
 
@@ -35,10 +35,12 @@ const OCT_COLORS: [Color; 5] = [
 pub static CONFIG: Config<PARAMS> = Config::new(
     "GenSeq",
     "Generative sequencer with Turing machine registers",
-    Color::Blue,
-    AppIcon::SequenceSquare,
+    Color::Yellow,
+    AppIcon::Sequence,
 )
-.add_param(Param::MidiChannel { name: "MIDI Channel" })
+.add_param(Param::MidiChannel {
+    name: "MIDI Channel",
+})
 .add_param(Param::MidiNote { name: "Base Note" })
 .add_param(Param::Color {
     name: "Color",
@@ -72,7 +74,7 @@ impl Default for Params {
     fn default() -> Self {
         Self {
             midi_channel: MidiChannel::default(),
-            note: MidiNote::from(36),
+            note: MidiNote::from(12),
             color: Color::Blue,
             midi_out: MidiOut::default(),
             vpo: VoltPerOct::Standard,
@@ -135,7 +137,7 @@ pub struct Storage {
     res_saved: u16,
     octave_shift: u16,
     gate_length: u16,
-    // Turing machine state (register_pitch persists; register_length is ephemeral)
+    // Turing machine state
     register_pitch: u16,
     register_length: u16,
     // TM register widths (1–16, set by Shift+Button counting)
@@ -152,7 +154,7 @@ impl Default for Storage {
             beat_density: 2048,
             legato_att: 1024,
             accent_att: 1024,
-            res_saved: 2048,  // resolution[4] = 6 PPQN
+            res_saved: 2048,    // resolution[4] = 6 PPQN
             octave_shift: 1638, // 1638/819=2 → 2-2=0 octave shift
             gate_length: 2048,  // ~50%
             register_pitch: 7632,
@@ -215,6 +217,8 @@ pub async fn run(
     let third_layer_used = app.make_global(false);
     let pitch_tm_step_glob = app.make_global(0u8);
     let length_tm_step_glob = app.make_global(0u8);
+    let euclid_step_glob = app.make_global(0u16);
+    let euclid_len_glob = app.make_global(1u8);
 
     let resolution = [24u32, 16, 12, 8, 6, 4, 3, 2];
 
@@ -247,8 +251,7 @@ pub async fn run(
             storage.query(|s| s.length_att),
         )
         .max(1) as u8;
-        let mut euclid_beat: u8 = (storage.query(|s| s.beat_density) as u32
-            * euclid_length as u32
+        let mut euclid_beat: u8 = (storage.query(|s| s.beat_density) as u32 * euclid_length as u32
             / 4095)
             .clamp(1, euclid_length as u32) as u8;
         let mut pending_note_off = false;
@@ -263,10 +266,12 @@ pub async fn run(
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     clkn = 0;
+                    clkn_euclid = 0;
                     pitch_cycle_step = 0;
                     length_cycle_step = 0;
                     pitch_tm_step_glob.set(0);
                     length_tm_step_glob.set(0);
+                    euclid_step_glob.set(0);
                     if gate_on {
                         gate_out.set_value(0);
                         midi.send_note_off(last_note_on.get()).await;
@@ -277,6 +282,7 @@ pub async fn run(
                 ClockEvent::Tick => {
                     if clkn.is_multiple_of(div) {
                         clkn_euclid = (clkn_euclid + 1) % euclid_length.max(1) as u16;
+                        euclid_step_glob.set(clkn_euclid);
 
                         if clkn_euclid == 0 {
                             // Cycle boundary: rotate TMs, recompute pattern params and pitch
@@ -299,11 +305,13 @@ pub async fn run(
                                 storage.query(|s| s.length_att),
                             )
                             .max(1) as u8;
+                            euclid_len_glob.set(euclid_length);
 
                             euclid_beat = (storage.query(|s| s.beat_density) as u32
                                 * euclid_length as u32
                                 / 4095)
-                                .clamp(1, euclid_length as u32) as u8;
+                                .clamp(1, euclid_length as u32)
+                                as u8;
 
                             let length = storage.query(|s| s.pitch_tm_length).clamp(1, 16) as u16;
                             let rand = die.roll().clamp(100, 3900);
@@ -320,17 +328,16 @@ pub async fn run(
 
                             let register_scaled = scale_to_12bit(register_pitch, length as u8);
                             let raw_att = storage.query(|s| s.pitch_att);
-                            let curved_att = (raw_att as u32 * 4095).isqrt() as u16;
-                            let att_reg = attenuate(register_scaled, curved_att);
+                            let att_reg =
+                                attenuate(register_scaled, Curve::Logarithmic.at(raw_att));
                             let octave_offset =
                                 (storage.query(|s| s.octave_shift) / 819).min(4) as i32 - 2;
 
                             // When shifting down, raise the quantizer input floor so the
                             // bottom of the pitch range maps to C0 rather than clipping
                             // negative DAC values to 0V.
-                            let input_floor =
-                                ((-octave_offset).max(0) as u16)
-                                    .saturating_mul(vpo.counts_per_oct() as u16);
+                            let input_floor = ((-octave_offset).max(0) as u16)
+                                .saturating_mul(vpo.counts_per_oct() as u16);
                             let quantizer_input =
                                 (att_reg as u32 / 2 + input_floor as u32).min(4095) as u16;
                             let out = quantizer.get_quantized_note(quantizer_input).await;
@@ -344,17 +351,13 @@ pub async fn run(
                             };
 
                             let base_note_i = u7::from(base_note).as_int() as i32;
-                            let shifted_midi_val =
-                                u7::from(shifted.as_midi()).as_int() as i32;
-                            let note = MidiNote::from(
-                                (base_note_i + shifted_midi_val - 12).clamp(0, 127),
-                            );
+                            let shifted_midi_val = u7::from(shifted.as_midi()).as_int() as i32;
+                            let note =
+                                MidiNote::from((base_note_i + shifted_midi_val - 12).clamp(0, 127));
                             midi_note.set(note);
 
                             if !glob_muted.get() {
-                                cv_out.set_value(
-                                    shifted.as_counts(Range::_0_10V, vpo),
-                                );
+                                cv_out.set_value(shifted.as_counts(Range::_0_10V, vpo));
                             }
                             leds.set(
                                 0,
@@ -364,11 +367,25 @@ pub async fn run(
                             );
 
                             let reg_old = storage.query(|s| s.register_pitch);
+                            let reg_len_old = storage.query(|s| s.register_length);
                             if recall_flag.get() {
                                 register_pitch = reg_old;
+                                register_length = reg_len_old;
+                                euclid_length = attenuate(
+                                    length_register_scaled(register_length, beat_reg_length),
+                                    storage.query(|s| s.length_att),
+                                )
+                                .max(1) as u8;
+                                euclid_len_glob.set(euclid_length);
                                 recall_flag.set(false);
-                            } else if register_pitch != reg_old {
-                                storage.modify_and_save(|s| s.register_pitch = register_pitch);
+                            } else {
+                                if register_pitch != reg_old {
+                                    storage.modify_and_save(|s| s.register_pitch = register_pitch);
+                                }
+                                if register_length != reg_len_old {
+                                    storage
+                                        .modify_and_save(|s| s.register_length = register_length);
+                                }
                             }
 
                             // Derive legato/accent registers from XOR of both TMs
@@ -383,7 +400,7 @@ pub async fn run(
                         let is_legato =
                             scale_to_12bit(legato_register, 16) < storage.query(|s| s.legato_att);
                         let is_accented = scale_to_12bit(accent_register, 16)
-                            < storage.query(|s| s.accent_att);
+                            < Curve::Exponential.at(storage.query(|s| s.accent_att));
 
                         let is_beat =
                             euclidean_at(euclid_length, euclid_beat, 0, clkn_euclid as u32);
@@ -598,14 +615,33 @@ pub async fn run(
                 leds.unset(2, Led::Top);
                 leds.unset(0, Led::Bottom);
                 leds.unset(1, Led::Bottom);
+                leds.unset(2, Led::Bottom);
             }
             was_overlay = is_overlay;
 
             match layer {
                 LatchLayer::Main => {
                     // Btn0/Btn1: brighter when held (mutating)
-                    leds.set(0, Led::Button, led_color, if btn0 { Brightness::High } else { Brightness::Low });
-                    leds.set(1, Led::Button, led_color, if btn1 { Brightness::High } else { Brightness::Low });
+                    leds.set(
+                        0,
+                        Led::Button,
+                        led_color,
+                        if btn0 {
+                            Brightness::High
+                        } else {
+                            Brightness::Low
+                        },
+                    );
+                    leds.set(
+                        1,
+                        Led::Button,
+                        led_color,
+                        if btn1 {
+                            Brightness::High
+                        } else {
+                            Brightness::Low
+                        },
+                    );
                     // Btn2: mute indicator — dim when active, off when muted
                     if muted {
                         leds.unset(2, Led::Button);
@@ -621,13 +657,35 @@ pub async fn run(
                     let len_len = storage.query(|s| s.length_tm_length).max(1) as u32;
                     let p1 = (255u32.saturating_sub(len_step * 255 / len_len)) as u8;
                     leds.set(1, Led::Bottom, led_color, Brightness::Custom(p1));
+                    let e_step = euclid_step_glob.get() as u32;
+                    let e_len = euclid_len_glob.get().max(1) as u32;
+                    let p2 = (255u32.saturating_sub(e_step * 255 / e_len)) as u8;
+                    leds.set(2, Led::Bottom, led_color, Brightness::Custom(p2));
                 }
                 LatchLayer::Alt => {
                     // Button LEDs: stored length by default; switch to live count once tapping starts
-                    let pitch_disp = if pitch_len_count > 0 { pitch_len_count } else { storage.query(|s| s.pitch_tm_length) };
-                    let len_disp = if length_len_count > 0 { length_len_count } else { storage.query(|s| s.length_tm_length) };
-                    leds.set(0, Led::Button, Color::White, Brightness::Custom((pitch_disp as u16 * 16).min(255) as u8));
-                    leds.set(1, Led::Button, Color::Green, Brightness::Custom((len_disp as u16 * 16).min(255) as u8));
+                    let pitch_disp = if pitch_len_count > 0 {
+                        pitch_len_count
+                    } else {
+                        storage.query(|s| s.pitch_tm_length)
+                    };
+                    let len_disp = if length_len_count > 0 {
+                        length_len_count
+                    } else {
+                        storage.query(|s| s.length_tm_length)
+                    };
+                    leds.set(
+                        0,
+                        Led::Button,
+                        Color::White,
+                        Brightness::Custom((pitch_disp as u16 * 16).min(255) as u8),
+                    );
+                    leds.set(
+                        1,
+                        Led::Button,
+                        Color::Green,
+                        Brightness::Custom((len_disp as u16 * 16).min(255) as u8),
+                    );
                     if muted {
                         leds.unset(2, Led::Button);
                     } else {
@@ -656,8 +714,26 @@ pub async fn run(
                     );
                 }
                 LatchLayer::Third => {
-                    leds.set(0, Led::Button, led_color, if btn0 { Brightness::High } else { Brightness::Low });
-                    leds.set(1, Led::Button, led_color, if btn1 { Brightness::High } else { Brightness::Low });
+                    leds.set(
+                        0,
+                        Led::Button,
+                        led_color,
+                        if btn0 {
+                            Brightness::High
+                        } else {
+                            Brightness::Low
+                        },
+                    );
+                    leds.set(
+                        1,
+                        Led::Button,
+                        led_color,
+                        if btn1 {
+                            Brightness::High
+                        } else {
+                            Brightness::Low
+                        },
+                    );
                     leds.set(2, Led::Button, led_color, Brightness::High);
                     let oct_idx = (storage.query(|s| s.octave_shift) / 819).min(4) as usize;
                     leds.set(1, Led::Bottom, OCT_COLORS[oct_idx], Brightness::High);
