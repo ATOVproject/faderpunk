@@ -3,7 +3,7 @@
 // Copyright (c) 2020, Logarhythm (original C++ implementation, MIT licensed)
 
 use embassy_futures::{
-    join::{join, join3, join5},
+    join::{join, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -22,16 +22,12 @@ use crate::app::{
 use crate::tasks::leds::LedMode;
 
 pub const CHANNELS: usize = 3;
-pub const PARAMS: usize = 3;
+pub const PARAMS: usize = 4;
 
 const MAX_STEPS: usize = 32;
 
-// 0–10V range: 10V / 120 semitones ≈ 34 counts/semitone (1V/oct standard)
-const SEMITONE_COUNTS: i32 = 34;
 // Center pitch hint for quantizer input (midpoint of 0–4095 ≈ C5 at 0V=C0)
 const CENTER_CV: u16 = 2048;
-// One octave in counts
-const OCTAVE_COUNTS: i32 = 410;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "TB-3PO",
@@ -52,12 +48,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Pink,
         Color::Violet,
     ],
-});
+})
+.add_param(Param::VoltPerOct);
 
 pub struct Params {
     midi_channel: MidiChannel,
     midi_out: MidiOut,
     color: Color,
+    vpo: VoltPerOct,
 }
 
 impl Default for Params {
@@ -66,6 +64,7 @@ impl Default for Params {
             midi_channel: MidiChannel::default(),
             midi_out: MidiOut::default(),
             color: Color::Orange,
+            vpo: VoltPerOct::Standard,
         }
     }
 }
@@ -79,6 +78,7 @@ impl AppParams for Params {
             midi_channel: MidiChannel::from_value(values[0]),
             midi_out: MidiOut::from_value(values[1]),
             color: Color::from_value(values[2]),
+            vpo: VoltPerOct::from_value(values[3]),
         })
     }
 
@@ -87,6 +87,7 @@ impl AppParams for Params {
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec.push(self.color.into()).unwrap();
+        vec.push(self.vpo.into()).unwrap();
         vec
     }
 }
@@ -99,9 +100,9 @@ pub struct Storage {
     transpose_fader: u16, // 0–4095 → transpose −24..+24 semitones
     octave_fader: u16,    // 0–4095 → octave offset −4..+4 (shift + fader 3)
     res_saved: u16,       // 0–4095 → index into RESOLUTION table (8 segments of 512)
-    lock_seed: bool,
+    #[serde(default)]
+    muted: bool,
     no_accents: bool,
-    no_slides: bool,
 }
 
 impl Default for Storage {
@@ -113,9 +114,8 @@ impl Default for Storage {
             transpose_fader: 2048, // 0 semitones
             octave_fader: 2048,    // 0 octave offset
             res_saved: 2048,       // index 4 → RESOLUTION[4] = 6 (16th notes)
-            lock_seed: false,
+            muted: false,
             no_accents: false,
-            no_slides: false,
         }
     }
 }
@@ -265,18 +265,20 @@ fn step_is_oct_down(p: &AcidPattern, step: u8) -> bool {
 }
 
 /// Raw pitch CV for a step before quantising (in ±5V counts 0–4095).
-fn raw_pitch_cv(p: &AcidPattern, step: u8, transpose: i16) -> u16 {
+fn raw_pitch_cv(p: &AcidPattern, step: u8, transpose: i16, vpo: VoltPerOct) -> u16 {
+    let oct = vpo.counts_per_oct() as i32;
+    let semi = oct / 12;
     let note = p.notes[step as usize] as i32;
     let cv = CENTER_CV as i32
-        + note * SEMITONE_COUNTS
+        + note * semi
         + if step_is_oct_up(p, step) {
-            OCTAVE_COUNTS
+            oct
         } else if step_is_oct_down(p, step) {
-            -OCTAVE_COUNTS
+            -oct
         } else {
             0
         }
-        + transpose as i32 * SEMITONE_COUNTS;
+        + transpose as i32 * semi;
     cv.clamp(0, 4095) as u16
 }
 
@@ -316,14 +318,15 @@ pub async fn run(
     let pitch_range = Range::_0_10V;
     let accent_range = Range::_0_5V;
 
-    let (midi_out, midi_chan, led_color) = params.query(|p| (p.midi_out, p.midi_channel, p.color));
+    let (midi_out, midi_chan, led_color, vpo) =
+        params.query(|p| (p.midi_out, p.midi_channel, p.color, p.vpo));
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
-    let quantizer = app.use_quantizer(pitch_range, VoltPerOct::Standard, false);
+    let quantizer = app.use_quantizer(pitch_range, vpo, false);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
     let pitch_out = app.make_out_jack(0, pitch_range).await;
@@ -406,11 +409,11 @@ pub async fn run(
                     last_tick = now;
 
                     let pattern = pattern_glob.get();
-                    let (num_steps, no_accents, no_slides, transpose) = storage.query(|s| {
+                    let (num_steps, no_accents, muted, transpose) = storage.query(|s| {
                         (
                             (s.length_fader as u32 * 31 / 4095 + 1) as u8,
                             s.no_accents,
-                            s.no_slides,
+                            s.muted,
                             {
                                 let semi = s.transpose_fader as i32 * 48 / 4095 - 24;
                                 let oct = s.octave_fader as i32 * 8 / 4095 - 4;
@@ -430,29 +433,28 @@ pub async fn run(
                     step_glob.set(step);
 
                     let is_gated = step_is_gated(&pattern, step);
-                    let is_slid_prev = !no_slides
-                        && prev_step
-                            .map(|p| step_is_slid(&pattern, p as u8))
-                            .unwrap_or(false);
+                    let is_slid_prev = prev_step
+                        .map(|p| step_is_slid(&pattern, p as u8))
+                        .unwrap_or(false);
                     let is_accent = !no_accents && step_is_accent(&pattern, step);
-                    let target_raw = raw_pitch_cv(&pattern, step, transpose);
+                    let target_raw = raw_pitch_cv(&pattern, step, transpose, vpo);
 
                     // Pitch / slide
                     if is_slid_prev {
                         // Glide: output_task will interpolate toward new target
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        slide_target_glob.set(out.as_counts(pitch_range, VoltPerOct::Standard));
+                        slide_target_glob.set(out.as_counts(pitch_range, vpo));
                         slide_active_glob.set(true);
                     } else if is_gated {
                         // Snap to new pitch
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        let counts = out.as_counts(pitch_range, VoltPerOct::Standard);
+                        let counts = out.as_counts(pitch_range, vpo);
                         slide_target_glob.set(counts);
                         slide_active_glob.set(false);
                     }
 
                     // Gate / MIDI
-                    if is_gated || is_slid_prev {
+                    if (is_gated || is_slid_prev) && !muted {
                         accent_active_glob.set(is_accent);
 
                         // Quantise for MIDI note (use target pitch for note identity)
@@ -480,16 +482,6 @@ pub async fn run(
                 }
 
                 ClockEvent::Reset => {
-                    if !storage.query(|s| s.lock_seed) {
-                        let new_seed = (ticks() & 0xFFFF) as u16;
-                        storage.modify_and_save(|s| s.seed = new_seed);
-                        let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
-                        pattern_glob.set(generate_pattern(new_seed, d));
-                    } else {
-                        let (s, df) = storage.query(|s| (s.seed, s.density_fader));
-                        let d = (df as u32 * 14 / 4095) as u8;
-                        pattern_glob.set(generate_pattern(s, d));
-                    }
                     step_glob.set(0);
                     slide_active_glob.set(false);
                     gate_off_ms_glob.set(0);
@@ -530,7 +522,7 @@ pub async fn run(
                     // Keep gate on during a slide (like the 303)
                     let pattern = pattern_glob.get();
                     let step = step_glob.get();
-                    if storage.query(|s| s.no_slides) || !step_is_slid(&pattern, step) {
+                    if !step_is_slid(&pattern, step) {
                         gate_active_glob.set(false);
                         gate_out.set_low().await;
                         midi.send_note_off(last_midi_note_glob.get()).await;
@@ -539,19 +531,20 @@ pub async fn run(
                 }
             }
 
-            // Pitch slide interpolation
-            let target = slide_target_glob.get() as f32;
-            if slide_active_glob.get() {
-                glide_current = apply_slide(glide_current, target, SLIDE_COEFF);
-                if (glide_current - target).abs() < 0.5 {
+            // Pitch slide interpolation — frozen while muted
+            if !storage.query(|s| s.muted) {
+                let target = slide_target_glob.get() as f32;
+                if slide_active_glob.get() {
+                    glide_current = apply_slide(glide_current, target, SLIDE_COEFF);
+                    if (glide_current - target).abs() < 0.5 {
+                        glide_current = target;
+                        slide_active_glob.set(false);
+                    }
+                } else {
                     glide_current = target;
-                    slide_active_glob.set(false);
                 }
-            } else {
-                glide_current = target;
+                pitch_out.set_value(glide_current as u16);
             }
-
-            pitch_out.set_value(glide_current as u16);
         }
     };
 
@@ -634,9 +627,7 @@ pub async fn run(
                 continue;
             }
             match chan {
-                0 if latch_layer_glob.get() != LatchLayer::Third
-                    && !storage.query(|s| s.lock_seed) =>
-                {
+                0 => {
                     let new_seed = (ticks() & 0xFFFF) as u16;
                     storage.modify_and_save(|s| s.seed = new_seed);
                     let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
@@ -649,25 +640,14 @@ pub async fn run(
                     );
                 }
                 1 => {
-                    let v = !storage.query(|s| s.no_slides);
-                    storage.modify_and_save(|s| s.no_slides = v);
-                }
-                2 => {
                     let v = !storage.query(|s| s.no_accents);
                     storage.modify_and_save(|s| s.no_accents = v);
                 }
+                2 => {
+                    let muted = !storage.query(|s| s.muted);
+                    storage.modify_and_save(|s| s.muted = muted);
+                }
                 _ => {}
-            }
-        }
-    };
-
-    // --- Button long-press task: B0 toggles lock_seed ---
-    let button_long_task = async {
-        loop {
-            let (chan, _) = buttons.wait_for_any_long_press().await;
-            if chan == 0 {
-                let v = !storage.query(|s| s.lock_seed);
-                storage.modify_and_save(|s| s.lock_seed = v);
             }
         }
     };
@@ -677,13 +657,12 @@ pub async fn run(
         loop {
             app.delay_millis(16).await;
 
-            let (density_fader, locked, no_accents, no_slides, length_fader, res_saved, transpose_fader) =
+            let (density_fader, muted, no_accents, length_fader, res_saved, transpose_fader) =
                 storage.query(|s| {
                     (
                         s.density_fader,
-                        s.lock_seed,
+                        s.muted,
                         s.no_accents,
-                        s.no_slides,
                         s.length_fader,
                         s.res_saved,
                         s.transpose_fader,
@@ -710,11 +689,7 @@ pub async fn run(
                     led_color,
                     Brightness::Custom((density as u32 * 255 / 14) as u8),
                 );
-                if locked {
-                    leds.set(0, Led::Bottom, Color::Orange, Brightness::High);
-                } else {
-                    leds.unset(0, Led::Bottom);
-                }
+                leds.unset(0, Led::Bottom);
             }
             // Button LED managed by reseed flash — only set here on first frame (handled by init)
 
@@ -735,7 +710,7 @@ pub async fn run(
                 1,
                 Led::Button,
                 led_color,
-                if no_slides { Brightness::Low } else { Brightness::Mid },
+                if no_accents { Brightness::Low } else { Brightness::Mid },
             );
 
             // Ch 2: accent on Top, transpose position on Bottom (always visible)
@@ -747,12 +722,11 @@ pub async fn run(
             let dist = (transpose_fader as i32 - 2048).unsigned_abs();
             let b = (dist * 255 / 2048) as u8;
             leds.set(2, Led::Bottom, led_color, Brightness::Custom(b));
-            leds.set(
-                2,
-                Led::Button,
-                led_color,
-                if no_accents { Brightness::Low } else { Brightness::Mid },
-            );
+            if muted {
+                leds.unset(2, Led::Button);
+            } else {
+                leds.set(2, Led::Button, led_color, Brightness::Mid);
+            }
         }
     };
 
@@ -777,7 +751,7 @@ pub async fn run(
 
     join(
         join5(clock_task, output_task, fader_task, layer_task, button_task),
-        join3(button_long_task, led_task, scene_task),
+        join(led_task, scene_task),
     )
     .await;
 }
