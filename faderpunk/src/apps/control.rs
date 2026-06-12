@@ -59,7 +59,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::Enum {
     name: "Button mode",
-    variants: &["Mute", "CC toggle", "CC momentary", "Program Change"],
+    variants: &["Mute", "CC toggle", "CC momentary", "Program Change", "Invert toggle", "Invert momentary"],
 })
 .add_param(Param::MidiChannel {
     name: "Button Channel",
@@ -232,8 +232,11 @@ pub async fn run(
 
     let muted_glob = app.make_global(storage.query(|s| s.muted));
     let latch_layer_glob = app.make_global(LatchLayer::Main);
+    let inv_state = app.make_global(false);
 
-    if muted_glob.get() {
+    if button_mode == 4 || button_mode == 5 {
+        leds.set(0, Led::Button, led_color, Brightness::Mid);
+    } else if muted_glob.get() {
         leds.unset(0, Led::Button);
     } else {
         leds.set(0, Led::Button, led_color, Brightness::Mid);
@@ -417,6 +420,36 @@ pub async fn run(
                     buttons.wait_for_up(0).await;
                     leds.unset(0, Led::Button);
                     midi_button.send_cc(button_cc, 0).await;
+                }
+                5 => {
+                    // Invert momentary: default = CC 127 + LED Mid; press = CC 0 + LED off
+                    leds.set(0, Led::Button, led_color, Brightness::Mid);
+
+                    buttons.wait_for_down(0).await;
+                    leds.unset(0, Led::Button);
+                    midi_button.send_cc(button_cc, 0).await;
+
+                    buttons.wait_for_up(0).await;
+                    leds.set(0, Led::Button, led_color, Brightness::Mid);
+                    midi_button.send_cc(button_cc, 4095).await;
+                }
+                4 => {
+                    // Invert toggle: default = CC 0 + LED Mid; press = CC 127 + LED off
+                    if on_release {
+                        buttons.wait_for_up(0).await;
+                    } else {
+                        buttons.wait_for_down(0).await;
+                    }
+
+                    let active = !inv_state.get();
+                    inv_state.set(active);
+                    if active {
+                        leds.unset(0, Led::Button);
+                        midi_button.send_cc(button_cc, 4095).await;
+                    } else {
+                        leds.set(0, Led::Button, led_color, Brightness::Mid);
+                        midi_button.send_cc(button_cc, 0).await;
+                    }
                 }
                 _ => {
                     // Mode 0 (Mute) or Mode 1 (CC toggle): toggle on configured edge
