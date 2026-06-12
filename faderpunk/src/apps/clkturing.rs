@@ -10,8 +10,11 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, Color, Config, Curve, MidiCc,
-    MidiChannel, MidiMode, MidiNote, MidiOut, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    ext::FromValue,
+    latch::LatchLayer,
+    utils::{rotate_select_bit, scale_to_12bit},
+    AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiMode, MidiNote, MidiOut,
+    Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -403,38 +406,4 @@ pub async fn run(
     };
 
     join(long_press, join5(fut1, fut2, fut3, fut4, scene_handler)).await;
-}
-
-fn rotate_select_bit(x: u16, a: u16, b: u16, bit_index: u16) -> (u16, bool) {
-    let bit_index = (15 - bit_index).clamp(0, 15);
-
-    // Extract the original bit
-    let original_bit = ((x >> bit_index) & 1) as u8;
-    let mut bit = original_bit;
-
-    // Invert the bit if a > b
-    if a > b {
-        bit ^= 1;
-    }
-
-    // Shift x right by 1
-    let shifted = x >> 1;
-
-    // Insert the (possibly inverted) bit into the MSB
-    let result = shifted | ((bit as u16) << 15);
-
-    // Return the new value and whether the bit was flipped
-    let flipped = bit != original_bit;
-    (result, flipped)
-}
-
-fn scale_to_12bit(input: u16, x: u8) -> u16 {
-    let x = x.clamp(1, 16);
-
-    // Shift to keep the top `x` bits
-    let top_x_bits = input >> (16 - x);
-
-    // Scale to 12-bit
-    let max_x_val = (1 << x) - 1;
-    ((top_x_bits as u32 * 4095) / max_x_val as u32) as u16
 }

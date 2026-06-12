@@ -1416,6 +1416,93 @@ The resolution parameter controls how many samples are recorded per bar. Higher 
       },
     ],
   },
+  {
+    appId: 26,
+    title: "GenSeq",
+    description: "Generative sequencer with Turing machine registers",
+    color: "Blue",
+    icon: "sequence-square",
+    params: [
+      "MIDI Channel",
+      "Base Note",
+      "Color",
+      "MIDI Out",
+      "1V/Oct",
+      "Bypass quantizer",
+    ],
+    storage: [
+      "Pitch range",
+      "Length attenuator",
+      "Beat density",
+      "Legato density threshold",
+      "Accent density threshold",
+      "Clock resolution",
+      "Octave shift",
+      "Gate length",
+      "Pitch register (persisted)",
+      "Length register",
+      "Pitch TM register width (1–16)",
+      "Length TM register width (1–16)",
+      "Muted",
+    ],
+    text: `GenSeq is a generative melodic sequencer built around two Turing machine shift registers. The pitch TM determines which note plays; the length TM determines the Euclidean pattern length. Both evolve slowly each cycle, so the melody and rhythm drift together over time. Legato and accents are derived automatically from the same TMs, so the whole sequence, melody, rhythm, slides and accents, come from just two seeds.
+
+#### Register lengths
+
+Hold Shift and tap Button 1 or Button 2 to count out a TM length (1–16 steps); release Shift to commit. The button LED brightens with each tap and shows the stored value before you start counting. If the length of the length TM is set to 1 then the euclidean generator behaves the same as a standard one with Fader 2 controlling the length and Fader 3 the pulse count.
+
+#### Mute
+
+Mute is inhibit-only. Tapping Button 3 stops new gates from opening and holds the CV at its last value, but the current note rings out naturally. Holding Button 3 to access the third layer does not toggle mute.
+
+#### Scene recall
+
+On load, both registers are restored at the next phrase boundary so the recalled sequence re-enters in time.`,
+    channels: [
+      {
+        jackTitle: "CV Output",
+        jackDescription: "Quantized pitch, 0–10V",
+        faderTitle: "Pitch range",
+        faderDescription: "Spread between lowest and highest notes",
+        faderPlusShiftTitle: "Pitch loop length",
+        faderPlusShiftDescription: "Melody repeat length (1–16)",
+        faderPlusFnTitle: "Clock resolution",
+        faderPlusFnDescription: "Step rate (1/1 to 1/16)",
+        fnTitle: "Mutate pitch",
+        fnDescription: "Hold to mutate, release to lock",
+        ledTop: "Current note height",
+        ledBottom: "Clock flash (Button 3 layer)",
+      },
+      {
+        jackTitle: "Gate Output",
+        jackDescription: "Gate signal, 0–10V",
+        faderTitle: "Length attenuator",
+        faderDescription: "Euclidean pattern length",
+        faderPlusShiftTitle: "Legato density",
+        faderPlusShiftDescription: "How many steps slide",
+        faderPlusFnTitle: "Octave shift",
+        faderPlusFnDescription: "−2 to +2 octaves",
+        fnTitle: "Mutate length",
+        fnDescription: "Hold to mutate rhythm",
+        ledTop: "Gate open",
+        ledBottom: "Length TM cycle progress",
+      },
+      {
+        jackTitle: "Accent CV Output",
+        jackDescription: "10V on accented steps, 0V otherwise",
+        faderTitle: "Beat density",
+        faderDescription: "How many steps trigger a gate",
+        faderPlusShiftTitle: "Accent density",
+        faderPlusShiftDescription: "How many steps are accented",
+        faderPlusFnTitle: "Gate length",
+        faderPlusFnDescription: "Gate duration (1–99%)",
+        fnTitle: "Toggle mute",
+        fnDescription: "Tap to toggle mute",
+        ledTop: "Legato slide",
+        ledBottom: "Euclidean cycle progress",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
