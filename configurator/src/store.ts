@@ -19,6 +19,7 @@ import {
 } from "./utils/config";
 import { DEMO_APPS } from "./demo/catalog";
 import { defaultGlobalConfig } from "./utils/validators";
+import { IS_SIMULATOR_BUILD } from "./consts";
 
 const makeEmptyLayout = (): AppLayout =>
   Array.from(
@@ -30,7 +31,9 @@ const makeEmptyLayout = (): AppLayout =>
     }),
   );
 
-const SIMULATOR_STORAGE_KEY = "fp-simulator-state";
+// All deployments (/1.9, /beta, /simulator, …) share one gh-pages origin and
+// thus one localStorage, so the key is namespaced by deploy path.
+const SIMULATOR_STORAGE_KEY = `fp-simulator-state:${import.meta.env.BASE_URL}`;
 
 const persistSimulatorState = (
   layout: AppLayout,
@@ -149,6 +152,9 @@ export const useStore = create<State>((set, get) => ({
     // kept so "Open Simulator" can resume it; a real-device disconnect must
     // not wipe it either.
     set({ ...initialState });
+    // The dedicated simulator build has no connect page to return to, so
+    // drop straight back into a simulator session.
+    if (IS_SIMULATOR_BUILD) get().connectSimulator();
   },
   setConfig: (config) => {
     set({ config });

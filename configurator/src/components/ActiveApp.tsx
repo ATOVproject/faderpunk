@@ -43,7 +43,12 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
       const params = await setAppParams(usbDevice, layoutId, values);
       setParams(layoutId, params);
     } else if (isSimulator) {
-      setParams(layoutId, values);
+      // No device to resolve the sparse form values; overlay them onto the
+      // current params instead.
+      setParams(
+        layoutId,
+        params.map((param, idx) => values[idx] ?? param),
+      );
     }
     if (usbDevice || isSimulator) {
       setSaved(true);

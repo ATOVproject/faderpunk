@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useModalContext } from "../contexts/ModalContext";
 import { ModalProvider } from "../contexts/ModalProvider";
 import { useStore } from "../store";
+import { IS_SIMULATOR_BUILD } from "../consts";
 import { ModalMode } from "../utils/types";
 import { Layout } from "./Layout";
 import { DeviceTab } from "./DeviceTab";
@@ -45,6 +46,16 @@ const ConfiguratorPageContent = () => {
         {isSimulator && (
           <div className="bg-yellow-fp mb-4 rounded-sm px-4 py-2 text-center text-sm font-bold text-black">
             Simulator — no device connected. Changes are not sent to hardware.
+            {IS_SIMULATOR_BUILD && (
+              <>
+                {" "}
+                Have a device?{" "}
+                <a href="/" className="underline">
+                  Open the configurator
+                </a>
+                .
+              </>
+            )}
           </div>
         )}
         <Tabs
