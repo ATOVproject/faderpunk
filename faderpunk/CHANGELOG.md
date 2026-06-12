@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.10.0-beta.0 (2026-06-12)
+
+### Features
+
+- [control] add Program Change button mode (#530)
+- [seq8] sequencer improvements — slide, probability, direction (#531)
+- [slew, quantizer, offset_att] add range param (#539)
+- [turing] add gate output mode (#542)
+- [tb3po] add TB-3PO acid pattern generator (#532)
+- [quantizer] add 1.2V/Oct Buchla mode, Key::Off passthrough, and per-app bypass (#543)
+- unified mute refactor across all apps (#537)
+- [automator] add CV gesture looper app (#533)
+- improve LED feedback and add hardware test mode (#546)
+- add Invert toggle and Invert momentary button modes (#555)
+- move resolution to B2+F3, mute on release, rework Ch0 LEDs (#549)
+- add GenSeq generative sequencer app (#529)
+
+### Fixes
+
+- fix MIDI CC guard so CC 127 is reachable in LFO, LFO+, rnd, rnd+ (#538)
+
 ## 1.9.1 (2026-05-16)
 
 ### Fixes
