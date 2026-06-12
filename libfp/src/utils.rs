@@ -214,6 +214,31 @@ pub fn euclidean_at(num_steps: u8, num_beats: u8, rotation: u8, clock: u32) -> b
     (pattern & (1 << pos)) != 0
 }
 
+/// Scale the top `x` bits of a 16-bit shift register (`x` in 1..=16) to a 12-bit value
+/// (`0..=4095`). Used by the Turing-machine apps to turn register state into a CV/level.
+pub fn scale_to_12bit(input: u16, x: u8) -> u16 {
+    let x = x.clamp(1, 16);
+    let top_x_bits = input >> (16 - x);
+    let max_x_val = (1u32 << x) - 1;
+    ((top_x_bits as u32 * 4095) / max_x_val) as u16
+}
+
+/// Turing-machine shift-register step. Rotates `x` right by one bit, re-injecting the
+/// looped bit at the MSB. The looped bit is read from the bottom of the active
+/// `length`-bit window (`length` in 1..=16) so the pattern repeats with period `length`;
+/// when `a > b` the bit is inverted (the probabilistic mutation).
+/// Returns `(new_register, was_flipped, output_bit)`.
+pub fn rotate_select_bit(x: u16, a: u16, b: u16, length: u16) -> (u16, bool, bool) {
+    let bit_index = (16 - length).clamp(0, 16);
+    let original_bit = ((x >> bit_index) & 1) as u8;
+    let mut bit = original_bit;
+    if a > b {
+        bit ^= 1;
+    }
+    let result = (x >> 1) | ((bit as u16) << 15);
+    (result, bit != original_bit, bit != 0)
+}
+
 /// RC-filter coefficient for an exponential approach with the given `tau` (in ticks).
 /// `tau <= 0` returns 1.0 (instant). Apply each tick: `current += (target - current) * coeff`.
 pub fn rc_coeff(tau: f32) -> f32 {
@@ -271,6 +296,42 @@ pub fn interp_loop_sample(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scale_to_12bit_full_window() {
+        assert_eq!(scale_to_12bit(0, 16), 0);
+        assert_eq!(scale_to_12bit(0xFFFF, 16), 4095);
+        assert_eq!(scale_to_12bit(0x8000, 1), 4095);
+        assert_eq!(scale_to_12bit(0, 1), 0);
+    }
+
+    #[test]
+    fn rotate_select_bit_no_flip_loops_with_period_length() {
+        // With a > b == false, the register must repeat exactly every `length` steps:
+        // the looped bit is the bottom of the top-`length` window.
+        for length in 1..=16u16 {
+            let start = 0xACE5u16;
+            let mut reg = start;
+            for _ in 0..length {
+                (reg, _, _) = rotate_select_bit(reg, 0, 1, length);
+            }
+            let mask = if length == 16 {
+                0xFFFF
+            } else {
+                ((1u32 << length) - 1) as u16
+            } << (16 - length);
+            assert_eq!(reg & mask, start & mask, "length {length} did not loop");
+        }
+    }
+
+    #[test]
+    fn rotate_select_bit_flips_when_a_gt_b() {
+        let (_, flipped, _) = rotate_select_bit(0x0000, 1, 0, 16);
+        assert!(flipped);
+        let (result, _, out_bit) = rotate_select_bit(0x0000, 1, 0, 16);
+        assert_eq!(result, 0x8000);
+        assert!(out_bit);
+    }
 
     #[test]
     fn interp_midpoint() {
