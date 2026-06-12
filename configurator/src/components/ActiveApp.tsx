@@ -26,7 +26,7 @@ interface Props {
 }
 
 export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
-  const { usbDevice, setParams } = useStore();
+  const { usbDevice, isSimulator, setParams } = useStore();
   const [saved, setSaved] = useState<boolean>(false);
   const {
     register,
@@ -38,14 +38,21 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
   const onSubmit = async (
     data: Record<string, string | boolean | boolean[]>,
   ) => {
-    if (usbDevice) {
-      const values = transformParamFormValues(data);
+    const values = transformParamFormValues(data);
+    if (usbDevice && !isSimulator) {
       const params = await setAppParams(usbDevice, layoutId, values);
       setParams(layoutId, params);
+    } else if (isSimulator) {
+      // No device to resolve the sparse form values; overlay them onto the
+      // current params instead.
+      setParams(
+        layoutId,
+        params.map((param, idx) => values[idx] ?? param),
+      );
+    }
+    if (usbDevice || isSimulator) {
       setSaved(true);
-      setTimeout(() => {
-        setSaved(false);
-      }, 2000);
+      setTimeout(() => setSaved(false), 2000);
     }
   };
 

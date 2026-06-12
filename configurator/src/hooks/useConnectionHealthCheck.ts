@@ -6,11 +6,11 @@ import { getGlobalConfig } from "../utils/config";
 const POLL_INTERVAL_MS = 2000;
 
 export const useConnectionHealthCheck = () => {
-  const { usbDevice, setConfig, disconnect } = useStore();
+  const { usbDevice, isSimulator, setConfig, disconnect } = useStore();
   const pollingRef = useRef(false);
 
   useEffect(() => {
-    if (!usbDevice) return;
+    if (!usbDevice || isSimulator) return;
 
     const interval = setInterval(async () => {
       if (pollingRef.current) return;
@@ -30,5 +30,5 @@ export const useConnectionHealthCheck = () => {
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [usbDevice, setConfig, disconnect]);
+  }, [usbDevice, isSimulator, setConfig, disconnect]);
 };

@@ -154,6 +154,13 @@ export default function App() {
                 )}
               </button>
             )}
+
+            <a
+              href="/simulator/"
+              className="rounded-sm px-8 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-80"
+            >
+              Try it without hardware
+            </a>
           </div>
 
           <div className="mt-4 flex items-center justify-between gap-4">
