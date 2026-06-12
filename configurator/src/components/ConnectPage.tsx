@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
 
-import { ButtonPrimary } from "./Button";
+import { ButtonPrimary, ButtonSecondary } from "./Button";
 import { useStore } from "../store";
 
 export const ConnectPage = () => {
-  const { connect } = useStore();
+  const { connect, connectSimulator } = useStore();
 
   return (
     <main className="flex min-h-screen min-w-screen items-center justify-center bg-gray-500">
@@ -17,6 +17,9 @@ export const ConnectPage = () => {
           >
             Connect Device
           </ButtonPrimary>
+          <ButtonSecondary onPress={() => connectSimulator()}>
+            Open Simulator
+          </ButtonSecondary>
         </div>
         <div className="flex items-center justify-between">
           <Link

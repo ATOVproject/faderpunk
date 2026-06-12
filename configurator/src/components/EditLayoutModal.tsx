@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Value } from "@atov/fp-config";
 import classNames from "classnames";
 import { Button } from "@heroui/button";
 import { ModalBody, ModalFooter, ModalHeader } from "@heroui/modal";
@@ -45,6 +46,7 @@ import {
   pascalToKebab,
   recalculateStartChannels,
 } from "../utils/utils";
+import { getParamSchema } from "../utils/validators";
 import { ButtonPrimary, ButtonSecondary } from "./Button";
 import { Icon } from "./Icon";
 import { Item } from "./Item";
@@ -130,7 +132,8 @@ export const EditLayoutModal = ({
   onClose,
   modalConfig,
 }: Props) => {
-  const { usbDevice, apps, setParams, setAllParams, setConfig } = useStore();
+  const { usbDevice, isSimulator, apps, setParams, setAllParams, setConfig } =
+    useStore();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [layout, setItems] = useState<AppLayout>(initialLayout);
   const [newApp, setNewApp] = useState<App | null>(null);
@@ -251,7 +254,7 @@ export const EditLayoutModal = ({
   const handleSave = useCallback(async () => {
     setSubmitting(true);
     try {
-      if (usbDevice && apps) {
+      if (usbDevice && apps && !isSimulator) {
         const newLayout = await setLayout(usbDevice, layout, apps);
         if (modalConfig.mode === ModalMode.RecallSetup) {
           if (recallParams && modalConfig.recallParams) {
@@ -272,6 +275,38 @@ export const EditLayoutModal = ({
           setParams(newAppId, params);
         }
         onSave(newLayout);
+      } else if (isSimulator) {
+        if (modalConfig.mode === ModalMode.RecallSetup) {
+          if (recallParams && modalConfig.recallParams) {
+            setAllParams(modalConfig.recallParams);
+          }
+          if (recallConfig && modalConfig.recallConfig) {
+            setConfig(modalConfig.recallConfig);
+          }
+        } else {
+          // Initialize params for every app slot not present in the initial layout.
+          // This covers both a single AddApp placement and any duplicates made
+          // inside the modal via the duplicate button.
+          const existingIds = new Set(
+            initialLayout.filter((s) => s.app).map((s) => s.id),
+          );
+          for (const slot of layout) {
+            if (slot.app && !existingIds.has(slot.id)) {
+              let ccOffset = 0;
+              const defaultParams = slot.app.params.map((p) => {
+                if (p.tag === "MidiCc") {
+                  return {
+                    tag: "MidiCc",
+                    value: [32 + slot.startChannel + ccOffset++],
+                  } as Value;
+                }
+                return getParamSchema(p).parse(undefined) as Value;
+              });
+              setParams(slot.id, defaultParams);
+            }
+          }
+        }
+        onSave(layout);
       }
     } catch (error) {
       console.error("Error saving layout:", error);
@@ -284,6 +319,8 @@ export const EditLayoutModal = ({
   }, [
     apps,
     usbDevice,
+    isSimulator,
+    initialLayout,
     layout,
     modalConfig.recallParams,
     modalConfig.mode,

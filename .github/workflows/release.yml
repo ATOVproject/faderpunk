@@ -205,6 +205,19 @@ jobs:
         with:
           name: landing-pages-artifact
           path: configurator/dist-landing
+      # Overwrites dist/, so this must run after the regular build's artifacts
+      # have been uploaded
+      - name: Build simulator configurator
+        run: pnpm run build
+        working-directory: ./configurator
+        env:
+          BASE_URL: /simulator/
+          VITE_SIMULATOR: "true"
+      - name: Upload simulator artifact for GitHub Pages
+        uses: actions/upload-artifact@v7
+        with:
+          name: simulator-pages-artifact
+          path: configurator/dist
 
   # --- Create GitHub releases + upload assets ---
   release:
@@ -259,6 +272,11 @@ jobs:
         with:
           name: landing-pages-artifact
           path: landing-dist
+      - name: Download simulator artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: simulator-pages-artifact
+          path: simulator-dist
       - name: Deploy to versioned folder and root
         run: |
           VERSION="${{ needs.detect-changes.outputs.configurator_minor }}"
@@ -269,15 +287,21 @@ jobs:
           cp -r configurator-dist/* gh-pages/${VERSION}/
           rm -f gh-pages/${VERSION}/CNAME
 
+          # Update simulator directory (always tracks the latest release)
+          mkdir -p gh-pages/simulator
+          rm -rf gh-pages/simulator/*
+          cp -r simulator-dist/* gh-pages/simulator/
+          rm -f gh-pages/simulator/CNAME
+
           # Preserve CNAME
           mkdir -p temp-preserve
           cp -f gh-pages/CNAME temp-preserve/CNAME 2>/dev/null || true
 
-          # Clear root except versioned folders, beta, and .git
+          # Clear root except versioned folders, beta, simulator, and .git
           find gh-pages -mindepth 1 -maxdepth 1 -type f -exec rm {} \;
           find gh-pages -mindepth 1 -maxdepth 1 -type d \
-            ! -name '[0-9]*.[0-9]*' ! -name 'beta' ! -name '.git' \
-            ! -name 'img' ! -name 'fonts' -exec rm -rf {} \;
+            ! -name '[0-9]*.[0-9]*' ! -name 'beta' ! -name 'simulator' \
+            ! -name '.git' ! -name 'img' ! -name 'fonts' -exec rm -rf {} \;
 
           # Deploy landing page (built by Vite with version already injected)
           cp -r landing-dist/* gh-pages/

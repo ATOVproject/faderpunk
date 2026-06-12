@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { Value, type GlobalConfig } from "@atov/fp-config";
 
-import type { AllApps, AppLayout, ParamValues } from "./utils/types";
+import type { AllApps, AppLayout, AppSlot, ParamValues } from "./utils/types";
 import {
   connectToFaderPunk,
   getDeviceVersion,
@@ -12,15 +12,63 @@ import {
   getAllApps,
   getGlobalConfig,
   getLayout,
+  saveLayout,
+  recoverLayout,
+  serializeLayout,
+  deserializeLayout,
 } from "./utils/config";
+import { DEMO_APPS } from "./demo/catalog";
+import { defaultGlobalConfig } from "./utils/validators";
+import { IS_SIMULATOR_BUILD } from "./consts";
+
+const makeEmptyLayout = (): AppLayout =>
+  Array.from(
+    { length: 16 },
+    (_, i): AppSlot => ({
+      id: i,
+      app: null,
+      startChannel: i,
+    }),
+  );
+
+// All deployments (/1.9, /beta, /simulator, …) share one gh-pages origin and
+// thus one localStorage, so the key is namespaced by deploy path.
+const SIMULATOR_STORAGE_KEY = `fp-simulator-state:${import.meta.env.BASE_URL}`;
+
+const persistSimulatorState = (
+  layout: AppLayout,
+  params: ParamValues,
+  config: GlobalConfig,
+) => {
+  try {
+    localStorage.setItem(
+      SIMULATOR_STORAGE_KEY,
+      serializeLayout(saveLayout(layout, params, config)),
+    );
+  } catch {
+    // ignore storage quota errors
+  }
+};
+
+const loadPersistedSimulatorState = () => {
+  try {
+    const raw = localStorage.getItem(SIMULATOR_STORAGE_KEY);
+    if (!raw) return null;
+    return recoverLayout(deserializeLayout(raw), DEMO_APPS);
+  } catch {
+    return null;
+  }
+};
 
 interface State {
   apps: AllApps | undefined;
   autoConnect: () => Promise<boolean>;
   connect: () => Promise<void>;
+  connectSimulator: () => void;
   config: GlobalConfig | undefined;
   disconnect: () => void;
   deviceVersion: string | undefined;
+  isSimulator: boolean;
   layout: AppLayout | undefined;
   params: ParamValues | undefined;
   setConfig: (config: GlobalConfig) => void;
@@ -34,12 +82,13 @@ const initialState = {
   apps: undefined,
   config: undefined,
   deviceVersion: undefined,
+  isSimulator: false,
   layout: undefined,
   params: undefined,
   usbDevice: undefined,
 };
 
-export const useStore = create<State>((set) => ({
+export const useStore = create<State>((set, get) => ({
   ...initialState,
   autoConnect: async () => {
     try {
@@ -86,19 +135,50 @@ export const useStore = create<State>((set) => ({
       });
     }
   },
-  disconnect: () => {
+  connectSimulator: () => {
+    const saved = loadPersistedSimulatorState();
     set({
-      apps: undefined,
-      config: undefined,
-      deviceVersion: undefined,
-      layout: undefined,
-      params: undefined,
+      isSimulator: true,
+      apps: DEMO_APPS,
+      deviceVersion: "simulator",
       usbDevice: undefined,
+      layout: saved?.layout ?? makeEmptyLayout(),
+      params: saved?.params ?? new Map(),
+      config: saved?.config ?? defaultGlobalConfig,
     });
   },
-  setConfig: (config) => set({ config }),
-  setLayout: (layout) => set({ layout }),
-  setParams: (id, newParams) =>
-    set(({ params }) => ({ params: new Map(params).set(id, newParams) })),
-  setAllParams: (newParams) => set({ params: newParams }),
+  disconnect: () => {
+    // Reset in-memory state only. Persisted simulator work is intentionally
+    // kept so "Open Simulator" can resume it; a real-device disconnect must
+    // not wipe it either.
+    set({ ...initialState });
+    // The dedicated simulator build has no connect page to return to, so
+    // drop straight back into a simulator session.
+    if (IS_SIMULATOR_BUILD) get().connectSimulator();
+  },
+  setConfig: (config) => {
+    set({ config });
+    const { isSimulator, layout, params } = get();
+    if (isSimulator && layout && params)
+      persistSimulatorState(layout, params, config);
+  },
+  setLayout: (layout) => {
+    set({ layout });
+    const { isSimulator, params, config } = get();
+    if (isSimulator && params && config)
+      persistSimulatorState(layout, params, config);
+  },
+  setParams: (id, newParams) => {
+    const { params, isSimulator, layout, config } = get();
+    const updated = new Map(params).set(id, newParams);
+    set({ params: updated });
+    if (isSimulator && layout && config)
+      persistSimulatorState(layout, updated, config);
+  },
+  setAllParams: (newParams) => {
+    set({ params: newParams });
+    const { isSimulator, layout, config } = get();
+    if (isSimulator && layout && config)
+      persistSimulatorState(layout, newParams, config);
+  },
 }));
