@@ -268,11 +268,24 @@ export const EditLayoutModal = ({
             await setGlobalConfig(usbDevice, modalConfig.recallConfig);
             setConfig(modalConfig.recallConfig);
           }
-        } else if (modalConfig.mode === ModalMode.AddApp && newAppId !== null) {
-          // Wait 500ms for the new app to spawn
-          await delay(500);
-          const params = await getAppParams(usbDevice, newAppId);
-          setParams(newAppId, params);
+        } else {
+          // AddApp or EditLayout: fetch params for every newly-added slot.
+          // This covers a single AddApp placement plus any duplicates made
+          // via the duplicate button, each of which gets its own layout id.
+          const existingIds = new Set(
+            initialLayout.filter((s) => s.app).map((s) => s.id),
+          );
+          const newIds = layout
+            .filter((slot) => slot.app && !existingIds.has(slot.id))
+            .map((slot) => slot.id);
+          if (newIds.length > 0) {
+            // Wait 500ms for the new app(s) to spawn before reading params
+            await delay(500);
+            for (const id of newIds) {
+              const params = await getAppParams(usbDevice, id);
+              setParams(id, params);
+            }
+          }
         }
         onSave(newLayout);
       } else if (isSimulator) {
@@ -325,7 +338,6 @@ export const EditLayoutModal = ({
     modalConfig.recallParams,
     modalConfig.mode,
     modalConfig.recallConfig,
-    newAppId,
     onSave,
     recallParams,
     recallConfig,
