@@ -5,6 +5,7 @@ import {
   ModalBody,
   ModalFooter,
 } from "@heroui/modal";
+import { Link } from "react-router-dom";
 
 import { useConnectDevice } from "../utils/useConnectDevice";
 import { ButtonPrimary, ButtonSecondary } from "./Button";
@@ -27,7 +28,10 @@ export const SimulatorBanner = () => {
           Simulator mode — changes aren't sent to any hardware.{" "}
           {webUsbSupported
             ? "Connect your Faderpunk to configure the real thing."
-            : "Use a Chromium browser (Chrome or Edge) to connect a device."}
+            : "Use a Chromium browser (Chrome or Edge) to connect a device."}{" "}
+          <Link to="/manual#troubleshooting" className="underline">
+            Trouble connecting?
+          </Link>
         </span>
         <button
           onClick={connect}
