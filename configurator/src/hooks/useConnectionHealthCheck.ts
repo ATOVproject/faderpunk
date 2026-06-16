@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { addToast } from "@heroui/toast";
 
 import { useStore } from "../store";
 import { getGlobalConfig } from "../utils/config";
@@ -21,9 +22,15 @@ export const useConnectionHealthCheck = () => {
         setConfig(config);
       } catch {
         clearInterval(interval);
+        // Drop back into the simulator in place rather than reloading to a
+        // landing page (there no longer is one), and tell the user why.
         disconnect();
-        sessionStorage.setItem("fp-connection-lost", "1");
-        window.location.href = "/";
+        addToast({
+          title: "Device disconnected",
+          description:
+            "I don't see the Faderpunk anymore — check your cabling and connect again.",
+          color: "warning",
+        });
       } finally {
         pollingRef.current = false;
       }

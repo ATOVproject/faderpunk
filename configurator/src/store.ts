@@ -19,7 +19,6 @@ import {
 } from "./utils/config";
 import { DEMO_APPS } from "./demo/catalog";
 import { defaultGlobalConfig } from "./utils/validators";
-import { IS_SIMULATOR_BUILD } from "./consts";
 
 const makeEmptyLayout = (): AppLayout =>
   Array.from(
@@ -148,13 +147,11 @@ export const useStore = create<State>((set, get) => ({
     });
   },
   disconnect: () => {
-    // Reset in-memory state only. Persisted simulator work is intentionally
-    // kept so "Open Simulator" can resume it; a real-device disconnect must
-    // not wipe it either.
+    // Reset real-device state, then drop straight back into the simulator —
+    // the universal default. Persisted simulator work is intentionally kept so
+    // a real-device disconnect (or reload) resumes it rather than wiping it.
     set({ ...initialState });
-    // The dedicated simulator build has no connect page to return to, so
-    // drop straight back into a simulator session.
-    if (IS_SIMULATOR_BUILD) get().connectSimulator();
+    get().connectSimulator();
   },
   setConfig: (config) => {
     set({ config });

@@ -177,7 +177,7 @@ jobs:
         working-directory: ./configurator
       - name: Generate postcard bindings (for configurator)
         run: ./gen-bindings.sh
-      - name: Build configurator
+      - name: Build configurator (versioned)
         run: pnpm run build
         working-directory: ./configurator
         env:
@@ -192,31 +192,23 @@ jobs:
         with:
           name: release-artifacts-configurator
           path: artifacts
-      - name: Build landing page
-        run: pnpm run build:landing
-        working-directory: ./configurator
       - name: Upload configurator artifact for GitHub Pages
         uses: actions/upload-artifact@v7
         with:
           name: configurator-pages-artifact
           path: configurator/dist
-      - name: Upload landing page artifact for GitHub Pages
-        uses: actions/upload-artifact@v7
-        with:
-          name: landing-pages-artifact
-          path: configurator/dist-landing
-      # Overwrites dist/, so this must run after the regular build's artifacts
-      # have been uploaded
-      - name: Build simulator configurator
+      # Root build (base "/"): the simulator-default entry point that replaces
+      # the old standalone landing page. Overwrites dist/, so it must run after
+      # the versioned artifact has been uploaded.
+      - name: Build configurator (root)
         run: pnpm run build
         working-directory: ./configurator
         env:
-          BASE_URL: /simulator/
-          VITE_SIMULATOR: "true"
-      - name: Upload simulator artifact for GitHub Pages
+          BASE_URL: /
+      - name: Upload root configurator artifact for GitHub Pages
         uses: actions/upload-artifact@v7
         with:
-          name: simulator-pages-artifact
+          name: root-pages-artifact
           path: configurator/dist
 
   # --- Create GitHub releases + upload assets ---
@@ -267,16 +259,11 @@ jobs:
         with:
           name: configurator-pages-artifact
           path: configurator-dist
-      - name: Download landing page artifact
+      - name: Download root configurator artifact
         uses: actions/download-artifact@v8
         with:
-          name: landing-pages-artifact
-          path: landing-dist
-      - name: Download simulator artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: simulator-pages-artifact
-          path: simulator-dist
+          name: root-pages-artifact
+          path: root-dist
       - name: Deploy to versioned folder and root
         run: |
           VERSION="${{ needs.detect-changes.outputs.configurator_minor }}"
@@ -287,29 +274,21 @@ jobs:
           cp -r configurator-dist/* gh-pages/${VERSION}/
           rm -f gh-pages/${VERSION}/CNAME
 
-          # Update simulator directory (always tracks the latest release)
-          mkdir -p gh-pages/simulator
-          rm -rf gh-pages/simulator/*
-          cp -r simulator-dist/* gh-pages/simulator/
-          rm -f gh-pages/simulator/CNAME
-
           # Preserve CNAME
           mkdir -p temp-preserve
           cp -f gh-pages/CNAME temp-preserve/CNAME 2>/dev/null || true
 
-          # Clear root except versioned folders, beta, simulator, and .git
+          # Clear root except versioned folders, beta, and .git. The old
+          # standalone /simulator/ build and shared root img/fonts are no longer
+          # used and get cleared here (the root build is self-contained).
           find gh-pages -mindepth 1 -maxdepth 1 -type f -exec rm {} \;
           find gh-pages -mindepth 1 -maxdepth 1 -type d \
-            ! -name '[0-9]*.[0-9]*' ! -name 'beta' ! -name 'simulator' \
-            ! -name '.git' ! -name 'img' ! -name 'fonts' -exec rm -rf {} \;
+            ! -name '[0-9]*.[0-9]*' ! -name 'beta' ! -name '.git' \
+            -exec rm -rf {} \;
 
-          # Deploy landing page (built by Vite with version already injected)
-          cp -r landing-dist/* gh-pages/
-
-          # Copy assets to root (shared across all versions)
-          mkdir -p gh-pages/img gh-pages/fonts
-          cp -r configurator-dist/img/* gh-pages/img/ 2>/dev/null || true
-          cp -r configurator-dist/fonts/* gh-pages/fonts/ 2>/dev/null || true
+          # Deploy the simulator-default root build (assets, img and fonts
+          # included) as the new entry point at "/".
+          cp -r root-dist/* gh-pages/
 
           # Restore CNAME
           cp temp-preserve/CNAME gh-pages/CNAME 2>/dev/null || true
