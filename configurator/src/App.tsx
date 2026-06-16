@@ -7,7 +7,6 @@ import { ConfiguratorPage } from "./components/ConfiguratorPage";
 import { AboutPage } from "./components/AboutPage";
 import { ManualPage } from "./components/ManualPage";
 import { UpdatePage } from "./components/UpdatePage";
-import { TroubleshootingPage } from "./components/TroubleshootingPage";
 
 const DEVICELESS_ROUTES = ["/about", "/manual", "/update", "/troubleshooting"];
 
@@ -64,7 +63,11 @@ const App = () => {
       <Route path="/about" element={<AboutPage />} />
       <Route path="/manual" element={<ManualPage />} />
       <Route path="/update" element={<UpdatePage />} />
-      <Route path="/troubleshooting" element={<TroubleshootingPage />} />
+      {/* Troubleshooting now lives in the manual; keep the old path working. */}
+      <Route
+        path="/troubleshooting"
+        element={<Navigate to="/manual#troubleshooting" replace />}
+      />
     </Routes>
   );
 };
