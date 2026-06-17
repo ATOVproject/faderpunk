@@ -144,6 +144,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let leds = app.use_leds();
     let mut clk = app.use_clock();
+    let ticker = clk.get_ticker();
 
     let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
 
@@ -154,6 +155,9 @@ pub async fn run(
     let glob_quant_speed = app.make_global(0.07);
     let glob_count = app.make_global(20);
     let glob_div = app.make_global(24u16);
+    // Clock tick at which the LFO phase is considered zero. 0 = locked to the
+    // clock grid; set to the current tick on a manual reset to run out of phase.
+    let glob_phase_origin = app.make_global(0u64);
 
     let curve = Curve::Exponential;
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6];
@@ -176,7 +180,11 @@ pub async fn run(
         glob_lfo_speed.set((curve.at(storage.query(|s| s.layer_speed)) as f32) * 0.015 + 0.0682);
 
         let div = resolution[((storage.query(|s| s.layer_speed)) as usize / 500).clamp(0, 8)];
-        glob_div.set(div);
+        if div != glob_div.get() {
+            glob_div.set(div);
+            // Re-align to the clock grid whenever the musical division changes.
+            glob_phase_origin.set(0);
+        }
         glob_quant_speed.set(4096. / (glob_count.get().max(1) as f32 * div as f32));
     };
 
@@ -319,6 +327,9 @@ pub async fn run(
                     }
                 }
             } else {
+                // Offset the phase lock to the current tick so a clocked LFO can
+                // be pushed out of phase with the grid; also resets when free-running.
+                glob_phase_origin.set(ticker());
                 glob_lfo_pos.set(0.0);
             }
         }
@@ -353,7 +364,6 @@ pub async fn run(
         }
     };
     let fut5 = async {
-        let ticker = clk.get_ticker();
         loop {
             match clk.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Tick => {
@@ -361,14 +371,16 @@ pub async fn run(
                         let ticks_per_cycle =
                             (glob_div.get() as u64).saturating_mul(speed_mult as u64);
                         if ticks_per_cycle > 0 {
-                            let phase_in_cycle = (ticker() % ticks_per_cycle) as f32;
+                            let phase_in_cycle =
+                                ticker().wrapping_sub(glob_phase_origin.get()) % ticks_per_cycle;
                             glob_lfo_pos
-                                .set(phase_in_cycle * 4096.0 / ticks_per_cycle as f32);
+                                .set(phase_in_cycle as f32 * 4096.0 / ticks_per_cycle as f32);
                         }
                     }
                     glob_tick.set(true);
                 }
                 ClockEvent::Reset => {
+                    glob_phase_origin.set(0);
                     glob_lfo_pos.set(0.0);
                 }
                 _ => {}
