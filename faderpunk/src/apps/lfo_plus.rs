@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 7;
+pub const PARAMS: usize = 8;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "LFO+",
@@ -56,7 +56,8 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     ],
 })
 .add_param(Param::MidiNrpn)
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::bool { name: "Grid Lock" });
 
 pub struct Params {
     speed_mult: usize,
@@ -66,10 +67,14 @@ pub struct Params {
     midi_cc: MidiCc,
     color_in: Color,
     nrpn: bool,
+    phase_lock: bool,
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
         Some(Self {
             speed_mult: usize::from_value(values[0]),
             range: Range::from_value(values[1]),
@@ -78,6 +83,7 @@ impl AppParams for Params {
             color_in: Color::from_value(values[4]),
             nrpn: bool::from_value(values[5]),
             midi_out: MidiOut::from_value(values[6]),
+            phase_lock: bool::from_value(values[7]),
         })
     }
 
@@ -90,6 +96,7 @@ impl AppParams for Params {
         vec.push(self.color_in.into()).unwrap();
         vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.phase_lock.into()).unwrap();
         vec
     }
 }
@@ -136,6 +143,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             midi_cc: MidiCc::from(32u8.saturating_add(app.start_channel as u8)),
             color_in: Color::Blue,
             nrpn: false,
+            phase_lock: true,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -174,6 +182,7 @@ pub async fn run(
     });
 
     let speed_mult = 2u32.pow(params.query(|p| p.speed_mult).min(31) as u32);
+    let phase_lock = params.query(|p| p.phase_lock);
 
     let input = app.make_in_jack(0, Range::_Neg5_5V).await;
 
@@ -313,7 +322,11 @@ pub async fn run(
 
             let out_muted = glob_out_muted.get();
             let effective_val = if out_muted {
-                if range.is_bipolar() { 2047 } else { 0 }
+                if range.is_bipolar() {
+                    2047
+                } else {
+                    0
+                }
             } else {
                 val
             };
@@ -506,7 +519,7 @@ pub async fn run(
         loop {
             match clk.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Tick => {
-                    if storage.query(|s| s.clocked) {
+                    if storage.query(|s| s.clocked) && phase_lock {
                         let ticks_per_cycle =
                             (glob_div.get() as u64).saturating_mul(speed_mult as u64);
                         if ticks_per_cycle > 0 {

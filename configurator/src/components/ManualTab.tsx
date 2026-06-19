@@ -67,9 +67,30 @@ const apps: ManualAppData[] = [
       "MIDI CC",
       "NRPN",
       "Send MIDI",
+      "Grid Lock",
     ],
     storage: ["Clocked", "Attenuation", "Speed", "Waveform", "Muted"],
-    text: "This is a simple LFO that lets you manually select the waveform by pressing the button, with the LED color indicating the chosen shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). You can adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Long press (no shift) mutes the output. In free-running mode, the speed ranges from 14 Hz down to one cycle per minute. In clocked mode, available resolutions include 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The app parameters allow you to set the overall speed—Normal, Slow (÷2), and Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. The output can be configured to be either bipolar (-5V to +5V) or unipolar (0V to 10V) and this also affect where the attenuator will center when outputting MIDI CC, 0 when unipolar and 64 when bipolar. This app can also be configured to output MIDI CC in the parameters and MIDI channel and CC are freely configurable",
+    text: `LFO is a multi-shape oscillator with manually selectable waveforms. Press the button to cycle through shapes; the LED color shows the active waveform: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), square (white).
+
+#### Speed and range
+
+The fader sets the LFO rate. In free-running mode, speed ranges from 14 Hz down to one cycle per minute. **Shift + Fader** adjusts output attenuation, reducing the CV amplitude. The **Speed** parameter applies a global multiplier—Normal, Slow (÷2), Slowest (÷4)—that works in both free-running and clocked modes.
+
+#### Clocked mode
+
+**Shift + long press** toggles between free-running and tempo-synced modes. When clocked, the available resolutions are: 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The button flashes in sync with the LFO rate. **Shift + short press** resets the LFO phase to zero. **Long press** (no shift) mutes the output.
+
+#### Grid Lock
+
+**Grid Lock only has an effect in clocked mode.** When enabled (default on), the LFO phase is continuously derived from the clock's absolute tick count. The phase is always correct relative to the clock grid regardless of when the LFO was started or reset. Changing the speed division re-aligns to the new grid automatically, but this can cause a click as the LFO jumps to its recalculated position.
+
+A **Shift + short press** offsets the phase reference to the current tick, drifting the LFO out of phase with the grid for creative offset effects. A clock reset re-locks to the grid.
+
+Disabling Grid Lock reverts to free-running phase accumulation: the LFO will smoothly speed up or slow down from its current position when the division changes, with no jump.
+
+#### Output
+
+The output range is configured in the parameters: bipolar (−5V to +5V) or unipolar (0V to 10V). This also sets the MIDI CC center—64 for bipolar, 0 for unipolar. MIDI channel and CC number are freely configurable.`,
     channels: [
       {
         jackTitle: "Output",
@@ -1033,6 +1054,7 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
       "Color",
       "NRPN",
       "Send MIDI",
+      "Grid Lock",
     ],
     storage: [
       "CV attenuation",
@@ -1044,7 +1066,32 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
       "Waveform",
       "Output Muted",
     ],
-    text: "This app is a variation of the simple LFO, adding an assignable CV input. The first channel processes the CV input, with the fader controlling its attenuation and the button acting as a mute. Use Shift + Button 1 to set the CV destination, indicated by the button color: speed (yellow), phase (pink), amplitude (cyan) or reset (red). Note that the speed CV is through 0, meaning that the waveform will invert and speed up again when the CV input is negative. When in 'reset' mode, the LFO resets when a rising edge passing the 1V threshold is detected. It is also worth knowing that even in reset mode this input is affected by the CV attenuation and 'mute' state allowing to change the rising edge detection level. As in the standard LFO, you can select the waveform by pressing the second button, with LED colors showing the shape: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), and square (white). Long press (no shift) on the output channel button mutes the LFO output. Adjust the CV output range using Shift + Fader. Shift + short press resets the waveform, while Shift + long press toggles between free-running and tempo-synced modes. Free-running speed ranges from 14 Hz to one cycle per minute; clocked mode offers resolutions like 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. App parameters let you set overall speed—Normal, Slow (÷2), or Slowest (÷4)—which also applies to clocked speeds. When clocked, the button flashes in sync with the LFO rate. Output can be bipolar (-5V to +5V) or unipolar (0V to 10V), affecting the attenuator's center when sending MIDI CC (0 for unipolar, 64 for bipolar). The app can also output MIDI CC, with freely configurable channel and CC number.",
+    text: `LFO+ extends the standard LFO with an assignable CV input on the first channel.
+
+#### CV input
+
+The fader attenuates the incoming CV; the button mutes it. Use **Shift + Button 1** to cycle through CV destinations, shown by the button color:
+
+- **Speed** (yellow) — modulates LFO rate through zero, so the waveform inverts and speeds up again with negative CV
+- **Phase** (pink) — modulates the LFO phase directly
+- **Amplitude** (cyan) — modulates output attenuation
+- **Reset** (red) — resets the LFO phase on a rising edge above 1V; attenuation and mute state affect the detection threshold
+
+#### Waveform and output
+
+Press **Button 2** to cycle through waveforms: sine (yellow), triangle (pink), ramp down (cyan), ramp up (red), square (white). **Shift + Fader 2** adjusts output attenuation. **Long press** (no shift) on Button 2 mutes the LFO output.
+
+#### Clocked mode
+
+**Shift + long press** on Button 2 toggles between free-running and tempo-synced modes. In clocked mode, available resolutions are: 16th, 8thT, 8th, 4thT, 4th, 2nd, note, half bar, and bar. The **Speed** parameter applies a global multiplier—Normal, Slow (÷2), Slowest (÷4)—in both modes. Output can be bipolar (−5V to +5V) or unipolar (0V to 10V), setting the MIDI CC center to 64 or 0 respectively.
+
+#### Grid Lock
+
+**Grid Lock only has an effect in clocked mode.** When enabled (default on), the LFO phase is continuously derived from the clock's absolute tick count, keeping it locked to the grid regardless of when the LFO was started. Changing the speed division re-aligns automatically, but this can cause a click as the LFO jumps to its recalculated position.
+
+A **Shift + short press** on Button 2, or a rising-edge gate when the CV input is in reset mode, offsets the phase reference to the current tick for deliberate phase-offset effects. A clock reset re-locks to the grid.
+
+Disabling Grid Lock reverts to free-running phase accumulation: the LFO will smoothly speed up or slow down from its current position when the division changes, with no jump.`,
     channels: [
       {
         jackTitle: "Input",
