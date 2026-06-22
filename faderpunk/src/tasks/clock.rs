@@ -1,6 +1,6 @@
 use embassy_futures::{
     join::join4,
-    select::{select, select4, Either, Either4},
+    select::{select3, select4, Either3, Either4},
 };
 use embassy_rp::{
     gpio::{Input, Pull},
@@ -70,6 +70,7 @@ pub static CLOCK_PUBSUB: PubSubChannel<
 > = PubSubChannel::new();
 
 pub static CLOCK_IN_CHANNEL: Channel<ThreadModeRawMutex, ClockInEvent, 16> = Channel::new();
+pub static RESET_IN_CHANNEL: Channel<ThreadModeRawMutex, ClockInEvent, 4> = Channel::new();
 pub static TRANSPORT_CMD_CHANNEL: Channel<ThreadModeRawMutex, TransportCmd, 8> = Channel::new();
 
 #[derive(Clone, Copy)]
@@ -309,8 +310,24 @@ async fn run_clock_gatekeeper() {
     let mut analog_tick_counters: [u16; 3] = [0; 3];
 
     loop {
-        match select(clock_in_receiver.receive(), config_receiver.changed()).await {
-            Either::First(event) => {
+        // Priority: drain any pending analog resets before blocking on normal clock
+        // events. Analog reset pulses arrive on RESET_IN_CHANNEL (separate from
+        // CLOCK_IN_CHANNEL) so a simultaneous clock+reset pair — where join4 poll
+        // order put the tick into CLOCK_IN_CHANNEL first — is processed as
+        // [Reset, Tick] here instead of [Tick, Reset].
+        let event_result = if let Ok(e) = RESET_IN_CHANNEL.try_receive() {
+            Either3::First(e)
+        } else {
+            select3(
+                RESET_IN_CHANNEL.receive(),
+                clock_in_receiver.receive(),
+                config_receiver.changed(),
+            )
+            .await
+        };
+
+        match event_result {
+            Either3::First(event) | Either3::Second(event) => {
                 let (is_active, _source) = match event {
                     ClockInEvent::Tick(s)
                     | ClockInEvent::MidiTick(s)
@@ -411,7 +428,7 @@ async fn run_clock_gatekeeper() {
                     }
                 }
             }
-            Either::Second(new_config) => {
+            Either3::Third(new_config) => {
                 // If the clock source has been changed, reset the running state.
                 if config.clock.clock_src != new_config.clock.clock_src {
                     is_running = false;
@@ -605,34 +622,43 @@ async fn run_unified_clock_engine() {
                     if event.source() != config.clock.clock_src {
                         continue;
                     }
-                    clock_in_sender.send(event).await;
                     match event {
+                        // Resets go through the dedicated priority channel so the
+                        // gatekeeper can drain them before buffered ticks.
+                        ClockInEvent::Reset(_) => {
+                            RESET_IN_CHANNEL.send(event).await;
+                            pending_emissions.clear();
+                            tick_in_window = 0;
+                        }
                         ClockInEvent::Start(_) => {
+                            clock_in_sender.send(event).await;
                             is_running = true;
-                            // Fresh downbeat: drop any stale swung emissions and
-                            // re-anchor the window on the next pulse.
                             pending_emissions.clear();
                             tick_in_window = 0;
                         }
                         ClockInEvent::Continue(_) => {
+                            clock_in_sender.send(event).await;
                             is_running = true;
                         }
                         ClockInEvent::Stop(_) => {
+                            clock_in_sender.send(event).await;
                             is_running = false;
                             pending_emissions.clear();
                         }
-                        ClockInEvent::Reset(_) => {
-                            pending_emissions.clear();
-                            tick_in_window = 0;
+                        _ => {
+                            clock_in_sender.send(event).await;
                         }
-                        _ => {}
                     }
                 }
                 SyncEngineEvent::Pulse { source, timestamp } => {
-                    // Check if this pulse is from the reset source
+                    // Check if this pulse is from the reset source. Route it
+                    // through the dedicated priority channel so the gatekeeper
+                    // drains it before any buffered ticks — prevents the
+                    // join4 poll-order race where a simultaneous clock+reset
+                    // lands as [Tick, Reset] and apps step forward before reset.
                     let reset_src: ClockSrc = config.clock.reset_src.into();
                     if source == reset_src && reset_src != ClockSrc::None {
-                        clock_in_sender.send(ClockInEvent::Reset(source)).await;
+                        RESET_IN_CHANNEL.send(ClockInEvent::Reset(source)).await;
                         pending_emissions.clear();
                         tick_in_window = 0;
                         continue;
