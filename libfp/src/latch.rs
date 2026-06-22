@@ -66,10 +66,11 @@ pub struct AnalogLatch {
     last_emitted_value: u16,
     prev_target: u16,
     /// Dead zone applied when latched: fader must move this many LSBs from the last
-    /// emitted position before producing a new output. Larger = more noise immunity.
+    /// emitted position before producing a new output. Kept small for fine 1:1 control.
     jitter_tolerance: u16,
-    /// Proximity zone applied when unlatched: fader within this many LSBs of the
-    /// target auto-latches (proximity pickup). Kept smaller than jitter_tolerance.
+    /// Wide zone for staying latched through external target changes: target must drift
+    /// more than this many LSBs to unlatch the fader (asymmetric hysteresis).
+    /// Also used for proximity auto-latch when an unlatched target moves to the fader.
     pickup_tolerance: u16,
     mode: TakeoverMode,
 }
@@ -80,11 +81,11 @@ const RUNWAY_GAIN_DEN: i32 = 4;
 impl AnalogLatch {
     /// Creates a new AnalogLatch with default tolerances.
     ///
-    /// Defaults: `jitter_tolerance = 50` (latched dead zone), `pickup_tolerance = 25`
-    /// (proximity zone for crossover detection). It starts on layer 0 and assumes the
-    /// fader's initial physical position matches the given initial value (latched).
+    /// Defaults: `jitter_tolerance = 25` (fine latched dead zone), `pickup_tolerance = 50`
+    /// (wide stay-latched zone for asymmetric hysteresis). It starts on layer 0 and assumes
+    /// the fader's initial physical position matches the given initial value (latched).
     pub fn new(initial_value: u16, mode: TakeoverMode) -> Self {
-        Self::with_tolerances(initial_value, 50, 25, mode)
+        Self::with_tolerances(initial_value, 25, 50, mode)
     }
 
     /// Creates a new AnalogLatch with equal jitter and pickup tolerances.
@@ -118,12 +119,16 @@ impl AnalogLatch {
         }
     }
 
-    /// Dead zone check for latched tracking: has the fader moved beyond jitter_tolerance?
+    /// Dead zone check: are `a` and `b` within jitter_tolerance of each other?
+    /// Used for latched emission (must exceed this to produce output) and for
+    /// crossover proximity / layer-switch auto-latch (tight zone, precise).
     fn in_jitter_zone(&self, a: u16, b: u16) -> bool {
         a.abs_diff(b) <= self.jitter_tolerance
     }
 
-    /// Proximity check for pickup/crossover: is the fader within pickup_tolerance of target?
+    /// Wide zone check: are `a` and `b` within pickup_tolerance of each other?
+    /// Used for the "stay latched" path when an external source changes the target
+    /// (asymmetric hysteresis: hard to lose latch from small external perturbations).
     fn in_pickup_zone(&self, a: u16, b: u16) -> bool {
         a.abs_diff(b) <= self.pickup_tolerance
     }
@@ -163,10 +168,10 @@ impl AnalogLatch {
         if new_active_layer != self.active_layer {
             self.active_layer = new_active_layer;
             // For Jump mode, always latch immediately on layer switch
-            // For other modes, unlatch unless fader is already at target
+            // For other modes, unlatch unless fader is already at target (tight zone)
             self.is_latched = match self.mode {
                 TakeoverMode::Jump => true,
-                _ => self.in_pickup_zone(value, active_layer_target_value),
+                _ => self.in_jitter_zone(value, active_layer_target_value),
             };
             self.prev_target = active_layer_target_value;
         } else if self.is_latched {
@@ -223,7 +228,7 @@ impl AnalogLatch {
                         let has_crossed = (self.prev_value..=value)
                             .contains(&active_layer_target_value)
                             || (value..=self.prev_value).contains(&active_layer_target_value)
-                            || self.in_pickup_zone(value, active_layer_target_value);
+                            || self.in_jitter_zone(value, active_layer_target_value);
 
                         if has_crossed {
                             // Crossover detected! Latch and report the new value.
@@ -292,7 +297,7 @@ impl AnalogLatch {
                                     && new_current_value as i32 >= fader_pos)
                                     || (current_value_i32 >= fader_pos
                                         && new_current_value as i32 <= fader_pos)
-                                    || self.in_pickup_zone(new_current_value, value);
+                                    || self.in_jitter_zone(new_current_value, value);
 
                                 if crossed {
                                     // Crossed! Latch and return fader value
@@ -333,7 +338,7 @@ mod tests {
     fn test_basic_latched_movement() {
         let mut latch = AnalogLatch::new(100, TakeoverMode::Pickup);
 
-        // Moving fader 51 LSBs while latched should update value (jitter_tolerance=50)
+        // Moving fader 51 LSBs while latched should update value (exceeds jitter_tolerance=25)
         let result = latch.update(151, LatchLayer::Main, 100);
         assert_eq!(result, Some(151));
         assert!(latch.is_latched());
@@ -537,7 +542,7 @@ mod tests {
     fn test_target_changes_to_fader_position() {
         let mut latch = AnalogLatch::new(100, TakeoverMode::Pickup);
 
-        // Move fader 51 LSBs (beyond jitter_tolerance=50)
+        // Move fader 51 LSBs (beyond jitter_tolerance=25)
         assert_eq!(latch.update(151, LatchLayer::Main, 100), Some(151));
         assert!(latch.is_latched());
 
@@ -966,14 +971,18 @@ mod tests {
     // --- Tolerance characterization tests ---
     //
     // Two independent tolerances:
-    //   jitter_tolerance (default 50 LSBs, ±1.2% of 4095): dead zone when latched.
+    //   jitter_tolerance (default 25 LSBs, ±0.6% of 4095): dead zone when latched.
     //     The fader must move this far from the last emitted position to produce output.
-    //   pickup_tolerance (default 25 LSBs, ±0.6% of 4095): proximity zone when unlatched.
-    //     The fader auto-latches when this close to the target (in addition to range crossings).
+    //     Also used for layer-switch auto-latch and crossover proximity — kept tight so
+    //     fader must be very close to the target before proximity latch fires.
+    //   pickup_tolerance (default 50 LSBs, ±1.2% of 4095): wide stay-latched zone.
+    //     Target must drift more than this many LSBs to unlatch an already-latched fader
+    //     (asymmetric hysteresis). Also used for unlatched auto-latch when target moves
+    //     close to fader.
     //
     // To adjust defaults, change `AnalogLatch::new()` and the constants below.
-    const DEFAULT_JITTER_TOLERANCE: u16 = 50;
-    const DEFAULT_PICKUP_TOLERANCE: u16 = 25;
+    const DEFAULT_JITTER_TOLERANCE: u16 = 25;
+    const DEFAULT_PICKUP_TOLERANCE: u16 = 50;
 
     #[test]
     fn test_default_tolerances() {
@@ -988,8 +997,8 @@ mod tests {
     fn test_latched_jitter_suppression() {
         let position: u16 = 2000;
         let mut latch = AnalogLatch::new(position, TakeoverMode::Pickup);
-        // Noise up to ±(jitter_tolerance - 1): all suppressed
-        let noise: [i16; 10] = [10, -10, 20, -20, 30, -30, 40, -40, 49, -49];
+        // Noise up to ±(jitter_tolerance - 1) = ±24: all suppressed
+        let noise: [i16; 6] = [10, -10, 20, -20, 24, -24];
         for &delta in noise.iter() {
             let noisy = (position as i16 + delta).clamp(0, 4095) as u16;
             assert_eq!(
@@ -998,18 +1007,18 @@ mod tests {
                 "False emit at delta={delta}"
             );
         }
-        // Movement of jitter_tolerance + 1 (51 LSBs) must emit
+        // Movement of jitter_tolerance + 1 (26 LSBs) must emit
         let over = position + DEFAULT_JITTER_TOLERANCE + 1;
         assert_eq!(latch.update(over, LatchLayer::Main, position), Some(over));
     }
 
     /// Simulates a fader held at a fixed position while the ADC produces jittery readings.
-    /// Noise within ±pickup_tolerance should not cause an involuntary latch when unlatched.
+    /// Noise within ±jitter_tolerance should not produce any output when latched.
     #[test]
     fn test_held_fader_noise_no_false_updates() {
         let position: u16 = 2000;
         let mut latch = AnalogLatch::new(position, TakeoverMode::Pickup);
-        // Simulate 100 noisy samples around the hold position, all within pickup tolerance
+        // Simulate 100 noisy samples around the hold position, all within jitter tolerance
         let noise: [i16; 20] = [
             1, -1, 2, -2, 3, -3, 5, -5, 10, -10, 15, -15, 20, -20, 24, -24, 25, -25, 0, 0,
         ];
@@ -1023,24 +1032,25 @@ mod tests {
         }
     }
 
-    /// Noise just above pickup_tolerance (26 LSBs) on a latched fader does NOT emit
-    /// because the jitter_tolerance (50) is the active guard when latched.
+    /// When latched, jitter_tolerance (25) is the emission guard.
+    /// A 25-LSB move is suppressed; a 26-LSB move emits.
     #[test]
-    fn test_movement_just_above_pickup_tolerance_no_update_when_latched() {
+    fn test_jitter_boundary_when_latched() {
         let position: u16 = 2000;
         let mut latch = AnalogLatch::new(position, TakeoverMode::Pickup);
-        // 26 LSBs exceeds pickup_tolerance (25) but is below jitter_tolerance (50)
-        let just_over_pickup = position + DEFAULT_PICKUP_TOLERANCE + 1;
+        // Exactly at jitter_tolerance: suppressed
+        let at_jitter = position + DEFAULT_JITTER_TOLERANCE;
         assert_eq!(
-            latch.update(just_over_pickup, LatchLayer::Main, position),
+            latch.update(at_jitter, LatchLayer::Main, position),
             None,
-            "Should not emit: movement exceeds pickup_tolerance but not jitter_tolerance"
+            "Should not emit at exactly jitter_tolerance"
         );
-        // Only jitter_tolerance + 1 (51 LSBs) triggers an emit when latched
-        let just_over_jitter = position + DEFAULT_JITTER_TOLERANCE + 1;
+        // One step over jitter_tolerance (26 LSBs): must emit
+        let over_jitter = position + DEFAULT_JITTER_TOLERANCE + 1;
         assert_eq!(
-            latch.update(just_over_jitter, LatchLayer::Main, position),
-            Some(just_over_jitter)
+            latch.update(over_jitter, LatchLayer::Main, position),
+            Some(over_jitter),
+            "Should emit at jitter_tolerance + 1"
         );
     }
 
@@ -1060,11 +1070,11 @@ mod tests {
                 updates += 1;
             }
         }
-        // With jitter_tolerance=50, 100-step sweep produces ~2 updates (at 51, 102 — but we
-        // only go to 1100, so just 1: at 1051). The fader must move 51 LSBs to emit.
+        // With jitter_tolerance=25, 100-step sweep produces ~4 updates (at 26, 52, 78, 104).
+        // The fader must move 26 LSBs past last emitted position to emit.
         assert!(updates > 0, "No updates emitted during 100-step sweep");
         assert!(
-            updates <= 2,
+            updates <= 4,
             "Too many updates ({updates}) for a 100-step sweep with jitter_tolerance={DEFAULT_JITTER_TOLERANCE}"
         );
         assert!(
@@ -1079,7 +1089,7 @@ mod tests {
         let saved_value = 3000u16;
         let fader_physical_position = 500u16;
 
-        // Jump mode: immediately jumps on first movement (must exceed jitter tolerance of 50)
+        // Jump mode: immediately jumps on first movement (must exceed jitter tolerance of 25)
         let mut jump = AnalogLatch::new(fader_physical_position, TakeoverMode::Jump);
         jump.update(fader_physical_position, LatchLayer::Main, saved_value);
         assert_eq!(jump.update(551, LatchLayer::Main, saved_value), Some(551));
@@ -1103,5 +1113,74 @@ mod tests {
     }
 
     // --- Crossover debounce tests ---
-    //
+
+    /// Asymmetric hysteresis: an already-latched fader stays in control when the external
+    /// target drifts within pickup_tolerance (50), but unlatches if it drifts beyond.
+    #[test]
+    fn test_asymmetric_hysteresis_stay_latched() {
+        let position: u16 = 1000;
+        let mut latch = AnalogLatch::new(position, TakeoverMode::Pickup);
+        // Target drifts 40 LSBs (< pickup_tolerance=50) → stay latched
+        let _ = latch.update(position, LatchLayer::Main, 1040);
+        assert!(
+            latch.is_latched(),
+            "Should remain latched within pickup_tolerance"
+        );
+        // Target drifts 60 LSBs total from fader (> pickup_tolerance=50) → unlatch
+        let _ = latch.update(position, LatchLayer::Main, 1060);
+        assert!(
+            !latch.is_latched(),
+            "Should unlatch when target drifts beyond pickup_tolerance"
+        );
+    }
+
+    /// Layer switch uses the tight jitter_tolerance (25), not the wide pickup_tolerance (50).
+    /// If the new layer's target is 40 LSBs away (> jitter=25, < pickup=50), fader must unlatch.
+    #[test]
+    fn test_layer_switch_uses_tight_jitter_zone() {
+        let position: u16 = 2000;
+        let new_layer_target: u16 = 2040; // 40 LSBs away — beyond jitter (25) but within pickup (50)
+        let mut latch = AnalogLatch::new(position, TakeoverMode::Pickup);
+        assert!(latch.is_latched());
+        // Switch to Alt layer with target 40 LSBs away — beyond jitter zone (25)
+        let _ = latch.update(position, LatchLayer::Alt, new_layer_target);
+        assert!(
+            !latch.is_latched(),
+            "Layer switch should unlatch when new target is beyond jitter_tolerance (25)"
+        );
+    }
+
+    /// Pickup mode crossover proximity uses jitter_tolerance (25), not pickup_tolerance (50).
+    /// A fader 35 LSBs from target (beyond jitter=25) must NOT proximity-latch.
+    /// A fader 24 LSBs from target (within jitter=25) MUST proximity-latch.
+    #[test]
+    fn test_crossover_proximity_uses_tight_jitter_zone() {
+        let target: u16 = 200;
+        // Start with fader at 0, force unlatch by giving a far target
+        let mut latch = AnalogLatch::new(0, TakeoverMode::Pickup);
+        // Target is 200 away → beyond pickup_tolerance (50) → unlatch immediately
+        let _ = latch.update(0, LatchLayer::Main, target);
+        assert!(
+            !latch.is_latched(),
+            "Should be unlatched with target 200 LSBs away"
+        );
+
+        // Move fader to 165 (35 LSBs from target=200) — beyond jitter_tolerance=25, no proximity latch
+        let _ = latch.update(165, LatchLayer::Main, target);
+        assert!(
+            !latch.is_latched(),
+            "Fader 35 LSBs from target should not proximity-latch"
+        );
+
+        // Move fader to 176 (24 LSBs from target=200) — within jitter_tolerance=25, proximity latch fires
+        let result = latch.update(176, LatchLayer::Main, target);
+        assert!(
+            latch.is_latched(),
+            "Fader 24 LSBs from target should proximity-latch"
+        );
+        assert!(
+            result.is_some(),
+            "Proximity latch should emit the fader value"
+        );
+    }
 }

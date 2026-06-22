@@ -193,6 +193,11 @@ async fn read_fader(
         AnalogLatch::new(main_fader_values[channel], global_config.takeover_mode)
     });
 
+    // Rolling history for 3-sample median filter: eliminates single-sample ADC spikes
+    // from MAX11300 charge injection before they reach the latch state machine.
+    let mut fader_history: [[u16; 2]; 16] =
+        core::array::from_fn(|channel| [main_fader_values[channel], main_fader_values[channel]]);
+
     let mut chan: usize = 0;
 
     loop {
@@ -216,6 +221,18 @@ async fn read_fader(
         // Scale a bit across the dead-zone (~4087 -> 4095) using integer math
         let val = (((val as u32 * 1002) / 1000) as u16).clamp(0, 4095);
 
+        // 3-sample median filter: median([prev2, prev1, val]) eliminates single-sample
+        // ADC spikes from MAX11300 charge injection without introducing any latency on
+        // legitimate fader movement (when all three samples move, median moves too).
+        let filtered = {
+            let [a, b] = fader_history[channel];
+            let lo = a.min(b).min(val);
+            let hi = a.max(b).max(val);
+            // median = sum - min - max; max sum = 3*4095 = 12285, fits in u16
+            a + b + val - lo - hi
+        };
+        fader_history[channel] = [fader_history[channel][1], val];
+
         let latch = &mut fader_latches[channel];
 
         let target_value = match active_layer {
@@ -224,7 +241,7 @@ async fn read_fader(
             LatchLayer::Third => 0,
         };
 
-        if let Some(new_value) = latch.update(val, active_layer, target_value) {
+        if let Some(new_value) = latch.update(filtered, active_layer, target_value) {
             let diff = (new_value as i32 - target_value as i32).abs();
             match active_layer {
                 LatchLayer::Main => {
