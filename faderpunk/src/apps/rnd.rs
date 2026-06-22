@@ -8,7 +8,6 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
-use midly::num::u7;
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
@@ -313,7 +312,7 @@ pub async fn run(
 
     let timed_loop = async {
         let mut out: u16 = 0;
-        let mut last_cc = u7::new(0);
+        let mut last_val: u16 = u16::MAX;
         let mut count: u32 = 0;
         loop {
             app.delay_millis(1).await;
@@ -350,10 +349,10 @@ pub async fn run(
 
             output.set_value(out);
 
-            let cc = scale_bits_12_7(out);
-            if cc != last_cc {
+            let gate_val = if nrpn { out } else { scale_bits_12_7(out).as_int() as u16 };
+            if gate_val != last_val {
                 midi.send_cc(midi_cc, out).await;
-                last_cc = cc;
+                last_val = gate_val;
             }
 
             if latch_active_layer == LatchLayer::Main {

@@ -8,9 +8,11 @@ pub const fn bpm_to_clock_duration(bpm: f32, ppqn: u8) -> Duration {
     Duration::from_nanos((1_000_000_000.0 / (bpm as f64 / 60.0 * ppqn as f64)) as u64)
 }
 
-/// Scale from 4095 u16 to 127 u7
+/// Scale a 12-bit value (0..=4095) to a 7-bit MIDI value (0..=127).
+/// Uses integer division by 32 (4096/128) so each CC step covers exactly
+/// 32 input values and CC 127 is reachable for any input >= 4064.
 pub fn scale_bits_12_7(value: u16) -> u7 {
-    u7::new(((value as u32 * 127) / 4095) as u8)
+    u7::new((value / 32) as u8)
 }
 
 /// Scale from 4095 u16 to 255 u8
@@ -296,6 +298,15 @@ pub fn interp_loop_sample(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scale_bits_12_7_full_range() {
+        assert_eq!(scale_bits_12_7(0).as_int(), 0);
+        assert_eq!(scale_bits_12_7(2048).as_int(), 64);
+        assert_eq!(scale_bits_12_7(4063).as_int(), 126);
+        assert_eq!(scale_bits_12_7(4064).as_int(), 127);
+        assert_eq!(scale_bits_12_7(4095).as_int(), 127);
+    }
 
     #[test]
     fn scale_to_12bit_full_window() {
