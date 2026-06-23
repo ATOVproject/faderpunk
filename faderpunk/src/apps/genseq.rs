@@ -111,9 +111,9 @@ impl AppParams for Params {
 }
 
 /// Fader layout:
-///   F0 Main=pitch_att     Alt=pitch_tm_length     Third=res_saved
-///   F1 Main=length_att    Alt=legato_att          Third=octave_shift
-///   F2 Main=beat_density  Alt=accent_att          Third=gate_length
+///   F0 Main=pitch_att     Alt=octave_shift    Third=res_saved
+///   F1 Main=length_att    Alt=legato_att      Third=(none)
+///   F2 Main=beat_density  Alt=accent_att      Third=gate_length
 ///
 /// Buttons (no shift): hold to mutate that register
 ///   Btn0=pitch  Btn1=length
@@ -486,14 +486,10 @@ pub async fn run(
 
             let target = match (chan, layer) {
                 (0, LatchLayer::Main) => storage.query(|s| s.pitch_att),
-                (0, LatchLayer::Alt) => {
-                    (storage.query(|s| s.pitch_tm_length).saturating_sub(1) as u32 * 4095 / 15)
-                        as u16
-                }
+                (0, LatchLayer::Alt) => storage.query(|s| s.octave_shift),
                 (0, LatchLayer::Third) => storage.query(|s| s.res_saved),
                 (1, LatchLayer::Main) => storage.query(|s| s.length_att),
                 (1, LatchLayer::Alt) => storage.query(|s| s.legato_att),
-                (1, LatchLayer::Third) => storage.query(|s| s.octave_shift),
                 (2, LatchLayer::Main) => storage.query(|s| s.beat_density),
                 (2, LatchLayer::Alt) => storage.query(|s| s.accent_att),
                 (2, LatchLayer::Third) => storage.query(|s| s.gate_length),
@@ -503,9 +499,7 @@ pub async fn run(
             if let Some(v) = latch[chan].update(fader.get_value_at(chan), layer, target) {
                 match (chan, layer) {
                     (0, LatchLayer::Main) => storage.modify_and_save(|s| s.pitch_att = v),
-                    (0, LatchLayer::Alt) => storage.modify_and_save(|s| {
-                        s.pitch_tm_length = (v as u32 * 15 / 4095 + 1).min(16) as u8;
-                    }),
+                    (0, LatchLayer::Alt) => storage.modify_and_save(|s| s.octave_shift = v),
                     (0, LatchLayer::Third) => {
                         div_glob.set(resolution[(v / 512).min(7) as usize]);
                         midi.send_note_off(last_note_on.get()).await;
@@ -513,7 +507,6 @@ pub async fn run(
                     }
                     (1, LatchLayer::Main) => storage.modify_and_save(|s| s.length_att = v),
                     (1, LatchLayer::Alt) => storage.modify_and_save(|s| s.legato_att = v),
-                    (1, LatchLayer::Third) => storage.modify_and_save(|s| s.octave_shift = v),
                     (2, LatchLayer::Main) => storage.modify_and_save(|s| s.beat_density = v),
                     (2, LatchLayer::Alt) => storage.modify_and_save(|s| s.accent_att = v),
                     (2, LatchLayer::Third) => storage.modify_and_save(|s| s.gate_length = v),
@@ -662,23 +655,23 @@ pub async fn run(
                     leds.set(2, Led::Bottom, led_color, Brightness::Custom(p2));
                 }
                 LatchLayer::Alt => {
-                    // Button LEDs: stored length by default; switch to live count once tapping starts
-                    let pitch_disp = if pitch_len_count > 0 {
-                        pitch_len_count
+                    let oct_idx = (storage.query(|s| s.octave_shift) / 819).min(4) as usize;
+                    // F0 Button LED: live count while tapping Shift+Btn0; octave color otherwise
+                    if pitch_len_count > 0 {
+                        leds.set(
+                            0,
+                            Led::Button,
+                            Color::White,
+                            Brightness::Custom((pitch_len_count as u16 * 16).min(255) as u8),
+                        );
                     } else {
-                        storage.query(|s| s.pitch_tm_length)
-                    };
+                        leds.set(0, Led::Button, OCT_COLORS[oct_idx], Brightness::High);
+                    }
                     let len_disp = if length_len_count > 0 {
                         length_len_count
                     } else {
                         storage.query(|s| s.length_tm_length)
                     };
-                    leds.set(
-                        0,
-                        Led::Button,
-                        Color::White,
-                        Brightness::Custom((pitch_disp as u16 * 16).min(255) as u8),
-                    );
                     leds.set(
                         1,
                         Led::Button,
@@ -691,14 +684,7 @@ pub async fn run(
                         leds.set(2, Led::Button, led_color, Brightness::Low);
                     }
                     // Top LEDs: fader values (brightness = current setting)
-                    leds.set(
-                        0,
-                        Led::Top,
-                        Color::White,
-                        Brightness::Custom(
-                            (storage.query(|s| s.pitch_tm_length) * 16).saturating_sub(1),
-                        ),
-                    );
+                    leds.set(0, Led::Top, OCT_COLORS[oct_idx], Brightness::High);
                     leds.set(
                         1,
                         Led::Top,
@@ -734,8 +720,6 @@ pub async fn run(
                         },
                     );
                     leds.set(2, Led::Button, led_color, Brightness::High);
-                    let oct_idx = (storage.query(|s| s.octave_shift) / 819).min(4) as usize;
-                    leds.set(1, Led::Bottom, OCT_COLORS[oct_idx], Brightness::High);
                     leds.set(
                         2,
                         Led::Top,
