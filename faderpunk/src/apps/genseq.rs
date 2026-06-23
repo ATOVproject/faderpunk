@@ -328,8 +328,7 @@ pub async fn run(
 
                             let register_scaled = scale_to_12bit(register_pitch, length as u8);
                             let raw_att = storage.query(|s| s.pitch_att);
-                            let att_reg =
-                                attenuate(register_scaled, Curve::Logarithmic.at(raw_att));
+                            let att_reg = attenuate(register_scaled, raw_att);
                             let octave_offset =
                                 (storage.query(|s| s.octave_shift) / 819).min(4) as i32 - 2;
 
