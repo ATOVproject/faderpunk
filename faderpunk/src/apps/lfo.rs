@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 7;
 
 pub static CONFIG: Config<PARAMS> =
     Config::new("LFO", "Multi shape LFO", Color::Yellow, AppIcon::Sine)
@@ -39,7 +39,8 @@ pub static CONFIG: Config<PARAMS> =
         })
         .add_param(Param::MidiCc { name: "MIDI CC" })
         .add_param(Param::MidiNrpn)
-        .add_param(Param::MidiOut);
+        .add_param(Param::MidiOut)
+        .add_param(Param::bool { name: "Grid Lock" });
 
 pub struct Params {
     speed_mult: usize,
@@ -48,10 +49,14 @@ pub struct Params {
     midi_channel: MidiChannel,
     midi_cc: MidiCc,
     nrpn: bool,
+    phase_lock: bool,
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
         Some(Self {
             speed_mult: usize::from_value(values[0]),
             range: Range::from_value(values[1]),
@@ -59,6 +64,7 @@ impl AppParams for Params {
             midi_cc: MidiCc::from_value(values[3]),
             nrpn: bool::from_value(values[4]),
             midi_out: MidiOut::from_value(values[5]),
+            phase_lock: bool::from_value(values[6]),
         })
     }
 
@@ -70,6 +76,7 @@ impl AppParams for Params {
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.phase_lock.into()).unwrap();
         vec
     }
 }
@@ -109,6 +116,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             midi_channel: MidiChannel::default(),
             midi_cc: MidiCc::from(32u8.saturating_add(app.start_channel as u8)),
             nrpn: false,
+            phase_lock: true,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -139,11 +147,13 @@ pub async fn run(
         params.query(|p| (p.range, p.midi_out, p.midi_channel, p.midi_cc, p.nrpn));
 
     let speed_mult = 2u32.pow(params.query(|p| p.speed_mult).min(31) as u32);
+    let phase_lock = params.query(|p| p.phase_lock);
     let output = app.make_out_jack(0, range).await;
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
     let mut clk = app.use_clock();
+    let ticker = clk.get_ticker();
 
     let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
 
@@ -152,7 +162,11 @@ pub async fn run(
     let glob_latch_layer = app.make_global(LatchLayer::Main);
     let glob_tick = app.make_global(false);
     let glob_quant_speed = app.make_global(0.07);
-    let glob_count = app.make_global(500);
+    let glob_count = app.make_global(20);
+    let glob_div = app.make_global(24u16);
+    // Clock tick at which the LFO phase is considered zero. 0 = locked to the
+    // clock grid; set to the current tick on a manual reset to run out of phase.
+    let glob_phase_origin = app.make_global(0u64);
 
     let curve = Curve::Exponential;
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6];
@@ -175,7 +189,12 @@ pub async fn run(
         glob_lfo_speed.set((curve.at(storage.query(|s| s.layer_speed)) as f32) * 0.015 + 0.0682);
 
         let div = resolution[((storage.query(|s| s.layer_speed)) as usize / 500).clamp(0, 8)];
-        glob_quant_speed.set(4095. / ((glob_count.get().max(1) as f32 * div as f32) / 24.));
+        if div != glob_div.get() {
+            glob_div.set(div);
+            // Re-align to the clock grid whenever the musical division changes.
+            glob_phase_origin.set(0);
+        }
+        glob_quant_speed.set(4096. / (glob_count.get().max(1) as f32 * div as f32));
     };
 
     update_speed().await;
@@ -219,7 +238,11 @@ pub async fn run(
             };
 
             let effective_val = if glob_muted.get() {
-                if range == Range::_Neg5_5V { 2047 } else { 0 }
+                if range == Range::_Neg5_5V {
+                    2047
+                } else {
+                    0
+                }
             } else {
                 val
             };
@@ -317,6 +340,9 @@ pub async fn run(
                     }
                 }
             } else {
+                // Offset the phase lock to the current tick so a clocked LFO can
+                // be pushed out of phase with the grid; also resets when free-running.
+                glob_phase_origin.set(ticker());
                 glob_lfo_pos.set(0.0);
             }
         }
@@ -352,11 +378,22 @@ pub async fn run(
     };
     let fut5 = async {
         loop {
-            match clk.wait_for_event(ClockDivision::_24).await {
+            match clk.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Tick => {
+                    if storage.query(|s| s.clocked) && phase_lock {
+                        let ticks_per_cycle =
+                            (glob_div.get() as u64).saturating_mul(speed_mult as u64);
+                        if ticks_per_cycle > 0 {
+                            let phase_in_cycle =
+                                ticker().wrapping_sub(glob_phase_origin.get()) % ticks_per_cycle;
+                            glob_lfo_pos
+                                .set(phase_in_cycle as f32 * 4096.0 / ticks_per_cycle as f32);
+                        }
+                    }
                     glob_tick.set(true);
                 }
                 ClockEvent::Reset => {
+                    glob_phase_origin.set(0);
                     glob_lfo_pos.set(0.0);
                 }
                 _ => {}
