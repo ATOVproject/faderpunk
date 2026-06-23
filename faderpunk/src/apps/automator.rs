@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, interp_loop_sample, scale_bits_12_7, slew_2, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, interp_loop_sample, midi_gate, slew_2, split_unsigned_value},
     AppIcon, Brightness, ClockDivision, Color, Config, MidiCc, MidiChannel, MidiOut, Param, Range,
     Value, APP_MAX_PARAMS,
 };
@@ -566,7 +566,7 @@ pub async fn run(
                 | LooperState::PendingRecording
                 | LooperState::Recording => {
                     let fader_val = fader.get_value();
-                    let midi_val = if nrpn { fader_val as u32 } else { scale_bits_12_7(fader_val).as_int() as u32 };
+                    let midi_val = midi_gate(fader_val, nrpn) as u32;
                     if last_midi_scaled != midi_val {
                         midi.send_cc(midi_cc, fader_val).await;
                         last_midi_scaled = midi_val;
@@ -594,7 +594,7 @@ pub async fn run(
                     } else {
                         loop_target_glob.get()
                     };
-                    let midi_val = if nrpn { interp as u32 } else { scale_bits_12_7(interp).as_int() as u32 };
+                    let midi_val = midi_gate(interp, nrpn) as u32;
                     if last_midi_scaled != midi_val {
                         midi.send_cc(midi_cc, interp).await;
                         last_midi_scaled = midi_val;

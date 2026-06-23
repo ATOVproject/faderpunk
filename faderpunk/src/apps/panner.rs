@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate_bipolar, clickless, scale_bits_12_7, slew_2, split_unsigned_value},
+    utils::{attenuate_bipolar, clickless, midi_gate, slew_2, split_unsigned_value},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, Waveform, APP_MAX_PARAMS,
 };
 
@@ -373,12 +373,12 @@ pub async fn run(
             jacks[1].set_value(out_r);
 
             if midi_out.is_some() {
-                let gate_l = if nrpn { out_l } else { scale_bits_12_7(out_l).as_int() as u16 };
+                let gate_l = midi_gate(out_l, nrpn);
                 if last_out[0] != gate_l {
                     midi.send_cc(midi_cc_l, out_l).await;
                     last_out[0] = gate_l;
                 }
-                let gate_r = if nrpn { out_r } else { scale_bits_12_7(out_r).as_int() as u16 };
+                let gate_r = midi_gate(out_r, nrpn);
                 if last_out[1] != gate_r {
                     midi.send_cc(midi_cc_r, out_r).await;
                     last_out[1] = gate_r;

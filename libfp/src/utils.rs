@@ -15,6 +15,16 @@ pub fn scale_bits_12_7(value: u16) -> u7 {
     u7::new((value / 32) as u8)
 }
 
+/// Resolution at which a 12-bit value should be de-duplicated before
+/// emitting MIDI: full 12-bit in NRPN mode, 7-bit-quantized in CC mode.
+pub fn midi_gate(value: u16, nrpn: bool) -> u16 {
+    if nrpn {
+        value
+    } else {
+        scale_bits_12_7(value).as_int() as u16
+    }
+}
+
 /// Scale from 4095 u16 to 255 u8
 pub fn scale_bits_12_8(value: u16) -> u8 {
     ((value as u32 * 255) / 4095) as u8

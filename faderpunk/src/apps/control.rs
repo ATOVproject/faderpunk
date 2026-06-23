@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, clickless, scale_bits_12_7, slew_2, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, clickless, midi_gate, slew_2, split_unsigned_value},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
@@ -338,11 +338,7 @@ pub async fn run(
             } else {
                 attenuate_bipolar(main_layer_value, att_layer_value)
             };
-            let midi_val = if nrpn {
-                midi_out as u32
-            } else {
-                scale_bits_12_7(midi_out).as_int() as u32
-            };
+            let midi_val = midi_gate(midi_out, nrpn) as u32;
             if last_midi != midi_val {
                 midi.send_cc(midi_cc, midi_out).await;
                 last_midi = midi_val;
