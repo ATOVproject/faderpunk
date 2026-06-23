@@ -6,7 +6,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, scale_bits_12_7, split_unsigned_value},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
@@ -175,7 +175,7 @@ pub async fn run(
     let input = app.make_in_jack(0, range).await;
 
     let fut1 = async {
-        let mut old_midi = 0;
+        let mut old_midi: u16 = u16::MAX;
 
         loop {
             app.delay_millis(1).await;
@@ -219,9 +219,12 @@ pub async fn run(
                 );
             }
 
-            if old_midi != input_val / 32 {
-                midi.send_cc(midi_cc, input_val).await;
-                old_midi = input_val / 32;
+            if midi_out.is_some() {
+                let midi_gate = if nrpn { input_val } else { scale_bits_12_7(input_val).as_int() as u16 };
+                if midi_gate != old_midi {
+                    midi.send_cc(midi_cc, input_val).await;
+                    old_midi = midi_gate;
+                }
             }
         }
     };

@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate_bipolar, clickless, slew_2, split_unsigned_value},
+    utils::{attenuate_bipolar, clickless, scale_bits_12_7, slew_2, split_unsigned_value},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, Waveform, APP_MAX_PARAMS,
 };
 
@@ -248,7 +248,7 @@ pub async fn run(
         let mut main_layer_value = faders.get_value_at(0);
         let mut out_r = 0;
         let mut out_l = 0;
-        let mut last_out = [0, 0];
+        let mut last_out: [u16; 2] = [u16::MAX, u16::MAX];
 
         let mut val_left = 0;
         let mut val_right = 0;
@@ -368,22 +368,22 @@ pub async fn run(
             out_l = slew_2(out_l, out_left, 3, 4);
             out_r = slew_2(out_r, out_right, 3, 4);
 
-            // MIDI output if changed
-            let scaled_out = (out_l as u32 * 127) / 4095;
-            if last_out[0] != scaled_out {
-                midi.send_cc(midi_cc_l, out_l).await;
-            }
-            let scaled_out = (out_r as u32 * 127) / 4095;
-            if last_out[1] != scaled_out {
-                midi.send_cc(midi_cc_r, out_r).await;
-            }
-
             // Output to jacks
             jacks[0].set_value(out_l);
             jacks[1].set_value(out_r);
 
-            last_out[0] = (out_l as u32 * 127) / 4095;
-            last_out[1] = (out_r as u32 * 127) / 4095;
+            if midi_out.is_some() {
+                let gate_l = if nrpn { out_l } else { scale_bits_12_7(out_l).as_int() as u16 };
+                if last_out[0] != gate_l {
+                    midi.send_cc(midi_cc_l, out_l).await;
+                    last_out[0] = gate_l;
+                }
+                let gate_r = if nrpn { out_r } else { scale_bits_12_7(out_r).as_int() as u16 };
+                if last_out[1] != gate_r {
+                    midi.send_cc(midi_cc_r, out_r).await;
+                    last_out[1] = gate_r;
+                }
+            }
 
             // Update LEDs
             match latch_active_layer {

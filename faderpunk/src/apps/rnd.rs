@@ -349,10 +349,12 @@ pub async fn run(
 
             output.set_value(out);
 
-            let gate_val = if nrpn { out } else { scale_bits_12_7(out).as_int() as u16 };
-            if gate_val != last_val {
-                midi.send_cc(midi_cc, out).await;
-                last_val = gate_val;
+            if midi_out.is_some() {
+                let gate_val = if nrpn { out } else { scale_bits_12_7(out).as_int() as u16 };
+                if gate_val != last_val {
+                    midi.send_cc(midi_cc, out).await;
+                    last_val = gate_val;
+                }
             }
 
             if latch_active_layer == LatchLayer::Main {
