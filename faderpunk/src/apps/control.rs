@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, clickless, slew_2, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, clickless, midi_gate, slew_2, split_unsigned_value},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
@@ -255,7 +255,7 @@ pub async fn run(
         let mut main_layer_value = fader.get_value();
         let mut fad_val = 0;
         let mut out: u16 = 0;
-        let mut last_midi = 0u32;
+        let mut last_midi = u32::MAX;
         let mut last_i2c = 0u16;
 
         loop {
@@ -338,11 +338,7 @@ pub async fn run(
             } else {
                 attenuate_bipolar(main_layer_value, att_layer_value)
             };
-            let midi_val = if nrpn {
-                midi_out as u32
-            } else {
-                (midi_out as u32 * 127) / 4095
-            };
+            let midi_val = midi_gate(midi_out, nrpn) as u32;
             if last_midi != midi_val {
                 midi.send_cc(midi_cc, midi_out).await;
                 last_midi = midi_val;

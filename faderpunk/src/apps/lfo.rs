@@ -4,13 +4,12 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
-use midly::num::u7;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, scale_bits_12_7, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, midi_gate, split_unsigned_value},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
     Range, Value, Waveform, APP_MAX_PARAMS,
 };
@@ -183,7 +182,7 @@ pub async fn run(
     }
 
     let mut count = 0;
-    let mut last_cc = u7::new(0);
+    let mut last_val: u16 = u16::MAX;
 
     let update_speed = async || {
         glob_lfo_speed.set((curve.at(storage.query(|s| s.layer_speed)) as f32) * 0.015 + 0.0682);
@@ -248,10 +247,10 @@ pub async fn run(
             };
             output.set_value(effective_val);
             if midi_out.is_some() {
-                let cc = scale_bits_12_7(effective_val);
-                if cc != last_cc {
+                let gate_val = midi_gate(effective_val, nrpn);
+                if gate_val != last_val {
                     midi.send_cc(midi_cc, effective_val).await;
-                    last_cc = cc;
+                    last_val = gate_val;
                 }
             }
 

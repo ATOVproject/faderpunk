@@ -8,7 +8,6 @@ use embassy_futures::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
-use midly::num::u7;
 use serde::{Deserialize, Serialize};
 
 use crate::app::{
@@ -18,7 +17,7 @@ use crate::app::{
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, scale_bits_12_7, slew_2, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, midi_gate, slew_2, split_unsigned_value},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
     Range, Value, APP_MAX_PARAMS,
 };
@@ -313,7 +312,7 @@ pub async fn run(
 
     let timed_loop = async {
         let mut out: u16 = 0;
-        let mut last_cc = u7::new(0);
+        let mut last_val: u16 = u16::MAX;
         let mut count: u32 = 0;
         loop {
             app.delay_millis(1).await;
@@ -350,10 +349,12 @@ pub async fn run(
 
             output.set_value(out);
 
-            let cc = scale_bits_12_7(out);
-            if cc != last_cc {
-                midi.send_cc(midi_cc, out).await;
-                last_cc = cc;
+            if midi_out.is_some() {
+                let gate_val = midi_gate(out, nrpn);
+                if gate_val != last_val {
+                    midi.send_cc(midi_cc, out).await;
+                    last_val = gate_val;
+                }
             }
 
             if latch_active_layer == LatchLayer::Main {
