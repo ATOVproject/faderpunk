@@ -2,14 +2,11 @@ import { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import { useStore } from "./store";
-import { IS_SIMULATOR_BUILD } from "./consts";
 import { useConnectionHealthCheck } from "./hooks/useConnectionHealthCheck";
 import { ConfiguratorPage } from "./components/ConfiguratorPage";
 import { AboutPage } from "./components/AboutPage";
-import { ConnectPage } from "./components/ConnectPage";
 import { ManualPage } from "./components/ManualPage";
 import { UpdatePage } from "./components/UpdatePage";
-import { TroubleshootingPage } from "./components/TroubleshootingPage";
 
 const DEVICELESS_ROUTES = ["/about", "/manual", "/update", "/troubleshooting"];
 
@@ -23,23 +20,26 @@ const App = () => {
   const [isAutoConnecting, setIsAutoConnecting] = useState(!skipAutoConnect);
 
   useEffect(() => {
-    // The dedicated simulator build skips the connect page entirely.
-    if (IS_SIMULATOR_BUILD) {
-      connectSimulator();
-      setIsAutoConnecting(false);
-      return;
-    }
-    if (skipAutoConnect) {
-      sessionStorage.removeItem("fp-skip-autoconnect");
-      return;
-    }
-    const attemptAutoConnect = async () => {
+    const boot = async () => {
+      // Deviceless info pages (and the post-update redirect) must not grab the
+      // USB device. Drop straight into the simulator so the app always has
+      // working state and never lands on a blank screen.
+      if (skipAutoConnect) {
+        sessionStorage.removeItem("fp-skip-autoconnect");
+        connectSimulator();
+        setIsAutoConnecting(false);
+        return;
+      }
+
+      // Reconnect to an already-paired device if there is one; otherwise the
+      // simulator is the default experience.
       if (!usbDevice) {
-        await autoConnect();
+        const connected = await autoConnect();
+        if (!connected) connectSimulator();
       }
       setIsAutoConnecting(false);
     };
-    attemptAutoConnect();
+    boot();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -49,16 +49,7 @@ const App = () => {
 
   return (
     <Routes>
-      <Route
-        path="/"
-        element={
-          usbDevice || isSimulator ? (
-            <Navigate to="/configurator" replace />
-          ) : (
-            <ConnectPage />
-          )
-        }
-      />
+      <Route path="/" element={<Navigate to="/configurator" replace />} />
       <Route
         path="/configurator"
         element={
@@ -72,7 +63,11 @@ const App = () => {
       <Route path="/about" element={<AboutPage />} />
       <Route path="/manual" element={<ManualPage />} />
       <Route path="/update" element={<UpdatePage />} />
-      <Route path="/troubleshooting" element={<TroubleshootingPage />} />
+      {/* Troubleshooting now lives in the manual; keep the old path working. */}
+      <Route
+        path="/troubleshooting"
+        element={<Navigate to="/manual#troubleshooting" replace />}
+      />
     </Routes>
   );
 };
