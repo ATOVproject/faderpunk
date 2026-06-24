@@ -468,6 +468,10 @@ async fn run_unified_clock_engine() {
     // to straight passthrough (not predicted — e.g. swing was 0 or there
     // was no measured period at the anchor). Cleared at window rollover.
     let mut window_predicted = false;
+    // Counts consecutive MIDI clock ticks received while not running.
+    // Used to synthesize an implicit Start when the Start message was dropped
+    // (e.g. during USB device resume after host-side suspension).
+    let mut ticks_while_stopped: u8 = 0;
     let mut config = config;
 
     // If clock was already running at startup (persisted state) with internal source,
@@ -605,6 +609,8 @@ async fn run_unified_clock_engine() {
                     if event.source() != config.clock.clock_src {
                         continue;
                     }
+                    // Any explicit transport event resets the implicit-start counter.
+                    ticks_while_stopped = 0;
                     clock_in_sender.send(event).await;
                     match event {
                         ClockInEvent::Start(_) => {
@@ -654,6 +660,24 @@ async fn run_unified_clock_engine() {
                             if timestamp.duration_since(last) < DEBOUNCE_THRESHOLD {
                                 continue;
                             }
+                        }
+                    }
+
+                    // Auto-start recovery: if MIDI clock ticks arrive while
+                    // stopped, the Start message was likely dropped during USB
+                    // device resume (host suspends the RP2350 USB peripheral
+                    // after ~10 min of inactivity; the first USB packet — the
+                    // Start — is lost while the link is waking up). Require 2
+                    // consecutive ticks to avoid false-starting from a stale
+                    // message left in SYNC_ENGINE_CHANNEL after a Stop.
+                    if !is_running && matches!(source, ClockSrc::MidiUsb | ClockSrc::MidiIn) {
+                        ticks_while_stopped += 1;
+                        if ticks_while_stopped >= 2 {
+                            clock_in_sender.send(ClockInEvent::Start(source)).await;
+                            is_running = true;
+                            ticks_while_stopped = 0;
+                            pending_emissions.clear();
+                            tick_in_window = 0;
                         }
                     }
 
