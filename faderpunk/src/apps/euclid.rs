@@ -213,12 +213,10 @@ pub async fn run(
     let fut1 = async {
         let mut note_on = false;
         let mut aux_on = false;
-        let mut tick_origin = ticks() as u32;
 
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    tick_origin = ticks() as u32;
                     midi.send_note_off(note).await;
                     midi.send_note_off(note2).await;
                     note_on = false;
@@ -235,7 +233,7 @@ pub async fn run(
                     jack[1].set_low().await;
                 }
                 ClockEvent::Tick => {
-                    let clkn = (ticks() as u32).wrapping_sub(tick_origin);
+                    let clkn = ticks() as u32;
                     let muted = glob_muted.get();
                     let div = div_glob.get();
 
