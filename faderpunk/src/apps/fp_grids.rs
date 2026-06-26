@@ -437,7 +437,6 @@ pub async fn run(
 
         let mut output_mode = output_mode_glob.get();
         let mut dnb_pattern = dnb_pattern_glob.get();
-        let mut tick_origin = ticks() as u32;
         let ghost_velocity = (midi_velocity - (midi_velocity / 4)).clamp(1, 127);
 
         let mut generator = PatternGenerator::default();
@@ -477,7 +476,6 @@ pub async fn run(
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
                     // defmt::info!("[{}] Clock reset!", ticks());
-                    tick_origin = ticks() as u32;
                     output_mode = output_mode_glob.get();
                     reset_all_outputs(&midi, leds, notes, ghost_note, &jack, &note_on_glob, &accent_on_glob)
                         .await;
@@ -498,7 +496,6 @@ pub async fn run(
                 }
                 ClockEvent::Start => {
                     // defmt::info!("[{}] Clock start", ticks());
-                    tick_origin = ticks() as u32;
                     generator.reset();
                     // Ensure initial DnB pattern is generated at start of sequence
                     if output_mode == OutputMode::OutputModeDnB {
@@ -514,7 +511,7 @@ pub async fn run(
                         OutputMode::OutputModeDnB => generator.get_dnb_24ppqn_pattern_division(),
                     };
 
-                    let clkn = (ticks() as u32).wrapping_sub(tick_origin);
+                    let clkn = ticks() as u32;
                     // If we have reached the next sequence step, or on the first step
                     if clkn.is_multiple_of(div) {
                         // If output mode has changed since last step, change generator mode and reset the sequence
