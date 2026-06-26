@@ -211,7 +211,7 @@ pub async fn run(
                     } else {
                         resolution[(base_speed as usize / 345).clamp(0, resolution.len() - 1)]
                     };
-                    if clkn % div == 0
+                    if clkn.is_multiple_of(div)
                         && !muted
                         && storage.query(|s: &Storage| s.clocked)
                         && destination != 1
@@ -232,7 +232,7 @@ pub async fn run(
                         leds.set(1, Led::Button, rnd_color, Brightness::Mid);
                     }
 
-                    if clkn % div == 0
+                    if clkn.is_multiple_of(div)
                         && storage.query(|s: &Storage| s.clocked)
                         && buttons.is_shift_pressed()
                     {
