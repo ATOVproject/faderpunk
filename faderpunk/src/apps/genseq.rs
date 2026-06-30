@@ -17,7 +17,8 @@ use libfp::{
 use midly::num::u7;
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
+    pitch_as_counts, vpo_counts_per_oct, App, AppParams, AppStorage, ClockEvent, Led,
+    ManagedStorage, ParamStore, SceneEvent,
 };
 
 pub const CHANNELS: usize = 3;
@@ -336,7 +337,7 @@ pub async fn run(
                             // bottom of the pitch range maps to C0 rather than clipping
                             // negative DAC values to 0V.
                             let input_floor = ((-octave_offset).max(0) as u16)
-                                .saturating_mul(vpo.counts_per_oct() as u16);
+                                .saturating_mul(vpo_counts_per_oct(vpo) as u16);
                             let quantizer_input =
                                 (att_reg as u32 / 2 + input_floor as u32).min(4095) as u16;
                             let out = quantizer.get_quantized_note(quantizer_input).await;
@@ -356,7 +357,7 @@ pub async fn run(
                             midi_note.set(note);
 
                             if !glob_muted.get() {
-                                cv_out.set_value(shifted.as_counts(Range::_0_10V, vpo));
+                                cv_out.set_value(pitch_as_counts(shifted, Range::_0_10V, vpo));
                             }
                             leds.set(
                                 0,

@@ -858,3 +858,18 @@ impl<const N: usize> App<N> {
         self.reset().await;
     }
 }
+
+/// Convert a quantized pitch to DAC counts, resolving any Custom V/Oct curve
+/// from the live global config. Prefer this over `Pitch::as_counts_with_curves`
+/// in app code — no need to import or snapshot `get_global_config`.
+pub fn pitch_as_counts(pitch: Pitch, range: Range, vpo: VoltPerOct) -> u16 {
+    let curves = get_global_config().custom_voct_curves;
+    pitch.as_counts_with_curves(range, vpo, &curves)
+}
+
+/// Return DAC counts-per-octave for `vpo`, resolving any Custom V/Oct curve
+/// from the live global config.
+pub fn vpo_counts_per_oct(vpo: VoltPerOct) -> i16 {
+    let curves = get_global_config().custom_voct_curves;
+    vpo.counts_per_oct_with_curves(&curves)
+}

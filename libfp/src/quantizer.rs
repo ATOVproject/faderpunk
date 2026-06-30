@@ -1,7 +1,7 @@
 // V/oct quantizer, based on the ideas in
 // https://github.com/pichenettes/eurorack/blob/master/braids/quantizer_scales.h
 
-use crate::{Key, MidiNote, Note, Range, VoltPerOct};
+use crate::{CustomVoOctCurve, Key, MidiNote, Note, Range, VoltPerOct};
 use heapless::Vec;
 use libm::roundf;
 
@@ -33,6 +33,26 @@ impl Pitch {
             Range::_Neg5_5V => ((scaled + 5.0) / 10.0) * 4095.0,
         };
 
+        roundf(counts).clamp(0.0, 4095.0) as u16
+    }
+
+    /// Like `as_counts` but resolves custom V/Oct curves from calibration data.
+    pub fn as_counts_with_curves(
+        &self,
+        range: Range,
+        vpo: VoltPerOct,
+        curves: &[CustomVoOctCurve; 4],
+    ) -> u16 {
+        if let Some(raw) = self.raw {
+            return raw;
+        }
+        let voltage = self.as_v_oct();
+        let scaled = voltage * vpo.voltage_scale_with_curves(curves);
+        let counts = match range {
+            Range::_0_10V => (scaled / 10.0) * 4095.0,
+            Range::_0_5V => (scaled / 5.0) * 4095.0,
+            Range::_Neg5_5V => ((scaled + 5.0) / 10.0) * 4095.0,
+        };
         roundf(counts).clamp(0.0, 4095.0) as u16
     }
 

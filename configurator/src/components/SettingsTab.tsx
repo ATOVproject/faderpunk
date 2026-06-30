@@ -26,6 +26,7 @@ import { I2cSettings } from "./settings/I2cSettings";
 import { MidiSettings } from "./settings/MidiSettings";
 import { MiscSettings } from "./settings/MiscSettings";
 import { QuantizerSettings } from "./settings/QuantizerSettings";
+import { VoOctCurvesSettings } from "./settings/VoOctCurvesSettings";
 
 interface SettingsFormProps {
   config: GlobalConfig;
@@ -148,19 +149,19 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
   const onSubmit: SubmitHandler<Inputs> = useCallback(
     async (formValues: Inputs) => {
       if (usbDevice && !isSimulator) {
-        const config = transformFormToGlobalConfig(formValues);
-        await setGlobalConfig(usbDevice, config);
-        setConfig(config);
+        const updatedConfig = transformFormToGlobalConfig(formValues, config);
+        await setGlobalConfig(usbDevice, updatedConfig);
+        setConfig(updatedConfig);
       } else if (isSimulator) {
-        const config = transformFormToGlobalConfig(formValues);
-        setConfig(config);
+        const updatedConfig = transformFormToGlobalConfig(formValues, config);
+        setConfig(updatedConfig);
       }
       if (usbDevice || isSimulator) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       }
     },
-    [usbDevice, isSimulator, setConfig],
+    [usbDevice, isSimulator, setConfig, config],
   );
 
   useEffect(() => {
@@ -180,6 +181,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
         <MidiSettings />
         <I2cSettings />
         <MiscSettings />
+        <VoOctCurvesSettings config={config} />
         <SaveLoadSetup />
         <FactoryReset />
         <div className="flex justify-between">
@@ -260,7 +262,10 @@ const buildMidiOutConfig = (
   };
 };
 
-const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
+const transformFormToGlobalConfig = (
+  formValues: Inputs,
+  currentConfig: GlobalConfig,
+): GlobalConfig => {
   const auxArray = [
     buildAuxJackMode(formValues.auxAtom, formValues.auxAtomDiv),
     buildAuxJackMode(formValues.auxMeteor, formValues.auxMeteorDiv),
@@ -310,5 +315,6 @@ const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
       tonic: { tag: formValues.quantizerTonic },
     },
     takeover_mode: { tag: formValues.takeoverMode },
+    custom_voct_curves: currentConfig.custom_voct_curves,
   };
 };

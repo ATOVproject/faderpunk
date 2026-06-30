@@ -14,8 +14,8 @@ use libfp::{
 };
 
 use crate::app::{
-    App, AppParams, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, ParamStore,
-    SceneEvent,
+    pitch_as_counts, vpo_counts_per_oct, App, AppParams, AppStorage, Arr, ClockEvent, Global,
+    Led, ManagedStorage, ParamStore, SceneEvent,
 };
 
 pub const CHANNELS: usize = 8;
@@ -327,7 +327,7 @@ pub async fn run(
     ];
 
     let quantizer = app.use_quantizer(range, vpo, bypass);
-    let counts_per_oct = vpo.counts_per_oct() as u32;
+    let counts_per_oct = vpo_counts_per_oct(vpo) as u32;
 
     let page_glob: Global<usize> = app.make_global(0);
     let prev_page_glob: Global<usize> = app.make_global(0);
@@ -741,7 +741,7 @@ pub async fn run(
                                     // Hand the target CV to slide_handler; slide only if
                                     // the previously played step had legato enabled.
                                     let mut targets = target_cv_glob.get();
-                                    targets[n] = (out.as_counts(range, vpo) as i32
+                                    targets[n] = (pitch_as_counts(out, range, vpo) as i32
                                         + transpo[n] as i32 * counts_per_oct as i32 / 12)
                                         .clamp(0, 4095) as u16;
                                     target_cv_glob.set(targets);

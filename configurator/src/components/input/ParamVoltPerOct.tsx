@@ -15,6 +15,10 @@ type Item = { key: string; value: string };
 const ITEMS: Item[] = [
   { key: "Standard", value: "1V/Oct (Eurorack)" },
   { key: "Buchla", value: "1.2V/Oct (Buchla)" },
+  { key: "Custom:0", value: "Custom 1" },
+  { key: "Custom:1", value: "Custom 2" },
+  { key: "Custom:2", value: "Custom 3" },
+  { key: "Custom:3", value: "Custom 4" },
 ];
 
 export const ParamVoltPerOct = ({

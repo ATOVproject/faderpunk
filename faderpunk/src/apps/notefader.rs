@@ -13,7 +13,8 @@ use libfp::{
 };
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
+    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore,
+    SceneEvent,
 };
 
 pub const CHANNELS: usize = 1;
@@ -218,7 +219,7 @@ pub async fn run(
 
         let out = quantizer.get_quantized_note(fadval).await;
         if outmode == 0 {
-            jack.set_value(out.as_counts(range, vpo));
+            jack.set_value(pitch_as_counts(out, range, vpo));
         } else {
             jack.set_value(4095)
         }
