@@ -143,7 +143,13 @@ export const getParamSchema = (param: Param) => {
       return z
         .object({
           tag: z.literal("VoltPerOct"),
-          value: z.object({ tag: z.enum(["Standard", "Buchla"]) }),
+          value: z.union([
+            z.object({ tag: z.enum(["Standard", "Buchla"]) }),
+            z.object({
+              tag: z.literal("Custom"),
+              value: z.number().int().min(0).max(3),
+            }),
+          ]),
         })
         .catch({
           tag: "VoltPerOct",
@@ -215,6 +221,12 @@ export const defaultGlobalConfig: GlobalConfig = {
     tonic: { tag: "C" },
   },
   takeover_mode: { tag: "Pickup" },
+  custom_voct_curves: [
+    { counts_per_oct: 0 },
+    { counts_per_oct: 0 },
+    { counts_per_oct: 0 },
+    { counts_per_oct: 0 },
+  ] as GlobalConfig["custom_voct_curves"],
 };
 
 // Lenient schema that validates structure but allows any valid tag values
@@ -280,6 +292,7 @@ export const parseGlobalConfigFromFile = (
     },
     quantizer: validated.quantizer as GlobalConfig["quantizer"],
     takeover_mode: validated.takeover_mode as GlobalConfig["takeover_mode"],
+    custom_voct_curves: defaultGlobalConfig.custom_voct_curves,
   };
 
   return config;
