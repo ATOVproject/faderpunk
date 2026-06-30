@@ -17,7 +17,7 @@ use libfp::{
     Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
-use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
+use crate::app::{pitch_as_counts, App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 10;
@@ -245,7 +245,7 @@ pub async fn run(
 
                 let muted = glob_muted.get();
                 if !muted {
-                    output.set_value(out.as_counts(range, vpo));
+                    output.set_value(pitch_as_counts(out, range, vpo));
                     leds.set(
                         0,
                         Led::Top,

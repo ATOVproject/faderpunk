@@ -87,7 +87,8 @@ export const getDefaultValue = (val: Value) => {
       return val.value;
     }
     case "VoltPerOct": {
-      return val.value.tag;
+      const vpo = val.value;
+      return vpo.tag === "Custom" ? `Custom:${vpo.value}` : vpo.tag;
     }
   }
 };
@@ -143,8 +144,19 @@ const getParamValue = (
       return { tag: "MidiMode", value: { tag: value as MidiModeTag } };
     case "MidiNrpn":
       return { tag: "MidiNrpn", value: value as boolean };
-    case "VoltPerOct":
-      return { tag: "VoltPerOct", value: { tag: value as VoltPerOct["tag"] } };
+    case "VoltPerOct": {
+      const key = value as string;
+      if (key.startsWith("Custom:")) {
+        return {
+          tag: "VoltPerOct",
+          value: { tag: "Custom", value: parseInt(key.slice(7), 10) },
+        };
+      }
+      return {
+        tag: "VoltPerOct",
+        value: { tag: key as Exclude<VoltPerOct["tag"], "Custom"> },
+      };
+    }
     default:
       return undefined;
   }
