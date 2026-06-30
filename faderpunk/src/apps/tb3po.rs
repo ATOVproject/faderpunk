@@ -16,7 +16,8 @@ use libfp::{
 };
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage, ParamStore, SceneEvent,
+    pitch_as_counts, vpo_counts_per_oct, App, AppParams, AppStorage, ClockEvent, Global, Led,
+    ManagedStorage, ParamStore, SceneEvent,
 };
 use crate::tasks::leds::LedMode;
 
@@ -265,7 +266,7 @@ fn step_is_oct_down(p: &AcidPattern, step: u8) -> bool {
 
 /// Raw pitch CV for a step before quantising (in ±5V counts 0–4095).
 fn raw_pitch_cv(p: &AcidPattern, step: u8, transpose: i16, vpo: VoltPerOct) -> u16 {
-    let oct = vpo.counts_per_oct() as i32;
+    let oct = vpo_counts_per_oct(vpo) as i32;
     let semi = oct / 12;
     let note = p.notes[step as usize] as i32;
     let cv = CENTER_CV as i32
@@ -449,12 +450,12 @@ pub async fn run(
                     if is_slid_prev {
                         // Glide: output_task will interpolate toward new target
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        slide_target_glob.set(out.as_counts(pitch_range, vpo));
+                        slide_target_glob.set(pitch_as_counts(out, pitch_range, vpo));
                         slide_active_glob.set(true);
                     } else if is_gated {
                         // Snap to new pitch
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        let counts = out.as_counts(pitch_range, vpo);
+                        let counts = pitch_as_counts(out, pitch_range, vpo);
                         slide_target_glob.set(counts);
                         slide_active_glob.set(false);
                     }
