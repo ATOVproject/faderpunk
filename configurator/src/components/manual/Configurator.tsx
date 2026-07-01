@@ -310,6 +310,59 @@ export const Configurator = () => (
       <li>4 bars</li>
     </List>
 
+    <H4 id="settings-voct">Custom V/Oct Calibration</H4>
+    <p>
+      Faderpunk stores up to <strong>four custom V/Oct calibration curves</strong>{" "}
+      (Custom 1–4). This allows Faderpunk to achieve near-perfect tracking with
+      any V/Oct oscillator, regardless of the calibration of either the target
+      oscillator or the Faderpunk itself. It can even allow oscillators that are
+      not designed to run on 1V/Oct to track with the pitched apps on Faderpunk.
+      Once calibrated, any app that has a <strong>1V/Oct</strong> parameter can
+      use one of the custom curves instead of the default standard tracking.
+    </p>
+    <p>
+      Each curve shows its measured gain next to the curve name (e.g.,{" "}
+      <em>0.998 V/Oct</em>), or <em>Not calibrated</em> if no measurement has
+      been taken yet. Click <strong>Calibrate</strong> next to a curve to open
+      the calibration wizard.
+    </p>
+    <H5>What you need</H5>
+    <List>
+      <li>
+        A VCO with a V/Oct input connected to one of the 16 Faderpunk output
+        jacks
+      </li>
+      <li>A tuner with frequency meter (hardware or software) connected to the VCO audio output</li>
+    </List>
+    <H5>Calibration wizard</H5>
+    <List>
+      <li>
+        <strong>Setup</strong> — Select the Faderpunk output jack you have
+        connected to the VCO V/Oct input. For best accuracy, use a jack that
+        does not have an app assigned to it. Click <strong>Start</strong>.
+      </li>
+      <li>
+        <strong>Step 1 (1V)</strong> — The firmware outputs 1V on the selected
+        jack. Read the frequency shown by your meter and type it into the field,
+        then click <strong>Next</strong>.
+      </li>
+      <li>
+        <strong>Step 2 (4V)</strong> — The firmware outputs 4V. Read and enter
+        the new frequency, then click <strong>Calculate</strong>.
+      </li>
+      <li>
+        <strong>Result</strong> — The measured V/Oct gain is displayed. Click{" "}
+        <strong>Save</strong> to store the calibration or{" "}
+        <strong>Discard</strong> to cancel.
+      </li>
+    </List>
+    <p>
+      The calibration is saved into the device's global configuration. It
+      survives power cycles and is included when you export a setup file. Apps
+      that use the calibrated curve automatically apply the correction without
+      needing to be reconfigured.
+    </p>
+
     <H4 id="settings-misc">Miscellaneous</H4>
     <List>
       <li>
