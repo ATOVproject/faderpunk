@@ -1677,6 +1677,9 @@ export const ManualTab = () => {
                     <Link to="#settings-aux">AUX Jacks</Link>
                   </li>
                   <li>
+                    <Link to="#settings-voct">Custom V/Oct Calibration</Link>
+                  </li>
+                  <li>
                     <Link to="#settings-misc">Miscellaneous</Link>
                   </li>
                   <li>
