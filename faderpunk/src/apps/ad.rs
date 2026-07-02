@@ -8,14 +8,17 @@ use midly::MidiMessage;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, utils::attenuate, AppIcon, Brightness, Color, Config, Curve,
-    MidiChannel, MidiIn, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue,
+    latch::LatchLayer,
+    utils::{attenuate, midi_gate},
+    AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiOut, Param, Range,
+    Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 3;
+pub const PARAMS: usize = 6;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "AD Envelope",
@@ -29,19 +32,31 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::bool {
     name: "MIDI retrigger",
-});
+})
+.add_param(Param::MidiOut)
+.add_param(Param::MidiCc { name: "MIDI CC" })
+.add_param(Param::MidiNrpn);
 
 pub struct Params {
     midi_in: MidiIn,
     midi_channel: MidiChannel,
     retrigger: bool,
+    midi_out: MidiOut,
+    midi_cc: MidiCc,
+    nrpn: bool,
 }
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
+        if values.len() < PARAMS {
+            return None;
+        }
         Some(Self {
             midi_in: MidiIn::from_value(values[0]),
             midi_channel: MidiChannel::from_value(values[1]),
             retrigger: bool::from_value(values[2]),
+            midi_out: MidiOut::from_value(values[3]),
+            midi_cc: MidiCc::from_value(values[4]),
+            nrpn: bool::from_value(values[5]),
         })
     }
 
@@ -50,6 +65,9 @@ impl AppParams for Params {
         vec.push(self.midi_in.into()).unwrap();
         vec.push(self.midi_channel.into()).unwrap();
         vec.push(self.retrigger.into()).unwrap();
+        vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.midi_cc.into()).unwrap();
+        vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec
     }
 }
@@ -85,6 +103,9 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         midi_in: MidiIn([false, false]),
         midi_channel: MidiChannel::default(),
         retrigger: false,
+        midi_out: MidiOut([false, false, false]),
+        midi_cc: MidiCc::from(32u8.saturating_add(app.start_channel as u8)),
+        nrpn: false,
     });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
@@ -110,8 +131,11 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_in, midi_chan, retrigger) =
-        params.query(|p| (p.midi_in, p.midi_channel, p.retrigger));
+    let (midi_in, midi_chan, retrigger, midi_out, midi_cc, nrpn) = params.query(|p| {
+        (p.midi_in, p.midi_channel, p.retrigger, p.midi_out, p.midi_cc, p.nrpn)
+    });
+    let midi_out_handle = app.use_midi_output(midi_out, midi_chan, nrpn);
+    let mut last_midi_val: u16 = u16::MAX;
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
@@ -260,7 +284,15 @@ pub async fn run(
                 }
             }
             outval = attenuate(outval, storage.query(|s| s.att_saved));
-            output.set_value(if glob_muted.get() { 0 } else { outval });
+            let effective_out = if glob_muted.get() { 0 } else { outval };
+            output.set_value(effective_out);
+            if midi_out.is_some() {
+                let gate_val = midi_gate(effective_out, nrpn);
+                if gate_val != last_midi_val {
+                    midi_out_handle.send_cc(midi_cc, effective_out).await;
+                    last_midi_val = gate_val;
+                }
+            }
             if latch_active_layer == LatchLayer::Alt {
                 leds.set(1, Led::Button, color[mode as usize], Brightness::Mid);
 
