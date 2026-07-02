@@ -53,7 +53,7 @@ pub static METRONOME_HIGH: AtomicBool = AtomicBool::new(true);
 pub static VOCT_MEASURE_REQ: [Signal<CriticalSectionRawMutex, ()>; 3] =
     [const { Signal::new() }; 3];
 /// Result of a V/Oct frequency measurement: Ok(freq_hz) or Err(()) on timeout.
-pub static VOCT_MEASURE_RES: Signal<CriticalSectionRawMutex, Result<u32, ()>> = Signal::new();
+pub static VOCT_MEASURE_RES: Signal<CriticalSectionRawMutex, Result<f32, ()>> = Signal::new();
 
 type AuxInputs = (
     Peri<'static, PIN_1>,
@@ -249,7 +249,7 @@ async fn sync_to_rising_edge(pin: &mut Input<'_>, timeout: Duration) -> Result<I
     }
 }
 
-async fn measure_frequency(pin: &mut Input<'_>) -> Result<u32, ()> {
+async fn measure_frequency(pin: &mut Input<'_>) -> Result<f32, ()> {
     const ROUGH_SAMPLES: u64 = 8;
     const FINE_SAMPLES: u64 = 256;
     const MIN_PERIOD_US: u64 = 100; // 10 kHz upper limit
@@ -317,7 +317,7 @@ async fn measure_frequency(pin: &mut Input<'_>) -> Result<u32, ()> {
     if total_period_us == 0 {
         return Err(());
     }
-    Ok((FINE_SAMPLES * 1_000_000 / total_period_us) as u32)
+    Ok(FINE_SAMPLES as f32 * 1_000_000.0 / total_period_us as f32)
 }
 
 /// Runs the clock-detection loop for one AUX pin, breaking out to perform a
