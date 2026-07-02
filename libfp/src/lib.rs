@@ -1194,7 +1194,7 @@ pub enum ConfigMsgOut<'a> {
     AppState(u8, &'a [Value]),
     /// Frequency measured on the selected AUX input during V/Oct calibration.
     VoOctFrequency {
-        freq_hz: u32,
+        freq_hz: f32,
     },
     /// V/Oct calibration measurement failed (no signal or timeout).
     VoOctCalError,
