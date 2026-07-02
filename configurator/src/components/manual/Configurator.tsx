@@ -312,11 +312,12 @@ export const Configurator = () => (
 
     <H4 id="settings-voct">Custom V/Oct Calibration</H4>
     <p>
-      Faderpunk stores up to <strong>four custom V/Oct calibration curves</strong>{" "}
-      (Custom 1–4). This allows Faderpunk to achieve near-perfect tracking with
-      any V/Oct oscillator, regardless of the calibration of either the target
-      oscillator or the Faderpunk itself. It can even allow oscillators that are
-      not designed to run on 1V/Oct to track with the pitched apps on Faderpunk.
+      Faderpunk stores up to{" "}
+      <strong>four custom V/Oct calibration curves</strong> (Custom 1–4). This
+      allows Faderpunk to achieve near-perfect tracking with any V/Oct
+      oscillator, regardless of the calibration of either the target oscillator
+      or the Faderpunk itself. It can even allow oscillators that are not
+      designed to run on 1V/Oct to track with the pitched apps on Faderpunk.
       Once calibrated, any app that has a <strong>1V/Oct</strong> parameter can
       use one of the custom curves instead of the default standard tracking.
     </p>
@@ -332,7 +333,10 @@ export const Configurator = () => (
         A VCO with a V/Oct input connected to one of the 16 Faderpunk output
         jacks
       </li>
-      <li>A tuner with frequency meter (hardware or software) connected to the VCO audio output</li>
+      <li>
+        A tuner with frequency meter (hardware or software) connected to the VCO
+        audio output
+      </li>
     </List>
     <H5>Calibration wizard</H5>
     <List>
