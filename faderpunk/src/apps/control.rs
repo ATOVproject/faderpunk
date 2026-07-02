@@ -16,8 +16,13 @@ use libfp::{Config, Curve, Param, Range, Value};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
+/// Values below 0 mean no CC is sent (used by CC Default Value).
+fn button_cc_value_12(value: i32) -> Option<u16> {
+    (value >= 0).then(|| ((value.clamp(0, 127) as u32 * 4095) / 127) as u16)
+}
+
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 13;
+pub const PARAMS: usize = 15;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Control",
@@ -66,7 +71,17 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::MidiCc { name: "Button CC / PC" })
 .add_param(Param::MidiNrpn)
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::i32 {
+    name: "CC Send Value",
+    min: 0,
+    max: 127,
+})
+.add_param(Param::i32 {
+    name: "CC Default Value",
+    min: -1,
+    max: 127,
+});
 
 pub struct Params {
     curve: Curve,
@@ -82,6 +97,8 @@ pub struct Params {
     button_ch: MidiChannel,
     button_cc: MidiCc,
     nrpn: bool,
+    cc_send_value: i32,
+    cc_default_value: i32,
 }
 
 impl AppParams for Params {
@@ -103,6 +120,8 @@ impl AppParams for Params {
             button_cc: MidiCc::from_value(values[10]),
             nrpn: bool::from_value(values[11]),
             midi_out: MidiOut::from_value(values[12]),
+            cc_send_value: i32::from_value(values[13]),
+            cc_default_value: i32::from_value(values[14]),
         })
     }
 
@@ -121,6 +140,8 @@ impl AppParams for Params {
         vec.push(self.button_cc.into()).unwrap();
         vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.cc_send_value.into()).unwrap();
+        vec.push(self.cc_default_value.into()).unwrap();
         vec
     }
 }
@@ -164,6 +185,8 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             button_ch: MidiChannel::default(),
             button_cc: MidiCc::from(48u8.saturating_add(ch)),
             nrpn: false,
+            cc_send_value: 127,
+            cc_default_value: -1,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -204,6 +227,8 @@ pub async fn run(
         button_ch,
         button_cc,
         nrpn,
+        cc_send_value,
+        cc_default_value,
     ) = params.query(|p| {
         (
             p.curve,
@@ -219,6 +244,8 @@ pub async fn run(
             p.button_ch,
             p.button_cc,
             p.nrpn,
+            p.cc_send_value,
+            p.cc_default_value,
         )
     });
 
@@ -411,11 +438,15 @@ pub async fn run(
                     // Momentary mode: handle both press and release
                     buttons.wait_for_down(0).await;
                     leds.set(0, Led::Button, led_color, Brightness::Mid);
-                    midi_button.send_cc(button_cc, 4095).await;
+                    if let Some(v) = button_cc_value_12(cc_send_value) {
+                        midi_button.send_cc(button_cc, v).await;
+                    }
 
                     buttons.wait_for_up(0).await;
                     leds.unset(0, Led::Button);
-                    midi_button.send_cc(button_cc, 0).await;
+                    if let Some(v) = button_cc_value_12(cc_default_value) {
+                        midi_button.send_cc(button_cc, v).await;
+                    }
                 }
                 5 => {
                     // Invert momentary: default = CC 127 + LED Mid; press = CC 0 + LED off
@@ -464,12 +495,16 @@ pub async fn run(
                     if muted {
                         leds.unset(0, Led::Button);
                         if button_mode == 1 {
-                            midi_button.send_cc(button_cc, 0).await;
+                            if let Some(v) = button_cc_value_12(cc_default_value) {
+                                midi_button.send_cc(button_cc, v).await;
+                            }
                         }
                     } else {
                         leds.set(0, Led::Button, led_color, Brightness::Mid);
                         if button_mode == 1 {
-                            midi_button.send_cc(button_cc, 4095).await;
+                            if let Some(v) = button_cc_value_12(cc_send_value) {
+                                midi_button.send_cc(button_cc, v).await;
+                            }
                         }
                     }
                 }
