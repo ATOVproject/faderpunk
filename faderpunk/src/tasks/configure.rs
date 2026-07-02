@@ -1,4 +1,5 @@
 use cobs::{decode_in_place, try_encode};
+use embassy_futures::select::{select, Either};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, Endpoint as UsbEndpoint, In, Out};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -10,11 +11,15 @@ use heapless::Vec;
 use postcard::{from_bytes, to_vec};
 
 use libfp::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS};
+use max11300::config::{ConfigMode0, ConfigMode5, Mode, Port, DACRANGE};
+use portable_atomic::Ordering;
 
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
 use crate::layout::LAYOUT_WATCH;
 use crate::storage::factory_reset;
+use crate::tasks::clock::{VOCT_MEASURE_REQ, VOCT_MEASURE_RES};
 use crate::tasks::global_config::{get_global_config, GLOBAL_CONFIG_WATCH};
+use crate::tasks::max::{MaxCmd, MAX_CHANNEL, MAX_VALUES_DAC};
 
 use super::transport::{WebEndpoints, USB_MAX_PACKET_SIZE};
 
@@ -162,8 +167,143 @@ pub async fn start_webusb_loop<'a>(webusb: WebEndpoints<'a, Driver<'a, USB>>) {
             ConfigMsgIn::FactoryReset => {
                 factory_reset().await;
             }
+            ConfigMsgIn::MeasureVoOct {
+                output_jack,
+                aux_input,
+                dac_counts,
+            } => {
+                handle_measure_voct(&mut proto, output_jack, aux_input, dac_counts).await;
+            }
+            ConfigMsgIn::SetVoOctOutput {
+                output_jack,
+                dac_counts,
+            } => {
+                handle_set_voct_output(&mut proto, output_jack, dac_counts).await;
+            }
+            ConfigMsgIn::ReleaseVoOctOutput { output_jack } => {
+                handle_release_voct_output(&mut proto, output_jack).await;
+            }
         }
     }
+}
+
+/// Set the output jack to 0-10V DAC mode, write `dac_counts`, signal the
+/// clock task to measure frequency on the chosen AUX pin, wait for the result,
+/// then release the jack (Mode1 high-Z).
+async fn handle_measure_voct(
+    proto: &mut ConfigProtocol<'_>,
+    output_jack: u8,
+    aux_input: u8,
+    dac_counts: u16,
+) {
+    let aux_idx = aux_input as usize;
+    if aux_idx > 2 || output_jack as usize >= 16 {
+        proto.send_msg(ConfigMsgOut::VoOctCalError).await.unwrap();
+        return;
+    }
+
+    let port = match Port::try_from(output_jack as usize) {
+        Ok(p) => p,
+        Err(_) => {
+            proto.send_msg(ConfigMsgOut::VoOctCalError).await.unwrap();
+            return;
+        }
+    };
+
+    // Configure the output jack to 0-10V DAC mode.
+    MAX_CHANNEL
+        .send(MaxCmd::ConfigurePort {
+            port,
+            mode: Mode::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
+            gpo_level: None,
+        })
+        .await;
+
+    // Keep re-writing dac_counts every 5 ms so any app running on Core 1
+    // cannot permanently overwrite the calibration voltage. After 300 ms the
+    // VCO has settled; we then trigger the frequency measurement and wait for
+    // the result. The drive loop is cancelled automatically when select()
+    // returns (never() branch wins as soon as drive_and_measure completes).
+    let drive_and_measure = async {
+        MAX_VALUES_DAC[output_jack as usize].store(dac_counts, Ordering::Relaxed);
+        embassy_time::Timer::after_millis(300).await;
+        VOCT_MEASURE_REQ[aux_idx].signal(());
+        with_timeout(Duration::from_secs(10), VOCT_MEASURE_RES.wait()).await
+    };
+    let keep_driving = async {
+        loop {
+            MAX_VALUES_DAC[output_jack as usize].store(dac_counts, Ordering::Relaxed);
+            embassy_time::Timer::after_millis(5).await;
+        }
+    };
+
+    let freq_res = match select(keep_driving, drive_and_measure).await {
+        Either::Second(r) => r,
+        Either::First(_) => unreachable!(),
+    };
+
+    match freq_res {
+        Ok(Ok(freq_hz)) => {
+            proto
+                .send_msg(ConfigMsgOut::VoOctFrequency { freq_hz })
+                .await
+                .unwrap();
+        }
+        _ => {
+            proto.send_msg(ConfigMsgOut::VoOctCalError).await.unwrap();
+        }
+    }
+
+    // Release the output jack to high-Z (Mode 0) so apps can reclaim it.
+    MAX_CHANNEL
+        .send(MaxCmd::ConfigurePort {
+            port,
+            mode: Mode::Mode0(ConfigMode0),
+            gpo_level: None,
+        })
+        .await;
+}
+
+/// Set `output_jack` to 0-10V DAC mode and write `dac_counts`, then hold it
+/// there for the caller to measure manually (e.g. with an external frequency
+/// counter). The value is written once; pick a jack with no app assigned so
+/// nothing else overwrites `MAX_VALUES_DAC`.
+async fn handle_set_voct_output(proto: &mut ConfigProtocol<'_>, output_jack: u8, dac_counts: u16) {
+    let port = match Port::try_from(output_jack as usize) {
+        Ok(p) if (output_jack as usize) < 16 => p,
+        _ => {
+            proto.send_msg(ConfigMsgOut::VoOctOutputSet).await.unwrap();
+            return;
+        }
+    };
+
+    MAX_CHANNEL
+        .send(MaxCmd::ConfigurePort {
+            port,
+            mode: Mode::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
+            gpo_level: None,
+        })
+        .await;
+    MAX_VALUES_DAC[output_jack as usize].store(dac_counts, Ordering::Relaxed);
+
+    proto.send_msg(ConfigMsgOut::VoOctOutputSet).await.unwrap();
+}
+
+/// Release `output_jack` back to high-Z (Mode 0) so apps can reclaim it.
+async fn handle_release_voct_output(proto: &mut ConfigProtocol<'_>, output_jack: u8) {
+    if let Ok(port) = Port::try_from(output_jack as usize) {
+        if (output_jack as usize) < 16 {
+            MAX_CHANNEL
+                .send(MaxCmd::ConfigurePort {
+                    port,
+                    mode: Mode::Mode0(ConfigMode0),
+                    gpo_level: None,
+                })
+                .await;
+        }
+    }
+
+    proto.send_msg(ConfigMsgOut::VoOctOutputSet).await.unwrap();
 }
 
 struct ConfigProtocol<'a> {

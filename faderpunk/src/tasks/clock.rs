@@ -11,8 +11,9 @@ use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
     channel::Channel,
     pubsub::{PubSubChannel, Subscriber},
+    signal::Signal,
 };
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{with_timeout, Duration, Instant, Timer};
 use heapless::Deque;
 use midly::live::SystemRealtime;
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
@@ -46,6 +47,13 @@ const METRONOME_HIGH_MS: u64 = 25;
 
 pub static TICK_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub static METRONOME_HIGH: AtomicBool = AtomicBool::new(true);
+
+/// Signals the AUX pin loop to pause clock detection and run a frequency
+/// measurement. Index corresponds to aux pin: 0=Atom, 1=Meteor, 2=Cube.
+pub static VOCT_MEASURE_REQ: [Signal<CriticalSectionRawMutex, ()>; 3] =
+    [const { Signal::new() }; 3];
+/// Result of a V/Oct frequency measurement: Ok(freq_hz) or Err(()) on timeout.
+pub static VOCT_MEASURE_RES: Signal<CriticalSectionRawMutex, Result<u32, ()>> = Signal::new();
 
 type AuxInputs = (
     Peri<'static, PIN_1>,
@@ -206,7 +214,7 @@ pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(metronome()).unwrap();
 }
 
-async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
+async fn make_ext_clock_loop(pin: &mut Input<'_>, clock_src: ClockSrc) {
     let sender = SYNC_ENGINE_CHANNEL.sender();
     loop {
         pin.wait_for_falling_edge().await;
@@ -217,6 +225,61 @@ async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
                 timestamp: Instant::now(),
             })
             .await;
+    }
+}
+
+/// Measure the frequency of an incoming signal on `pin` by timing rising edges.
+/// Returns `Ok(freq_hz)` or `Err(())` on timeout (2 s without a valid edge).
+/// Debounces edges closer than 50 µs to handle noisy sine-wave sources.
+async fn measure_frequency(pin: &mut Input<'_>) -> Result<u32, ()> {
+    const SAMPLES: u64 = 8;
+    const DEBOUNCE_US: u64 = 50;
+    const TIMEOUT: Duration = Duration::from_secs(2);
+
+    // Sync to the first rising edge.
+    with_timeout(TIMEOUT, pin.wait_for_rising_edge())
+        .await
+        .map_err(|_| ())?;
+    let mut last_edge = Instant::now();
+
+    let mut total_period_us: u64 = 0;
+    let mut valid: u64 = 0;
+
+    while valid < SAMPLES {
+        with_timeout(TIMEOUT, pin.wait_for_rising_edge())
+            .await
+            .map_err(|_| ())?;
+        let now = Instant::now();
+        let period_us = now.duration_since(last_edge).as_micros();
+        last_edge = now;
+
+        if period_us < DEBOUNCE_US {
+            continue;
+        }
+        total_period_us += period_us;
+        valid += 1;
+    }
+
+    let avg_us = total_period_us / SAMPLES;
+    if avg_us == 0 {
+        return Err(());
+    }
+    Ok((1_000_000 / avg_us) as u32)
+}
+
+/// Runs the clock-detection loop for one AUX pin, breaking out to perform a
+/// frequency measurement whenever `VOCT_MEASURE_REQ[aux_idx]` is signalled.
+async fn aux_pin_loop(mut pin: Input<'_>, src: ClockSrc, aux_idx: usize) {
+    loop {
+        select(
+            make_ext_clock_loop(&mut pin, src),
+            VOCT_MEASURE_REQ[aux_idx].wait(),
+        )
+        .await;
+
+        // Measurement requested: measure and signal result; clock loop restarts.
+        let result = measure_frequency(&mut pin).await;
+        VOCT_MEASURE_RES.signal(result);
     }
 }
 
@@ -832,9 +895,9 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
     let cube = Input::new(hexagon_pin, Pull::Up);
 
     let engine_fut = run_unified_clock_engine();
-    let atom_fut = make_ext_clock_loop(atom, ClockSrc::Atom);
-    let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor);
-    let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube);
+    let atom_fut = aux_pin_loop(atom, ClockSrc::Atom, 0);
+    let meteor_fut = aux_pin_loop(meteor, ClockSrc::Meteor, 1);
+    let cube_fut = aux_pin_loop(cube, ClockSrc::Cube, 2);
 
     join4(engine_fut, atom_fut, meteor_fut, cube_fut).await;
 }
