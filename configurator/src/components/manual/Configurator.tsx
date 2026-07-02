@@ -312,11 +312,12 @@ export const Configurator = () => (
 
     <H4 id="settings-voct">Custom V/Oct Calibration</H4>
     <p>
-      Faderpunk stores up to <strong>four custom V/Oct calibration curves</strong>{" "}
-      (Custom 1–4). This allows Faderpunk to achieve near-perfect tracking with
-      any V/Oct oscillator, regardless of the calibration of either the target
-      oscillator or the Faderpunk itself. It can even allow oscillators that are
-      not designed to run on 1V/Oct to track with the pitched apps on Faderpunk.
+      Faderpunk stores up to{" "}
+      <strong>four custom V/Oct calibration curves</strong> (Custom 1–4). This
+      allows Faderpunk to achieve near-perfect tracking with any V/Oct
+      oscillator, regardless of the calibration of either the target oscillator
+      or the Faderpunk itself. It can even allow oscillators that are not
+      designed to run on 1V/Oct to track with the pitched apps on Faderpunk.
       Once calibrated, any app that has a <strong>1V/Oct</strong> parameter can
       use one of the custom curves instead of the default standard tracking.
     </p>
@@ -332,28 +333,32 @@ export const Configurator = () => (
         A VCO with a V/Oct input connected to one of the 16 Faderpunk output
         jacks
       </li>
-      <li>A tuner with frequency meter (hardware or software) connected to the VCO audio output</li>
+      <li>
+        The VCO audio output connected to one of the three AUX jacks (Atom,
+        Meteor, or Cube) — Faderpunk measures the frequency automatically
+      </li>
     </List>
     <H5>Calibration wizard</H5>
     <List>
       <li>
-        <strong>Setup</strong> — Select the Faderpunk output jack you have
-        connected to the VCO V/Oct input. For best accuracy, use a jack that
-        does not have an app assigned to it. Click <strong>Start</strong>.
+        <strong>Setup</strong> — Select the Faderpunk output jack connected to
+        the VCO V/Oct input and the AUX jack connected to the VCO audio output.
+        For best accuracy, use an output jack that does not have an app assigned
+        to it. Click <strong>Start</strong>.
       </li>
       <li>
-        <strong>Step 1 (1V)</strong> — The firmware outputs 1V on the selected
-        jack. Read the frequency shown by your meter and type it into the field,
-        then click <strong>Next</strong>.
+        <strong>1V measurement</strong> — Faderpunk outputs 1V and measures the
+        frequency on the AUX jack automatically.
       </li>
       <li>
-        <strong>Step 2 (4V)</strong> — The firmware outputs 4V. Read and enter
-        the new frequency, then click <strong>Calculate</strong>.
+        <strong>4V measurement</strong> — Faderpunk outputs 4V and measures
+        again. The V/Oct gain is calculated from the two readings.
       </li>
       <li>
-        <strong>Result</strong> — The measured V/Oct gain is displayed. Click{" "}
-        <strong>Save</strong> to store the calibration or{" "}
-        <strong>Discard</strong> to cancel.
+        <strong>Confirm</strong> — Faderpunk outputs one calibrated octave above
+        1V. Verify that your VCO is at exactly twice the 1V frequency on your
+        meter, then click <strong>Save</strong>. If the result looks off, click{" "}
+        <strong>Recalibrate</strong> to start again.
       </li>
     </List>
     <p>
