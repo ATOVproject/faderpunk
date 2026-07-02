@@ -9,8 +9,8 @@ use postcard::{from_bytes, to_slice};
 use libfp::sysex::{
     pack_7bit, unpack_7bit, MAX_PLAIN_SIZE, MAX_SYSEX_FRAME, SYSEX_EOX, SYSEX_HEADER, SYSEX_START,
 };
-use libfp::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS};
-use max11300::config::{ConfigMode0, ConfigMode5, Mode, Port, DACRANGE};
+use libfp::{AuxJackMode, ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS};
+use max11300::config::{ConfigMode0, ConfigMode3, ConfigMode5, Mode, Port, DACRANGE};
 use portable_atomic::Ordering;
 
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
@@ -245,6 +245,25 @@ async fn handle_measure_voct(
         }
     };
 
+    // If the AUX jack is configured as ClockOut or ResetOut its MAX11300 port
+    // (17 + aux_idx) is in Mode3 (GPO) and will drive the jack voltage, which
+    // would corrupt frequency measurements. Force it to Mode0 (high-Z) for the
+    // duration of the measurement, then restore it afterwards.
+    let aux_port = Port::try_from(17 + aux_idx).unwrap();
+    let aux_was_active = matches!(
+        get_global_config().aux[aux_idx],
+        AuxJackMode::ClockOut(_) | AuxJackMode::ResetOut
+    );
+    if aux_was_active {
+        MAX_CHANNEL
+            .send(MaxCmd::ConfigurePort {
+                port: aux_port,
+                mode: Mode::Mode0(ConfigMode0),
+                gpo_level: None,
+            })
+            .await;
+    }
+
     // Configure the output jack to 0-10V DAC mode.
     MAX_CHANNEL
         .send(MaxCmd::ConfigurePort {
@@ -263,7 +282,7 @@ async fn handle_measure_voct(
         MAX_VALUES_DAC[output_jack as usize].store(dac_counts, Ordering::Relaxed);
         embassy_time::Timer::after_millis(300).await;
         VOCT_MEASURE_REQ[aux_idx].signal(());
-        with_timeout(Duration::from_secs(10), VOCT_MEASURE_RES.wait()).await
+        with_timeout(Duration::from_secs(30), VOCT_MEASURE_RES.wait()).await
     };
     let keep_driving = async {
         loop {
@@ -290,6 +309,17 @@ async fn handle_measure_voct(
             gpo_level: None,
         })
         .await;
+
+    // Restore the AUX port to GPO mode if it was active before measurement.
+    if aux_was_active {
+        MAX_CHANNEL
+            .send(MaxCmd::ConfigurePort {
+                port: aux_port,
+                mode: Mode::Mode3(ConfigMode3),
+                gpo_level: Some(2048),
+            })
+            .await;
+    }
 
     res
 }
