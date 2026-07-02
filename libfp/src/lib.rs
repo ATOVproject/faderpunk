@@ -1197,7 +1197,7 @@ pub enum ConfigMsgOut<'a> {
     Version { major: u8, minor: u8, patch: u8 },
     /// Frequency measured on the selected AUX input during V/Oct calibration.
     VoOctFrequency {
-        freq_hz: u32,
+        freq_hz: f32,
     },
     /// V/Oct calibration measurement failed (no signal or timeout).
     VoOctCalError,
