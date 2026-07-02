@@ -10,7 +10,7 @@ use libfp::{
     ext::FromValue,
     latch::LatchLayer,
     utils::{attenuverter, clickless, split_unsigned_value},
-    AppIcon, Brightness, Color, Config, Param, Range, Value, APP_MAX_PARAMS,
+    AppIcon, Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -157,7 +157,11 @@ pub async fn run(
             );
             let offset = offset_fad as i32 - 2047;
 
-            let mut outval = (attenuverter(inval, att) as i32 + offset).clamp(0, 4095) as u16;
+            // Curved so the fader's center flat zone reliably lands on the
+            // attenuverter's true zero (signal fully attenuated) instead of
+            // drifting near it.
+            let mut outval =
+                (attenuverter(inval, Curve::Deadzone.at(att)) as i32 + offset).clamp(0, 4095) as u16;
             outval = ((outval as i32 - 2047) * 2 + 2047).clamp(0, 4094) as u16;
 
             output.set_value(outval);
