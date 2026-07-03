@@ -11,7 +11,7 @@ use embassy_sync::{
     channel::{Channel, Sender},
     mutex::Mutex,
 };
-use embassy_time::Timer;
+use embassy_time::{Instant, Timer};
 use libfp::{
     latch::{AnalogLatch, LatchLayer},
     types::MaxCalibration,
@@ -40,6 +40,18 @@ use crate::{
 
 const MAX_CHANNEL_SIZE: usize = 16;
 
+/// Diagnostic instrumentation for fader ADC noise. When enabled, `read_fader`
+/// logs per-window noise statistics and every latch emission over defmt/RTT so
+/// noise can be characterized on a normally-operating device (probe attached).
+/// Set to `false` for release builds — all diagnostic code compiles out.
+const FADER_DIAG: bool = false;
+/// Scan rounds per diagnostic stats window (64 rounds ≈ 1s at ~60Hz scan rate).
+const FADER_DIAG_WINDOW_ROUNDS: u16 = 64;
+/// Number of ADC reads taken within one mux dwell (~1ms). The MAX11300 sweep
+/// refreshes the fader port's data register every sweep (~tens of µs), so each
+/// read is a fresh conversion; the median of the burst rejects sweep glitches.
+const FADER_BURST_READS: usize = 5;
+
 type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
 type MuxPins = (
     Peri<'static, PIN_12>,
@@ -56,6 +68,11 @@ pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16]
 pub static MAX_VALUES_DAC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static MAX_VALUES_ADC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static CALIBRATING: AtomicBool = AtomicBool::new(false);
+
+/// Set by `message_loop` when a port is reconfigured: the DAC data register may
+/// have been rewritten (e.g. `gpo_configure_level` uses it for the GPO level),
+/// so `process_channel_values` must not trust its last-written cache for that port.
+static DAC_CACHE_DIRTY: [AtomicBool; 20] = [const { AtomicBool::new(false) }; 20];
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -193,12 +210,15 @@ async fn read_fader(
         AnalogLatch::new(main_fader_values[channel], global_config.takeover_mode)
     });
 
-    // Rolling history for 3-sample median filter: eliminates single-sample ADC spikes
-    // from MAX11300 charge injection before they reach the latch state machine.
-    let mut fader_history: [[u16; 2]; 16] =
-        core::array::from_fn(|channel| [main_fader_values[channel], main_fader_values[channel]]);
-
     let mut chan: usize = 0;
+
+    // Per-channel diagnostic stats over one window (see FADER_DIAG)
+    let mut diag_min = [u16::MAX; 16];
+    let mut diag_max = [0u16; 16];
+    let mut diag_burst_spread = [0u16; 16];
+    let mut diag_emits = [0u8; 16];
+    let mut diag_publishes = [0u8; 16];
+    let mut diag_rounds: u16 = 0;
 
     loop {
         // global config mode: Alt, normal mode: Main
@@ -213,25 +233,29 @@ async fn read_fader(
         // send the channel value to the PIO state machine to trigger the program
         sm0.tx().wait_push(chan as u32).await;
 
-        // this translates to ~60Hz refresh rate for the faders (1000 / (1 * 16) = 62.5)
-        Timer::after_millis(1).await;
+        // Let the mux output settle, then take the burst back-to-back: each SPI
+        // read spans several ADC sweep conversions, so the samples are already
+        // decorrelated. A single timer await per dwell keeps the dwell short
+        // (~1.3ms measured, ~45Hz scan rate); sleeping between reads would blow
+        // it up to >2.4ms due to executor scheduling overshoot on the loaded core.
+        Timer::after_micros(700).await;
+        let mut burst = [0u16; FADER_BURST_READS];
+        for slot in burst.iter_mut() {
+            *slot = fader_port.get_value().await.unwrap();
+        }
+        let mut sorted = burst;
+        sorted.sort_unstable();
+        let val = sorted[FADER_BURST_READS / 2];
 
-        let val = fader_port.get_value().await.unwrap();
+        if FADER_DIAG {
+            diag_min[channel] = diag_min[channel].min(val);
+            diag_max[channel] = diag_max[channel].max(val);
+            let spread = sorted[FADER_BURST_READS - 1] - sorted[0];
+            diag_burst_spread[channel] = diag_burst_spread[channel].max(spread);
+        }
 
         // Scale a bit across the dead-zone (~4087 -> 4095) using integer math
         let val = (((val as u32 * 1002) / 1000) as u16).clamp(0, 4095);
-
-        // 3-sample median filter: median([prev2, prev1, val]) eliminates single-sample
-        // ADC spikes from MAX11300 charge injection without introducing any latency on
-        // legitimate fader movement (when all three samples move, median moves too).
-        let filtered = {
-            let [a, b] = fader_history[channel];
-            let lo = a.min(b).min(val);
-            let hi = a.max(b).max(val);
-            // median = sum - min - max; max sum = 3*4095 = 12285, fits in u16
-            a + b + val - lo - hi
-        };
-        fader_history[channel] = [fader_history[channel][1], val];
 
         let latch = &mut fader_latches[channel];
 
@@ -241,11 +265,30 @@ async fn read_fader(
             LatchLayer::Third => 0,
         };
 
-        if let Some(new_value) = latch.update(filtered, active_layer, target_value) {
+        if let Some(new_value) = latch.update(val, active_layer, target_value) {
             let diff = (new_value as i32 - target_value as i32).abs();
+
+            if FADER_DIAG {
+                diag_emits[channel] = diag_emits[channel].saturating_add(1);
+                defmt::info!(
+                    "FDIAG emit t={=u64}us ch={=usize} burst={} median={=u16} target={=u16} out={=u16} diff={=i32} latched={=bool}",
+                    Instant::now().as_micros(),
+                    channel,
+                    burst,
+                    val,
+                    target_value,
+                    new_value,
+                    diff,
+                    latch.is_latched()
+                );
+            }
+
             match active_layer {
                 LatchLayer::Main => {
                     if diff >= 4 {
+                        if FADER_DIAG {
+                            diag_publishes[channel] = diag_publishes[channel].saturating_add(1);
+                        }
                         event_publisher
                             .publish(InputEvent::FaderChange(channel))
                             .await;
@@ -264,6 +307,31 @@ async fn read_fader(
         }
 
         chan = (chan + 1) % 16;
+
+        // End of a full scan round: flush the diagnostic window if due
+        if FADER_DIAG && chan == 0 {
+            diag_rounds += 1;
+            if diag_rounds >= FADER_DIAG_WINDOW_ROUNDS {
+                let mut range = [0u16; 16];
+                for i in 0..16 {
+                    range[i] = diag_max[i].saturating_sub(diag_min[i]);
+                }
+                defmt::info!(
+                    "FDIAG win t={=u64}us range={} burst_spread={} emits={} pubs={}",
+                    Instant::now().as_micros(),
+                    range,
+                    diag_burst_spread,
+                    diag_emits,
+                    diag_publishes
+                );
+                diag_min = [u16::MAX; 16];
+                diag_max = [0u16; 16];
+                diag_burst_spread = [0u16; 16];
+                diag_emits = [0u8; 16];
+                diag_publishes = [0u8; 16];
+                diag_rounds = 0;
+            }
+        }
     }
 }
 
@@ -272,6 +340,11 @@ async fn process_channel_values(
     max_driver: &'static SharedMax,
     calibration_data: Option<MaxCalibration>,
 ) {
+    // Last calibrated value written to each DAC port. Rewriting an unchanged
+    // value is a no-op at the chip, so those SPI writes are skipped to reduce
+    // bus traffic and internal MAX11300 activity. The loop rate is unchanged.
+    let mut last_written_dac: [Option<u16>; 20] = [None; 20];
+
     loop {
         // Hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
@@ -306,7 +379,13 @@ async fn process_channel_values(
                         target_dac_value
                     };
 
-                    max.dac_set_value(port, calibrated_value).await.unwrap();
+                    if DAC_CACHE_DIRTY[i].swap(false, Ordering::Relaxed) {
+                        last_written_dac[i] = None;
+                    }
+                    if last_written_dac[i] != Some(calibrated_value) {
+                        max.dac_set_value(port, calibrated_value).await.unwrap();
+                        last_written_dac[i] = Some(calibrated_value);
+                    }
                 }
                 Mode::Mode7(config) => {
                     let value = max.adc_get_value(port).await.unwrap();
@@ -347,6 +426,9 @@ async fn message_loop(max_driver: &'static SharedMax) {
         // tries to touch it. See `MaxCmd::touches_fader_port` for details.
         if msg.touches_fader_port() {
             continue;
+        }
+        if let MaxCmd::ConfigurePort { port, .. } = &msg {
+            DAC_CACHE_DIRTY[*port as usize].store(true, Ordering::Relaxed);
         }
         let mut max = max_driver.lock().await;
 
