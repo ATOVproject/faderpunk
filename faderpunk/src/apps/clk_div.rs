@@ -164,7 +164,6 @@ pub async fn run(
     });
 
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
@@ -215,14 +214,14 @@ pub async fn run(
                     note_on = false;
                     jack.set_low().await;
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick) => {
                     let muted = glob_muted.get();
                     let div = div_glob.get();
                     if div != cached_div {
                         cached_div = div;
                         cached_gate_step = (cached_div * gatel / 100).clamp(1, cached_div - 1);
                     }
-                    let clkn = ticks() as u32;
+                    let clkn = tick as u32;
 
                     if clkn.is_multiple_of(cached_div) && !muted {
                         jack.set_high().await;

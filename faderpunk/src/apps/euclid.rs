@@ -9,8 +9,8 @@ use embassy_futures::{
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
-    ext::FromValue, latch::LatchLayer, utils::euclidean_at, AppIcon, Brightness,
-    ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, utils::euclidean_at, AppIcon, Brightness, ClockDivision,
+    Color, Config, MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -118,14 +118,18 @@ impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id, Params {
-        midi_channel: MidiChannel::default(),
-        midi_out: MidiOut::default(),
-        note: MidiNote::from(32),
-        note2: MidiNote::from(33),
-        gatel: 50,
-        color: Color::Orange,
-    });
+    let param_store = ParamStore::<Params>::new(
+        app.app_id,
+        app.layout_id,
+        Params {
+            midi_channel: MidiChannel::default(),
+            midi_out: MidiOut::default(),
+            note: MidiNote::from(32),
+            note2: MidiNote::from(33),
+            gatel: 50,
+            color: Color::Orange,
+        },
+    );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
     param_store.load().await;
@@ -151,7 +155,6 @@ pub async fn run(
     storage: &ManagedStorage<Storage>,
 ) {
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let die = app.use_die();
     let faders = app.use_faders();
     let buttons = app.use_buttons();
@@ -185,14 +188,8 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-    let (fader_saved, shift_fader_saved, mute, div_saved) = storage.query(|s| {
-        (
-            s.fader_saved,
-            s.shift_fader_saved,
-            s.muted,
-            s.div_saved,
-        )
-    });
+    let (fader_saved, shift_fader_saved, mute, div_saved) =
+        storage.query(|s| (s.fader_saved, s.shift_fader_saved, s.muted, s.div_saved));
 
     num_beat_glob.set((fader_saved[0] as u32 * 15 / 4095) as u8 + 1);
     num_step_glob.set((fader_saved[1] as u32 * num_beat_glob.get() as u32 / 4095) as u8);
@@ -213,12 +210,10 @@ pub async fn run(
     let fut1 = async {
         let mut note_on = false;
         let mut aux_on = false;
-        let mut tick_origin = ticks() as u32;
 
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    tick_origin = ticks() as u32;
                     midi.send_note_off(note).await;
                     midi.send_note_off(note2).await;
                     note_on = false;
@@ -234,8 +229,8 @@ pub async fn run(
                     jack[0].set_low().await;
                     jack[1].set_low().await;
                 }
-                ClockEvent::Tick => {
-                    let clkn = (ticks() as u32).wrapping_sub(tick_origin);
+                ClockEvent::Tick(tick) => {
+                    let clkn = tick as u32;
                     let muted = glob_muted.get();
                     let div = div_glob.get();
 
@@ -513,4 +508,3 @@ pub async fn run(
 
     join5(fut1, fut2, fut3, scene_handler, shift).await;
 }
-

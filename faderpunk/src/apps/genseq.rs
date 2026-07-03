@@ -279,7 +279,7 @@ pub async fn run(
                     }
                     register_pitch = storage.query(|s| s.register_pitch);
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(_) => {
                     if clkn.is_multiple_of(div) {
                         clkn_euclid = (clkn_euclid + 1) % euclid_length.max(1) as u16;
                         euclid_step_glob.set(clkn_euclid);

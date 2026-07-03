@@ -325,7 +325,6 @@ pub async fn run(
     let faders = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let quantizer = app.use_quantizer(pitch_range, vpo, false);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
@@ -353,6 +352,8 @@ pub async fn run(
     let last_midi_note_glob: Global<MidiNote> = app.make_global(MidiNote::default());
     // Signals fader_task → clock_task that density changed and pattern needs regenerating
     let regen_pending_glob: Global<bool> = app.make_global(false);
+    // Last tick number seen by clock_task; read by button_task for reseeding.
+    let ticks_glob: Global<u64> = app.make_global(0);
     // Current clock divisor (raw 24-PPQN units); updated by fader_task via resolution table
     let (init_res, init_density_fader, init_seed) =
         storage.query(|s| (s.res_saved, s.density_fader, s.seed));
@@ -376,8 +377,9 @@ pub async fn run(
 
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Tick => {
-                    let clkn = ticks() as usize;
+                ClockEvent::Tick(tick) => {
+                    ticks_glob.set(tick);
+                    let clkn = tick as usize;
                     let div = div_glob.get();
                     let in_res_mode = latch_layer_glob.get() == LatchLayer::Third;
 
@@ -628,7 +630,7 @@ pub async fn run(
             }
             match chan {
                 0 => {
-                    let new_seed = (ticks() & 0xFFFF) as u16;
+                    let new_seed = (ticks_glob.get() & 0xFFFF) as u16;
                     storage.modify_and_save(|s| s.seed = new_seed);
                     let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
                     pattern_glob.set(generate_pattern(new_seed, d));

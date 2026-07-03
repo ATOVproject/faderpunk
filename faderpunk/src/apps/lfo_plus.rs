@@ -190,7 +190,6 @@ pub async fn run(
     let buttons = app.use_buttons();
     let leds = app.use_leds();
     let mut clk = app.use_clock();
-    let ticker = clk.get_ticker();
 
     let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
 
@@ -204,6 +203,8 @@ pub async fn run(
     // Clock tick at which the LFO phase is considered zero. 0 = locked to the
     // clock grid; set to the current tick on a manual/CV reset to run out of phase.
     let glob_phase_origin = app.make_global(0u64);
+    // Last tick number seen by clock_handler; read by the input/button futures.
+    let glob_ticks = app.make_global(0u64);
 
     let curve = Curve::Exponential;
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6];
@@ -266,7 +267,7 @@ pub async fn run(
 
             if destination == 3 {
                 if in_val >= 2458 && oldinputval < 2458 {
-                    glob_phase_origin.set(ticker());
+                    glob_phase_origin.set(glob_ticks.get());
                     glob_lfo_pos.set(0.0);
                 }
                 oldinputval = in_val;
@@ -478,7 +479,7 @@ pub async fn run(
                 if chan == 1 {
                     // Offset the phase lock to the current tick so a clocked LFO
                     // can be pushed out of phase; also resets when free-running.
-                    glob_phase_origin.set(ticker());
+                    glob_phase_origin.set(glob_ticks.get());
                     glob_lfo_pos.set(0.0);
                 }
             }
@@ -517,13 +518,14 @@ pub async fn run(
     let clock_handler = async {
         loop {
             match clk.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick) => {
+                    glob_ticks.set(tick);
                     if storage.query(|s| s.clocked) && phase_lock {
                         let ticks_per_cycle =
                             (glob_div.get() as u64).saturating_mul(speed_mult as u64);
                         if ticks_per_cycle > 0 {
                             let phase_in_cycle =
-                                ticker().wrapping_sub(glob_phase_origin.get()) % ticks_per_cycle;
+                                tick.wrapping_sub(glob_phase_origin.get()) % ticks_per_cycle;
                             glob_lfo_pos
                                 .set(phase_in_cycle as f32 * 4096.0 / ticks_per_cycle as f32);
                         }
