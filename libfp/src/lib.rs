@@ -721,6 +721,47 @@ pub enum Curve {
     Linear,
     Logarithmic,
     Exponential,
+    Deadzone,
+}
+
+/// Center output value of [`deadzone_curve`]'s flat zone.
+pub const DEADZONE_CENTER: u16 = 2048;
+const DEADZONE_HALF_WIDTH: i32 = 307;
+const DEADZONE_START: i32 = DEADZONE_CENTER as i32 - DEADZONE_HALF_WIDTH;
+const DEADZONE_END: i32 = DEADZONE_CENTER as i32 + DEADZONE_HALF_WIDTH;
+const DEADZONE_MAX: i32 = 4095;
+
+/// Linear ramp with a flat zone (~15% of travel) held at the exact center
+/// value, so the middle of a fader's travel is easy to land on precisely
+/// (e.g. zeroing a bipolar parameter like swing).
+fn deadzone_curve(value: u16) -> u16 {
+    let value = value as i32;
+    let center = DEADZONE_CENTER as i32;
+    let out = if value <= DEADZONE_START {
+        (value * center) / DEADZONE_START
+    } else if value >= DEADZONE_END {
+        center + ((value - DEADZONE_END) * (DEADZONE_MAX - center)) / (DEADZONE_MAX - DEADZONE_END)
+    } else {
+        center
+    };
+    out.clamp(0, DEADZONE_MAX) as u16
+}
+
+/// Inverse of [`deadzone_curve`]. The flat zone maps a whole range of raw
+/// inputs to the single output `DEADZONE_CENTER`, so an input exactly equal
+/// to it resolves back to the exact center of the flat zone — the canonical
+/// representative raw position — rather than to either ramp.
+pub fn deadzone_curve_inverse(value: u16) -> u16 {
+    let value = (value as i32).clamp(0, DEADZONE_MAX);
+    let center = DEADZONE_CENTER as i32;
+    let out = if value < center {
+        (value * DEADZONE_START) / center
+    } else if value > center {
+        DEADZONE_END + ((value - center) * (DEADZONE_MAX - DEADZONE_END)) / (DEADZONE_MAX - center)
+    } else {
+        center
+    };
+    out.clamp(0, DEADZONE_MAX) as u16
 }
 
 impl Curve {
@@ -730,6 +771,7 @@ impl Curve {
             Curve::Linear => value,
             Curve::Exponential => CURVE_EXP[value as usize],
             Curve::Logarithmic => CURVE_LOG[value as usize],
+            Curve::Deadzone => deadzone_curve(value),
         }
     }
 
@@ -738,6 +780,7 @@ impl Curve {
             Curve::Linear => Curve::Exponential,
             Curve::Exponential => Curve::Logarithmic,
             Curve::Logarithmic => Curve::Linear,
+            Curve::Deadzone => Curve::Linear,
         }
     }
 }
@@ -1863,5 +1906,52 @@ mod tests {
         let decoded: GlobalConfig = minicbor::decode(&encoded).unwrap();
         assert_eq!(decoded.led_brightness, 111);
         assert_eq!(decoded.clock.swing_amount, 0);
+    }
+
+    #[test]
+    fn deadzone_curve_covers_full_range_at_endpoints() {
+        assert_eq!(Curve::Deadzone.at(0), 0);
+        assert_eq!(Curve::Deadzone.at(4095), 4095);
+    }
+
+    #[test]
+    fn deadzone_curve_flat_zone_holds_exact_center() {
+        let start = DEADZONE_START as u16;
+        let end = DEADZONE_END as u16;
+        for raw in [start, start + 50, DEADZONE_CENTER, end - 50, end] {
+            assert_eq!(Curve::Deadzone.at(raw), DEADZONE_CENTER);
+        }
+    }
+
+    #[test]
+    fn deadzone_curve_inverse_returns_center_for_center_input() {
+        assert_eq!(deadzone_curve_inverse(DEADZONE_CENTER), DEADZONE_CENTER);
+    }
+
+    #[test]
+    fn deadzone_curve_inverse_round_trips_ramp_values() {
+        // Values right at DEADZONE_START/END are excluded: the forward curve
+        // already returns exactly DEADZONE_CENTER there (same as the flat
+        // zone), so their inverse is legitimately ambiguous.
+        let just_below_start = (DEADZONE_START - 1) as u16;
+        let just_above_end = (DEADZONE_END + 1) as u16;
+        for raw in [
+            0,
+            500,
+            1000,
+            1500,
+            just_below_start,
+            just_above_end,
+            3000,
+            3500,
+            4095,
+        ] {
+            let warped = Curve::Deadzone.at(raw);
+            let recovered = deadzone_curve_inverse(warped);
+            assert!(
+                (recovered as i32 - raw as i32).abs() <= 1,
+                "raw={raw} warped={warped} recovered={recovered}"
+            );
+        }
     }
 }

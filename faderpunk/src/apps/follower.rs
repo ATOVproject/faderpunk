@@ -172,8 +172,13 @@ pub async fn run(
             )
             .clamp(0., 4095.);
 
-            let att = storage.query(|s| s.att_saved);
-            let offset = storage.query(|s| s.offset_saved) as i32 - 2047;
+            // Curved so the fader's center flat zone reliably lands on the
+            // attenuverter's true zero (signal fully attenuated) instead of
+            // drifting near it.
+            let att = Curve::Deadzone.at(storage.query(|s| s.att_saved));
+            // Curved so the fader's center flat zone reliably lands on
+            // exactly zero offset instead of drifting near it.
+            let offset = Curve::Deadzone.at(storage.query(|s| s.offset_saved)) as i32 - 2047;
 
             let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
 

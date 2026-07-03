@@ -2,7 +2,10 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, watch::Watch};
 use embassy_time::Timer;
-use libfp::{AuxJackMode, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
+use libfp::{
+    deadzone_curve_inverse, AuxJackMode, Curve, GlobalConfig, Key, Note, DEADZONE_CENTER,
+    LED_BRIGHTNESS_RANGE,
+};
 use max11300::config::{ConfigMode0, ConfigMode3, Mode, Port};
 use portable_atomic::Ordering;
 
@@ -25,11 +28,19 @@ const SWING_FADER: usize = 14;
 const INTERNAL_BPM_FADER: usize = 15;
 
 fn val_to_swing(val: u16) -> i8 {
-    (((val as i32 * 70) / 4095) - 35).clamp(-35, 35) as i8
+    let val = Curve::Deadzone.at(val) as i32;
+    (((val * 70) / 4095) - 35).clamp(-35, 35) as i8
 }
 
 fn swing_to_val(swing: i8) -> u16 {
-    (((swing.clamp(-35, 35) as i32 + 35) * 4095) / 70).clamp(0, 4095) as u16
+    let swing = swing.clamp(-35, 35);
+    if swing == 0 {
+        // The dead zone collapses a wide raw range to swing 0; redraw the
+        // fader at the exact center of that zone rather than its edge.
+        return DEADZONE_CENTER;
+    }
+    let linear = (((swing as i32 + 35) * 4095) / 70).clamp(0, 4095) as u16;
+    deadzone_curve_inverse(linear)
 }
 
 pub static GLOBAL_CONFIG_WATCH: Watch<

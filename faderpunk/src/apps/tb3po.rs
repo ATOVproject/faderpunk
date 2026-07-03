@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, utils::apply_slide, AppIcon, Brightness, ClockDivision,
-    Color, Config, MidiChannel, MidiNote, MidiOut, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    Color, Config, Curve, MidiChannel, MidiNote, MidiOut, Param, Range, Value, VoltPerOct,
+    APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -110,7 +111,7 @@ impl Default for Storage {
         Self {
             seed: 0xABCD,
             density_fader: 2048,   // density 7 (center)
-            length_fader: 1920,    // ~16 steps
+            length_fader: 1920,    // 16 steps (falls in the deadzone flat zone)
             transpose_fader: 2048, // 0 semitones
             octave_fader: 2048,    // 0 octave offset
             res_saved: 2048,       // index 4 → RESOLUTION[4] = 6 (16th notes)
@@ -286,6 +287,23 @@ fn raw_pitch_cv(p: &AcidPattern, step: u8, transpose: i16, vpo: VoltPerOct) -> u
 /// → ~100 ms time constant. `rc_coeff` isn't const-evaluable, so the value is inlined.
 const SLIDE_COEFF: f32 = 0.0465_f32;
 
+/// Maps the length fader (0–4095) to a step count (1–32). Runs through
+/// `Curve::Deadzone` first so the fader's center flat zone reliably lands on
+/// 16 steps instead of drifting between 15/16/17 as the fader wobbles.
+fn length_fader_to_num_steps(length_fader: u16) -> u8 {
+    (Curve::Deadzone.at(length_fader) as u32 * 31 / 4095 + 1) as u8
+}
+
+/// Maps the transpose (±24 semitones) and octave (±4 octaves) faders to a
+/// combined semitone transpose. Each runs through `Curve::Deadzone` first so
+/// its center flat zone reliably lands on exactly 0 instead of drifting
+/// near it.
+fn transpose_semitones(transpose_fader: u16, octave_fader: u16) -> i16 {
+    let semi = Curve::Deadzone.at(transpose_fader) as i32 * 48 / 4095 - 24;
+    let oct = Curve::Deadzone.at(octave_fader) as i32 * 8 / 4095 - 4;
+    (semi + oct * 12) as i16
+}
+
 // --- Embassy Task ---
 
 #[embassy_executor::task(pool_size = 16 / CHANNELS)]
@@ -411,14 +429,10 @@ pub async fn run(
                     let pattern = pattern_glob.get();
                     let (num_steps, no_accents, muted, transpose) = storage.query(|s| {
                         (
-                            (s.length_fader as u32 * 31 / 4095 + 1) as u8,
+                            length_fader_to_num_steps(s.length_fader),
                             s.no_accents,
                             s.muted,
-                            {
-                                let semi = s.transpose_fader as i32 * 48 / 4095 - 24;
-                                let oct = s.octave_fader as i32 * 8 / 4095 - 4;
-                                (semi + oct * 12) as i16
-                            },
+                            transpose_semitones(s.transpose_fader, s.octave_fader),
                         )
                     });
 
@@ -669,7 +683,7 @@ pub async fn run(
                     )
                 });
             let density = (density_fader as u32 * 14 / 4095) as u8;
-            let num_steps = (length_fader as u32 * 31 / 4095 + 1) as u8;
+            let num_steps = length_fader_to_num_steps(length_fader);
             let gate_active = gate_active_glob.get();
             let accent = accent_active_glob.get();
             let slide_active = slide_active_glob.get();
