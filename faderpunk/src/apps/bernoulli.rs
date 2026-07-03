@@ -258,6 +258,12 @@ pub async fn run(
                             note_on_b = true;
                             active_out = Some(1);
                         }
+
+                        if matches!(cached_div, 2 | 4 | 8 | 16) {
+                            leds.set(1, Led::Bottom, Color::Orange, Brightness::High);
+                        } else {
+                            leds.set(1, Led::Bottom, Color::Blue, Brightness::High);
+                        }
                     }
 
                     if clkn % cached_div == cached_gate_step {
@@ -282,6 +288,8 @@ pub async fn run(
                         }
 
                         active_out = None;
+
+                        leds.set(1, Led::Bottom, led_color, Brightness::Off);
                     }
                 }
 
@@ -367,12 +375,6 @@ pub async fn run(
                             resolution[(new_value as usize / 345).clamp(0, resolution.len() - 1)],
                         );
                         storage.modify_and_save(|s| s.div_saved = new_value);
-                        leds.set(
-                            1,
-                            Led::Bottom,
-                            led_color,
-                            Brightness::Custom((new_value / 16) as u8),
-                        );
                     }
 
                     _ => {}
