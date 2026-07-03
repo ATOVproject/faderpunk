@@ -15,7 +15,7 @@ use embassy_sync::{
 use embassy_time::{Duration, Instant, Timer};
 use heapless::Deque;
 use midly::live::SystemRealtime;
-use portable_atomic::{AtomicBool, AtomicU64, Ordering};
+use portable_atomic::{AtomicBool, Ordering};
 
 use libfp::{
     utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig, MidiOut, MidiOutConfig,
@@ -44,7 +44,6 @@ const INTERNAL_PPQN: u8 = 24;
 /// How long METRONOME_HIGH stays true after each beat (ms).
 const METRONOME_HIGH_MS: u64 = 25;
 
-pub static TICK_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub static METRONOME_HIGH: AtomicBool = AtomicBool::new(true);
 
 type AuxInputs = (
@@ -113,9 +112,10 @@ pub enum TransportCmd {
 /// Events emitted by the clock task and received via [`Clock::wait_for_event`].
 #[derive(Clone, Copy)]
 pub enum ClockEvent {
-    /// Clock pulse triggering at the set PPQN division.
-    /// Tick counter reports the number of 24ppqn ticks since the last reset.
-    Tick,
+    /// Clock pulse triggering at the set PPQN division. The payload is the
+    /// number of 24ppqn ticks since the last reset, stamped at publish time
+    /// so subscribers never race on a shared counter.
+    Tick(u64),
     /// The clock has started or resumed playback (no phase reset).
     Start,
     /// The clock has stopped. No phase reset; notes/gates should be silenced.
@@ -168,9 +168,10 @@ const SWING_HALF_INTERVAL: u32 = 6;
 const PENDING_EMISSIONS_CAPACITY: usize = 64;
 
 /// Spacing between catch-up emissions when an early external pulse flushes
-/// unfired interpolated ticks. Wide enough for every subscriber to observe
-/// each TICK_COUNTER increment between emissions (see the clamp rationale on
-/// [`swung_offset`]), short enough to be musically instantaneous.
+/// unfired interpolated ticks. Wide enough for subscribers to drain each tick
+/// before the next is published — a same-instant burst (up to 47 ticks at
+/// 1 PPQN) would overflow the pubsub backlog and lagging subscribers would
+/// silently skip ticks — short enough to be musically instantaneous.
 const CATCHUP_SPACING: Duration = Duration::from_micros(500);
 
 /// Swung absolute offset of tick `i` (in `[0, 2H]`) from the start of the swing
@@ -180,10 +181,9 @@ const CATCHUP_SPACING: Duration = Duration::from_micros(500);
 /// The result is clamped to 500µs before the window boundary. Without this,
 /// heavy positive swing pushes the last ticks of the window past the boundary,
 /// causing the engine to fire tick 0 of the next window as an immediate
-/// catch-up. That catch-up creates two ticks in rapid succession: the
-/// gatekeeper processes both before any subscriber runs, incrementing
-/// TICK_COUNTER twice, so subscribers read the same stale counter for both
-/// events and double-fire notes on beat boundaries.
+/// catch-up — two ticks in rapid succession right on a beat boundary. The
+/// tick number in the event payload makes that burst safe to *count*, but
+/// keeping the schedule monotone within the window avoids the audible jitter.
 fn swung_offset(i: u32, t: Duration, swing: i8) -> Duration {
     let h = SWING_HALF_INTERVAL as i64;
     let t_ticks = t.as_ticks() as i64;
@@ -302,21 +302,18 @@ async fn analog_tick_release(ports: heapless::Vec<Port, 4>, trigger_len: u64) {
 #[embassy_executor::task]
 async fn metronome() {
     let mut sub = CLOCK_PUBSUB.subscriber().unwrap();
-    let mut tick_count: u64 = 0;
 
     loop {
         match sub.next_message_pure().await {
-            ClockEvent::Tick => {
-                tick_count += 1;
+            ClockEvent::Tick(ticks) => {
                 // Fire on the first tick of each quarter note (every 24 ppqn ticks).
-                if tick_count % 24 == 1 {
+                if ticks.is_multiple_of(24) {
                     METRONOME_HIGH.store(true, Ordering::Relaxed);
                     Timer::after_millis(METRONOME_HIGH_MS).await;
                     METRONOME_HIGH.store(false, Ordering::Relaxed);
                 }
             }
             ClockEvent::Start | ClockEvent::Reset => {
-                tick_count = 0;
                 METRONOME_HIGH.store(true, Ordering::Relaxed);
             }
             ClockEvent::Stop => {
@@ -338,6 +335,9 @@ async fn run_clock_gatekeeper() {
     let mut config = config_receiver.get().await;
     let mut is_running = false;
     let mut analog_tick_counters: [u16; 3] = [0; 3];
+    // 24ppqn ticks since the last reset, carried in each Tick's payload.
+    // Held at u64::MAX after a reset so the first wrapping increment yields 0.
+    let mut tick_counter: u64 = u64::MAX;
 
     loop {
         match select(clock_in_receiver.receive(), config_receiver.changed()).await {
@@ -389,9 +389,10 @@ async fn run_clock_gatekeeper() {
                         if is_running
                             || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
                         {
-                            // Relies on AtomicU64 wrapping on overflow MAX + 1 to ensure first reported TICK_COUNTER after a Clock::Start is always 0
-                            TICK_COUNTER.fetch_add(1, Ordering::Relaxed);
-                            clock_publisher.publish(ClockEvent::Tick).await;
+                            tick_counter = tick_counter.wrapping_add(1);
+                            clock_publisher
+                                .publish(ClockEvent::Tick(tick_counter))
+                                .await;
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
                         }
                     }
@@ -411,7 +412,7 @@ async fn run_clock_gatekeeper() {
                     }
                     // (Re-)start the clock. Full phase reset
                     ClockInEvent::Start(_) => {
-                        TICK_COUNTER.store(u64::MAX, Ordering::Relaxed);
+                        tick_counter = u64::MAX;
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
@@ -427,7 +428,7 @@ async fn run_clock_gatekeeper() {
                     }
                     // Reset the phase without affecting the run state
                     ClockInEvent::Reset(_) => {
-                        TICK_COUNTER.store(u64::MAX, Ordering::Relaxed);
+                        tick_counter = u64::MAX;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
@@ -837,8 +838,8 @@ async fn run_unified_clock_engine() {
                             // interpolated ticks to fire in quick succession
                             // *before* this pulse's own tick, so the tick count
                             // at every pulse stays exactly `k * mult`. Spaced
-                            // CATCHUP_SPACING apart so every subscriber observes
-                            // each TICK_COUNTER increment (see `swung_offset`).
+                            // CATCHUP_SPACING apart so the burst cannot overflow
+                            // the pubsub backlog of slow subscribers.
                             let stale = pending_emissions.len() as u32;
                             pending_emissions.clear();
                             for i in 0..=stale {

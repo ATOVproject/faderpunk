@@ -303,7 +303,6 @@ pub async fn run(
     let faders = app.use_faders();
     let mut clk = app.use_clock();
     let die = app.use_die();
-    let ticks = clk.get_ticker();
     let led = app.use_leds();
 
     let midi = [
@@ -340,6 +339,8 @@ pub async fn run(
     let seq_length_glob: Global<[u8; 4]> = app.make_global([16; 4]);
     let gatelength_glob: Global<[u8; 4]> = app.make_global([128; 4]);
     let clockres_glob = app.make_global([6usize; 4]);
+    // Last tick number seen by clock_handler; read by led_handler for display.
+    let ticks_glob: Global<u64> = app.make_global(0);
     let direction_glob: Global<[Direction; 4]> = app.make_global([Direction::Forward; 4]);
     // Cached die-roll thresholds (0..=4096); recomputed when F6 changes.
     let probability_glob: Global<[u16; 4]> = app.make_global([4096; 4]);
@@ -545,7 +546,7 @@ pub async fn run(
         loop {
             app.delay_millis(16).await;
             let clockres = clockres_glob.get();
-            let clockn = ticks() as usize;
+            let clockn = ticks_glob.get() as usize;
             let page = page_glob.get();
 
             if buttons.is_shift_pressed() {
@@ -676,8 +677,9 @@ pub async fn run(
                         gate_out[n].set_low().await;
                     }
                 }
-                ClockEvent::Tick => {
-                    let clockn = ticks() as usize;
+                ClockEvent::Tick(tick) => {
+                    ticks_glob.set(tick);
+                    let clockn = tick as usize;
                     let seq = seq_glob.get();
                     let direction = direction_glob.get();
                     let probability = probability_glob.get();

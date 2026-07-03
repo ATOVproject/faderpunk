@@ -23,7 +23,7 @@ use crate::{
     events::{EventPubSubChannel, InputEvent},
     tasks::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
-        clock::{ClockSubscriber, CLOCK_PUBSUB, TICK_COUNTER},
+        clock::{ClockSubscriber, CLOCK_PUBSUB},
         global_config::get_global_config,
         i2c::{I2cLeaderMessage, I2cLeaderSender},
         leds::{set_led_mode, LedMode, LedMsg},
@@ -314,10 +314,9 @@ impl Clock {
     pub async fn wait_for_event(&mut self, division: ClockDivision) -> ClockEvent {
         loop {
             match self.subscriber.next_message_pure().await {
-                ClockEvent::Tick => {
-                    let ticks = TICK_COUNTER.load(Ordering::Relaxed);
+                ClockEvent::Tick(ticks) => {
                     if ticks.is_multiple_of(division as u64) {
-                        return ClockEvent::Tick;
+                        return ClockEvent::Tick(ticks);
                     }
                 }
                 ClockEvent::Stop => {
@@ -329,16 +328,6 @@ impl Clock {
             }
         }
     }
-
-    #[allow(dead_code)]
-    pub fn get_ticker(&self) -> fn() -> u64 {
-        ticks
-    }
-}
-
-#[allow(dead_code)]
-fn ticks() -> u64 {
-    TICK_COUNTER.load(Ordering::Relaxed)
 }
 
 pub enum SceneEvent {

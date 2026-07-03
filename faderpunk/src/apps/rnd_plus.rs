@@ -203,7 +203,7 @@ pub async fn run(
                 ClockEvent::Reset => {
                     clkn = 0;
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(_) => {
                     let muted = storage.query(|s: &Storage| s.mute_save);
 
                     let destination = storage.query(|s| s.dest);

@@ -213,8 +213,6 @@ pub async fn run(
     };
 
     let mut clock = app.use_clock();
-    // Function pointer into TICK_COUNTER; used by clock_handler to check 16th-note boundaries.
-    let tick_fn = clock.get_ticker();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
@@ -258,7 +256,7 @@ pub async fn run(
     // CV output is driven by main_loop, which slews loop_target_glob at 1 ms.
     //
     // PendingStart / PendingCommit are quantised to 16th-note boundaries:
-    // 24 PPQN / 4 = 6 underlying ticks per 16th note.  tick_fn() % 6 == 0
+    // 24 PPQN / 4 = 6 underlying ticks per 16th note.  tick % 6 == 0
     // detects this boundary regardless of the active clock_div.
     let clock_handler = async {
         // play_buf is intentionally absent: the authoritative buffer lives in
@@ -279,7 +277,7 @@ pub async fn run(
             .await;
 
             match event {
-                Ok(ClockEvent::Tick) => {
+                Ok(ClockEvent::Tick(tick)) => {
                     if !clock_running_glob.get() {
                         clock_running_glob.set(true);
                     }
@@ -294,10 +292,10 @@ pub async fn run(
 
                     // Process any pending command from button_handler.
                     // PendingStart / PendingCommit are held until a 16th-note
-                    // boundary (TICK_COUNTER % 6 == 0); all others fire immediately.
+                    // boundary (tick % 6 == 0); all others fire immediately.
                     let cmd = cmd_glob.get();
                     if cmd != LooperCmd::None {
-                        let on_16th = tick_fn().is_multiple_of(6);
+                        let on_16th = tick.is_multiple_of(6);
                         let ready = match cmd {
                             LooperCmd::PendingStart | LooperCmd::PendingCommit => on_16th,
                             _ => true,
@@ -321,7 +319,7 @@ pub async fn run(
                                             s.has_loop = true;
                                             s.loop_len = loop_len as u16;
                                         });
-                                        loop_start_tick = tick_fn() as u32;
+                                        loop_start_tick = tick as u32;
                                         state_glob.set(LooperState::Playing);
                                         leds.set(0, Led::Button, led_color, Brightness::Mid);
                                     } else if state_glob.get() != LooperState::Playing {
@@ -342,7 +340,7 @@ pub async fn run(
                                     // storage.inner was already updated by the scene recall;
                                     // just sync metadata and re-anchor the phase clock.
                                     loop_len = storage.query(|s| s.loop_len as usize).max(1);
-                                    loop_start_tick = tick_fn() as u32;
+                                    loop_start_tick = tick as u32;
                                 }
                                 LooperCmd::None => {}
                             }
@@ -375,7 +373,7 @@ pub async fn run(
                                     s.has_loop = true;
                                     s.loop_len = MAX_BUFFER_SAMPLES as u16;
                                 });
-                                loop_start_tick = tick_fn() as u32;
+                                loop_start_tick = tick as u32;
                                 rec_head = 0;
                                 state_glob.set(LooperState::Playing);
                                 leds.set(0, Led::Button, led_color, Brightness::Mid);
@@ -383,7 +381,7 @@ pub async fn run(
                             // CV output still driven by main_loop.
                         }
                         LooperState::Playing => {
-                            let clkn = (tick_fn() as u32).wrapping_sub(loop_start_tick);
+                            let clkn = (tick as u32).wrapping_sub(loop_start_tick);
                             let read_head = (clkn / clock_div as u32) as usize % loop_len;
                             if read_head == 0 {
                                 leds.set(0, Led::Button, Color::White, Brightness::High);
