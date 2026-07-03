@@ -210,15 +210,10 @@ pub async fn run(
     let fut1 = async {
         let mut note_on = false;
         let mut aux_on = false;
-        let mut tick_origin: u32 = 0;
-        // Re-anchor the phase on the next tick, so `clkn` counts from 0 at
-        // spawn and after every reset (step 0 lands on the downbeat).
-        let mut reorigin = true;
 
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    reorigin = true;
                     midi.send_note_off(note).await;
                     midi.send_note_off(note2).await;
                     note_on = false;
@@ -235,11 +230,7 @@ pub async fn run(
                     jack[1].set_low().await;
                 }
                 ClockEvent::Tick(tick) => {
-                    if reorigin {
-                        tick_origin = tick as u32;
-                        reorigin = false;
-                    }
-                    let clkn = (tick as u32).wrapping_sub(tick_origin);
+                    let clkn = tick as u32;
                     let muted = glob_muted.get();
                     let div = div_glob.get();
 
