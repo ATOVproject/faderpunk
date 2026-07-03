@@ -202,7 +202,6 @@ pub async fn run(
     let fader = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let die = app.use_die();
     let quantizer = app.use_quantizer(Range::_0_10V, vpo, bypass);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
@@ -292,8 +291,8 @@ pub async fn run(
                     pending_note_off = false;
                     aux_out.set_value(0);
                 }
-                ClockEvent::Tick => {
-                    let clkn = ticks() as u32;
+                ClockEvent::Tick(tick) => {
+                    let clkn = tick as u32;
                     if clkn.is_multiple_of(div) {
                         clkn_euclid = (clkn_euclid + 1) % euclid_length.max(1) as u16;
                         euclid_step_glob.set(clkn_euclid);
