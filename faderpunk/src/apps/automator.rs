@@ -11,8 +11,8 @@ use libfp::{
     ext::FromValue,
     latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, interp_loop_sample, midi_gate, slew_2, split_unsigned_value},
-    AppIcon, Brightness, ClockDivision, Color, Config, MidiCc, MidiChannel, MidiOut, Param, Range,
-    Value, APP_MAX_PARAMS,
+    AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
+    Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::{
@@ -396,7 +396,11 @@ pub async fn run(
                             } else {
                                 attenuate(sample, att_val)
                             };
-                            let with_offset = (attenuated as i32 + offset_val as i32 - 2048)
+                            // Curved so the fader's center flat zone reliably
+                            // lands on exactly zero offset instead of drifting near it.
+                            let with_offset = (attenuated as i32
+                                + Curve::Deadzone.at(offset_val) as i32
+                                - 2048)
                                 .clamp(0, 4095)
                                 as u16;
                             // Roll interpolation window: current target → prev, new → target.

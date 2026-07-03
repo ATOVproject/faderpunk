@@ -294,6 +294,16 @@ fn length_fader_to_num_steps(length_fader: u16) -> u8 {
     (Curve::Deadzone.at(length_fader) as u32 * 31 / 4095 + 1) as u8
 }
 
+/// Maps the transpose (±24 semitones) and octave (±4 octaves) faders to a
+/// combined semitone transpose. Each runs through `Curve::Deadzone` first so
+/// its center flat zone reliably lands on exactly 0 instead of drifting
+/// near it.
+fn transpose_semitones(transpose_fader: u16, octave_fader: u16) -> i16 {
+    let semi = Curve::Deadzone.at(transpose_fader) as i32 * 48 / 4095 - 24;
+    let oct = Curve::Deadzone.at(octave_fader) as i32 * 8 / 4095 - 4;
+    (semi + oct * 12) as i16
+}
+
 // --- Embassy Task ---
 
 #[embassy_executor::task(pool_size = 16 / CHANNELS)]
@@ -422,11 +432,7 @@ pub async fn run(
                             length_fader_to_num_steps(s.length_fader),
                             s.no_accents,
                             s.muted,
-                            {
-                                let semi = s.transpose_fader as i32 * 48 / 4095 - 24;
-                                let oct = s.octave_fader as i32 * 8 / 4095 - 4;
-                                (semi + oct * 12) as i16
-                            },
+                            transpose_semitones(s.transpose_fader, s.octave_fader),
                         )
                     });
 
