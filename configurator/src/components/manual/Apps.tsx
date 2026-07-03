@@ -22,7 +22,8 @@ export const Apps = ({ apps }: Props) => (
         <strong>Short press (no shift)</strong> — Control (when Button mode =
         Mute), Clock Divider, Clock Divider+, Random CC/CV, Random Trigger,
         Euclid, Envelope Follower, Turing, Turing+, MIDI to CV, CV2MIDI, CV/OCT
-        to MIDI, Panner, FP-Grids (per-channel trigger mutes), TB-3PO, GenSeq
+        to MIDI, Panner, FP-Grids (per-channel trigger mutes), TB-3PO, GenSeq,
+        Bernoulli Gate (button 1 mutes Output A, button 2 mutes Output B)
       </li>
       <li>
         <strong>Long press (no shift)</strong> — AD Envelope, LFO, LFO+
