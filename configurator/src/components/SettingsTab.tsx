@@ -39,6 +39,7 @@ export interface Inputs {
   auxMeteorDiv?: ClockDivision["tag"];
   auxCubeDiv?: ClockDivision["tag"];
   clockSrc: ClockSrc["tag"];
+  extPpqn: number;
   i2cMode: I2cMode["tag"];
   internalBpm: number;
   swingAmount: number;
@@ -110,6 +111,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
       auxCubeDiv:
         "value" in config.aux[2] ? config.aux[2].value.tag : undefined,
       clockSrc: config.clock.clock_src.tag,
+      extPpqn: config.clock.ext_ppqn,
       resetSrc: config.clock.reset_src.tag,
       internalBpm: config.clock.internal_bpm,
       swingAmount: config.clock.swing_amount,
@@ -295,7 +297,7 @@ const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
     aux: auxArray,
     clock: {
       clock_src: { tag: formValues.clockSrc },
-      ext_ppqn: 24,
+      ext_ppqn: formValues.extPpqn,
       reset_src: { tag: formValues.resetSrc },
       internal_bpm: formValues.internalBpm,
       swing_amount: formValues.swingAmount,
