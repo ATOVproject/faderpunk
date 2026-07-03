@@ -173,6 +173,14 @@ pub async fn run(
     let jack_a = app.make_gate_jack(0, 4095).await;
     let jack_b = app.make_gate_jack(1, 4095).await;
 
+    // make_gate_jack drives the port high on configure; force a known-off
+    // state (also clears any note left sounding by a prior run() that was
+    // dropped mid-gate, e.g. on a param change respawn).
+    midi.send_note_off(note_a).await;
+    midi.send_note_off(note_b).await;
+    jack_a.set_low().await;
+    jack_b.set_low().await;
+
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
     let (div_saved, muted, prob_saved) =
@@ -180,7 +188,7 @@ pub async fn run(
 
     glob_muted.set(muted);
     prob_glob.set(prob_saved);
-    div_glob.set(resolution[div_saved as usize / 345]);
+    div_glob.set(resolution[(div_saved as usize / 345).clamp(0, resolution.len() - 1)]);
 
     if muted {
         leds.unset_all();
@@ -285,6 +293,8 @@ pub async fn run(
             });
 
             if muted {
+                midi.send_note_off(note_a).await;
+                midi.send_note_off(note_b).await;
                 jack_a.set_low().await;
                 jack_b.set_low().await;
                 leds.unset_all();
@@ -326,7 +336,9 @@ pub async fn run(
                     }
 
                     1 => {
-                        div_glob.set(resolution[new_value as usize / 345]);
+                        div_glob.set(
+                            resolution[(new_value as usize / 345).clamp(0, resolution.len() - 1)],
+                        );
                         storage.modify_and_save(|s| s.div_saved = new_value);
                         leds.set(
                             1,
@@ -352,10 +364,13 @@ pub async fn run(
 
                     glob_muted.set(muted);
                     prob_glob.set(prob_saved);
-                    div_glob.set(resolution[div_saved as usize / 345]);
+                    div_glob
+                        .set(resolution[(div_saved as usize / 345).clamp(0, resolution.len() - 1)]);
 
                     if muted {
                         leds.unset_all();
+                        midi.send_note_off(note_a).await;
+                        midi.send_note_off(note_b).await;
                         jack_a.set_low().await;
                         jack_b.set_low().await;
                     } else {
