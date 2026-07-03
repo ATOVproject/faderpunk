@@ -155,7 +155,9 @@ pub async fn run(
                     2047
                 },
             );
-            let offset = offset_fad as i32 - 2047;
+            // Curved so the fader's center flat zone reliably lands on
+            // exactly zero offset instead of drifting near it.
+            let offset = Curve::Deadzone.at(offset_fad) as i32 - 2047;
 
             // Curved so the fader's center flat zone reliably lands on the
             // attenuverter's true zero (signal fully attenuated) instead of
