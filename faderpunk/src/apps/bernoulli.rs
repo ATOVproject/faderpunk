@@ -90,7 +90,8 @@ impl AppParams for Params {
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
     div_saved: u16,
-    muted: bool,
+    muted_a: bool,
+    muted_b: bool,
     prob_saved: u16,
 }
 
@@ -98,7 +99,8 @@ impl Default for Storage {
     fn default() -> Self {
         Self {
             div_saved: 3000,
-            muted: false,
+            muted_a: false,
+            muted_b: false,
             prob_saved: 2048,
         }
     }
@@ -166,7 +168,8 @@ pub async fn run(
 
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
-    let glob_muted = app.make_global(false);
+    let glob_muted_a = app.make_global(false);
+    let glob_muted_b = app.make_global(false);
     let div_glob = app.make_global(6);
     let prob_glob = app.make_global(2048_u16);
 
@@ -183,17 +186,23 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-    let (div_saved, muted, prob_saved) =
-        storage.query(|s| (s.div_saved, s.muted, s.prob_saved));
+    let (div_saved, muted_a, muted_b, prob_saved) =
+        storage.query(|s| (s.div_saved, s.muted_a, s.muted_b, s.prob_saved));
 
-    glob_muted.set(muted);
+    glob_muted_a.set(muted_a);
+    glob_muted_b.set(muted_b);
     prob_glob.set(prob_saved);
     div_glob.set(resolution[(div_saved as usize / 345).clamp(0, resolution.len() - 1)]);
 
-    if muted {
-        leds.unset_all();
+    if muted_a {
+        leds.unset(0, Led::Button);
     } else {
         leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
+    }
+
+    if muted_b {
+        leds.unset(1, Led::Button);
+    } else {
         leds.set(1, Led::Button, led_color, LED_BRIGHTNESS);
     }
 
@@ -231,24 +240,23 @@ pub async fn run(
                     let clkn = ticks() as u32;
 
                     if clkn.is_multiple_of(cached_div) {
-                        let muted = glob_muted.get();
                         let probability = prob_glob.get();
                         let roll = die.roll();
 
-                        if !muted {
-                            if curve.at(probability) >= roll {
+                        if curve.at(probability) >= roll {
+                            if !glob_muted_a.get() {
                                 jack_a.set_high().await;
                                 leds.set(0, Led::Top, led_color, LED_BRIGHTNESS);
                                 midi.send_note_on(note_a, 4095).await;
                                 note_on_a = true;
                                 active_out = Some(0);
-                            } else {
-                                jack_b.set_high().await;
-                                leds.set(1, Led::Top, led_color, LED_BRIGHTNESS);
-                                midi.send_note_on(note_b, 4095).await;
-                                note_on_b = true;
-                                active_out = Some(1);
                             }
+                        } else if !glob_muted_b.get() {
+                            jack_b.set_high().await;
+                            leds.set(1, Led::Top, led_color, LED_BRIGHTNESS);
+                            midi.send_note_on(note_b, 4095).await;
+                            note_on_b = true;
+                            active_out = Some(1);
                         }
                     }
 
@@ -284,23 +292,42 @@ pub async fn run(
 
     let fut_buttons = async {
         loop {
-            buttons.wait_for_any_down().await;
-            let muted = glob_muted.toggle();
+            let (chan, _shift) = buttons.wait_for_any_down().await;
 
-            storage.modify_and_save(|s| {
-                s.muted = muted;
-                s.muted
-            });
+            match chan {
+                0 => {
+                    let muted = glob_muted_a.toggle();
+                    storage.modify_and_save(|s| {
+                        s.muted_a = muted;
+                        s.muted_a
+                    });
 
-            if muted {
-                midi.send_note_off(note_a).await;
-                midi.send_note_off(note_b).await;
-                jack_a.set_low().await;
-                jack_b.set_low().await;
-                leds.unset_all();
-            } else {
-                leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
-                leds.set(1, Led::Button, led_color, LED_BRIGHTNESS);
+                    if muted {
+                        midi.send_note_off(note_a).await;
+                        jack_a.set_low().await;
+                        leds.unset(0, Led::Button);
+                        leds.unset(0, Led::Top);
+                    } else {
+                        leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
+                    }
+                }
+                1 => {
+                    let muted = glob_muted_b.toggle();
+                    storage.modify_and_save(|s| {
+                        s.muted_b = muted;
+                        s.muted_b
+                    });
+
+                    if muted {
+                        midi.send_note_off(note_b).await;
+                        jack_b.set_low().await;
+                        leds.unset(1, Led::Button);
+                        leds.unset(1, Led::Top);
+                    } else {
+                        leds.set(1, Led::Button, led_color, LED_BRIGHTNESS);
+                    }
+                }
+                _ => {}
             }
         }
     };
@@ -359,22 +386,28 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let (div_saved, muted, prob_saved) =
-                        storage.query(|s| (s.div_saved, s.muted, s.prob_saved));
+                    let (div_saved, muted_a, muted_b, prob_saved) =
+                        storage.query(|s| (s.div_saved, s.muted_a, s.muted_b, s.prob_saved));
 
-                    glob_muted.set(muted);
+                    glob_muted_a.set(muted_a);
+                    glob_muted_b.set(muted_b);
                     prob_glob.set(prob_saved);
                     div_glob
                         .set(resolution[(div_saved as usize / 345).clamp(0, resolution.len() - 1)]);
 
-                    if muted {
-                        leds.unset_all();
+                    if muted_a {
+                        leds.unset(0, Led::Button);
                         midi.send_note_off(note_a).await;
-                        midi.send_note_off(note_b).await;
                         jack_a.set_low().await;
-                        jack_b.set_low().await;
                     } else {
                         leds.set(0, Led::Button, led_color, LED_BRIGHTNESS);
+                    }
+
+                    if muted_b {
+                        leds.unset(1, Led::Button);
+                        midi.send_note_off(note_b).await;
+                        jack_b.set_low().await;
+                    } else {
                         leds.set(1, Led::Button, led_color, LED_BRIGHTNESS);
                     }
                 }
