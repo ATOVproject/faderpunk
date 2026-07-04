@@ -406,17 +406,7 @@ impl VoltPerOct {
         match self {
             VoltPerOct::Standard => 410,
             VoltPerOct::Buchla => 492,
-            VoltPerOct::Custom(idx) => {
-                let cpo = curves
-                    .get(idx as usize)
-                    .map(|c| c.counts_per_oct)
-                    .unwrap_or(0);
-                if cpo == 0 {
-                    410
-                } else {
-                    cpo as i16
-                }
-            }
+            VoltPerOct::Custom(idx) => resolve_custom_cpo(idx, curves) as i16,
         }
     }
 
@@ -442,18 +432,27 @@ impl VoltPerOct {
         match self {
             VoltPerOct::Standard => 1.0,
             VoltPerOct::Buchla => 1.2,
-            VoltPerOct::Custom(idx) => {
-                let cpo = curves
-                    .get(idx as usize)
-                    .map(|c| c.counts_per_oct)
-                    .unwrap_or(0);
-                if cpo == 0 {
-                    1.0
-                } else {
-                    cpo as f32 / 409.5
-                }
-            }
+            VoltPerOct::Custom(idx) => resolve_custom_cpo(idx, curves) as f32 / 409.5,
         }
+    }
+}
+
+/// Resolve a Custom curve's calibrated counts-per-octave, clamped to a
+/// plausible hardware range and falling back to the nominal Standard value
+/// (410) if uncalibrated (0) or implausible. Shared by
+/// `counts_per_oct_with_curves`/`voltage_scale_with_curves` so their
+/// fallback rule can't drift apart, and so a corrupt or wildly-miscalibrated
+/// curve can't produce a negative `i16` count (the raw `u16` would otherwise
+/// wrap when cast for any value above `i16::MAX`).
+fn resolve_custom_cpo(idx: u8, curves: &[CustomVoOctCurve; 4]) -> u16 {
+    let cpo = curves
+        .get(idx as usize)
+        .map(|c| c.counts_per_oct)
+        .unwrap_or(0);
+    if cpo == 0 || cpo > 2000 {
+        410
+    } else {
+        cpo
     }
 }
 
@@ -1502,8 +1501,42 @@ impl MidiOut {
 
 #[cfg(test)]
 mod tests {
-    use super::{Layout, GLOBAL_CHANNELS};
+    use super::{CustomVoOctCurve, Layout, VoltPerOct, GLOBAL_CHANNELS};
     use heapless::Vec;
+
+    #[test]
+    fn custom_cpo_falls_back_to_standard_when_uncalibrated_or_implausible() {
+        let uncalibrated = [CustomVoOctCurve::default(); 4];
+        assert_eq!(
+            VoltPerOct::Custom(0).counts_per_oct_with_curves(&uncalibrated),
+            410
+        );
+
+        // A wildly-miscalibrated curve above the plausible range must not be
+        // used verbatim: cast to i16 it would otherwise wrap negative.
+        let mut wild = [CustomVoOctCurve::default(); 4];
+        wild[0].counts_per_oct = 43_000;
+        assert_eq!(VoltPerOct::Custom(0).counts_per_oct_with_curves(&wild), 410);
+        // Falls back to the same resolved 410 counts/oct as the counts
+        // variant above (410 / 409.5), not an artificial exact 1.0 — the two
+        // variants must agree on what "uncalibrated" resolves to.
+        assert!(
+            (VoltPerOct::Custom(0).voltage_scale_with_curves(&wild) - 410.0 / 409.5).abs() < 1e-6
+        );
+
+        // A plausible calibrated curve is used as-is, consistently between
+        // the counts and scale variants (410/409.5 would disagree otherwise).
+        let mut calibrated = [CustomVoOctCurve::default(); 4];
+        calibrated[0].counts_per_oct = 450;
+        assert_eq!(
+            VoltPerOct::Custom(0).counts_per_oct_with_curves(&calibrated),
+            450
+        );
+        assert!(
+            (VoltPerOct::Custom(0).voltage_scale_with_curves(&calibrated) - 450.0 / 409.5).abs()
+                < 1e-6
+        );
+    }
 
     fn mock_get_channels(app_id: u8) -> Option<usize> {
         match app_id {
