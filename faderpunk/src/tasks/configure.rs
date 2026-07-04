@@ -357,6 +357,9 @@ async fn handle_measure_voct(
     let drive_and_measure = async {
         MAX_VALUES_DAC[output_jack as usize].store(dac_counts, Ordering::Relaxed);
         embassy_time::Timer::after_millis(300).await;
+        // Clear any stale result a previous, timed-out measurement might
+        // still be holding, so it can't be mistaken for this request's answer.
+        VOCT_MEASURE_RES.reset();
         VOCT_MEASURE_REQ[aux_idx].signal(());
         with_timeout(Duration::from_secs(30), VOCT_MEASURE_RES.wait()).await
     };
