@@ -1,5 +1,5 @@
 import type { GlobalConfig } from "@atov/fp-config";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Modal,
   ModalBody,
@@ -71,6 +71,21 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
   const [wizardStep, setWizardStep] = useState<WizardStep>({ type: "setup" });
   const [manualF1, setManualF1] = useState("");
   const [manualF2, setManualF2] = useState("");
+
+  // Refreshing/closing the tab mid-calibration drops the WebUSB connection,
+  // which can leave the jack's app evicted until the device is rebooted (the
+  // firmware has no way to detect a clean session end vs. a dropped
+  // connection). Warn before the browser navigates away while the wizard is
+  // open.
+  useEffect(() => {
+    if (openCurveIdx === null) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [openCurveIdx]);
 
   const handleOpenWizard = useCallback((idx: number) => {
     setOpenCurveIdx(idx);
@@ -346,9 +361,14 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
         <ModalContent>
           {(onClose) => (
             <>
-              <ModalHeader>
-                Calibrate{" "}
-                {openCurveIdx !== null ? CURVE_LABELS[openCurveIdx] : ""}
+              <ModalHeader className="flex flex-col items-start gap-y-1">
+                <span>
+                  Calibrate{" "}
+                  {openCurveIdx !== null ? CURVE_LABELS[openCurveIdx] : ""}
+                </span>
+                <span className="text-xs font-normal text-gray-400">
+                  Don&apos;t refresh or close this page while calibrating.
+                </span>
               </ModalHeader>
 
               <ModalBody>
