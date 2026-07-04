@@ -22,6 +22,12 @@ interface Props {
 const LOW_DAC_COUNTS = 410; // 1V
 const HIGH_DAC_COUNTS = 1638; // 4V
 const OCTAVE_SPAN = 3.0; // 4V - 1V at standard 1V/oct
+// Matches the firmware's plausibility clamp (libfp's resolve_custom_cpo) so a
+// bad calibration is rejected here with a clear error instead of silently
+// falling back to the Standard gain later.
+const MAX_PLAUSIBLE_COUNTS_PER_OCT = 2000;
+// MAX11300 DAC resolution (12-bit).
+const MAX_DAC_COUNTS = 4095;
 
 type WizardMode = "auto" | "manual";
 
@@ -172,7 +178,7 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
 
     const countsPerOct = Math.round((OCTAVE_SPAN / Math.log2(f2 / f1)) * 410);
 
-    if (countsPerOct <= 0 || countsPerOct > 60000) {
+    if (countsPerOct <= 0 || countsPerOct > MAX_PLAUSIBLE_COUNTS_PER_OCT) {
       setWizardStep({
         type: "error",
         message:
@@ -188,7 +194,7 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
     // VCO can settle downward from 4V during the 800 ms UI wait, before the
     // firmware's own settle window starts.
     const confirmDacCounts = LOW_DAC_COUNTS + countsPerOct;
-    if (confirmDacCounts > 65535) {
+    if (confirmDacCounts > MAX_DAC_COUNTS) {
       setWizardStep({ type: "confirm", countsPerOct, f1, fConfirm: null });
       return;
     }
@@ -295,6 +301,16 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
     }
 
     const countsPerOct = Math.round((OCTAVE_SPAN / Math.log2(f2 / f1)) * 410);
+    if (countsPerOct <= 0 || countsPerOct > MAX_PLAUSIBLE_COUNTS_PER_OCT) {
+      setWizardStep({
+        type: "error",
+        message:
+          countsPerOct <= 0
+            ? `VCO frequency went down from 1V to 4V. Check output jack and VCO V/Oct wiring.`
+            : `Calculated gain (${countsPerOct} counts/oct) is out of range. Check connections.`,
+      });
+      return;
+    }
     setWizardStep({ type: "confirm", countsPerOct, f1, fConfirm: null });
   }, [usbDevice, wizardStep, manualF2, outputJack]);
 
