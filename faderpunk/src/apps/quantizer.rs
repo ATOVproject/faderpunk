@@ -13,8 +13,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{Config, Param, Range, Value};
 
 use crate::app::{
-    pitch_as_counts, vpo_counts_per_oct, App, AppParams, AppStorage, Led, ManagedStorage,
-    ParamStore, SceneEvent,
+    pitch_as_counts, App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent,
 };
 
 pub const CHANNELS: usize = 2;
@@ -141,7 +140,7 @@ pub async fn run(
     leds.set(1, Led::Button, led_color, Brightness::Mid);
 
     let quantizer = app.use_quantizer(range, vpo, bypass);
-    let counts_per_oct = vpo_counts_per_oct(vpo);
+    let counts_per_oct = vpo.counts_per_oct();
     let _input = app.make_in_jack(0, range).await;
     let output = app.make_out_jack(1, range).await;
     for chan in 0..2 {

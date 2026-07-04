@@ -327,7 +327,10 @@ pub async fn run(
     ];
 
     let quantizer = app.use_quantizer(range, vpo, bypass);
-    let counts_per_oct = vpo_counts_per_oct(vpo) as u32;
+    // Nominal scale for pre-quantize offsets (matches the quantizer's internal decode).
+    let counts_per_oct = vpo.counts_per_oct() as u32;
+    // Calibrated scale for the post-quantize transpose add (real DAC-counts domain).
+    let calibrated_counts_per_oct = vpo_counts_per_oct(vpo) as u32;
 
     let page_glob: Global<usize> = app.make_global(0);
     let prev_page_glob: Global<usize> = app.make_global(0);
@@ -742,7 +745,8 @@ pub async fn run(
                                     // the previously played step had legato enabled.
                                     let mut targets = target_cv_glob.get();
                                     targets[n] = (pitch_as_counts(out, range, vpo) as i32
-                                        + transpo[n] as i32 * counts_per_oct as i32 / 12)
+                                        + transpo[n] as i32 * calibrated_counts_per_oct as i32
+                                            / 12)
                                         .clamp(0, 4095) as u16;
                                     target_cv_glob.set(targets);
                                     let mut slid = sliding_glob.get();
