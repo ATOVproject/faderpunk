@@ -202,6 +202,7 @@ pub async fn run(
     let fader = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
+    let ticks = clock.get_ticker();
     let die = app.use_die();
     let quantizer = app.use_quantizer(Range::_0_10V, vpo, bypass);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
@@ -242,7 +243,6 @@ pub async fn run(
 
     // Clock-driven sequencer loop
     let fut1 = async {
-        let mut clkn: u32 = 0;
         let mut gate_on = false;
         let mut clkn_euclid: u16 = 0;
         let mut beat_reg_length: u8 = storage.query(|s| s.length_tm_length).clamp(1, 16);
@@ -265,7 +265,6 @@ pub async fn run(
             let div = div_glob.get();
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {
-                    clkn = 0;
                     clkn_euclid = 0;
                     pitch_cycle_step = 0;
                     length_cycle_step = 0;
@@ -280,6 +279,7 @@ pub async fn run(
                     register_pitch = storage.query(|s| s.register_pitch);
                 }
                 ClockEvent::Tick => {
+                    let clkn = ticks() as u32;
                     if clkn.is_multiple_of(div) {
                         clkn_euclid = (clkn_euclid + 1) % euclid_length.max(1) as u16;
                         euclid_step_glob.set(clkn_euclid);
@@ -462,7 +462,6 @@ pub async fn run(
                         }
                     }
 
-                    clkn += 1;
                 }
                 _ => {}
             }
