@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="b" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" width="10.1036" height="11.5118" viewBox="0 0 10.1036 11.5118">
+  <g id="c" data-name="assets">
+    <g>
+      <circle cx="5.0518" cy="5.7559" r="1.5" style="fill: #fff;"/>
+      <g>
+        <line x1="8.0183" y1="4.0432" x2="9.6033" y2="3.1281" style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.0006px;"/>
+        <line x1="8.0183" y1="7.4686" x2="9.6033" y2="8.3837" style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.0006px;"/>
+        <line x1="5.0518" y1="9.1814" x2="5.0518" y2="11.0115" style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.0006px;"/>
+        <line x1="2.0852" y1="7.4686" x2=".5003" y2="8.3837" style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.0006px;"/>
+        <line x1="2.0852" y1="4.0432" x2=".5003" y2="3.1281" style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.0006px;"/>
+        <line x1="5.0518" y1="2.3304" x2="5.0518" y2=".5003" style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.0006px;"/>
+      </g>
+    </g>
+  </g>
+</svg>
