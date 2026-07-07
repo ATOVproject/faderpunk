@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="b" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" width="32.9411" height="32.9411" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 32.9411 32.9411">
+  <defs>
+    <linearGradient id="e" x1="16.4705" y1="26.7699" x2="16.4705" y2="6.1699" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#161616"/>
+      <stop offset="1" stop-color="#696969"/>
+    </linearGradient>
+    <filter id="f" data-name="drop-shadow-1" x="6.3049" y="6.9297" width="24" height="24" filterUnits="userSpaceOnUse">
+      <feOffset dx="2" dy="2"/>
+      <feGaussianBlur result="g" stdDeviation="1"/>
+      <feFlood flood-color="#000" flood-opacity=".4"/>
+      <feComposite in2="g" operator="in"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+    <linearGradient id="h" x1="10.8137" y1="10.813" x2="22.1274" y2="22.1267" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#a6a7a7"/>
+    </linearGradient>
+    <linearGradient id="i" x1="18.77" y1="11.5399" x2="14.1687" y2="21.4049" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5c5c5c"/>
+      <stop offset="1" stop-color="#acacad"/>
+    </linearGradient>
+  </defs>
+  <g id="c" data-name="Main">
+    <g id="d" data-name="SetupRight">
+      <g>
+        <path d="M26.0572,6.8839c7.051,7.05,8.48,17.071,3.189,22.362-5.292,5.291-15.312,3.863-22.363-3.188C-.1678,19.0069-1.5958,8.9869,3.6952,3.6948,8.9862-1.5961,19.0072-.1672,26.0572,6.8839Z" style="fill: none; stroke: #4ef3f3; stroke-linecap: square; stroke-miterlimit: 1.5;"/>
+        <path d="M6.8832,6.8839C-.1678,13.9339-1.5958,23.9549,3.6952,29.2459c5.291,5.291,15.312,3.863,22.362-3.188,7.051-7.051,8.48-17.071,3.189-22.363C23.9542-1.5961,13.9342-.1672,6.8832,6.8839Z" style="fill: none; stroke: #4ef3f3; stroke-linecap: square; stroke-miterlimit: 1.5;"/>
+        <g>
+          <circle cx="16.4705" cy="16.4699" r="11" style="fill: #333;"/>
+          <circle cx="16.4705" cy="16.4699" r="10.3" style="fill: url(#e);"/>
+          <circle cx="16.4705" cy="16.4699" r="8.5" style="fill: #828282; filter: url(#f);"/>
+          <circle cx="16.4705" cy="16.4699" r="8.5" style="fill: #828282;"/>
+          <circle cx="16.4705" cy="16.4699" r="8" style="fill: url(#h);"/>
+          <circle cx="16.4705" cy="16.4699" r="7" style="fill: #c5c7c5;"/>
+          <circle cx="16.4705" cy="16.4699" r="5.5" style="fill: url(#i);"/>
+          <circle cx="16.4705" cy="16.4699" r="4.5"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>
