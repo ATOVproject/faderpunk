@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuverter, slew_limiter, split_signed_value, split_unsigned_value},
+    utils::{attenuverter, slew_lin, split_signed_value, split_unsigned_value, SlewState},
     AppIcon, Brightness, Color, Config, Curve, Param, Range, Value, APP_MAX_PARAMS,
 };
 
@@ -134,7 +134,7 @@ pub async fn run(
     let glob_latch_layer = app.make_global(LatchLayer::Main);
     let glob_muted = app.make_global(storage.query(|s| s.muted));
 
-    let mut oldval = 0.;
+    let mut oldval = SlewState::new();
 
     leds.set(0, Led::Button, led_color, BUTTON_BRIGHTNESS);
     if glob_muted.get() {
@@ -164,18 +164,18 @@ pub async fn run(
                 * (curve_gain.at(storage.query(|s| s.gain_saved)) as f32 * 2. / 4095. + 1.))
                 .clamp(0., 4095.) as u16;
 
-            oldval = slew_limiter(
+            oldval = slew_lin(
                 oldval,
                 inval,
                 storage.query(|s| s.fader_saved[0]),
                 storage.query(|s| s.fader_saved[1]),
-            )
-            .clamp(0., 4095.);
+            );
+            let oldval_int = oldval.value();
 
             let att = storage.query(|s| s.att_saved);
             let offset = storage.query(|s| s.offset_saved) as i32 - 2047;
 
-            let outval = ((attenuverter(oldval as u16, att) as i32 + offset) as u16).clamp(0, 4095);
+            let outval = ((attenuverter(oldval_int, att) as i32 + offset) as u16).clamp(0, 4095);
 
             let muted = glob_muted.get();
             output.set_value(if !muted {
@@ -188,7 +188,7 @@ pub async fn run(
 
             if latch_active_layer == LatchLayer::Main {
                 if range.is_bipolar() {
-                    let slew_led = split_unsigned_value(oldval as u16);
+                    let slew_led = split_unsigned_value(oldval_int);
                     leds.set(0, Led::Top, led_color, Brightness::Custom(slew_led[0]));
                     leds.set(0, Led::Bottom, led_color, Brightness::Custom(slew_led[1]));
 
@@ -200,7 +200,7 @@ pub async fn run(
                         0,
                         Led::Top,
                         led_color,
-                        Brightness::Custom((oldval as u16 / 16) as u8),
+                        Brightness::Custom((oldval_int / 16) as u8),
                     );
                     leds.set(
                         1,

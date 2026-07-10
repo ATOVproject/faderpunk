@@ -154,36 +154,23 @@ pub fn attenuverter(input: u16, modulation: u16) -> u16 {
     result.clamp(0.0, 4095.0) as u16
 }
 
-/// Slew limiter
-pub fn slew_limiter(prev: f32, input: u16, rise_rate: u16, fall_rate: u16) -> f32 {
-    let curve = Curve::Exponential;
-    let min_slew = 50.0;
-    let max_slew = 0.5;
-    let delta = input as i32 - prev as i32;
-    if delta > 0 {
-        let step = curve.at(4095 - rise_rate) as f32 / min_slew + max_slew;
-        if step < (4095.0 / min_slew + max_slew) - 10.0 {
-            if prev + step < input as f32 {
-                prev + step
-            } else {
-                input as f32
-            }
-        } else {
-            input.clamp(0, 4095) as f32
-        }
-    } else if delta < 0 {
-        let step = curve.at(4095 - fall_rate) as f32 / min_slew + max_slew;
-        if step < (4095.0 / min_slew + max_slew) - 10.0 {
-            if prev - step > input as f32 {
-                prev - step
-            } else {
-                input as f32
-            }
-        } else {
-            input.clamp(0, 4095) as f32
-        }
-    } else {
-        input.clamp(0, 4095) as f32
+/// Opaque state for [`slew_lin`] and [`slew_exp`].
+///
+/// Stores a Q8 fixed-point value internally. Use [`SlewState::value`] to read
+/// the current 12-bit output. Both slew functions share this type, so their
+/// states are interchangeable — you can switch between linear and exponential
+/// mid-stream without resetting.
+#[derive(Clone, Copy, Default)]
+pub struct SlewState(u32);
+
+impl SlewState {
+    pub fn new() -> Self {
+        Self(0)
+    }
+
+    /// Returns the current output as a plain 12-bit value.
+    pub fn value(self) -> u16 {
+        (self.0 >> 8) as u16
     }
 }
 
@@ -195,6 +182,75 @@ pub fn slew_2(prev: u16, input: u16, slew: u16, snap: i32) -> u16 {
     } else {
         smoothed
     }
+}
+
+impl From<u16> for SlewState {
+    fn from(v: u16) -> Self {
+        Self((v as u32) << 8)
+    }
+}
+
+/// Linear slew with independent rise and fall rates.
+///
+/// Advances toward `input` by a fixed step per tick, giving a constant-rate
+/// (linear) response. Step size is derived from an exponential curve applied
+/// to `rise_rate`/`fall_rate`, so the control feels logarithmic to the user.
+/// Bypasses slew entirely when the rate is at its minimum (0).
+pub fn slew_lin(prev: SlewState, input: u16, rise_rate: u16, fall_rate: u16) -> SlewState {
+    let curve = Curve::Exponential;
+    let prev = prev.0;
+    let input_fp = (input as u32) << 8;
+    // Bypass threshold in Q8: equivalent to (4095/50 + 0.5 - 10.0) * 256 = 18534
+    let bypass_fp: u32 = 4095 * 256 / 50 + 128 - 10 * 256;
+
+    let step_toward = |rate: u16| -> u32 { curve.at(4095 - rate) as u32 * 256 / 50 + 128 };
+
+    SlewState(if input_fp > prev {
+        let step_fp = step_toward(rise_rate);
+        if step_fp < bypass_fp && prev + step_fp < input_fp {
+            prev + step_fp
+        } else {
+            input_fp
+        }
+    } else if input_fp < prev {
+        let step_fp = step_toward(fall_rate);
+        if step_fp < bypass_fp && prev.saturating_sub(step_fp) > input_fp {
+            prev - step_fp
+        } else {
+            input_fp
+        }
+    } else {
+        input_fp
+    })
+}
+
+/// Exponential lag with independent rise and fall time constants.
+///
+/// Pass the returned `SlewState` back in as `prev` each tick, and call
+/// [`SlewState::value`] to read the current 12-bit output:
+///
+/// ```ignore
+/// let mut state = SlewState::new();
+/// // called every tick:
+/// state = slew_exp(state, input, slew_rise, slew_fall);
+/// let output = state.value(); // 12-bit value, ready for DAC/MIDI/LEDs
+/// ```
+pub fn slew_exp(prev: SlewState, input: u16, slew_rise: u16, slew_fall: u16) -> SlewState {
+    let prev = prev.0;
+    let input_fp = (input as u32) << 8;
+    let slew = if input_fp > prev {
+        slew_rise
+    } else {
+        slew_fall
+    };
+    let smoothed = (prev * slew as u32 + input_fp) / (slew as u32 + 1);
+    let snap = (slew >> 8) + 1;
+
+    SlewState(if ((smoothed >> 8) as u16).abs_diff(input) <= snap {
+        input_fp
+    } else {
+        smoothed
+    })
 }
 
 /// Rotate a bit pattern left within a given bit width
@@ -308,6 +364,71 @@ pub fn interp_loop_sample(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slew_state_from_u16_round_trips_through_value() {
+        assert_eq!(SlewState::from(0).value(), 0);
+        assert_eq!(SlewState::from(2047).value(), 2047);
+        assert_eq!(SlewState::from(4095).value(), 4095);
+        assert_eq!(SlewState::new().value(), 0);
+    }
+
+    #[test]
+    fn slew_lin_bypasses_at_minimum_rate() {
+        // rate 0 is the minimum: the step size exceeds the bypass threshold,
+        // so the very first tick should jump straight to the target.
+        let state = slew_lin(SlewState::new(), 4095, 0, 0);
+        assert_eq!(state.value(), 4095);
+    }
+
+    #[test]
+    fn slew_lin_at_max_rate_moves_gradually_without_overshoot() {
+        let mut state = SlewState::new();
+        let mut prev_val = 0u16;
+        // At the slowest rate the Q8 step is ~0.5/tick, so reaching full
+        // scale takes ~8190 ticks.
+        for _ in 0..8200 {
+            state = slew_lin(state, 4095, 4095, 4095);
+            let val = state.value();
+            // Monotonic, non-decreasing approach toward the target, never overshooting.
+            assert!(val >= prev_val);
+            assert!(val <= 4095);
+            prev_val = val;
+        }
+        assert_eq!(prev_val, 4095, "should have reached the target eventually");
+    }
+
+    #[test]
+    fn slew_lin_falls_toward_a_lower_target() {
+        let mut state = SlewState::from(4095);
+        for _ in 0..8200 {
+            state = slew_lin(state, 0, 4095, 4095);
+        }
+        assert_eq!(state.value(), 0);
+    }
+
+    #[test]
+    fn slew_exp_converges_to_target_and_stays_in_range() {
+        let mut state = SlewState::new();
+        for _ in 0..200 {
+            state = slew_exp(state, 4095, 3, 3);
+            assert!(state.value() <= 4095);
+        }
+        assert_eq!(state.value(), 4095);
+    }
+
+    #[test]
+    fn slew_exp_snaps_once_within_derived_threshold() {
+        // slew=3 -> derived snap = (3 >> 8) + 1 = 1, so convergence should
+        // land exactly on the target rather than asymptotically approach it.
+        let mut state = SlewState::from(1000);
+        let mut ticks = 0;
+        while state.value() != 2000 && ticks < 500 {
+            state = slew_exp(state, 2000, 3, 3);
+            ticks += 1;
+        }
+        assert_eq!(state.value(), 2000);
+    }
 
     #[test]
     fn scale_bits_12_7_full_range() {

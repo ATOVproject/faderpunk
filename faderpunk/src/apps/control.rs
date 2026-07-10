@@ -7,7 +7,10 @@ use heapless::Vec;
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, clickless, midi_gate, slew_2, split_unsigned_value},
+    utils::{
+        attenuate, attenuate_bipolar, clickless, midi_gate, slew_exp, split_unsigned_value,
+        SlewState,
+    },
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
@@ -254,7 +257,7 @@ pub async fn run(
         let mut latch = app.make_latch(fader.get_value());
         let mut main_layer_value = fader.get_value();
         let mut fad_val = 0;
-        let mut out: u16 = 0;
+        let mut out = SlewState::new();
         let mut last_midi = u32::MAX;
         let mut last_i2c = 0u16;
 
@@ -324,8 +327,9 @@ pub async fn run(
             if inverted {
                 attenuated = 4095 - attenuated;
             }
-            out = slew_2(out, attenuated, 3, 10);
-            jack.set_value(out);
+            out = slew_exp(out, attenuated, 3, 3);
+            let out_val = out.value();
+            jack.set_value(out_val);
 
             let midi_out = if muted {
                 if bipolar {
@@ -352,7 +356,7 @@ pub async fn run(
             match latch_active_layer {
                 LatchLayer::Main => {
                     if bipolar {
-                        let led1 = split_unsigned_value(out);
+                        let led1 = split_unsigned_value(out_val);
                         leds.set(0, Led::Top, led_color, Brightness::Custom(led1[0]));
                         leds.set(0, Led::Bottom, led_color, Brightness::Custom(led1[1]));
                     } else {
