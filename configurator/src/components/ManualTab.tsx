@@ -1548,6 +1548,96 @@ On load, both registers are restored at the next phrase boundary so the recalled
       },
     ],
   },
+  {
+    appId: 27,
+    title: "Sift",
+    description: "Two-channel threshold and level sequencer",
+    color: "Rose",
+    icon: "sequence-square",
+    params: [
+      "CV Steps",
+      "Gate Steps",
+      "Range",
+      "Polarity",
+      "Min CV x0.1V",
+      "Max CV x0.1V",
+      "Clock Division",
+      "Gate Length %",
+      "Color",
+      "MIDI Channel",
+      "MIDI Out",
+    ],
+    storage: [
+      "10 CV pattern seeds",
+      "10 gate pattern seeds",
+      "Selected CV pattern",
+      "Selected gate pattern",
+      "Gate density",
+      "CV level depth",
+      "CV and gate pattern select faders",
+      "Muted",
+    ],
+    text: `
+Sift is a two-channel sequencer built around stored threshold patterns. Channel 1 is the gate lane and Channel 2 is the CV lane. Both lanes have ten stored patterns that can be selected independently, making it easy to keep one rhythmic structure while changing the other.
+
+Playback follows the shared 24 PPQN transport. Gate density is sampled only at step boundaries, so changing the fader during playback does not create off-clock triggers. When a gate step passes the threshold, the gate output fires and Sift can also emit a MIDI note derived from the current CV through Faderpunk's global quantizer.
+
+The CV lane outputs stepped voltages. Its fader chooses the number of available CV levels from a musical set: 2, 3, 4, 5, 6, 8, 12, 16, 24, or 32. The CV range, polarity, minimum and maximum voltage, step counts, clock division, gate length, color, MIDI channel, and MIDI output are set from the app parameters.
+
+#### Pattern Banks
+
+Each lane stores ten deterministic patterns. Hold Shift and move the gate or CV lane fader to choose the active pattern for that lane. The corresponding bottom LED flashes once when the selection changes.
+
+* **Gate pattern select:** Shift + Fader 1
+* **CV pattern select:** Shift + Fader 2
+* **Randomize selected patterns:** Shift + Button 1
+* **Randomize all patterns:** Shift + Button 2
+
+#### Performance Notes
+
+* Button 1 resets both sequencer positions to the next first step.
+* Button 2 mutes the sequencer. Both button LEDs dim while muted.
+* Notes are released with the gate, on reset, on stop, when muted, or when a scene is loaded.
+* Scenes store the pattern bank seeds, selected pattern numbers, live fader values, and mute state.
+`,
+    channels: [
+      {
+        jackTitle: "Gate Output",
+        jackDescription: "Gate output for steps passing the threshold",
+        faderTitle: "Gate density",
+        faderDescription:
+          "Sets how many stored gate pattern values pass the threshold",
+        faderPlusShiftTitle: "Gate pattern select",
+        faderPlusShiftDescription:
+          "Selects one of the ten stored gate patterns",
+        fnTitle: "Reset",
+        fnDescription: "Resets both lane positions to the next first step",
+        fnPlusShiftTitle: "Randomize selected patterns",
+        fnPlusShiftDescription:
+          "Randomizes the currently selected gate and CV patterns",
+        ledTop: "Gate output activity",
+        ledBottom: "Gate density",
+        ledBottomPlusShift: "Selected gate pattern flash",
+      },
+      {
+        jackTitle: "CV Output",
+        jackDescription: "Stepped CV output using the configured range",
+        faderTitle: "CV level depth",
+        faderDescription:
+          "Selects the number of active CV levels: 2, 3, 4, 5, 6, 8, 12, 16, 24, or 32",
+        faderPlusShiftTitle: "CV pattern select",
+        faderPlusShiftDescription: "Selects one of the ten stored CV patterns",
+        fnTitle: "Mute",
+        fnDescription: "Mutes CV, gate, and MIDI note output",
+        fnPlusShiftTitle: "Randomize all patterns",
+        fnPlusShiftDescription:
+          "Randomizes every stored gate and CV pattern in the bank",
+        ledTop: "Current CV level",
+        ledBottom: "CV level depth",
+        ledBottomPlusShift: "Selected CV pattern flash",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
