@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.4 (2026-07-10)
+
+### Fixes
+
+- [rnd,rnd_plus] restore last color on unmute and fix mute toggling (#585)
+
 ## 0.10.3 (2026-07-06)
 
 ### Features
