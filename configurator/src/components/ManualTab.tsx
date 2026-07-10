@@ -1548,6 +1548,50 @@ On load, both registers are restored at the next phrase boundary so the recalled
       },
     ],
   },
+  {
+    appId: 27,
+    title: "Bernoulli Gate",
+    description: "Two-output Bernoulli gate synced to internal clock",
+    color: "Cyan",
+    icon: "die",
+    params: [
+      "MIDI Channel",
+      "MIDI NOTE A",
+      "MIDI NOTE B",
+      "GATE %",
+      "Color",
+      "MIDI Out",
+    ],
+    storage: ["Probability", "Resolution", "Muted A", "Muted B"],
+    text: `This app is a two-output Bernoulli gate similar to Branches from Mutable Instruments. On each clock pulse, a weighted coin flip routes a gate and MIDI note to either Output A or Output B, never both. Fader 1 sets the probability that Output A fires (the remaining chance goes to Output B). Fader 2 sets the clock resolution shared by both outputs. Button 1 mutes Output A, Button 2 mutes Output B — each output can be silenced independently while the other keeps triggering on its own turns.
+
+#### Acknowledgements
+
+* That app was submitted by: Marcel Seelinger (Discord: Terror/0)
+`,
+    channels: [
+      {
+        jackTitle: "Output A",
+        jackDescription: "Gate + MIDI note when the coin flip favors A",
+        faderTitle: "Probability",
+        faderDescription: "Sets the chance Output A fires on each clock pulse",
+        fnTitle: "Mute",
+        fnDescription: "Mutes Output A",
+        ledTop: "Output A activity indicator",
+        ledBottom: "Probability level",
+      },
+      {
+        jackTitle: "Output B",
+        jackDescription: "Gate + MIDI note when the coin flip favors B",
+        faderTitle: "Resolution",
+        faderDescription: "Sets the clock division shared by both outputs",
+        fnTitle: "Mute",
+        fnDescription: "Mutes Output B",
+        ledTop: "Output B activity indicator",
+        ledBottom: "Flashes with clock (orange: triplet, blue: straight)",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
