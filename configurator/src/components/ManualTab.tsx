@@ -947,7 +947,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
 
 In speed mode, incoming CV offsets the speed setting. In free-running mode this changes the internal interval, and in clocked mode it offsets the selected timing-resolution index. In ext clock mode, new random values are generated only when a rising edge is detected (around 1V after attenuation/mute processing). In slew mode, incoming CV modulates transition smoothing.
 
-Channel 2 is the random output lane: Fader 2 sets base speed, **Shift + Fader 2** sets attenuation, and **Button 2 + Fader 2** sets slew. Use **Shift + short press** on Button 2 to mute/unmute output, and **Shift + long press** to toggle free-running versus clocked mode.
+Channel 2 is the random output lane: Fader 2 sets base speed, **Shift + Fader 2** sets attenuation, and **Button 2 + Fader 2** sets slew. A **short press** (no Shift) on Button 2 mutes/unmutes output, and **Shift + long press** toggles free-running versus clocked mode.
 
 Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC follows the same random output stream.`,
     channels: [
@@ -975,10 +975,10 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
         faderPlusShiftDescription: "Reduces output range",
         faderPlusFnTitle: "Slew",
         faderPlusFnDescription: "Sets random transition smoothing",
-        fnTitle: "No direct action",
-        fnDescription: "",
-        fnPlusShiftTitle: "Mute / Clock mode",
-        fnPlusShiftDescription: "Short: mute, Long: toggle free/clocked",
+        fnTitle: "Mute",
+        fnDescription: "Short press mutes/unmutes output",
+        fnPlusShiftTitle: "Clock mode",
+        fnPlusShiftDescription: "Long press toggles free-running/clocked",
         ledTop: "Positive output level indicator",
         ledTopPlusShift: "Attenuation level in red",
         ledBottom: "Negative output level indicator",
