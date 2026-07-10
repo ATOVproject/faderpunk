@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate_bipolar, clickless, midi_gate, slew_2, split_unsigned_value},
+    utils::{attenuate_bipolar, clickless, midi_gate, slew_exp, split_unsigned_value, SlewState},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, Waveform, APP_MAX_PARAMS,
 };
 
@@ -246,8 +246,8 @@ pub async fn run(
         let mut lfo_pos: f32 = 0.;
 
         let mut main_layer_value = faders.get_value_at(0);
-        let mut out_r = 0;
-        let mut out_l = 0;
+        let mut out_r = SlewState::new();
+        let mut out_l = SlewState::new();
         let mut last_out: [u16; 2] = [u16::MAX, u16::MAX];
 
         let mut val_left = 0;
@@ -365,22 +365,24 @@ pub async fn run(
             };
 
             // Slew limiting
-            out_l = slew_2(out_l, out_left, 3, 4);
-            out_r = slew_2(out_r, out_right, 3, 4);
+            out_l = slew_exp(out_l, out_left, 3, 3);
+            out_r = slew_exp(out_r, out_right, 3, 3);
+            let out_l_val = out_l.value();
+            let out_r_val = out_r.value();
 
             // Output to jacks
-            jacks[0].set_value(out_l);
-            jacks[1].set_value(out_r);
+            jacks[0].set_value(out_l_val);
+            jacks[1].set_value(out_r_val);
 
             if midi_out.is_some() {
-                let gate_l = midi_gate(out_l, nrpn);
+                let gate_l = midi_gate(out_l_val, nrpn);
                 if last_out[0] != gate_l {
-                    midi.send_cc(midi_cc_l, out_l).await;
+                    midi.send_cc(midi_cc_l, out_l_val).await;
                     last_out[0] = gate_l;
                 }
-                let gate_r = midi_gate(out_r, nrpn);
+                let gate_r = midi_gate(out_r_val, nrpn);
                 if last_out[1] != gate_r {
-                    midi.send_cc(midi_cc_r, out_r).await;
+                    midi.send_cc(midi_cc_r, out_r_val).await;
                     last_out[1] = gate_r;
                 }
             }
@@ -389,10 +391,10 @@ pub async fn run(
             match latch_active_layer {
                 LatchLayer::Main => {
                     if bipolar {
-                        let led1 = split_unsigned_value(out_l);
+                        let led1 = split_unsigned_value(out_l_val);
                         leds.set(0, Led::Top, led_color, Brightness::Custom(led1[0]));
                         leds.set(0, Led::Bottom, led_color, Brightness::Custom(led1[1]));
-                        let led1 = split_unsigned_value(out_r);
+                        let led1 = split_unsigned_value(out_r_val);
                         leds.set(1, Led::Top, led_color, Brightness::Custom(led1[0]));
                         leds.set(1, Led::Bottom, led_color, Brightness::Custom(led1[1]));
                     } else {
@@ -400,14 +402,14 @@ pub async fn run(
                             0,
                             Led::Top,
                             led_color,
-                            Brightness::Custom((out_l as f32 / 16.) as u8),
+                            Brightness::Custom((out_l_val as f32 / 16.) as u8),
                         );
                         leds.unset(1, Led::Bottom);
                         leds.set(
                             1,
                             Led::Top,
                             led_color,
-                            Brightness::Custom((out_r as f32 / 16.) as u8),
+                            Brightness::Custom((out_r_val as f32 / 16.) as u8),
                         );
                         leds.unset(0, Led::Bottom);
                     }
