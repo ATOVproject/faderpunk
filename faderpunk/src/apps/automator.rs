@@ -10,7 +10,10 @@ use serde::{Deserialize, Serialize};
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, interp_loop_sample, midi_gate, slew_2, split_unsigned_value},
+    utils::{
+        attenuate, attenuate_bipolar, interp_loop_sample, midi_gate, slew_exp,
+        split_unsigned_value, SlewState,
+    },
     AppIcon, Brightness, ClockDivision, Color, Config, MidiCc, MidiChannel, MidiOut, Param, Range,
     Value, APP_MAX_PARAMS,
 };
@@ -499,7 +502,7 @@ pub async fn run(
         let mut last_midi_scaled: u32 = u32::MAX;
         let mut prev_state = state_glob.get();
         let mut prev_clock_running = clock_running_glob.get();
-        let mut prev_slew_val: u16 = loop_target_glob.get();
+        let mut prev_slew = SlewState::from(loop_target_glob.get());
         let mut elapsed_ms: u32 = 0;
         // Detect when clock_handler rolls the interpolation window forward.
         // Uses a counter rather than prev-sample value so detection is reliable
@@ -554,7 +557,7 @@ pub async fn run(
                 // Seed the interpolation prev from current CV output so the transition
                 // to the first loop sample is smooth instead of jumping from the stale
                 // seed (0 or old loop start) that clock_handler left in loop_prev_glob.
-                loop_prev_glob.set(prev_slew_val);
+                loop_prev_glob.set(prev_slew.value());
                 latch = app.make_latch(fader.get_value());
             }
 
@@ -602,10 +605,11 @@ pub async fn run(
                     interp
                 }
             };
-            prev_slew_val = match state {
-                LooperState::Playing => raw_target,
-                _ => slew_2(prev_slew_val, raw_target, 3, 10),
+            prev_slew = match state {
+                LooperState::Playing => SlewState::from(raw_target),
+                _ => slew_exp(prev_slew, raw_target, 3, 3),
             };
+            let prev_slew_val = prev_slew.value();
             output.set_value(prev_slew_val);
             last_output_glob.set(prev_slew_val);
 
