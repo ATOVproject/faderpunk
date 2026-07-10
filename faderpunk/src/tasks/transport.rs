@@ -1,9 +1,13 @@
 use embassy_executor::Spawner;
+#[cfg(feature = "midi-only")]
+use embassy_futures::join::join3;
+#[cfg(not(feature = "midi-only"))]
 use embassy_futures::join::join4;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_usb::class::midi::MidiClass;
 use embassy_usb::driver::Driver;
+#[cfg(not(feature = "midi-only"))]
 use embassy_usb::msos::{self, windows_version};
 use embassy_usb::{Builder, Config as UsbConfig};
 
@@ -11,7 +15,9 @@ use embassy_rp::uart::{Async, BufferedUart, UartTx};
 
 use crate::tasks::midi::{midi_in_task, midi_out_task};
 
+#[cfg(not(feature = "midi-only"))]
 use super::configure::start_webusb_loop;
+#[cfg(not(feature = "midi-only"))]
 use super::web_usb::{Config as WebUsbConfig, State as WebUsbState, Url, WebUsb};
 
 // 0x0 (Major) | 0x1 (Minor) | 0x0 (Patch)
@@ -23,15 +29,18 @@ const USB_VENDOR_ID: u16 = 0xf569;
 const USB_PRODUCT_ID: u16 = 0x1;
 const USB_VENDOR_NAME: &str = "ATOV";
 const USB_PRODUCT_NAME: &str = "Faderpunk";
+#[cfg(not(feature = "midi-only"))]
 const USB_INTERFACE_GUIDS: &[&str] = &["{3A8E7B0C-F569-4A21-9B7D-6E2C1F8A9D04}"];
 
 pub const USB_MAX_PACKET_SIZE: u16 = 64;
 
+#[cfg_attr(feature = "midi-only", allow(dead_code))]
 pub struct WebEndpoints<'d, D: Driver<'d>> {
     write_ep: D::EndpointIn,
     read_ep: D::EndpointOut,
 }
 
+#[cfg_attr(feature = "midi-only", allow(dead_code))]
 impl<'d, D: Driver<'d>> WebEndpoints<'d, D> {
     fn new(write_ep: D::EndpointIn, read_ep: D::EndpointOut) -> Self {
         WebEndpoints { write_ep, read_ep }
@@ -74,15 +83,24 @@ async fn run_transports(
 
     let mut usb_config = UsbConfig::new(USB_VENDOR_ID, USB_PRODUCT_ID);
     usb_config.manufacturer = Some(USB_VENDOR_NAME);
-    usb_config.product = Some(USB_PRODUCT_NAME);
+    usb_config.product = Some(if cfg!(feature = "midi-only") {
+        "Faderpunk MIDI"
+    } else {
+        USB_PRODUCT_NAME
+    });
     usb_config.serial_number = Some(serial_number);
     usb_config.device_release = USB_RELEASE_VERSION;
     usb_config.max_power = 500;
     usb_config.max_packet_size_0 = USB_MAX_PACKET_SIZE as u8;
-    usb_config.device_class = 0xEF;
-    usb_config.device_sub_class = 0x02;
-    usb_config.device_protocol = 0x01;
-    usb_config.composite_with_iads = true;
+    // With only the MIDI function present, stay a plain single-function device
+    // (bDeviceClass 0x00, no IADs) — the layout picky embedded hosts expect.
+    #[cfg(not(feature = "midi-only"))]
+    {
+        usb_config.device_class = 0xEF;
+        usb_config.device_sub_class = 0x02;
+        usb_config.device_protocol = 0x01;
+        usb_config.composite_with_iads = true;
+    }
 
     // Create embassy-usb DeviceBuilder using the driver and config.
     // It needs some buffers for building the descriptors.
@@ -91,12 +109,14 @@ async fn run_transports(
     let mut msos_descriptor = [0; 256];
     let mut control_buf = [0; 64];
 
+    #[cfg(not(feature = "midi-only"))]
     let webusb_config = WebUsbConfig {
         max_packet_size: USB_MAX_PACKET_SIZE,
         vendor_code: 1,
         landing_url: Some(Url::new("https://faderpunk.io")),
     };
 
+    #[cfg(not(feature = "midi-only"))]
     let mut webusb_state = WebUsbState::new();
 
     let mut usb_builder = Builder::new(
@@ -109,12 +129,14 @@ async fn run_transports(
     );
 
     // Add msos descriptors for windows compatibility
+    #[cfg(not(feature = "midi-only"))]
     usb_builder.msos_descriptor(windows_version::WIN8_1, 0x20);
 
     // Create classes on the builder.
     let usb_midi = MidiClass::new(&mut usb_builder, 1, 1, USB_MAX_PACKET_SIZE);
 
     // Configure WebUSB. The order is important here, to give WebUSB a later MI_xx number
+    #[cfg(not(feature = "midi-only"))]
     let webusb = WebUsb::configure_with(&mut usb_builder, &mut webusb_state, &webusb_config, |s| {
         s.with_function(|func| {
             func.msos_feature(msos::CompatibleIdFeatureDescriptor::new("WINUSB", ""));
@@ -138,7 +160,13 @@ async fn run_transports(
     // let midi_fut = start_midi_loops(usb_midi, uart0, uart1);
     let midi_out_fut = midi_out_task(usb_tx, uart0_tx, uart1_tx);
     let midi_in_fut = midi_in_task(usb_rx, uart1_rx);
-    let webusb_fut = start_webusb_loop(webusb);
 
-    join4(usb.run(), midi_in_fut, midi_out_fut, webusb_fut).await;
+    #[cfg(not(feature = "midi-only"))]
+    {
+        let webusb_fut = start_webusb_loop(webusb);
+        join4(usb.run(), midi_in_fut, midi_out_fut, webusb_fut).await;
+    }
+
+    #[cfg(feature = "midi-only")]
+    join3(usb.run(), midi_in_fut, midi_out_fut).await;
 }
