@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.1 (2026-07-10)
+
+### Fixes
+
+- [automator] correct ppqn values in Resolution param labels (#586)
+- [rnd,rnd_plus] restore last color on unmute and fix mute toggling (#585)
+
 ## 1.10.0 (2026-07-06)
 
 ### Features
