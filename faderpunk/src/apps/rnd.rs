@@ -17,7 +17,7 @@ use crate::app::{
 use libfp::{
     ext::FromValue,
     latch::LatchLayer,
-    utils::{attenuate, attenuate_bipolar, midi_gate, slew_2, split_unsigned_value},
+    utils::{attenuate, attenuate_bipolar, midi_gate, slew_exp, split_unsigned_value, SlewState},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
     Range, Value, APP_MAX_PARAMS,
 };
@@ -311,7 +311,7 @@ pub async fn run(
     };
 
     let timed_loop = async {
-        let mut out: u16 = 0;
+        let mut out = SlewState::new();
         let mut last_val: u16 = u16::MAX;
         let mut count: u32 = 0;
         loop {
@@ -335,24 +335,21 @@ pub async fn run(
             };
 
             out = if !glob_muted.get() {
-                slew_2(
-                    out,
-                    jackval,
-                    fader_curve.at(storage.query(|s| s.slew_saved)),
-                    10,
-                )
+                let slew = fader_curve.at(storage.query(|s| s.slew_saved));
+                slew_exp(out, jackval, slew, slew)
             } else if range.is_bipolar() {
-                2047
+                SlewState::from(2047)
             } else {
-                0
+                SlewState::new()
             };
+            let out_val = out.value();
 
-            output.set_value(out);
+            output.set_value(out_val);
 
             if midi_out.is_some() {
-                let gate_val = midi_gate(out, nrpn);
+                let gate_val = midi_gate(out_val, nrpn);
                 if gate_val != last_val {
-                    midi.send_cc(midi_cc, out).await;
+                    midi.send_cc(midi_cc, out_val).await;
                     last_val = gate_val;
                 }
             }
@@ -360,7 +357,7 @@ pub async fn run(
             if latch_active_layer == LatchLayer::Main {
                 let color = glob_button_color.get();
                 if range.is_bipolar() {
-                    let ledj = split_unsigned_value(out);
+                    let ledj = split_unsigned_value(out_val);
                     leds.set(0, Led::Top, color, Brightness::Custom(ledj[0]));
                     leds.set(0, Led::Bottom, color, Brightness::Custom(ledj[1]));
                 } else {
@@ -368,7 +365,7 @@ pub async fn run(
                         0,
                         Led::Top,
                         color,
-                        Brightness::Custom((out / 16) as u8),
+                        Brightness::Custom((out_val / 16) as u8),
                     );
                 }
             }
