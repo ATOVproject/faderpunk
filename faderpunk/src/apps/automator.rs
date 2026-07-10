@@ -58,7 +58,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::MidiOut)
 .add_param(Param::Enum {
     name: "Resolution",
-    variants: &["1 ppqn / 2 bars", "2 ppqn / 4 bars", "4 ppqn / 8 bars"],
+    variants: &["24 ppqn / 2 bars", "12 ppqn / 4 bars", "6 ppqn / 8 bars"],
 });
 
 pub struct Params {
