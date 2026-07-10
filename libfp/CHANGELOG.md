@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.10.4 (2026-07-10)
+
+### Fixes
+
+- [rnd,rnd_plus] restore last color on unmute and fix mute toggling (#585)
+
+## 0.10.3 (2026-07-06)
+
+### Features
+
+- [control] add Program Change button mode (#530)
+- [seq8] sequencer improvements — slide, probability, direction (#531)
+- [slew, quantizer, offset_att] add range param (#539)
+- [turing] add gate output mode (#542)
+- [tb3po] add TB-3PO acid pattern generator (#532)
+- [quantizer] add 1.2V/Oct Buchla mode, Key::Off passthrough, and per-app bypass (#543)
+- unified mute refactor across all apps (#537)
+- [automator] add CV gesture looper app (#533)
+
 ## 0.10.3-beta.1 (2026-06-23)
 
 ### Features

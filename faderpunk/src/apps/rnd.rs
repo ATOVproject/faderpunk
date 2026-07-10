@@ -233,7 +233,7 @@ pub async fn run(
                     if muted {
                         leds.unset_all();
                     } else {
-                        leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
+                        leds.set(0, Led::Button, glob_button_color.get(), Brightness::Mid);
                     }
                 }
             }
@@ -298,7 +298,7 @@ pub async fn run(
                         leds.unset(0, Led::Top);
                         leds.unset(0, Led::Bottom);
                     } else {
-                        leds.set(0, Led::Button, LED_COLOR, Brightness::Mid);
+                        leds.set(0, Led::Button, glob_button_color.get(), Brightness::Mid);
                     }
                     latched_glob.set(false);
                 }

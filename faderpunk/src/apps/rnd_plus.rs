@@ -1,5 +1,5 @@
 use embassy_futures::{
-    join::{join, join5},
+    join::{join3, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -154,6 +154,7 @@ pub async fn run(
         params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc, p.nrpn, p.color));
 
     let mut clock = app.use_clock();
+    let ticks = clock.get_ticker();
     let rnd = app.use_die();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
@@ -169,6 +170,7 @@ pub async fn run(
     let output = app.make_out_jack(1, range).await;
 
     let glob_muted = app.make_global(false);
+    let long_press_fired = app.make_global(false);
     let div_glob = app.make_global(6);
     let val_glob = app.make_global(0);
     let glob_button_color = app.make_global(Color::White);
@@ -178,8 +180,6 @@ pub async fn run(
     let glob_latch_layer = app.make_global(LatchLayer::Main);
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
-
-    let mut clkn = 0;
 
     let curve = Curve::Exponential;
     let fader_curve = Curve::Exponential;
@@ -200,10 +200,9 @@ pub async fn run(
     let fut1 = async {
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Reset => {
-                    clkn = 0;
-                }
+                ClockEvent::Reset => {}
                 ClockEvent::Tick => {
+                    let clkn = ticks() as u16;
                     let muted = storage.query(|s: &Storage| s.mute_save);
 
                     let destination = storage.query(|s| s.dest);
@@ -213,7 +212,7 @@ pub async fn run(
                     } else {
                         resolution[(base_speed as usize / 345).clamp(0, resolution.len() - 1)]
                     };
-                    if clkn % div == 0
+                    if clkn.is_multiple_of(div)
                         && !muted
                         && storage.query(|s: &Storage| s.clocked)
                         && destination != 1
@@ -234,7 +233,7 @@ pub async fn run(
                         leds.set(1, Led::Button, rnd_color, Brightness::Mid);
                     }
 
-                    if clkn % div == 0
+                    if clkn.is_multiple_of(div)
                         && storage.query(|s: &Storage| s.clocked)
                         && buttons.is_shift_pressed()
                     {
@@ -245,7 +244,6 @@ pub async fn run(
                     {
                         leds.unset(1, Led::Bottom);
                     }
-                    clkn += 1;
                 }
                 _ => {}
             }
@@ -268,37 +266,39 @@ pub async fn run(
                     });
                 }
             }
-            if chan == 1 && shift {
-                let muted = !storage.query(|s: &Storage| s.mute_save);
-
-                storage.modify_and_save(|s| {
-                    s.mute_save = muted;
-                });
-
-                if muted {
-                    leds.unset_all();
-                } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Mid);
-                }
-            }
         }
     };
     let long_press = async {
         loop {
             buttons.wait_for_long_press(1).await;
+            long_press_fired.set(true);
 
             if buttons.is_shift_pressed() {
                 let clocked = storage.query(|s: &Storage| s.clocked);
-
-                let muted = !storage.query(|s: &Storage| s.mute_save);
                 storage.modify_and_save(|s| {
                     s.clocked = !clocked;
+                });
+            }
+        }
+    };
+
+    let mute_handler = async {
+        loop {
+            buttons.wait_for_down(1).await;
+            long_press_fired.set(false);
+            buttons.wait_for_up(1).await;
+
+            if !long_press_fired.get() {
+                let muted = !storage.query(|s: &Storage| s.mute_save);
+
+                storage.modify_and_save(|s| {
                     s.mute_save = muted;
                 });
+
                 if muted {
                     leds.unset_all();
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Mid);
+                    leds.set(1, Led::Button, glob_button_color.get(), Brightness::Mid);
                 }
             }
         }
@@ -543,8 +543,9 @@ pub async fn run(
         }
     };
 
-    join(
+    join3(
         long_press,
+        mute_handler,
         join5(fut1, short_press, fader_handler, scene_handler, timed_loop),
     )
     .await;

@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.10.1 (2026-07-10)
+
+### Fixes
+
+- [automator] correct ppqn values in Resolution param labels (#586)
+- [rnd,rnd_plus] restore last color on unmute and fix mute toggling (#585)
+
+## 1.10.0 (2026-07-06)
+
+### Features
+
+- [control] add Program Change button mode (#530)
+- [seq8] sequencer improvements — slide, probability, direction (#531)
+- [slew, quantizer, offset_att] add range param (#539)
+- [turing] add gate output mode (#542)
+- [tb3po] add TB-3PO acid pattern generator (#532)
+- [quantizer] add 1.2V/Oct Buchla mode, Key::Off passthrough, and per-app bypass (#543)
+- unified mute refactor across all apps (#537)
+- [automator] add CV gesture looper app (#533)
+- improve LED feedback and add hardware test mode (#546)
+- add Invert toggle and Invert momentary button modes (#555)
+- move resolution to B2+F3, mute on release, rework Ch0 LEDs (#549)
+- add GenSeq generative sequencer app (#529)
+- phase-lock LFO position to clock ticks when clocked (#560)
+- [genseq] move octave shift to Shift+Fader 0, replace pitch TM length fader (#567)
+
+### Fixes
+
+- fix MIDI CC guard so CC 127 is reachable in LFO, LFO+, rnd, rnd+ (#538)
+- [genseq] linear pitch attenuation curve (#562)
+- CC 127 unreachable and NRPN gating resolution in LFO/RND apps (#563)
+- [tb3po] replace ms-based gate-off with PPQN tick countdown for exact 50% duty cycle (#569)
+- [euclid,fp_grids] remove stale tick_origin causing off-by-one on clock reset (#570)
+
 ## 1.10.0-beta.1 (2026-06-23)
 
 ### Features

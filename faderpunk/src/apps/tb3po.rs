@@ -7,7 +7,6 @@ use embassy_futures::{
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embassy_time::Instant;
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
@@ -347,7 +346,7 @@ pub async fn run(
     // slide_target holds quantised CV counts; output_task interpolates toward it
     let slide_target_glob: Global<u16> = app.make_global(CENTER_CV);
     let slide_active_glob: Global<bool> = app.make_global(false);
-    let gate_off_ms_glob: Global<u32> = app.make_global(0);
+    let gate_off_ticks_glob: Global<usize> = app.make_global(0);
     let gate_active_glob: Global<bool> = app.make_global(false);
     let accent_active_glob: Global<bool> = app.make_global(false);
     let last_midi_note_glob: Global<MidiNote> = app.make_global(MidiNote::default());
@@ -371,15 +370,30 @@ pub async fn run(
 
     // --- Clock task: step advance, quantise pitch, fire gate ---
     let clock_task = async {
-        let mut last_tick = Instant::now();
-        let mut cycle_ms: u32 = 500;
-
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Tick => {
                     let clkn = ticks() as usize;
                     let div = div_glob.get();
                     let in_res_mode = latch_layer_glob.get() == LatchLayer::Third;
+
+                    // Gate-off tick countdown: runs on every raw PPQN tick for
+                    // exact 50% duty cycle regardless of tempo or jitter.
+                    let ticks_remaining = gate_off_ticks_glob.get();
+                    if ticks_remaining > 0 {
+                        let new_ticks = ticks_remaining - 1;
+                        gate_off_ticks_glob.set(new_ticks);
+                        if new_ticks == 0 {
+                            let pattern = pattern_glob.get();
+                            let step = step_glob.get();
+                            if !step_is_slid(&pattern, step) {
+                                gate_active_glob.set(false);
+                                gate_out.set_low().await;
+                                midi.send_note_off(last_midi_note_glob.get()).await;
+                                accent_out.set_value(0);
+                            }
+                        }
+                    }
 
                     // Division LED: flash on at step boundary, off at half-cycle.
                     // Orange = straight (power-of-2 divisors), Blue = triplet.
@@ -399,14 +413,6 @@ pub async fn run(
                     if !clkn.is_multiple_of(div) {
                         continue;
                     }
-
-                    // Measure clock period
-                    let now = Instant::now();
-                    let delta = now.duration_since(last_tick).as_millis() as u32;
-                    if delta > 0 && delta < 5000 {
-                        cycle_ms = delta;
-                    }
-                    last_tick = now;
 
                     let pattern = pattern_glob.get();
                     let (num_steps, no_accents, muted, transpose) = storage.query(|s| {
@@ -469,7 +475,7 @@ pub async fn run(
                         gate_out.set_high().await;
                         gate_active_glob.set(true);
                         accent_out.set_value(if is_accent { 4095 } else { 0 });
-                        gate_off_ms_glob.set(cycle_ms / 2);
+                        gate_off_ticks_glob.set((div / 2).max(1));
                     }
 
                     // Apply any pending pattern regeneration (density changed since last tick)
@@ -484,7 +490,7 @@ pub async fn run(
                 ClockEvent::Reset => {
                     step_glob.set(0);
                     slide_active_glob.set(false);
-                    gate_off_ms_glob.set(0);
+                    gate_off_ticks_glob.set(0);
                     gate_active_glob.set(false);
                     gate_out.set_low().await;
                     midi.send_note_off(last_midi_note_glob.get()).await;
@@ -492,7 +498,7 @@ pub async fn run(
                 }
 
                 ClockEvent::Stop => {
-                    gate_off_ms_glob.set(0);
+                    gate_off_ticks_glob.set(0);
                     gate_active_glob.set(false);
                     gate_out.set_low().await;
                     midi.send_note_off(last_midi_note_glob.get()).await;
@@ -512,24 +518,6 @@ pub async fn run(
 
         loop {
             app.delay_millis(1).await;
-
-            // Gate-off countdown
-            let ms = gate_off_ms_glob.get();
-            if ms > 0 {
-                let new_ms = ms - 1;
-                gate_off_ms_glob.set(new_ms);
-                if new_ms == 0 {
-                    // Keep gate on during a slide (like the 303)
-                    let pattern = pattern_glob.get();
-                    let step = step_glob.get();
-                    if !step_is_slid(&pattern, step) {
-                        gate_active_glob.set(false);
-                        gate_out.set_low().await;
-                        midi.send_note_off(last_midi_note_glob.get()).await;
-                        accent_out.set_value(0);
-                    }
-                }
-            }
 
             // Pitch slide interpolation — frozen while muted
             if !storage.query(|s| s.muted) {
