@@ -10,4 +10,3 @@ pub mod leds;
 pub mod max;
 pub mod midi;
 pub mod transport;
-pub mod web_usb;

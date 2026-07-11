@@ -14,7 +14,7 @@ import { TroubleshootingPage } from "./components/TroubleshootingPage";
 const DEVICELESS_ROUTES = ["/about", "/manual", "/update", "/troubleshooting"];
 
 const App = () => {
-  const { usbDevice, isSimulator, autoConnect, connectSimulator } = useStore();
+  const { device, isSimulator, autoConnect, connectSimulator } = useStore();
   const location = useLocation();
   useConnectionHealthCheck();
   const skipAutoConnect =
@@ -34,7 +34,7 @@ const App = () => {
       return;
     }
     const attemptAutoConnect = async () => {
-      if (!usbDevice) {
+      if (!device) {
         await autoConnect();
       }
       setIsAutoConnecting(false);
@@ -52,7 +52,7 @@ const App = () => {
       <Route
         path="/"
         element={
-          usbDevice || isSimulator ? (
+          device || isSimulator ? (
             <Navigate to="/configurator" replace />
           ) : (
             <ConnectPage />
@@ -62,7 +62,7 @@ const App = () => {
       <Route
         path="/configurator"
         element={
-          usbDevice || isSimulator ? (
+          device || isSimulator ? (
             <ConfiguratorPage />
           ) : (
             <Navigate to="/" replace />

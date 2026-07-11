@@ -9,8 +9,9 @@ use embassy_rp::{
     usb::Driver,
 };
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex, ThreadModeRawMutex},
     channel::{Channel, Sender},
+    mutex::Mutex,
     pubsub::{PubSubChannel, Publisher, Subscriber},
 };
 use embassy_time::{with_timeout, Duration, Instant, Ticker, TimeoutError};
@@ -31,9 +32,18 @@ use crate::{
     events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB},
     tasks::{
         clock::{ClockInEvent, SyncEngineEvent, SYNC_ENGINE_CHANNEL},
+        configure::{CONFIG_FRAME_BUF, CONFIG_RX_CHANNEL},
         global_config::GLOBAL_CONFIG_WATCH,
     },
 };
+
+/// Virtual USB-MIDI cable carrying the configurator SysEx protocol.
+/// Cable 0 is performance MIDI.
+pub const CONFIG_CABLE: u8 = 1;
+
+/// Shared USB-MIDI sender: performance MIDI out and the config loop write
+/// through the same endpoint, interleaving per 64-byte USB packet.
+pub type SharedUsbSender<'a> = Mutex<NoopRawMutex, UsbSender<'a, Driver<'a, USB>>>;
 
 midly::stack_buffer! {
     struct MidiStreamBuffer([u8; 64]);
@@ -189,20 +199,25 @@ enum CodeIndexNumber {
     SingleByte = 0xF,
 }
 
+/// Per-packet write timeout for performance MIDI. Must cover several USB
+/// full-speed frames: embedded USB MIDI hosts may poll bulk IN endpoints on a
+/// multi-millisecond tick, and a desktop host never comes close. Packets are
+/// dropped on expiry so a stalled host cannot block DIN output.
+const USB_WRITE_TIMEOUT_MS: u64 = 5;
+
 async fn write_msg_to_usb<'a>(
-    usb_tx: &mut UsbSender<'a, Driver<'a, USB>>,
+    usb_tx: &SharedUsbSender<'a>,
     midi_ev: LiveEvent<'a>,
 ) -> Result<(), TimeoutError> {
     let mut usb_buf = [0_u8; 4];
+    // Cable nibble 0 (performance MIDI) | CIN
     usb_buf[0] = cin_from_live_event(&midi_ev) as u8;
     let mut usb_cursor = Cursor::new(&mut usb_buf[1..]);
     midi_ev.write(&mut usb_cursor).unwrap();
-    let _ = with_timeout(
-        // 1ms of timeout should be enough for USB host to have acknowledged
-        Duration::from_millis(1),
+    let _ = with_timeout(Duration::from_millis(USB_WRITE_TIMEOUT_MS), async {
         // Write including USB-MIDI CIN
-        usb_tx.write_packet(&usb_buf),
-    )
+        usb_tx.lock().await.write_packet(&usb_buf).await
+    })
     .await?;
     Ok(())
 }
@@ -275,7 +290,7 @@ pub async fn midi_distributor() {
 }
 
 pub async fn midi_out_task<'a>(
-    mut usb_tx: UsbSender<'a, Driver<'a, USB>>,
+    usb_tx: &SharedUsbSender<'a>,
     mut uart0_tx: UartTx<'static, Async>,
     mut uart1_tx: BufferedUartTx,
 ) {
@@ -315,7 +330,7 @@ pub async fn midi_out_task<'a>(
 
                         let usb_fut = async {
                             if let MidiOut([true, _, _]) = target {
-                                let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                                let _ = write_msg_to_usb(usb_tx, event).await;
                             }
                         };
                         let out1_fut = async {
@@ -373,7 +388,7 @@ pub async fn midi_out_task<'a>(
                         ];
                         for event in ccs {
                             if let MidiOut([true, _, _]) = target {
-                                let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                                let _ = write_msg_to_usb(usb_tx, event).await;
                             }
                             if let MidiOut([_, true, _]) = target {
                                 let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
@@ -387,7 +402,7 @@ pub async fn midi_out_task<'a>(
                         let event = LiveEvent::Realtime(msg.event);
                         let usb_fut = async {
                             if let MidiOut([true, _, _]) = msg.target {
-                                let _ = write_msg_to_usb(&mut usb_tx, event).await;
+                                let _ = write_msg_to_usb(usb_tx, event).await;
                             }
                         };
                         let out1_fut = async {
@@ -438,6 +453,7 @@ pub async fn midi_in_task<'a>(
     let mut uart_rx_buffer = [0u8; 64];
     let mut midi_stream = MidiStream::<MidiStreamBuffer>::default();
     let mut uart_events = Vec::<LiveEvent<'static>, 64>::new();
+    let mut config_assembler = SysExAssembler::new();
     let mut usb_nrpn_trackers: [NrpnTracker; 16] = Default::default();
     let mut din_nrpn_trackers: [NrpnTracker; 16] = Default::default();
 
@@ -499,7 +515,29 @@ pub async fn midi_in_task<'a>(
                     }
                     let packets = usb_rx_buf[..len].chunks_exact(4);
                     for packet in packets {
+                        let cable = packet[0] >> 4;
                         let msg_len = len_from_cin(packet[0]);
+                        if cable == CONFIG_CABLE {
+                            // Config cable: assemble SysEx frames for the
+                            // config loop; anything else is ignored by design.
+                            let cin = packet[0] & 0x0F;
+                            if (0x4..=0x7).contains(&cin)
+                                && config_assembler.feed(cin, &packet[1..1 + msg_len])
+                            {
+                                match Vec::from_slice(config_assembler.frame()) {
+                                    Ok(frame) => {
+                                        if CONFIG_RX_CHANNEL.try_send(frame).is_err() {
+                                            defmt::warn!("Config RX channel full, dropping frame");
+                                        }
+                                    }
+                                    Err(()) => {
+                                        defmt::warn!("Config frame too large, dropping");
+                                    }
+                                }
+                                config_assembler.clear();
+                            }
+                            continue;
+                        }
                         if msg_len == 0 {
                             continue;
                         }
@@ -596,6 +634,69 @@ pub async fn midi_in_task<'a>(
                 });
             }
         }
+    }
+}
+
+/// Reassembles SysEx frames from cable-1 USB-MIDI event packets (CIN 0x4
+/// start/continue, 0x5/0x6/0x7 end). Collects the frame body without the
+/// F0/F7 delimiters. Oversized frames are dropped whole.
+struct SysExAssembler {
+    buf: Vec<u8, CONFIG_FRAME_BUF>,
+    active: bool,
+    overflow: bool,
+}
+
+impl SysExAssembler {
+    fn new() -> Self {
+        Self {
+            buf: Vec::new(),
+            active: false,
+            overflow: false,
+        }
+    }
+
+    /// Feed the data bytes of one event packet. Returns true when a complete
+    /// frame is available via [`Self::frame`]; call [`Self::clear`] after
+    /// consuming it.
+    fn feed(&mut self, cin: u8, data: &[u8]) -> bool {
+        let mut bytes = data;
+        if !self.active {
+            // A frame must open with SysEx start
+            if bytes.first() != Some(&0xF0) {
+                return false;
+            }
+            self.buf.clear();
+            self.overflow = false;
+            self.active = true;
+            bytes = &bytes[1..];
+        }
+        // End CINs carry a trailing F7 that is not part of the body
+        let is_end = (0x5..=0x7).contains(&cin);
+        if is_end && bytes.last() == Some(&0xF7) {
+            bytes = &bytes[..bytes.len() - 1];
+        }
+        if self.buf.extend_from_slice(bytes).is_err() {
+            self.overflow = true;
+        }
+        if !is_end {
+            return false;
+        }
+        self.active = false;
+        if self.overflow {
+            defmt::warn!("Config SysEx frame overflow, dropping");
+            self.buf.clear();
+            self.overflow = false;
+            return false;
+        }
+        true
+    }
+
+    fn frame(&self) -> &[u8] {
+        &self.buf
+    }
+
+    fn clear(&mut self) {
+        self.buf.clear();
     }
 }
 

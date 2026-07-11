@@ -17,6 +17,7 @@ pub mod fp_grids_lib;
 pub mod i2c_proto;
 pub mod latch;
 pub mod quantizer;
+pub mod sysex;
 pub mod types;
 pub mod utils;
 
@@ -1102,6 +1103,7 @@ pub enum ConfigMsgIn {
         values: [Option<Value>; APP_MAX_PARAMS],
     },
     FactoryReset,
+    GetVersion,
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]
@@ -1114,6 +1116,7 @@ pub enum ConfigMsgOut<'a> {
     Layout(Layout),
     AppConfig(u8, usize, ConfigMeta<'a>),
     AppState(u8, &'a [Value]),
+    Version { major: u8, minor: u8, patch: u8 },
 }
 
 pub struct Config<const N: usize> {
