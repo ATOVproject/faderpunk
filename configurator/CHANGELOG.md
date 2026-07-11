@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.0 (2026-07-11)
+
+### Features
+
+- add Bernoulli Gate app (#573)
+- move configurator protocol from WebUSB to MIDI SysEx (#590)
+
 ## 1.11.0-beta.0 (2026-07-11)
 
 ### Features
