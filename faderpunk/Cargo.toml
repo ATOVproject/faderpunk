@@ -4,12 +4,6 @@ version = "1.10.1"
 edition = "2021"
 license = "GPL-3.0"
 
-[features]
-# Test/compatibility build: expose only the class-compliant USB MIDI function
-# (no WebUSB interface, no MS OS descriptors, no IADs) for USB hosts that
-# cannot handle the composite device layout.
-midi-only = []
-
 [dependencies]
 embedded-io-async = "0.6.1"
 embassy-embedded-hal = { version = "0.3.2", features = ["defmt"] }

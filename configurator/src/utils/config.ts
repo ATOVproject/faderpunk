@@ -20,7 +20,8 @@ import {
   receiveBatchMessages,
   sendAndReceive,
   sendMessage,
-} from "../utils/usb-protocol";
+  type FpMidiDevice,
+} from "../utils/midi-protocol";
 import { getFixedLengthParamArray } from "./utils";
 import {
   parseParamValueFromFile,
@@ -29,14 +30,17 @@ import {
 
 const LAYOUT_VERSION = 1;
 
-export const setGlobalConfig = async (dev: USBDevice, config: GlobalConfig) => {
+export const setGlobalConfig = async (
+  dev: FpMidiDevice,
+  config: GlobalConfig,
+) => {
   await sendMessage(dev, {
     tag: "SetGlobalConfig",
     value: config,
   });
 };
 
-export const getAllApps = async (dev: USBDevice) => {
+export const getAllApps = async (dev: FpMidiDevice) => {
   const response = await sendAndReceive(dev, {
     tag: "GetAllApps",
   });
@@ -75,7 +79,7 @@ export const getAllApps = async (dev: USBDevice) => {
   return parsedApps;
 };
 
-export const getAppParams = async (dev: USBDevice, layoutId: number) => {
+export const getAppParams = async (dev: FpMidiDevice, layoutId: number) => {
   const response = await sendAndReceive(dev, {
     tag: "GetAppParams",
     value: { layout_id: layoutId },
@@ -91,7 +95,7 @@ export const getAppParams = async (dev: USBDevice, layoutId: number) => {
 };
 
 export const setAppParams = async (
-  dev: USBDevice,
+  dev: FpMidiDevice,
   layoutId: number,
   values: FixedLengthArray<Value | undefined, 16>,
 ) => {
@@ -113,7 +117,7 @@ export const setAppParams = async (
 };
 
 export const getAllAppParams = async (
-  dev: USBDevice,
+  dev: FpMidiDevice,
 ): Promise<Map<number, Value[]>> => {
   const response = await sendAndReceive(dev, {
     tag: "GetAllAppParams",
@@ -133,7 +137,7 @@ export const getAllAppParams = async (
   return new Map(params);
 };
 
-export const getGlobalConfig = async (dev: USBDevice) => {
+export const getGlobalConfig = async (dev: FpMidiDevice) => {
   const response = await sendAndReceive(dev, {
     tag: "GetGlobalConfig",
   });
@@ -147,7 +151,10 @@ export const getGlobalConfig = async (dev: USBDevice) => {
   return response.value;
 };
 
-export const setAllAppParams = async (dev: USBDevice, params: ParamValues) => {
+export const setAllAppParams = async (
+  dev: FpMidiDevice,
+  params: ParamValues,
+) => {
   const allParams: [number, Value[]][] = Array.from(params.entries());
   for (let i = 0; i < allParams.length; i++) {
     const [layoutId, values] = allParams[i];
@@ -197,7 +204,7 @@ const transformLayout = (
 };
 
 export const getLayout = async (
-  dev: USBDevice,
+  dev: FpMidiDevice,
   allApps: AllApps,
 ): Promise<AppLayout> => {
   const response = await sendAndReceive(dev, {
@@ -214,7 +221,7 @@ export const getLayout = async (
 };
 
 export const setLayout = async (
-  dev: USBDevice,
+  dev: FpMidiDevice,
   layout: AppLayout,
   allApps: AllApps,
 ) => {
@@ -360,7 +367,7 @@ export const deserializeLayout = (json: string) => {
   });
 };
 
-export const factoryReset = async (dev: USBDevice) => {
+export const factoryReset = async (dev: FpMidiDevice) => {
   await sendMessage(dev, {
     tag: "FactoryReset",
   });

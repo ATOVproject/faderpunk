@@ -16,8 +16,7 @@ import { EditLayoutModal } from "./EditLayoutModal";
 import { ManualTab } from "./ManualTab";
 
 const ConfiguratorPageContent = () => {
-  const { apps, config, setLayout, layout, usbDevice, isSimulator } =
-    useStore();
+  const { apps, config, setLayout, layout, device, isSimulator } = useStore();
   const { modalConfig, setModalConfig } = useModalContext();
   const navigate = useNavigate();
 
@@ -33,10 +32,10 @@ const ConfiguratorPageContent = () => {
   );
 
   useEffect(() => {
-    if (!usbDevice && !isSimulator) {
+    if (!device && !isSimulator) {
       navigate("/");
     }
-  }, [navigate, usbDevice, isSimulator]);
+  }, [navigate, device, isSimulator]);
 
   const initialLayout = modalConfig.recallLayout || layout;
 

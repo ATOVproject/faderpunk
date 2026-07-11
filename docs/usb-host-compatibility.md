@@ -1,6 +1,13 @@
 # USB host compatibility (CME H4MIDI investigation)
 
-Status as of 2026-07-10. Branch: `feat/midi-only-usb`.
+**Status: RESOLVED** — the config protocol moved from a WebUSB vendor interface
+to MIDI SysEx on virtual cable 2 (branch `feat/midi-only-usb`), making
+Faderpunk a pure class-compliant USB-MIDI device. The 2-cable layout was
+confirmed working with the H4MIDI on hardware. The `midi-only` cargo feature
+described below was an interim workaround and has been removed. The
+investigation below is kept for reference.
+
+Investigation as of 2026-07-10.
 
 ## Problem
 
