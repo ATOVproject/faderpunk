@@ -199,6 +199,12 @@ enum CodeIndexNumber {
     SingleByte = 0xF,
 }
 
+/// Per-packet write timeout for performance MIDI. Must cover several USB
+/// full-speed frames: embedded USB MIDI hosts may poll bulk IN endpoints on a
+/// multi-millisecond tick, and a desktop host never comes close. Packets are
+/// dropped on expiry so a stalled host cannot block DIN output.
+const USB_WRITE_TIMEOUT_MS: u64 = 5;
+
 async fn write_msg_to_usb<'a>(
     usb_tx: &SharedUsbSender<'a>,
     midi_ev: LiveEvent<'a>,
@@ -208,14 +214,10 @@ async fn write_msg_to_usb<'a>(
     usb_buf[0] = cin_from_live_event(&midi_ev) as u8;
     let mut usb_cursor = Cursor::new(&mut usb_buf[1..]);
     midi_ev.write(&mut usb_cursor).unwrap();
-    let _ = with_timeout(
-        // 1ms of timeout should be enough for USB host to have acknowledged
-        Duration::from_millis(1),
-        async {
-            // Write including USB-MIDI CIN
-            usb_tx.lock().await.write_packet(&usb_buf).await
-        },
-    )
+    let _ = with_timeout(Duration::from_millis(USB_WRITE_TIMEOUT_MS), async {
+        // Write including USB-MIDI CIN
+        usb_tx.lock().await.write_packet(&usb_buf).await
+    })
     .await?;
     Ok(())
 }
