@@ -68,7 +68,7 @@ export interface Inputs {
 }
 
 const SettingsForm = ({ config }: SettingsFormProps) => {
-  const { usbDevice, isSimulator, deviceVersion, setConfig } = useStore();
+  const { device, isSimulator, deviceVersion, setConfig } = useStore();
 
   // Helper to extract MIDI output config values
   const getMidiOutValues = (index: number) => {
@@ -147,20 +147,20 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
 
   const onSubmit: SubmitHandler<Inputs> = useCallback(
     async (formValues: Inputs) => {
-      if (usbDevice && !isSimulator) {
+      if (device && !isSimulator) {
         const config = transformFormToGlobalConfig(formValues);
-        await setGlobalConfig(usbDevice, config);
+        await setGlobalConfig(device, config);
         setConfig(config);
       } else if (isSimulator) {
         const config = transformFormToGlobalConfig(formValues);
         setConfig(config);
       }
-      if (usbDevice || isSimulator) {
+      if (device || isSimulator) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       }
     },
-    [usbDevice, isSimulator, setConfig],
+    [device, isSimulator, setConfig],
   );
 
   useEffect(() => {

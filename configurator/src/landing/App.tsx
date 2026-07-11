@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { compare, major, minor } from "semver";
 
 import { useLatestFirmwareVersion } from "../useLatestFirmwareVersion";
+import { connectToFaderPunk, getDeviceVersion } from "../utils/midi-protocol";
 
 const FADERPUNK_VENDOR_ID = 0xf569;
 const FADERPUNK_PRODUCT_ID = 0x1;
@@ -14,6 +15,9 @@ type State =
   | { status: "idle" }
   | { status: "connecting" }
   | { status: "redirecting" }
+  // Web MIDI worked but no Faderpunk answered — likely old (WebUSB-only)
+  // firmware, so offer the legacy USB path.
+  | { status: "midi-not-found" }
   | {
       status: "update-available";
       currentVersion: string;
@@ -25,7 +29,9 @@ export default function App() {
   const [state, setState] = useState<State>({ status: "idle" });
   const [connectionLost, setConnectionLost] = useState(false);
   const latestVersion = useLatestFirmwareVersion();
+  const webMidiSupported = !!navigator.requestMIDIAccess;
   const webUsbSupported = !!navigator.usb;
+  const transportSupported = webMidiSupported || webUsbSupported;
 
   useEffect(() => {
     if (sessionStorage.getItem("fp-connection-lost")) {
@@ -43,7 +49,91 @@ export default function App() {
     }
   }, [latestVersion]);
 
-  async function connectAndRedirect() {
+  function routeToVersion(deviceVersion: string) {
+    // Determine target path for the matching configurator
+    let configuratorPath: string;
+
+    if (compare(deviceVersion, latestVersion) > 0) {
+      // Device version is newer than latest stable → beta
+      configuratorPath = "/beta/";
+    } else if (compare(deviceVersion, "1.7.0") < 0) {
+      // Device version is older than 1.7.0 → legacy
+      configuratorPath = "/1.6/";
+    } else {
+      configuratorPath = `/${major(deviceVersion)}.${minor(deviceVersion)}/`;
+    }
+
+    // Firmware is outdated → show update choice
+    if (compare(deviceVersion, latestVersion) < 0) {
+      setState({
+        status: "update-available",
+        currentVersion: deviceVersion,
+        configuratorPath,
+      });
+      return;
+    }
+
+    // Firmware is current or newer → auto-redirect
+    setState({ status: "redirecting" });
+    setTimeout(() => {
+      window.location.href = configuratorPath;
+    }, 500);
+  }
+
+  function handleConnectError(error: unknown) {
+    const err = error as Error;
+    console.error("Connection error:", err);
+
+    if (err.name === "NotFoundError") {
+      setState({
+        status: "error",
+        message:
+          "No device selected. Please try again and select your Faderpunk device.",
+      });
+    } else if (err.name === "NotAllowedError" || err.name === "SecurityError") {
+      setState({
+        status: "error",
+        message:
+          "MIDI access was denied. Please allow MIDI (including SysEx) and try again.",
+      });
+    } else {
+      setState({
+        status: "error",
+        message: `Failed to connect: ${err.message || "Unknown error"}`,
+      });
+    }
+  }
+
+  // Current firmware presents as a MIDI device and answers a version query
+  // over SysEx.
+  async function connectMidi() {
+    setState({ status: "connecting" });
+
+    if (!webMidiSupported) {
+      // No Web MIDI (or very old browser): go straight to the legacy USB path
+      await connectUsb();
+      return;
+    }
+
+    try {
+      const device = await connectToFaderPunk();
+      routeToVersion(getDeviceVersion(device));
+    } catch (error: unknown) {
+      if (
+        (error as Error).message?.includes("No Faderpunk MIDI device found")
+      ) {
+        setState({ status: "midi-not-found" });
+        return;
+      }
+      handleConnectError(error);
+    }
+  }
+
+  // Firmware before the MIDI-SysEx configurator exposed a WebUSB interface;
+  // its USB device descriptor carries the firmware version. This is a
+  // separate button/click because the Web MIDI permission prompt consumes
+  // the user activation WebUSB would need.
+  async function connectUsb() {
     setState({ status: "connecting" });
 
     try {
@@ -69,56 +159,20 @@ export default function App() {
 
       await device.close();
 
-      // Determine target path for the matching configurator
-      let configuratorPath: string;
-
-      if (compare(deviceVersion, latestVersion) > 0) {
-        // Device version is newer than latest stable → beta
-        configuratorPath = "/beta/";
-      } else if (compare(deviceVersion, "1.7.0") < 0) {
-        // Device version is older than 1.7.0 → legacy
-        configuratorPath = "/1.6/";
-      } else {
-        configuratorPath = `/${major(deviceVersion)}.${minor(deviceVersion)}/`;
-      }
-
-      // Firmware is outdated → show update choice
-      if (compare(deviceVersion, latestVersion) < 0) {
-        setState({
-          status: "update-available",
-          currentVersion: deviceVersion,
-          configuratorPath,
-        });
-        return;
-      }
-
-      // Firmware is current or newer → auto-redirect
-      setState({ status: "redirecting" });
-      setTimeout(() => {
-        window.location.href = configuratorPath;
-      }, 500);
+      routeToVersion(deviceVersion);
     } catch (error: unknown) {
       const err = error as Error;
-      console.error("Connection error:", err);
-
-      if (err.name === "NotFoundError") {
-        setState({
-          status: "error",
-          message:
-            "No device selected. Please try again and select your Faderpunk device.",
-        });
-      } else if (err.message?.includes("WebUSB")) {
+      if (err.message?.includes("WebUSB")) {
+        console.error("Connection error:", err);
         setState({ status: "error", message: err.message });
-      } else {
-        setState({
-          status: "error",
-          message: `Failed to connect: ${err.message || "Unknown error"}`,
-        });
+        return;
       }
+      handleConnectError(error);
     }
   }
 
-  const showButton = state.status !== "update-available";
+  const showButton =
+    state.status !== "update-available" && state.status !== "midi-not-found";
   const isLoading =
     state.status === "connecting" || state.status === "redirecting";
 
@@ -135,8 +189,8 @@ export default function App() {
 
             {showButton && (
               <button
-                onClick={connectAndRedirect}
-                disabled={isLoading || !webUsbSupported}
+                onClick={connectMidi}
+                disabled={isLoading || !transportSupported}
                 className="cursor-pointer rounded-sm bg-white px-8 py-2.5 text-sm font-semibold text-black shadow-[0px_0px_11px_2px_#B7B2B240] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {state.status === "connecting" ? (
@@ -188,11 +242,35 @@ export default function App() {
 
         {state.status === "error" && <ErrorBanner>{state.message}</ErrorBanner>}
 
-        {!webUsbSupported && state.status === "idle" && (
+        {!transportSupported && state.status === "idle" && (
           <ErrorBanner>
-            WebUSB is not supported in this browser. Please use Chrome, Edge, or
-            another Chromium-based browser.
+            Web MIDI is not supported in this browser. Please use Chrome, Edge,
+            Firefox, or another browser with Web MIDI support.
           </ErrorBanner>
+        )}
+
+        {state.status === "midi-not-found" && (
+          <div className="border-pink-fp mt-4 rounded-sm border bg-[#1a1a2a] p-5 text-center">
+            <p className="mb-4 text-sm text-[#d4d4d8]">
+              No Faderpunk MIDI device answered. If your device runs older
+              firmware, connect it via USB instead.
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={connectUsb}
+                disabled={!webUsbSupported}
+                className="cursor-pointer rounded-sm bg-white px-6 py-2 text-xs font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Older firmware? Connect via USB
+              </button>
+              <button
+                onClick={() => setState({ status: "idle" })}
+                className="cursor-pointer rounded-sm border border-gray-400 bg-transparent px-6 py-2 text-xs font-semibold text-gray-400 transition-opacity hover:text-[#d4d4d8] hover:opacity-90"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
         )}
 
         {state.status === "update-available" && (

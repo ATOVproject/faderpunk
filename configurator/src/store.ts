@@ -6,7 +6,8 @@ import {
   connectToFaderPunk,
   getDeviceVersion,
   tryAutoConnect,
-} from "./utils/usb-protocol";
+  type FpMidiDevice,
+} from "./utils/midi-protocol";
 import {
   getAllAppParams,
   getAllApps,
@@ -75,7 +76,7 @@ interface State {
   setLayout: (layout: AppLayout) => void;
   setParams: (id: number, newParams: Value[]) => void;
   setAllParams: (newParams: ParamValues) => void;
-  usbDevice: USBDevice | undefined;
+  device: FpMidiDevice | undefined;
 }
 
 const initialState = {
@@ -85,7 +86,7 @@ const initialState = {
   isSimulator: false,
   layout: undefined,
   params: undefined,
-  usbDevice: undefined,
+  device: undefined,
 };
 
 export const useStore = create<State>((set, get) => ({
@@ -103,7 +104,7 @@ export const useStore = create<State>((set, get) => ({
       const layout = await getLayout(device, apps);
       const config = await getGlobalConfig(device);
 
-      set({ apps, config, deviceVersion, layout, params, usbDevice: device });
+      set({ apps, config, deviceVersion, layout, params, device });
       return true;
     } catch (error) {
       console.error("Auto-connect failed:", error);
@@ -121,7 +122,7 @@ export const useStore = create<State>((set, get) => ({
       const params = await getAllAppParams(device);
       const layout = await getLayout(device, apps);
       const config = await getGlobalConfig(device);
-      set({ apps, config, deviceVersion, layout, params, usbDevice: device });
+      set({ apps, config, deviceVersion, layout, params, device });
     } catch (error) {
       console.error("Failed to connect to device:", error);
       // Reset state on failure
@@ -131,7 +132,7 @@ export const useStore = create<State>((set, get) => ({
         deviceVersion: undefined,
         layout: undefined,
         params: undefined,
-        usbDevice: undefined,
+        device: undefined,
       });
     }
   },
@@ -141,7 +142,7 @@ export const useStore = create<State>((set, get) => ({
       isSimulator: true,
       apps: DEMO_APPS,
       deviceVersion: "simulator",
-      usbDevice: undefined,
+      device: undefined,
       layout: saved?.layout ?? makeEmptyLayout(),
       params: saved?.params ?? new Map(),
       config: saved?.config ?? defaultGlobalConfig,

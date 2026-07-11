@@ -132,7 +132,7 @@ export const EditLayoutModal = ({
   onClose,
   modalConfig,
 }: Props) => {
-  const { usbDevice, isSimulator, apps, setParams, setAllParams, setConfig } =
+  const { device, isSimulator, apps, setParams, setAllParams, setConfig } =
     useStore();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [layout, setItems] = useState<AppLayout>(initialLayout);
@@ -254,18 +254,18 @@ export const EditLayoutModal = ({
   const handleSave = useCallback(async () => {
     setSubmitting(true);
     try {
-      if (usbDevice && apps && !isSimulator) {
-        const newLayout = await setLayout(usbDevice, layout, apps);
+      if (device && apps && !isSimulator) {
+        const newLayout = await setLayout(device, layout, apps);
         if (modalConfig.mode === ModalMode.RecallSetup) {
           if (recallParams && modalConfig.recallParams) {
             // Wait 1s for the apps to spawn before setting params
             await delay(1000);
-            await setAllAppParams(usbDevice, modalConfig.recallParams);
-            const params = await getAllAppParams(usbDevice);
+            await setAllAppParams(device, modalConfig.recallParams);
+            const params = await getAllAppParams(device);
             setAllParams(params);
           }
           if (recallConfig && modalConfig.recallConfig) {
-            await setGlobalConfig(usbDevice, modalConfig.recallConfig);
+            await setGlobalConfig(device, modalConfig.recallConfig);
             setConfig(modalConfig.recallConfig);
           }
         } else {
@@ -282,7 +282,7 @@ export const EditLayoutModal = ({
             // Wait 500ms for the new app(s) to spawn before reading params
             await delay(500);
             for (const id of newIds) {
-              const params = await getAppParams(usbDevice, id);
+              const params = await getAppParams(device, id);
               setParams(id, params);
             }
           }
@@ -331,7 +331,7 @@ export const EditLayoutModal = ({
     }
   }, [
     apps,
-    usbDevice,
+    device,
     isSimulator,
     initialLayout,
     layout,

@@ -15,19 +15,19 @@ import { delay } from "../../utils/utils";
 import { useNavigate } from "react-router-dom";
 
 export const FactoryReset = () => {
-  const { disconnect, usbDevice } = useStore();
+  const { disconnect, device } = useStore();
   const navigate = useNavigate();
   const [isOpen, setOpen] = useState(false);
   const [isSure, setSure] = useState(false);
   const [isLoading, setLoading] = useState(false);
 
   const handleConfirm = useCallback(async () => {
-    if (!usbDevice) {
+    if (!device) {
       return;
     }
     setLoading(true);
     try {
-      await factoryReset(usbDevice);
+      await factoryReset(device);
       // 3 seconds should be plenty enough
       await delay(5000);
       setSure(false);
@@ -39,7 +39,7 @@ export const FactoryReset = () => {
     } finally {
       setLoading(false);
     }
-  }, [disconnect, navigate, usbDevice]);
+  }, [disconnect, navigate, device]);
 
   const handleOpenChange = useCallback((shouldOpen: boolean) => {
     setSure(false);

@@ -7,7 +7,7 @@ Guidance for coding agents (Claude Code, etc.) and humans working in this repo.
 
 ## Project Overview
 
-Faderpunk is an embedded Rust eurorack/MIDI synthesizer controller running on RP2350B (Raspberry Pi Pico 2). It provides 16 channels with faders, buttons, RGB LEDs, and CV jacks, each capable of running independent "apps" (LFOs, sequencers, MIDI converters, etc.). Configuration is done via a React/TypeScript WebUSB interface.
+Faderpunk is an embedded Rust eurorack/MIDI synthesizer controller running on RP2350B (Raspberry Pi Pico 2). It provides 16 channels with faders, buttons, RGB LEDs, and CV jacks, each capable of running independent "apps" (LFOs, sequencers, MIDI converters, etc.). Configuration is done via a React/TypeScript Web MIDI interface (SysEx on a dedicated virtual MIDI cable).
 
 **Key Technologies:**
 - Embedded Rust with `no_std`
@@ -15,7 +15,7 @@ Faderpunk is an embedded Rust eurorack/MIDI synthesizer controller running on RP
 - RP2350B microcontroller (overclocked to 250MHz)
 - MAX11300 programmable mixed-signal I/O
 - FM24V10 FRAM for persistent storage
-- WebUSB protocol (COBS framing + Postcard serialization)
+- Config protocol over MIDI SysEx on virtual cable 2 (7-bit-packed Postcard)
 - React 19 + Vite + Zustand for configurator
 
 ## Git workflow (every task)
@@ -139,7 +139,7 @@ has unit tests (`cargo test --lib -p libfp`) — run them when you touch it.
 - `tasks/midi.rs` - MIDI I/O (USB and DIN)
 - `tasks/fram.rs` - FRAM storage operations
 - `tasks/i2c.rs` - I2C communication (16n protocol)
-- `tasks/web_usb.rs` - WebUSB protocol handling
+- `tasks/configure.rs` - Config protocol (SysEx over USB MIDI cable 2)
 - `tasks/clock.rs` - Clock generation and synchronization
 
 **Core 1 (Application Logic):** Runs user-facing apps as Embassy tasks. Each app instance is a separate task receiving hardware events and sending commands.
@@ -197,11 +197,12 @@ Apps can implement scene storage by implementing serialization with `postcard`. 
 
 ### Protocol Design
 
-**WebUSB Communication:**
+**Config Communication (MIDI SysEx):**
 1. Messages are serialized using `postcard` (compact binary format)
-2. Framed using COBS (Consistent Overhead Byte Stuffing) for reliable packet boundaries
+2. Wrapped in SysEx frames on USB-MIDI virtual cable 2: `F0 7D 46 50 01 <7-bit-packed payload> F7` (codec shared between `libfp/src/sysex.rs` and `configurator/src/utils/sysex.ts` — keep in sync)
 3. Type definitions in `libfp` are shared between firmware and configurator via generated bindings
 4. Messages flow bidirectionally: configurator → firmware (commands) and firmware → configurator (state updates)
+5. The device is a pure class-compliant USB-MIDI device (no vendor interfaces) so embedded USB MIDI hosts work — see `docs/usb-host-compatibility.md`
 
 **Key Message Types:**
 - `ConfigureMessage` - Device commands (set layout, parameters, global config)
@@ -246,14 +247,14 @@ pub async fn run(app: &App<CHANNELS>) {
 ## Configurator Architecture
 
 Located in `configurator/` directory. Key files:
-- `src/store.ts` - Zustand state (USB device, apps, layout, config)
-- `src/utils/usb-protocol.ts` - WebUSB communication layer
+- `src/store.ts` - Zustand state (MIDI device, apps, layout, config)
+- `src/utils/midi-protocol.ts` - Web MIDI (SysEx) communication layer
 - `src/components/input/` - Parameter input components for different types
 - `src/components/settings/` - Global settings panels
 
 **State Flow:**
-1. User connects device → WebUSB establishes connection → device sends current state
-2. User modifies layout/params → state updates → message sent to device via WebUSB
+1. User connects device → Web MIDI port discovery probes with GetVersion → device sends current state
+2. User modifies layout/params → state updates → message sent to device via SysEx
 3. Device sends acknowledgment → UI updates accordingly
 
 **Adding New Parameter UI:**
@@ -284,9 +285,9 @@ When adding new parameter types to apps, create a corresponding input component 
 - Logging is zero-cost in release builds
 
 **Configurator:**
-- Use browser DevTools console for WebUSB protocol debugging
+- Use browser DevTools console for config protocol debugging
 - State inspection via React DevTools
-- Network tab shows USB message flow
+- A MIDI monitor (e.g. `aseqdump -p <port>` on Linux) shows the raw SysEx traffic on the config port
 
 ## Important Patterns
 
@@ -307,7 +308,7 @@ When adding new parameter types to apps, create a corresponding input component 
 Apps can store parameters using `AppParams<N>` in CONFIG. Parameters are:
 - Serialized with postcard
 - Stored in FRAM per scene
-- Automatically synced via WebUSB
+- Automatically synced via the config protocol
 - Type definitions shared with configurator
 
 ### Safety Considerations
@@ -343,7 +344,7 @@ manually in a Chromium browser with a live device connection.
 5. **Exit signals**: Apps must use `select(run(), exit_handler())` pattern for clean shutdown.
 6. **FRAM address ranges**: Don't overlap storage regions in `storage.rs`.
 7. **Atomic ordering**: Use `Ordering::Relaxed` for non-synchronized state, `Acquire`/`Release` for synchronized.
-8. **WebUSB requirements**: Must use Chromium-based browser; HTTPS required for non-localhost.
+8. **Web MIDI requirements**: Browser must support Web MIDI with SysEx (Chromium, Firefox); HTTPS required for non-localhost. The user must grant the MIDI/SysEx permission.
 9. **Commit trailers**: One-line conventional-commit messages; do not add a `Co-authored-by: Claude` trailer.
 
 ## File Structure Summary
@@ -364,13 +365,15 @@ libfp/               # Shared library (no_std)
 ├── src/
 │   ├── lib.rs       # Core types (Layout, Config, Params)
 │   ├── types.rs     # Protocol message types
+│   ├── sysex.rs     # Config-over-SysEx codec (mirrored in configurator)
 │   └── quantizer.rs # Musical quantization
 
 configurator/        # Web configurator (React + TypeScript)
 ├── src/
 │   ├── App.tsx      # Main app component
 │   ├── store.ts     # Zustand state management
-│   ├── utils/usb-protocol.ts  # WebUSB communication
+│   ├── utils/midi-protocol.ts  # Web MIDI (SysEx) communication
+│   ├── utils/sysex.ts          # SysEx codec (mirror of libfp/src/sysex.rs)
 │   └── components/  # UI components
 
 gen-bindings/        # TypeScript binding generator
