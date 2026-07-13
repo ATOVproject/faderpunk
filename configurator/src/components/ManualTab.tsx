@@ -944,8 +944,9 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
 - speed (yellow)
 - ext clock (pink)
 - slew (cyan)
+- sample & hold (white)
 
-In speed mode, incoming CV offsets the speed setting. In free-running mode this changes the internal interval, and in clocked mode it offsets the selected timing-resolution index. In ext clock mode, new random values are generated only when a rising edge is detected (around 1V after attenuation/mute processing). In slew mode, incoming CV modulates transition smoothing.
+In speed mode, incoming CV offsets the speed setting. In free-running mode this changes the internal interval, and in clocked mode it offsets the selected timing-resolution index. In ext clock mode, new random values are generated only when a rising edge is detected (around 1V after attenuation/mute processing). In slew mode, incoming CV modulates transition smoothing. In sample & hold mode, the random generator is bypassed: on each trigger (same clock/free-run timing as the other modes), the attenuated CV input is sampled and held as the output value instead of a new random roll, turning Random+ into a clocked sample-and-hold.
 
 Channel 2 is the random output lane: Fader 2 sets base speed, **Shift + Fader 2** sets attenuation, and **Button 2 + Fader 2** sets slew. A **short press** (no Shift) on Button 2 mutes/unmutes output, and **Shift + long press** toggles free-running versus clocked mode.
 
@@ -961,7 +962,8 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
         fnTitle: "CV input mute",
         fnDescription: "Mutes/unmutes the CV lane",
         fnPlusShiftTitle: "CV destination",
-        fnPlusShiftDescription: "Speed (yellow), ext clock (pink), slew (cyan)",
+        fnPlusShiftDescription:
+          "Speed (yellow), ext clock (pink), slew (cyan), sample & hold (white)",
         ledTop: "Positive input level indicator",
         ledTopPlusShift: "Destination color on button",
         ledBottom: "Negative input level indicator",
