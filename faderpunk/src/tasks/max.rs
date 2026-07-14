@@ -69,11 +69,6 @@ pub static MAX_VALUES_DAC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static MAX_VALUES_ADC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
 pub static CALIBRATING: AtomicBool = AtomicBool::new(false);
 
-/// Set by `message_loop` when a port is reconfigured: the DAC data register may
-/// have been rewritten (e.g. `gpo_configure_level` uses it for the GPO level),
-/// so `process_channel_values` must not trust its last-written cache for that port.
-static DAC_CACHE_DIRTY: [AtomicBool; 20] = [const { AtomicBool::new(false) }; 20];
-
 #[derive(Clone)]
 #[allow(dead_code)]
 pub enum MaxCmd {
@@ -340,11 +335,6 @@ async fn process_channel_values(
     max_driver: &'static SharedMax,
     calibration_data: Option<MaxCalibration>,
 ) {
-    // Last calibrated value written to each DAC port. Rewriting an unchanged
-    // value is a no-op at the chip, so those SPI writes are skipped to reduce
-    // bus traffic and internal MAX11300 activity. The loop rate is unchanged.
-    let mut last_written_dac: [Option<u16>; 20] = [None; 20];
-
     loop {
         // Hopefully we can write it at about 2kHz
         Timer::after_micros(500).await;
@@ -379,13 +369,7 @@ async fn process_channel_values(
                         target_dac_value
                     };
 
-                    if DAC_CACHE_DIRTY[i].swap(false, Ordering::Relaxed) {
-                        last_written_dac[i] = None;
-                    }
-                    if last_written_dac[i] != Some(calibrated_value) {
-                        max.dac_set_value(port, calibrated_value).await.unwrap();
-                        last_written_dac[i] = Some(calibrated_value);
-                    }
+                    max.dac_set_value(port, calibrated_value).await.unwrap();
                 }
                 Mode::Mode7(config) => {
                     let value = max.adc_get_value(port).await.unwrap();
@@ -426,9 +410,6 @@ async fn message_loop(max_driver: &'static SharedMax) {
         // tries to touch it. See `MaxCmd::touches_fader_port` for details.
         if msg.touches_fader_port() {
             continue;
-        }
-        if let MaxCmd::ConfigurePort { port, .. } = &msg {
-            DAC_CACHE_DIRTY[*port as usize].store(true, Ordering::Relaxed);
         }
         let mut max = max_driver.lock().await;
 
