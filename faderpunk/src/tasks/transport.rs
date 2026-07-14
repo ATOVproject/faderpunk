@@ -4,13 +4,13 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_usb::class::midi::MidiClass;
 use embassy_usb::{Builder, Config as UsbConfig};
 
 use embassy_rp::uart::{Async, BufferedUart, UartTx};
 
 use crate::tasks::configure::start_config_loop;
 use crate::tasks::midi::{midi_in_task, midi_out_task};
+use crate::usb_midi::{JackNameHandler, MidiClass};
 use crate::version::USB_RELEASE_VERSION;
 
 const USB_VENDOR_ID: u16 = 0xf569;
@@ -68,6 +68,8 @@ async fn run_transports(
     let mut config_descriptor = [0; 256];
     let mut bos_descriptor = [0; 128];
     let mut control_buf = [0; 64];
+    // Serves the jack name strings; must outlive the USB device.
+    let mut jack_name_handler = JackNameHandler::new();
 
     let mut usb_builder = Builder::new(
         usb_driver,
@@ -79,7 +81,14 @@ async fn run_transports(
     );
 
     // Two virtual cables: cable 0 = performance MIDI, cable 1 = config SysEx
-    let usb_midi = MidiClass::new(&mut usb_builder, 2, 2, USB_MAX_PACKET_SIZE);
+    let usb_midi = MidiClass::new(
+        &mut usb_builder,
+        2,
+        2,
+        USB_MAX_PACKET_SIZE,
+        &["Faderpunk", "Faderpunk Config"],
+        &mut jack_name_handler,
+    );
 
     let (usb_tx, usb_rx) = usb_midi.split();
     // Shared between performance MIDI out and the config loop. All consumers
