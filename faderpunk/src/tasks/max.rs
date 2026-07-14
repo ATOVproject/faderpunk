@@ -11,7 +11,7 @@ use embassy_sync::{
     channel::{Channel, Sender},
     mutex::Mutex,
 };
-use embassy_time::{Instant, Timer};
+use embassy_time::Timer;
 use libfp::{
     latch::{AnalogLatch, LatchLayer},
     types::MaxCalibration,
@@ -40,13 +40,6 @@ use crate::{
 
 const MAX_CHANNEL_SIZE: usize = 16;
 
-/// Diagnostic instrumentation for fader ADC noise. When enabled, `read_fader`
-/// logs per-window noise statistics and every latch emission over defmt/RTT so
-/// noise can be characterized on a normally-operating device (probe attached).
-/// Set to `false` for release builds — all diagnostic code compiles out.
-const FADER_DIAG: bool = false;
-/// Scan rounds per diagnostic stats window (64 rounds ≈ 1s at ~60Hz scan rate).
-const FADER_DIAG_WINDOW_ROUNDS: u16 = 64;
 /// Number of ADC reads taken within one mux dwell (~1ms). The MAX11300 sweep
 /// refreshes the fader port's data register every sweep (~tens of µs), so each
 /// read is a fresh conversion; the median of the burst rejects sweep glitches.
@@ -207,14 +200,6 @@ async fn read_fader(
 
     let mut chan: usize = 0;
 
-    // Per-channel diagnostic stats over one window (see FADER_DIAG)
-    let mut diag_min = [u16::MAX; 16];
-    let mut diag_max = [0u16; 16];
-    let mut diag_burst_spread = [0u16; 16];
-    let mut diag_emits = [0u8; 16];
-    let mut diag_publishes = [0u8; 16];
-    let mut diag_rounds: u16 = 0;
-
     loop {
         // global config mode: Alt, normal mode: Main
         let active_layer = if is_scene_button_pressed() {
@@ -242,13 +227,6 @@ async fn read_fader(
         sorted.sort_unstable();
         let val = sorted[FADER_BURST_READS / 2];
 
-        if FADER_DIAG {
-            diag_min[channel] = diag_min[channel].min(val);
-            diag_max[channel] = diag_max[channel].max(val);
-            let spread = sorted[FADER_BURST_READS - 1] - sorted[0];
-            diag_burst_spread[channel] = diag_burst_spread[channel].max(spread);
-        }
-
         // Scale a bit across the dead-zone (~4087 -> 4095) using integer math
         let val = (((val as u32 * 1002) / 1000) as u16).clamp(0, 4095);
 
@@ -263,27 +241,9 @@ async fn read_fader(
         if let Some(new_value) = latch.update(val, active_layer, target_value) {
             let diff = (new_value as i32 - target_value as i32).abs();
 
-            if FADER_DIAG {
-                diag_emits[channel] = diag_emits[channel].saturating_add(1);
-                defmt::info!(
-                    "FDIAG emit t={=u64}us ch={=usize} burst={} median={=u16} target={=u16} out={=u16} diff={=i32} latched={=bool}",
-                    Instant::now().as_micros(),
-                    channel,
-                    burst,
-                    val,
-                    target_value,
-                    new_value,
-                    diff,
-                    latch.is_latched()
-                );
-            }
-
             match active_layer {
                 LatchLayer::Main => {
                     if diff >= 4 {
-                        if FADER_DIAG {
-                            diag_publishes[channel] = diag_publishes[channel].saturating_add(1);
-                        }
                         event_publisher
                             .publish(InputEvent::FaderChange(channel))
                             .await;
@@ -302,31 +262,6 @@ async fn read_fader(
         }
 
         chan = (chan + 1) % 16;
-
-        // End of a full scan round: flush the diagnostic window if due
-        if FADER_DIAG && chan == 0 {
-            diag_rounds += 1;
-            if diag_rounds >= FADER_DIAG_WINDOW_ROUNDS {
-                let mut range = [0u16; 16];
-                for i in 0..16 {
-                    range[i] = diag_max[i].saturating_sub(diag_min[i]);
-                }
-                defmt::info!(
-                    "FDIAG win t={=u64}us range={} burst_spread={} emits={} pubs={}",
-                    Instant::now().as_micros(),
-                    range,
-                    diag_burst_spread,
-                    diag_emits,
-                    diag_publishes
-                );
-                diag_min = [u16::MAX; 16];
-                diag_max = [0u16; 16];
-                diag_burst_spread = [0u16; 16];
-                diag_emits = [0u8; 16];
-                diag_publishes = [0u8; 16];
-                diag_rounds = 0;
-            }
-        }
     }
 }
 
