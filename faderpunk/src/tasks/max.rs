@@ -6,11 +6,7 @@ use embassy_rp::{
     spi::{self, Async, Spi},
     Peri,
 };
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
-    channel::{Channel, Sender},
-    mutex::Mutex,
-};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::Timer;
 use libfp::{
     latch::{AnalogLatch, LatchLayer},
@@ -24,21 +20,19 @@ use max11300::{
     },
     ConfigurePort, IntoConfiguredPort, Max11300, Mode0Port, Ports,
 };
-use portable_atomic::{AtomicBool, AtomicU16, Ordering};
+use portable_atomic::Ordering;
 use static_cell::StaticCell;
 
-use crate::{
-    events::{InputEvent, EVENT_PUBSUB},
-    tasks::{
-        buttons::is_scene_button_pressed,
-        global_config::{
-            get_fader_value_from_config, get_global_config, set_global_config_via_chan,
-        },
-    },
-    Irqs,
+use fp_core::events::{InputEvent, EVENT_PUBSUB};
+use fp_core::tasks::buttons::is_scene_button_pressed;
+use fp_core::tasks::global_config::{
+    get_fader_value_from_config, get_global_config, set_global_config_via_chan,
+};
+use fp_core::tasks::max::{
+    MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
 };
 
-const MAX_CHANNEL_SIZE: usize = 16;
+use crate::Irqs;
 
 type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
 type MuxPins = (
@@ -48,52 +42,7 @@ type MuxPins = (
     Peri<'static, PIN_15>,
 );
 
-pub type MaxSender = Sender<'static, CriticalSectionRawMutex, MaxCmd, MAX_CHANNEL_SIZE>;
-pub static MAX_CHANNEL: Channel<CriticalSectionRawMutex, MaxCmd, MAX_CHANNEL_SIZE> = Channel::new();
-
 static MAX: StaticCell<SharedMax> = StaticCell::new();
-pub static MAX_VALUES_FADER: [AtomicU16; 16] = [const { AtomicU16::new(0) }; 16];
-pub static MAX_VALUES_DAC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
-pub static MAX_VALUES_ADC: [AtomicU16; 20] = [const { AtomicU16::new(0) }; 20];
-pub static CALIBRATING: AtomicBool = AtomicBool::new(false);
-
-#[derive(Clone)]
-#[allow(dead_code)]
-pub enum MaxCmd {
-    ConfigurePort {
-        port: Port,
-        mode: Mode,
-        gpo_level: Option<u16>,
-    },
-    GpoSetHigh {
-        port: Port,
-    },
-    GpoSetLow {
-        port: Port,
-    },
-    /// Drive these Mode3 ports high in a single SPI transaction. All bits
-    /// in the same GPODAT register word latch simultaneously at the chip.
-    GpoSetHighMany(heapless::Vec<Port, 4>),
-    /// Drive these Mode3 ports low in a single SPI transaction.
-    GpoSetLowMany(heapless::Vec<Port, 4>),
-}
-
-impl MaxCmd {
-    /// Returns `true` if this command targets the fader port (`Port::P16`),
-    /// which must never be reconfigured or driven as GPO while the fader task
-    /// owns it. Callers can in theory construct a command with `Port::P16`,
-    /// but `message_loop` drops such messages before touching the chip.
-    fn touches_fader_port(&self) -> bool {
-        match self {
-            MaxCmd::ConfigurePort { port, .. }
-            | MaxCmd::GpoSetHigh { port }
-            | MaxCmd::GpoSetLow { port } => *port == Port::P16,
-            MaxCmd::GpoSetHighMany(ports) | MaxCmd::GpoSetLowMany(ports) => {
-                ports.contains(&Port::P16)
-            }
-        }
-    }
-}
 
 pub async fn start_max(
     spawner: &Spawner,
