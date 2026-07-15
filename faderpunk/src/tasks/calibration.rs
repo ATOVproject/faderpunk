@@ -10,15 +10,16 @@ use libfp::{
     Brightness, Color, CALIBRATION_SCALE_FACTOR,
 };
 
-use crate::app::Led;
-use crate::events::{InputEvent, EVENT_PUBSUB};
-use crate::storage::store_calibration_data;
-use crate::tasks::buttons::BUTTON_PRESSED;
-use crate::tasks::i2c::{I2cFollowerMessage, I2cFollowerReceiver};
-use crate::tasks::leds::{set_led_mode, LedMode, LedMsg};
-use crate::tasks::max::{MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_FADER};
+use fp_core::app::Led;
+use fp_core::events::{InputEvent, EVENT_PUBSUB};
+use fp_core::storage::store_calibration_data;
+use fp_core::tasks::buttons::BUTTON_PRESSED;
+use fp_core::tasks::leds::{set_led_mode, LedMode, LedMsg};
+use fp_core::tasks::max::{
+    MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER,
+};
 
-use super::max::MAX_VALUES_DAC;
+use crate::tasks::i2c::{I2cFollowerMessage, I2cFollowerReceiver};
 
 const CHANNELS: usize = 16;
 const VALUES_OUT_0_10V: [u16; 3] = [819, 1638, 3276];

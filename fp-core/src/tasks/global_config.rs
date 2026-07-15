@@ -1,6 +1,6 @@
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, watch::Watch};
+use embassy_sync::watch::Watch;
 use embassy_time::Timer;
 use libfp::{AuxJackMode, GlobalConfig, Key, Note, LED_BRIGHTNESS_RANGE};
 use max11300::config::{ConfigMode0, ConfigMode3, Mode, Port};
@@ -12,7 +12,7 @@ use crate::tasks::buttons::is_scene_button_pressed;
 use crate::tasks::input_handlers::{show_config_top_leds, show_scale_keyboard};
 use crate::tasks::leds::LED_BRIGHTNESS;
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
-use crate::QUANTIZER;
+use crate::{CoreLocalRawMutex, QUANTIZER};
 
 // Receivers: unified clock engine (1), clock gatekeeper (1)
 // global config loop (1), config storer (1), MIDI loops (2)
@@ -33,7 +33,7 @@ fn swing_to_val(swing: i8) -> u16 {
 }
 
 pub static GLOBAL_CONFIG_WATCH: Watch<
-    ThreadModeRawMutex,
+    CoreLocalRawMutex,
     GlobalConfig,
     GLOBAL_CONFIG_WATCH_SUBSCRIBERS,
 > = Watch::new_with(GlobalConfig::new());

@@ -1,7 +1,6 @@
 use core::cell::RefCell;
 
 use embassy_futures::select::{select, Either};
-use embassy_rp::clocks::RoscRng;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
 use max11300::config::{
@@ -305,6 +304,12 @@ pub struct Clock {
     subscriber: ClockSubscriber,
 }
 
+impl Default for Clock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Clock {
     pub fn new() -> Self {
         let subscriber = CLOCK_PUBSUB.subscriber().unwrap();
@@ -606,7 +611,7 @@ impl<T: Sized + Copy + Default> Default for Global<T> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct Die;
 
 impl Die {
@@ -615,10 +620,7 @@ impl Die {
     }
     /// Returns a random number between 0 and 4095.
     pub fn roll(&self) -> u16 {
-        let b1 = RoscRng::next_u8();
-        let b2 = RoscRng::next_u8();
-        let random_u16 = u16::from_le_bytes([b1, b2]);
-        random_u16 % 4096
+        crate::platform::rand_u16() % 4096
     }
 }
 
