@@ -178,7 +178,7 @@ pub async fn store_global_config(config: &GlobalConfig) {
     let res = write_with(GLOBAL_CONFIG_RANGE.start, |buf| cbor_encode(config, buf)).await;
 
     if res.is_err() {
-        defmt::error!("Could not save GlobalConfig");
+        error!("Could not save GlobalConfig");
     }
 }
 
@@ -199,7 +199,7 @@ pub async fn store_runtime_state(state: &RuntimeState) {
     let res = write_with(RUNTIME_STATE_RANGE.start, |buf| cbor_encode(state, buf)).await;
 
     if res.is_err() {
-        defmt::error!("Could not save runtime state");
+        error!("Could not save runtime state");
     }
 }
 
@@ -219,7 +219,7 @@ pub async fn store_layout(layout: &Layout) {
     let res = write_with(LAYOUT_RANGE.start, |buf| cbor_encode(layout, buf)).await;
 
     if res.is_err() {
-        defmt::error!("Could not save Layout");
+        error!("Could not save Layout");
     }
 }
 
@@ -253,7 +253,7 @@ pub async fn store_calibration_data(data: &MaxCalibration) {
     .await;
 
     if res.is_err() {
-        defmt::error!("Could not save MaxCalibration");
+        error!("Could not save MaxCalibration");
     }
 }
 
@@ -270,19 +270,19 @@ pub async fn load_calibration_data() -> Option<MaxCalibration> {
                 if file.version == 2 {
                     return Some(file.data);
                 } else {
-                    defmt::warn!("Unsupported calibration file version: {}", file.version);
+                    warn!("Unsupported calibration file version: {}", file.version);
                     return None;
                 }
             }
         } else if let Ok(old_data) = from_bytes::<MaxCalibrationV1>(data) {
-            defmt::info!("Old V1 calibration data found, converting to new format.");
+            info!("Old V1 calibration data found, converting to new format.");
             let new_data = MaxCalibration::from(old_data);
             // Re-save the data in the new V2 format for next time
             store_calibration_data(&new_data).await;
             return Some(new_data);
         }
 
-        defmt::warn!("Failed to deserialize calibration data as any known format.");
+        warn!("Failed to deserialize calibration data as any known format.");
     }
     None
 }
@@ -290,10 +290,9 @@ pub async fn load_calibration_data() -> Option<MaxCalibration> {
 async fn erase_range(range: Range<u32>) {
     // Prevent erasing the calibration range
     if range.start < CALIBRATION_RANGE.end && range.end > CALIBRATION_RANGE.start {
-        defmt::error!(
+        error!(
             "CRITICAL: Attempted to erase Protected Calibration Range ({:?}) with request ({:?})",
-            CALIBRATION_RANGE,
-            range
+            CALIBRATION_RANGE, range
         );
         return;
     }
@@ -320,13 +319,13 @@ async fn erase_range(range: Range<u32>) {
         .await;
 
         if res.is_err() {
-            defmt::error!("Could not erase range starting at {}", addr);
+            error!("Could not erase range starting at {}", addr);
             return;
         }
 
         if bytes_written == 0 {
             // Avoid infinite loop if write_with provides a zero-length buffer
-            defmt::error!("Erase stalled: 0 bytes written at address {}", addr);
+            error!("Erase stalled: 0 bytes written at address {}", addr);
             return;
         }
         addr += bytes_written as u32;
@@ -347,7 +346,7 @@ async fn write_schema_header(version: u8) {
     .await;
 
     if res.is_err() {
-        defmt::error!("Could not save FRAM schema header");
+        error!("Could not save FRAM schema header");
     }
 }
 
@@ -407,7 +406,7 @@ async fn migrate_legacy_global_config() {
     drop(guard);
     config.validate();
     store_global_config(&config).await;
-    defmt::info!("Migrated GlobalConfig: postcard → CBOR");
+    info!("Migrated GlobalConfig: postcard → CBOR");
 }
 
 /// One-shot re-encode of `Layout` from postcard to CBOR. The struct shape
@@ -423,7 +422,7 @@ async fn migrate_legacy_layout() {
     drop(guard);
     layout.validate(get_channels);
     store_layout(&layout).await;
-    defmt::info!("Migrated Layout: postcard → CBOR");
+    info!("Migrated Layout: postcard → CBOR");
 }
 
 /// One-shot re-encode of `RuntimeState` from postcard to CBOR.
@@ -436,7 +435,7 @@ async fn migrate_legacy_runtime_state() {
     };
     drop(guard);
     store_runtime_state(&state).await;
-    defmt::info!("Migrated RuntimeState: postcard → CBOR");
+    info!("Migrated RuntimeState: postcard → CBOR");
 }
 
 /// Runs FRAM migrations needed to bring stored data forward to
@@ -466,7 +465,7 @@ pub async fn migrate_fram() {
 }
 
 /// Erases all data from FRAM except for the calibration data and reboots.
-pub async fn factory_reset() {
+pub async fn factory_reset() -> ! {
     erase_range(GLOBAL_CONFIG_RANGE).await;
     erase_range(RUNTIME_STATE_RANGE).await;
     erase_range(LAYOUT_RANGE).await;
@@ -477,7 +476,7 @@ pub async fn factory_reset() {
     // Wait a bit
     Timer::after_millis(100).await;
     // Then restart the unit
-    cortex_m::peripheral::SCB::sys_reset();
+    crate::platform::sys_reset();
 }
 
 #[derive(Clone, Copy)]
@@ -683,7 +682,7 @@ impl<P: AppParams> ParamStore<P> {
         .await;
 
         if res.is_err() {
-            defmt::error!("Could not save ParamStore on app {}", self.app_id);
+            error!("Could not save ParamStore on app {}", self.app_id);
         }
     }
 
@@ -798,7 +797,7 @@ impl<S: AppStorage> ManagedStorage<S> {
         .await;
 
         if res.is_err() {
-            defmt::error!("Could not save ManagedStorage");
+            error!("Could not save ManagedStorage");
         }
     }
 
