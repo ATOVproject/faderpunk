@@ -60,11 +60,11 @@ impl LayoutManager {
     /// Mark `start_channel` as held (or release it) for a temporary V/Oct
     /// calibration eviction, so ordinary layout reconciliation leaves it
     /// alone until it's released.
-    pub(crate) async fn set_held(&self, start_channel: usize, held: bool) {
+    pub async fn set_held(&self, start_channel: usize, held: bool) {
         self.held.lock().await[start_channel] = held;
     }
 
-    pub(crate) async fn exit_app(&self, start_channel: usize) {
+    pub async fn exit_app(&self, start_channel: usize) {
         let mut layout = self.layout.lock().await;
         if layout[start_channel].is_some() {
             layout[start_channel] = None;
@@ -90,7 +90,7 @@ impl LayoutManager {
     /// nothing is currently running there. Used to restore an app that was
     /// temporarily evicted (e.g. for V/Oct calibration) without touching the
     /// persisted layout.
-    pub(crate) async fn spawn_one(
+    pub async fn spawn_one(
         &'static self,
         start_channel: usize,
         app_id: u8,

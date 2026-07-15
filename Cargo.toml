@@ -1,5 +1,11 @@
 [workspace]
-members = ["faderpunk", "libfp"]
+members = ["faderpunk", "fp-core", "fp-sim", "libfp"]
+# fp-sim is host-only and enables std features on shared dependencies
+# (critical-section, embassy-sync). Keeping it out of the default members
+# prevents those features from leaking into the thumb build when running
+# `cargo build/clippy --bin faderpunk` from the workspace root. Build the
+# simulator explicitly with `cargo build -p fp-sim`.
+default-members = ["faderpunk", "fp-core", "libfp"]
 
 exclude = ["gen-bindings"]
 

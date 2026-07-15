@@ -61,6 +61,7 @@ smart-leds = "0.4.0"
 static_cell = "2.1.1"
 ws2812-async = "0.3.0"
 
+fp-core = { path = "../fp-core", features = ["defmt"] }
 libfp = { path = "../libfp" }
 
 [lints.clippy]

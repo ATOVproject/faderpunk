@@ -8,10 +8,11 @@ use embassy_rp::peripherals::{
 };
 use embassy_rp::Peri;
 use embassy_time::Timer;
-use portable_atomic::{AtomicBool, Ordering};
+use portable_atomic::Ordering;
 
-use crate::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
-use crate::tasks::clock::{TransportCmd, TRANSPORT_CMD_CHANNEL};
+use fp_core::events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB};
+use fp_core::tasks::buttons::BUTTON_PRESSED;
+use fp_core::tasks::clock::{TransportCmd, TRANSPORT_CMD_CHANNEL};
 
 const LONG_PRESS_DURATION_MS: u64 = 500;
 
@@ -36,25 +37,8 @@ type Buttons = (
     Peri<'static, PIN_5>,
 );
 
-pub static BUTTON_PRESSED: [AtomicBool; 18] = [const { AtomicBool::new(false) }; 18];
-
 pub async fn start_buttons(spawner: &Spawner, buttons: Buttons) {
     spawner.spawn(run_buttons(buttons)).unwrap();
-}
-
-#[inline(always)]
-pub fn is_channel_button_pressed(channel: usize) -> bool {
-    BUTTON_PRESSED[channel.clamp(0, 15)].load(Ordering::Relaxed)
-}
-
-#[inline(always)]
-pub fn is_shift_button_pressed() -> bool {
-    BUTTON_PRESSED[17].load(Ordering::Relaxed)
-}
-
-#[inline(always)]
-pub fn is_scene_button_pressed() -> bool {
-    BUTTON_PRESSED[16].load(Ordering::Relaxed)
 }
 
 // Process button using debounce and state synchronization logic

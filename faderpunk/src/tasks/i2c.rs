@@ -4,7 +4,7 @@ use embassy_rp::i2c::{self, Async};
 use embassy_rp::i2c_slave::{self, Command, I2cSlave};
 use embassy_rp::peripherals::{I2C0, PIN_20, PIN_21};
 use embassy_rp::Peri;
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::Timer;
 use embedded_hal_async::i2c::I2c;
@@ -24,12 +24,13 @@ use libfp::{
 };
 use postcard::{from_bytes, to_slice};
 
-use crate::tasks::calibration::run_calibration;
-use crate::tasks::global_config::get_global_config;
-use crate::tasks::max::{MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC};
-use crate::Irqs;
+use fp_core::tasks::global_config::get_global_config;
+use fp_core::tasks::i2c::I2cLeaderMessage;
+use fp_core::tasks::max::{MaxCmd, CALIBRATING, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_DAC};
+use fp_core::I2C_LEADER_CHANNEL;
 
-use super::max::MAX_VALUES_DAC;
+use crate::tasks::calibration::run_calibration;
+use crate::Irqs;
 
 pub type I2cDevice = I2cSlave<'static, I2C0>;
 
@@ -42,20 +43,7 @@ pub enum I2cFollowerMessage {
     ChannelUpdate(usize),
 }
 
-pub enum I2cLeaderMessage {
-    FaderValue(usize, u16, Range),
-}
-
-const I2C_LEADER_CHANNEL_SIZE: usize = 16;
 const I2C_FOLLOWER_CHANNEL_SIZE: usize = 8;
-
-pub static I2C_LEADER_CHANNEL: Channel<
-    CriticalSectionRawMutex,
-    I2cLeaderMessage,
-    I2C_LEADER_CHANNEL_SIZE,
-> = Channel::new();
-pub type I2cLeaderSender =
-    Sender<'static, CriticalSectionRawMutex, I2cLeaderMessage, I2C_LEADER_CHANNEL_SIZE>;
 
 pub static I2C_FOLLOWER_CHANNEL: Channel<
     ThreadModeRawMutex,
