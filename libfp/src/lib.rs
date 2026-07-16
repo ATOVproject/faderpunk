@@ -1193,7 +1193,11 @@ pub enum ConfigMsgOut<'a> {
     Layout(Layout),
     AppConfig(u8, usize, ConfigMeta<'a>),
     AppState(u8, &'a [Value]),
-    Version { major: u8, minor: u8, patch: u8 },
+    Version {
+        major: u8,
+        minor: u8,
+        patch: u8,
+    },
     /// Frequency measured on the selected AUX input during V/Oct calibration.
     VoOctFrequency {
         freq_hz: f32,
