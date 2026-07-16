@@ -12,7 +12,7 @@ import { Select, SelectItem } from "@heroui/select";
 
 import { useStore } from "../../store";
 import { setGlobalConfig } from "../../utils/config";
-import { sendAndReceive } from "../../utils/usb-protocol";
+import { sendAndReceive } from "../../utils/midi-protocol";
 import { ButtonPrimary, ButtonSecondary } from "../Button";
 
 interface Props {
@@ -68,7 +68,7 @@ const parseFreq = (s: string): number | null => {
 };
 
 export const VoOctCurvesSettings = ({ config }: Props) => {
-  const { usbDevice, isSimulator, setConfig } = useStore();
+  const { device, isSimulator, setConfig } = useStore();
 
   const [openCurveIdx, setOpenCurveIdx] = useState<number | null>(null);
   const [wizardMode, setWizardMode] = useState<WizardMode>("auto");
@@ -78,7 +78,7 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
   const [manualF1, setManualF1] = useState("");
   const [manualF2, setManualF2] = useState("");
 
-  // Refreshing/closing the tab mid-calibration drops the WebUSB connection,
+  // Refreshing/closing the tab mid-calibration drops the MIDI connection,
   // which can leave the jack's app evicted until the device is rebooted (the
   // firmware has no way to detect a clean session end vs. a dropped
   // connection). Warn before the browser navigates away while the wizard is
@@ -107,20 +107,20 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
     if (
       (wizardStep.type === "manual_enter1" ||
         wizardStep.type === "manual_enter2") &&
-      usbDevice
+      device
     ) {
-      void sendAndReceive(usbDevice, {
+      void sendAndReceive(device, {
         tag: "ReleaseVoOctOutput",
         value: { output_jack: parseInt(outputJack, 10) },
       }).catch(() => {});
     }
     setOpenCurveIdx(null);
-  }, [wizardStep, usbDevice, outputJack]);
+  }, [wizardStep, device, outputJack]);
 
   // --- Automated flow ---
 
   const handleStartAuto = useCallback(async () => {
-    if (!usbDevice || openCurveIdx === null) return;
+    if (!device || openCurveIdx === null) return;
 
     const jack = parseInt(outputJack, 10);
     const aux = parseInt(auxInput, 10);
@@ -129,7 +129,7 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
     setWizardStep({ type: "measuring1" });
     let r1;
     try {
-      r1 = await sendAndReceive(usbDevice, {
+      r1 = await sendAndReceive(device, {
         tag: "MeasureVoOct",
         value: {
           output_jack: jack,
@@ -154,7 +154,7 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
     setWizardStep({ type: "measuring2", f1 });
     let r2;
     try {
-      r2 = await sendAndReceive(usbDevice, {
+      r2 = await sendAndReceive(device, {
         tag: "MeasureVoOct",
         value: {
           output_jack: jack,
@@ -204,7 +204,7 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
     // Pre-settle: bring the output to confirmDacCounts now. Errors are ignored;
     // MeasureVoOct will reconfigure the port regardless.
     try {
-      await sendAndReceive(usbDevice, {
+      await sendAndReceive(device, {
         tag: "SetVoOctOutput",
         value: { output_jack: jack, dac_counts: confirmDacCounts },
       });
@@ -216,7 +216,7 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
 
     let rConfirm;
     try {
-      rConfirm = await sendAndReceive(usbDevice, {
+      rConfirm = await sendAndReceive(device, {
         tag: "MeasureVoOct",
         value: {
           output_jack: jack,
@@ -242,16 +242,16 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
       f1,
       fConfirm: rConfirm.value.freq_hz,
     });
-  }, [usbDevice, openCurveIdx, outputJack, auxInput]);
+  }, [device, openCurveIdx, outputJack, auxInput]);
 
   // --- Manual flow ---
 
   const handleStartManual = useCallback(async () => {
-    if (!usbDevice || openCurveIdx === null) return;
+    if (!device || openCurveIdx === null) return;
 
     const jack = parseInt(outputJack, 10);
     try {
-      const r = await sendAndReceive(usbDevice, {
+      const r = await sendAndReceive(device, {
         tag: "SetVoOctOutput",
         value: { output_jack: jack, dac_counts: LOW_DAC_COUNTS },
       });
@@ -262,16 +262,16 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
     }
     setManualF1("");
     setWizardStep({ type: "manual_enter1" });
-  }, [usbDevice, openCurveIdx, outputJack]);
+  }, [device, openCurveIdx, outputJack]);
 
   const handleManualNext = useCallback(async () => {
-    if (!usbDevice) return;
+    if (!device) return;
     const f1 = parseFreq(manualF1);
     if (f1 === null) return;
 
     const jack = parseInt(outputJack, 10);
     try {
-      const r = await sendAndReceive(usbDevice, {
+      const r = await sendAndReceive(device, {
         tag: "SetVoOctOutput",
         value: { output_jack: jack, dac_counts: HIGH_DAC_COUNTS },
       });
@@ -282,16 +282,16 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
     }
     setManualF2("");
     setWizardStep({ type: "manual_enter2", f1 });
-  }, [usbDevice, outputJack, manualF1]);
+  }, [device, outputJack, manualF1]);
 
   const handleManualCalculate = useCallback(async () => {
-    if (!usbDevice || wizardStep.type !== "manual_enter2") return;
+    if (!device || wizardStep.type !== "manual_enter2") return;
     const f2 = parseFreq(manualF2);
     if (f2 === null) return;
 
     const { f1 } = wizardStep;
     try {
-      await sendAndReceive(usbDevice, {
+      await sendAndReceive(device, {
         tag: "ReleaseVoOctOutput",
         value: { output_jack: parseInt(outputJack, 10) },
       });
@@ -312,7 +312,7 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
       return;
     }
     setWizardStep({ type: "confirm", countsPerOct, f1, fConfirm: null });
-  }, [usbDevice, wizardStep, manualF2, outputJack]);
+  }, [device, wizardStep, manualF2, outputJack]);
 
   // --- Save ---
 
@@ -328,12 +328,12 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
       custom_voct_curves: updatedCurves,
     };
 
-    if (usbDevice && !isSimulator) {
-      await setGlobalConfig(usbDevice, updatedConfig);
+    if (device && !isSimulator) {
+      await setGlobalConfig(device, updatedConfig);
     }
     setConfig(updatedConfig);
     setOpenCurveIdx(null);
-  }, [openCurveIdx, wizardStep, config, usbDevice, isSimulator, setConfig]);
+  }, [openCurveIdx, wizardStep, config, device, isSimulator, setConfig]);
 
   // -------------------- render --------------------
 
@@ -359,7 +359,7 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
               <ButtonSecondary
                 size="sm"
                 onPress={() => handleOpenWizard(idx)}
-                isDisabled={!usbDevice || isSimulator}
+                isDisabled={!device || isSimulator}
               >
                 Calibrate
               </ButtonSecondary>
