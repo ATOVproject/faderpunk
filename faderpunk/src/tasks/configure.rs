@@ -18,10 +18,10 @@ use portable_atomic::Ordering;
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
 use crate::layout::{EvictionCmd, LAYOUT_EVICTION_REQ, LAYOUT_EVICTION_RES, LAYOUT_WATCH};
 use crate::storage::factory_reset;
-use crate::tasks::clock::{VOCT_MEASURE_REQ, VOCT_MEASURE_RES};
 use crate::tasks::global_config::{get_global_config, GLOBAL_CONFIG_WATCH};
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL, MAX_VALUES_DAC};
 use crate::tasks::midi::{SharedUsbSender, CONFIG_CABLE};
+use crate::tasks::voct_freq::{VOCT_MEASURE_REQ, VOCT_MEASURE_RES};
 use crate::version::FIRMWARE_VERSION;
 
 use super::transport::USB_MAX_PACKET_SIZE;
@@ -376,7 +376,11 @@ async fn handle_measure_voct(
     };
 
     let res = match freq_res {
-        Ok(Ok(freq_hz)) => proto.send_msg(ConfigMsgOut::VoOctFrequency { freq_hz }).await,
+        Ok(Ok(freq_hz)) => {
+            proto
+                .send_msg(ConfigMsgOut::VoOctFrequency { freq_hz })
+                .await
+        }
         _ => proto.send_msg(ConfigMsgOut::VoOctCalError).await,
     };
 
