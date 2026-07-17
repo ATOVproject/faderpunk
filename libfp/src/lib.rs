@@ -2,6 +2,7 @@
 
 use core::ops::Add;
 
+use crate::quantizer::Pitch;
 use embassy_time::Duration;
 use heapless::Vec;
 use max11300::config::{ADCRANGE, DACRANGE};
@@ -769,6 +770,20 @@ impl GlobalConfig {
             }
             _ => {}
         }
+    }
+
+    /// Convert a quantized pitch to DAC counts, resolving any Custom V/Oct
+    /// curve from this config's `custom_voct_curves`. Prefer this over
+    /// `Pitch::as_counts_with_curves` when a `GlobalConfig` value is already
+    /// in hand.
+    pub fn pitch_as_counts(&self, pitch: Pitch, range: Range, vpo: VoltPerOct) -> u16 {
+        pitch.as_counts_with_curves(range, vpo, &self.custom_voct_curves)
+    }
+
+    /// Return DAC counts-per-octave for `vpo`, resolving any Custom V/Oct
+    /// curve from this config's `custom_voct_curves`.
+    pub fn vpo_counts_per_oct(&self, vpo: VoltPerOct) -> i16 {
+        vpo.counts_per_oct_with_curves(&self.custom_voct_curves)
     }
 }
 
