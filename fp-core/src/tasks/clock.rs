@@ -40,6 +40,10 @@ const METRONOME_HIGH_MS: u64 = 25;
 
 pub static TICK_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub static METRONOME_HIGH: AtomicBool = AtomicBool::new(true);
+/// Live transport state as seen by the clock gatekeeper. Mirrors the
+/// gatekeeper's internal run flag so hosts (e.g. the simulator panel) can
+/// display it without subscribing to `CLOCK_PUBSUB`.
+pub static CLOCK_RUNNING: AtomicBool = AtomicBool::new(false);
 pub type ClockSubscriber = Subscriber<
     'static,
     CriticalSectionRawMutex,
@@ -386,6 +390,7 @@ pub async fn run_clock_gatekeeper() {
                     // Start the clock without resetting the phase
                     ClockInEvent::Continue(_) => {
                         is_running = true;
+                        CLOCK_RUNNING.store(true, Ordering::Relaxed);
                         clock_publisher.publish(ClockEvent::Start).await;
                         midi_rt_event = Some(SystemRealtime::Continue);
                     }
@@ -393,6 +398,7 @@ pub async fn run_clock_gatekeeper() {
                     ClockInEvent::Start(_) => {
                         tick_counter = u64::MAX;
                         is_running = true;
+                        CLOCK_RUNNING.store(true, Ordering::Relaxed);
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
                         analog_tick_counters = [0; 3];
@@ -402,6 +408,7 @@ pub async fn run_clock_gatekeeper() {
                     // Stop the clock. No phase reset
                     ClockInEvent::Stop(_) => {
                         is_running = false;
+                        CLOCK_RUNNING.store(false, Ordering::Relaxed);
                         clock_publisher.publish(ClockEvent::Stop).await;
                         midi_rt_event = Some(SystemRealtime::Stop);
                     }
@@ -426,6 +433,7 @@ pub async fn run_clock_gatekeeper() {
                 // If the clock source has been changed, reset the running state.
                 if config.clock.clock_src != new_config.clock.clock_src {
                     is_running = false;
+                    CLOCK_RUNNING.store(false, Ordering::Relaxed);
                     analog_tick_counters = [0; 3];
                 }
                 config = new_config;

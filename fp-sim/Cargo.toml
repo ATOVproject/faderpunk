@@ -27,6 +27,8 @@ static_cell = "2.1.1"
 
 fp-core = { path = "../fp-core", features = ["log"] }
 libfp = { path = "../libfp" }
+max11300 = "0.5.2"
+eframe = "0.35.0"
 
 [lints.clippy]
 large_futures = "warn"
