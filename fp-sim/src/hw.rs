@@ -4,6 +4,7 @@
 use embassy_time::Timer;
 use portable_atomic::Ordering;
 
+use fp_core::tasks::clock::TICK_COUNTER;
 use fp_core::tasks::leds::{LedProcessor, T};
 use fp_core::tasks::max::{MaxCmd, MAX_CHANNEL, MAX_VALUES_DAC, MAX_VALUES_FADER};
 
@@ -52,7 +53,11 @@ pub async fn dac_monitor() {
         Timer::after_millis(250).await;
         let fader = MAX_VALUES_FADER[0].load(Ordering::Relaxed);
         let dac = MAX_VALUES_DAC[0].load(Ordering::Relaxed);
-        log::info!("ch0: fader={fader:4} dac={dac:4} {}", bar(dac));
+        let ticks = TICK_COUNTER.load(Ordering::Relaxed);
+        log::info!(
+            "ch0: fader={fader:4} dac={dac:4} ticks={ticks:6} {}",
+            bar(dac)
+        );
     }
 }
 

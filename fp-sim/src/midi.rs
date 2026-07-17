@@ -1,14 +1,13 @@
-//! Virtual MIDI ports: the simulator appears as a "Faderpunk Sim" MIDI device
-//! (CoreMIDI on macOS, ALSA on Linux). Performance MIDI and the configurator
-//! SysEx protocol share the single port pair — config frames are recognized by
-//! their `F0 7D 46 50 01` header, everything else is treated as performance
-//! MIDI, mirroring what the USB cables do on hardware.
+//! Virtual MIDI ports: the simulator appears with two port pairs, mirroring
+//! the hardware's two USB-MIDI cables (CoreMIDI on macOS, ALSA on Linux):
+//! - "Faderpunk Sim" — performance MIDI (notes, CCs, clock)
+//! - "Faderpunk Sim Config" — the configurator SysEx protocol
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use midir::os::unix::{VirtualInput, VirtualOutput};
-use midir::{Ignore, MidiInput, MidiOutput, MidiOutputConnection};
+use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use midly::live::LiveEvent;
 use midly::num::u7;
 use midly::MidiMessage;
@@ -30,45 +29,79 @@ use fp_core::tasks::midi::{
 use crate::FIRMWARE_VERSION;
 
 const CLIENT_NAME: &str = "Faderpunk Sim";
+const CONFIG_PORT_NAME: &str = "Faderpunk Sim Config";
 
-/// Raw inbound MIDI chunks from the midir callback thread.
+/// Raw inbound MIDI chunks from the midir callback threads.
 const RX_CHUNK: usize = 1024;
-static MIDI_RX: Channel<CriticalSectionRawMutex, heapless::Vec<u8, RX_CHUNK>, 16> = Channel::new();
+
+static PERF_RX: Channel<CriticalSectionRawMutex, heapless::Vec<u8, RX_CHUNK>, 16> = Channel::new();
+static CONFIG_RX: Channel<CriticalSectionRawMutex, heapless::Vec<u8, RX_CHUNK>, 4> = Channel::new();
 
 pub type SharedMidiOut = Mutex<CriticalSectionRawMutex, MidiOutputConnection>;
 
-static MIDI_OUT: StaticCell<SharedMidiOut> = StaticCell::new();
+static PERF_OUT: StaticCell<SharedMidiOut> = StaticCell::new();
+static CONFIG_OUT: StaticCell<SharedMidiOut> = StaticCell::new();
 
-/// Creates the virtual input/output port pair. The input connection is leaked
-/// so its callback stays alive for the lifetime of the process.
-pub fn create_virtual_ports() -> &'static SharedMidiOut {
+#[derive(Clone, Copy)]
+pub struct SimMidiPorts {
+    pub perf_out: &'static SharedMidiOut,
+    pub config_out: &'static SharedMidiOut,
+}
+
+fn create_virtual_in(
+    port_name: &str,
+    mut push: impl FnMut(&[u8]) -> bool + Send + 'static,
+) -> MidiInputConnection<()> {
     let mut input = MidiInput::new(CLIENT_NAME).expect("failed to create MIDI input client");
     input.ignore(Ignore::None);
-    let conn_in = input
+    input
         .create_virtual(
-            CLIENT_NAME,
-            |_timestamp, bytes, _| {
-                let mut chunk = heapless::Vec::new();
-                if chunk.extend_from_slice(bytes).is_err() {
-                    log::warn!("Inbound MIDI chunk larger than {RX_CHUNK} bytes, dropping");
-                    return;
-                }
-                if MIDI_RX.try_send(chunk).is_err() {
-                    log::warn!("MIDI RX queue full, dropping chunk");
+            port_name,
+            move |_timestamp, bytes, _| {
+                if !push(bytes) {
+                    log::warn!("MIDI RX queue full or chunk too large, dropping");
                 }
             },
             (),
         )
-        .expect("failed to create virtual MIDI input port");
-    std::mem::forget(conn_in);
+        .expect("failed to create virtual MIDI input port")
+}
 
+fn forward_chunk(bytes: &[u8], send: impl FnOnce(heapless::Vec<u8, RX_CHUNK>) -> bool) -> bool {
+    let mut chunk = heapless::Vec::new();
+    if chunk.extend_from_slice(bytes).is_err() {
+        return false;
+    }
+    send(chunk)
+}
+
+fn create_virtual_out(port_name: &str) -> MidiOutputConnection {
     let output = MidiOutput::new(CLIENT_NAME).expect("failed to create MIDI output client");
-    let conn_out = output
-        .create_virtual(CLIENT_NAME)
-        .expect("failed to create virtual MIDI output port");
+    output
+        .create_virtual(port_name)
+        .expect("failed to create virtual MIDI output port")
+}
 
-    log::info!("Virtual MIDI ports created: \"{CLIENT_NAME}\"");
-    MIDI_OUT.init(Mutex::new(conn_out))
+/// Creates both virtual port pairs. The input connections are leaked so their
+/// callbacks stay alive for the lifetime of the process.
+pub fn create_virtual_ports() -> SimMidiPorts {
+    let perf_in = create_virtual_in(CLIENT_NAME, |bytes| {
+        forward_chunk(bytes, |chunk| PERF_RX.try_send(chunk).is_ok())
+    });
+    std::mem::forget(perf_in);
+    let config_in = create_virtual_in(CONFIG_PORT_NAME, |bytes| {
+        forward_chunk(bytes, |chunk| CONFIG_RX.try_send(chunk).is_ok())
+    });
+    std::mem::forget(config_in);
+
+    let perf_out = PERF_OUT.init(Mutex::new(create_virtual_out(CLIENT_NAME)));
+    let config_out = CONFIG_OUT.init(Mutex::new(create_virtual_out(CONFIG_PORT_NAME)));
+
+    log::info!("Virtual MIDI ports: \"{CLIENT_NAME}\" (performance), \"{CONFIG_PORT_NAME}\"");
+    SimMidiPorts {
+        perf_out,
+        config_out,
+    }
 }
 
 async fn send_bytes(out: &'static SharedMidiOut, bytes: &[u8]) {
@@ -86,7 +119,7 @@ async fn send_event(out: &'static SharedMidiOut, event: LiveEvent<'_>) {
     send_bytes(out, &buf[..len]).await;
 }
 
-/// Drains the app→output MIDI channel to the virtual port. Only the USB
+/// Drains the app→output MIDI channel to the performance port. Only the USB
 /// target (index 0) maps to the simulator port; the DIN targets have no
 /// physical counterpart here.
 #[embassy_executor::task]
@@ -158,9 +191,9 @@ pub async fn midi_out_bridge(out: &'static SharedMidiOut) {
     }
 }
 
-/// Parses inbound MIDI from the virtual port and feeds it through the same
-/// processing chain as the firmware's USB RX path. SysEx frames carrying the
-/// config header go to the config loop instead.
+/// Parses inbound performance MIDI and feeds it through the same processing
+/// chain as the firmware's USB RX path (clock sync, NRPN assembly, app
+/// pubsub, passthrough).
 #[embassy_executor::task]
 pub async fn midi_in_bridge() {
     let sync_engine_sender = SYNC_ENGINE_CHANNEL.sender();
@@ -169,34 +202,9 @@ pub async fn midi_in_bridge() {
     let event_publisher = EVENT_PUBSUB.publisher().unwrap();
     let mut nrpn_trackers: [NrpnTracker; 16] = Default::default();
 
-    // SysEx frames can span multiple midir callbacks; accumulate F0..F7.
-    let mut sysex: Vec<u8> = Vec::new();
-    let mut in_sysex = false;
-
     loop {
-        let chunk = MIDI_RX.receive().await;
-        let mut bytes: &[u8] = &chunk;
-
-        if in_sysex || bytes.first() == Some(&0xF0) {
-            if !in_sysex {
-                sysex.clear();
-                in_sysex = true;
-            }
-            if let Some(end) = bytes.iter().position(|&b| b == 0xF7) {
-                sysex.extend_from_slice(&bytes[..end]);
-                in_sysex = false;
-                handle_sysex(&sysex);
-                bytes = &bytes[end + 1..];
-            } else {
-                sysex.extend_from_slice(bytes);
-                continue;
-            }
-            if bytes.is_empty() {
-                continue;
-            }
-        }
-
-        match LiveEvent::parse(bytes) {
+        let chunk = PERF_RX.receive().await;
+        match LiveEvent::parse(&chunk) {
             Ok(event) => {
                 // Match the firmware's USB-source passthrough routing
                 let thru_targets = get_global_config().midi.outs.map(|c| {
@@ -230,14 +238,51 @@ pub async fn midi_in_bridge() {
                 .await;
             }
             Err(err) => {
-                log::debug!("Unparseable MIDI input ({} bytes): {err}", bytes.len());
+                log::debug!("Unparseable MIDI input ({} bytes): {err}", chunk.len());
+            }
+        }
+    }
+}
+
+/// Reassembles config SysEx frames from the config port and hands them to
+/// fp-core's config loop.
+#[embassy_executor::task]
+pub async fn config_in_bridge() {
+    // SysEx frames can span multiple midir callbacks; accumulate F0..F7.
+    let mut sysex: Vec<u8> = Vec::new();
+    let mut in_sysex = false;
+
+    loop {
+        let chunk = CONFIG_RX.receive().await;
+        let mut bytes: &[u8] = &chunk;
+
+        while !bytes.is_empty() {
+            if !in_sysex {
+                let Some(start) = bytes.iter().position(|&b| b == 0xF0) else {
+                    break;
+                };
+                sysex.clear();
+                in_sysex = true;
+                bytes = &bytes[start..];
+            }
+            match bytes.iter().position(|&b| b == 0xF7) {
+                Some(end) => {
+                    sysex.extend_from_slice(&bytes[..end]);
+                    in_sysex = false;
+                    handle_config_sysex(&sysex);
+                    bytes = &bytes[end + 1..];
+                }
+                None => {
+                    sysex.extend_from_slice(bytes);
+                    break;
+                }
             }
         }
     }
 }
 
 /// `frame` is the SysEx body starting with F0, without the trailing F7.
-fn handle_sysex(frame: &[u8]) {
+fn handle_config_sysex(frame: &[u8]) {
     let Some(body) = frame.strip_prefix(&[0xF0]) else {
         return;
     };
