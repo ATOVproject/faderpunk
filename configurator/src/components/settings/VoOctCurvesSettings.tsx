@@ -28,6 +28,11 @@ const OCTAVE_SPAN = 3.0; // 4V - 1V at standard 1V/oct
 const MAX_PLAUSIBLE_COUNTS_PER_OCT = 2000;
 // MAX11300 DAC resolution (12-bit).
 const MAX_DAC_COUNTS = 4095;
+// MeasureVoOct's own worst case on the firmware is a 30s measurement window
+// (see with_timeout(Duration::from_secs(30), ...) in tasks/voct_freq.rs) plus
+// a 300ms pre-settle delay — comfortably below the default 2s protocol
+// timeout used for fast request/response commands, so it needs its own.
+const MEASURE_TIMEOUT_MS = 32_000;
 
 type WizardMode = "auto" | "manual";
 
@@ -135,14 +140,18 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
       setWizardStep({ type: "measuring1" });
       let r1;
       try {
-        r1 = await sendAndReceive(device, {
-          tag: "MeasureVoOct",
-          value: {
-            output_jack: jack,
-            aux_input: aux,
-            dac_counts: LOW_DAC_COUNTS,
+        r1 = await sendAndReceive(
+          device,
+          {
+            tag: "MeasureVoOct",
+            value: {
+              output_jack: jack,
+              aux_input: aux,
+              dac_counts: LOW_DAC_COUNTS,
+            },
           },
-        });
+          MEASURE_TIMEOUT_MS,
+        );
       } catch (e) {
         setWizardStep({ type: "error", message: String(e) });
         return;
@@ -160,14 +169,18 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
       setWizardStep({ type: "measuring2", f1 });
       let r2;
       try {
-        r2 = await sendAndReceive(device, {
-          tag: "MeasureVoOct",
-          value: {
-            output_jack: jack,
-            aux_input: aux,
-            dac_counts: HIGH_DAC_COUNTS,
+        r2 = await sendAndReceive(
+          device,
+          {
+            tag: "MeasureVoOct",
+            value: {
+              output_jack: jack,
+              aux_input: aux,
+              dac_counts: HIGH_DAC_COUNTS,
+            },
           },
-        });
+          MEASURE_TIMEOUT_MS,
+        );
       } catch (e) {
         setWizardStep({ type: "error", message: String(e) });
         return;
@@ -223,14 +236,18 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
 
       let rConfirm;
       try {
-        rConfirm = await sendAndReceive(device, {
-          tag: "MeasureVoOct",
-          value: {
-            output_jack: jack,
-            aux_input: aux,
-            dac_counts: confirmDacCounts,
+        rConfirm = await sendAndReceive(
+          device,
+          {
+            tag: "MeasureVoOct",
+            value: {
+              output_jack: jack,
+              aux_input: aux,
+              dac_counts: confirmDacCounts,
+            },
           },
-        });
+          MEASURE_TIMEOUT_MS,
+        );
       } catch (e) {
         setWizardStep({ type: "error", message: String(e) });
         return;

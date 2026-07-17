@@ -227,16 +227,18 @@ export async function sendMessage(
 
 export async function receiveMessage(
   device: FpMidiDevice,
+  timeoutMs: number = RECEIVE_TIMEOUT_MS,
 ): Promise<ConfigMsgOut> {
-  return receiveFromRx(device.rx, RECEIVE_TIMEOUT_MS);
+  return receiveFromRx(device.rx, timeoutMs);
 }
 
 export async function sendAndReceive(
   device: FpMidiDevice,
   msg: ConfigMsgIn,
+  timeoutMs?: number,
 ): Promise<ConfigMsgOut> {
   await sendMessage(device, msg);
-  return receiveMessage(device);
+  return receiveMessage(device, timeoutMs);
 }
 
 export async function receiveBatchMessages(
