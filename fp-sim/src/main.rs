@@ -1,19 +1,23 @@
-//! Faderpunk desktop simulator (headless proof of concept).
+//! Faderpunk desktop simulator.
 //!
 //! Runs the unmodified fp-core app/clock/config stack on the embassy std
 //! executor, with virtual hardware behind the shared statics:
+//! - Panel: an egui window with the 16 channel strips (fader, button, LEDs),
+//!   scene/shift buttons, CV jack states and transport control
 //! - MIDI: two virtual port pairs mirroring the hardware's USB cables —
 //!   "Faderpunk Sim" (performance) and "Faderpunk Sim Config" (configurator)
 //! - FRAM: a file-backed image (`fp-sim-fram.bin`, override with FP_SIM_FRAM)
-//! - MAX11300/LEDs: logging stand-ins
-//! - Transport: press Enter to start/stop the clock (the hardware's
-//!   Shift+Scene), like on a fresh device the clock starts stopped
+//!
+//! Pass `--headless` (or set FP_SIM_HEADLESS=1) to run without the panel
+//! window; Enter then toggles the transport, q quits.
 //!
 //! Set FP_SIM_LFO=1 to force the LFO app onto channel 0 for testing.
 
 mod hw;
 mod midi;
+mod panel;
 mod storage;
+mod ui;
 
 use std::path::PathBuf;
 
@@ -31,9 +35,7 @@ use fp_core::tasks::global_config::GLOBAL_CONFIG_WATCH;
 use fp_core::tasks::midi::midi_distributor;
 use fp_core::{platform, state};
 
-/// Firmware version reported to the configurator. Keep in sync with the
-/// `faderpunk` crate version the simulator mirrors.
-pub const FIRMWARE_VERSION: (u8, u8, u8) = (1, 11, 0);
+include!(concat!(env!("OUT_DIR"), "/firmware_version.rs"));
 
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
@@ -79,12 +81,34 @@ fn main() {
     // threads feed the RX channels for the whole process lifetime.
     let ports = midi::create_virtual_ports();
 
-    spawn_stdin_transport_control();
+    let headless = std::env::args().any(|a| a == "--headless")
+        || std::env::var_os("FP_SIM_HEADLESS").is_some();
 
-    let executor = EXECUTOR.init(Executor::new());
-    executor.run(|spawner| {
-        spawner.spawn(boot(spawner, ports)).unwrap();
-    });
+    if headless {
+        spawn_stdin_transport_control();
+        let executor = EXECUTOR.init(Executor::new());
+        executor.run(|spawner| {
+            spawner.spawn(boot(spawner, ports, true)).unwrap();
+        });
+    } else {
+        // The window toolkit must own the main thread (hard requirement on
+        // macOS), so the core runs on a background thread.
+        std::thread::Builder::new()
+            .name("fp-core".into())
+            .spawn(move || {
+                let executor = EXECUTOR.init(Executor::new());
+                executor.run(|spawner| {
+                    spawner.spawn(boot(spawner, ports, false)).unwrap();
+                });
+            })
+            .unwrap();
+
+        if let Err(err) = ui::run() {
+            log::error!("Panel UI failed: {err}");
+        }
+        // The executor thread has no shutdown path; end the process with it.
+        std::process::exit(0);
+    }
 }
 
 /// Headless stand-in for the hardware's Shift+Scene transport toggle:
@@ -94,8 +118,10 @@ fn spawn_stdin_transport_control() {
         let mut line = String::new();
         loop {
             line.clear();
-            if std::io::stdin().read_line(&mut line).is_err() {
-                return;
+            match std::io::stdin().read_line(&mut line) {
+                // Err or EOF (stdin closed/piped): stop, don't spin on Ok(0)
+                Err(_) | Ok(0) => return,
+                Ok(_) => {}
             }
             match line.trim() {
                 "q" | "quit" | "exit" => std::process::exit(0),
@@ -137,7 +163,7 @@ async fn layout_loop(spawner: Spawner) {
 
 /// Mirrors the firmware's boot sequence in `main.rs`, minus the hardware.
 #[embassy_executor::task]
-async fn boot(spawner: Spawner, ports: midi::SimMidiPorts) {
+async fn boot(spawner: Spawner, ports: midi::SimMidiPorts, headless: bool) {
     spawner.spawn(storage::run_storage(fram_path())).unwrap();
 
     migrate_fram().await;
@@ -149,6 +175,9 @@ async fn boot(spawner: Spawner, ports: midi::SimMidiPorts) {
 
     spawner.spawn(hw::run_virtual_max()).unwrap();
     spawner.spawn(hw::run_leds()).unwrap();
+
+    spawner.spawn(panel::run_buttons()).unwrap();
+    spawner.spawn(panel::run_faders()).unwrap();
 
     fp_core::tasks::input_handlers::start_input_handlers(&spawner).await;
     fp_core::tasks::global_config::start_global_config(&spawner).await;
@@ -165,7 +194,9 @@ async fn boot(spawner: Spawner, ports: midi::SimMidiPorts) {
     spawner.spawn(midi::config_in_bridge()).unwrap();
     spawner.spawn(midi::config_loop(ports.config_out)).unwrap();
 
-    spawner.spawn(hw::dac_monitor()).unwrap();
+    if headless {
+        spawner.spawn(hw::dac_monitor()).unwrap();
+    }
     spawner.spawn(layout_loop(spawner)).unwrap();
 
     let mut layout = load_layout().await;
@@ -181,7 +212,9 @@ async fn boot(spawner: Spawner, ports: midi::SimMidiPorts) {
         layout.count(),
         get_bpm()
     );
-    log::info!("Press Enter to start/stop the clock transport, q+Enter to quit");
+    if headless {
+        log::info!("Press Enter to start/stop the clock transport, q+Enter to quit");
+    }
 
     LAYOUT_WATCH.sender().send(layout);
 }
