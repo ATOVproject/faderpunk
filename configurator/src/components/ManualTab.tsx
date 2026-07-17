@@ -1614,8 +1614,9 @@ export const ManualTab = () => {
     <>
       <H2>A quick note</H2>
       <p>
-        This manual is currently under heavy development. Check back regularly
-        for updates.
+        Faderpunk is a constantly evolving project and therefore receives
+        frequent updates with new features and fixes. Connecting Faderpunk to
+        the configurator will prompt you in case a new firmware is available.
       </p>
       <H2>Contents</H2>
       <nav>
