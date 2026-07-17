@@ -68,7 +68,7 @@ const parseFreq = (s: string): number | null => {
 };
 
 export const VoOctCurvesSettings = ({ config }: Props) => {
-  const { device, isSimulator, setConfig } = useStore();
+  const { device, isSimulator, setConfig, setSuspendHealthCheck } = useStore();
 
   const [openCurveIdx, setOpenCurveIdx] = useState<number | null>(null);
   const [wizardMode, setWizardMode] = useState<WizardMode>("auto");
@@ -126,123 +126,134 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
     const aux = parseInt(auxInput, 10);
     if (!Number.isFinite(jack) || !Number.isFinite(aux)) return;
 
-    setWizardStep({ type: "measuring1" });
-    let r1;
+    // MeasureVoOct blocks the firmware's single-threaded config loop for as
+    // long as the measurement takes (up to 30s). Suspend the connection
+    // health check for the duration so it doesn't mistake the resulting slow
+    // response for a dropped connection and force-navigate away mid-wizard.
+    setSuspendHealthCheck(true);
     try {
-      r1 = await sendAndReceive(device, {
-        tag: "MeasureVoOct",
-        value: {
-          output_jack: jack,
-          aux_input: aux,
-          dac_counts: LOW_DAC_COUNTS,
-        },
-      });
-    } catch (e) {
-      setWizardStep({ type: "error", message: String(e) });
-      return;
-    }
-    if (r1.tag !== "VoOctFrequency") {
+      setWizardStep({ type: "measuring1" });
+      let r1;
+      try {
+        r1 = await sendAndReceive(device, {
+          tag: "MeasureVoOct",
+          value: {
+            output_jack: jack,
+            aux_input: aux,
+            dac_counts: LOW_DAC_COUNTS,
+          },
+        });
+      } catch (e) {
+        setWizardStep({ type: "error", message: String(e) });
+        return;
+      }
+      if (r1.tag !== "VoOctFrequency") {
+        setWizardStep({
+          type: "error",
+          message:
+            "No signal detected at 1V. Check AUX jack and VCO connections.",
+        });
+        return;
+      }
+      const f1 = r1.value.freq_hz;
+
+      setWizardStep({ type: "measuring2", f1 });
+      let r2;
+      try {
+        r2 = await sendAndReceive(device, {
+          tag: "MeasureVoOct",
+          value: {
+            output_jack: jack,
+            aux_input: aux,
+            dac_counts: HIGH_DAC_COUNTS,
+          },
+        });
+      } catch (e) {
+        setWizardStep({ type: "error", message: String(e) });
+        return;
+      }
+      if (r2.tag !== "VoOctFrequency") {
+        setWizardStep({
+          type: "error",
+          message:
+            "No signal detected at 4V. Check AUX jack and VCO connections.",
+        });
+        return;
+      }
+      const f2 = r2.value.freq_hz;
+
+      const countsPerOct = Math.round((OCTAVE_SPAN / Math.log2(f2 / f1)) * 410);
+
+      if (countsPerOct <= 0 || countsPerOct > MAX_PLAUSIBLE_COUNTS_PER_OCT) {
+        setWizardStep({
+          type: "error",
+          message:
+            countsPerOct <= 0
+              ? `VCO frequency went down from 1V to 4V (${f1.toFixed(1)} Hz → ${f2.toFixed(1)} Hz). Check output jack and VCO V/Oct wiring.`
+              : `Calculated gain (${countsPerOct} counts/oct) is out of range. Check connections.`,
+        });
+        return;
+      }
+
+      // Confirm by outputting one countsPerOct above LOW (1V), staying within
+      // the 1–4V calibration range. Pre-set the output now via
+      // SetVoOctOutput so the VCO can settle downward from 4V during the
+      // 800 ms UI wait, before the firmware's own settle window starts.
+      const confirmDacCounts = LOW_DAC_COUNTS + countsPerOct;
+      if (confirmDacCounts > MAX_DAC_COUNTS) {
+        setWizardStep({ type: "confirm", countsPerOct, f1, fConfirm: null });
+        return;
+      }
+
+      setWizardStep({ type: "measuring_confirm", countsPerOct, f1 });
+
+      // Pre-settle: bring the output to confirmDacCounts now. Errors are
+      // ignored; MeasureVoOct will reconfigure the port regardless.
+      try {
+        await sendAndReceive(device, {
+          tag: "SetVoOctOutput",
+          value: { output_jack: jack, dac_counts: confirmDacCounts },
+        });
+      } catch {
+        // ignore — MeasureVoOct below will configure the port itself
+      }
+      // Give the VCO extra time to settle downward before the firmware
+      // window.
+      await new Promise<void>((r) => setTimeout(r, 800));
+
+      let rConfirm;
+      try {
+        rConfirm = await sendAndReceive(device, {
+          tag: "MeasureVoOct",
+          value: {
+            output_jack: jack,
+            aux_input: aux,
+            dac_counts: confirmDacCounts,
+          },
+        });
+      } catch (e) {
+        setWizardStep({ type: "error", message: String(e) });
+        return;
+      }
+      if (rConfirm.tag !== "VoOctFrequency") {
+        setWizardStep({
+          type: "error",
+          message:
+            "Verification measurement failed. Check AUX jack connection.",
+        });
+        return;
+      }
+
       setWizardStep({
-        type: "error",
-        message:
-          "No signal detected at 1V. Check AUX jack and VCO connections.",
+        type: "confirm",
+        countsPerOct,
+        f1,
+        fConfirm: rConfirm.value.freq_hz,
       });
-      return;
+    } finally {
+      setSuspendHealthCheck(false);
     }
-    const f1 = r1.value.freq_hz;
-
-    setWizardStep({ type: "measuring2", f1 });
-    let r2;
-    try {
-      r2 = await sendAndReceive(device, {
-        tag: "MeasureVoOct",
-        value: {
-          output_jack: jack,
-          aux_input: aux,
-          dac_counts: HIGH_DAC_COUNTS,
-        },
-      });
-    } catch (e) {
-      setWizardStep({ type: "error", message: String(e) });
-      return;
-    }
-    if (r2.tag !== "VoOctFrequency") {
-      setWizardStep({
-        type: "error",
-        message:
-          "No signal detected at 4V. Check AUX jack and VCO connections.",
-      });
-      return;
-    }
-    const f2 = r2.value.freq_hz;
-
-    const countsPerOct = Math.round((OCTAVE_SPAN / Math.log2(f2 / f1)) * 410);
-
-    if (countsPerOct <= 0 || countsPerOct > MAX_PLAUSIBLE_COUNTS_PER_OCT) {
-      setWizardStep({
-        type: "error",
-        message:
-          countsPerOct <= 0
-            ? `VCO frequency went down from 1V to 4V (${f1.toFixed(1)} Hz → ${f2.toFixed(1)} Hz). Check output jack and VCO V/Oct wiring.`
-            : `Calculated gain (${countsPerOct} counts/oct) is out of range. Check connections.`,
-      });
-      return;
-    }
-
-    // Confirm by outputting one countsPerOct above LOW (1V), staying within the
-    // 1–4V calibration range. Pre-set the output now via SetVoOctOutput so the
-    // VCO can settle downward from 4V during the 800 ms UI wait, before the
-    // firmware's own settle window starts.
-    const confirmDacCounts = LOW_DAC_COUNTS + countsPerOct;
-    if (confirmDacCounts > MAX_DAC_COUNTS) {
-      setWizardStep({ type: "confirm", countsPerOct, f1, fConfirm: null });
-      return;
-    }
-
-    setWizardStep({ type: "measuring_confirm", countsPerOct, f1 });
-
-    // Pre-settle: bring the output to confirmDacCounts now. Errors are ignored;
-    // MeasureVoOct will reconfigure the port regardless.
-    try {
-      await sendAndReceive(device, {
-        tag: "SetVoOctOutput",
-        value: { output_jack: jack, dac_counts: confirmDacCounts },
-      });
-    } catch {
-      // ignore — MeasureVoOct below will configure the port itself
-    }
-    // Give the VCO extra time to settle downward before the firmware window.
-    await new Promise<void>((r) => setTimeout(r, 800));
-
-    let rConfirm;
-    try {
-      rConfirm = await sendAndReceive(device, {
-        tag: "MeasureVoOct",
-        value: {
-          output_jack: jack,
-          aux_input: aux,
-          dac_counts: confirmDacCounts,
-        },
-      });
-    } catch (e) {
-      setWizardStep({ type: "error", message: String(e) });
-      return;
-    }
-    if (rConfirm.tag !== "VoOctFrequency") {
-      setWizardStep({
-        type: "error",
-        message: "Verification measurement failed. Check AUX jack connection.",
-      });
-      return;
-    }
-
-    setWizardStep({
-      type: "confirm",
-      countsPerOct,
-      f1,
-      fConfirm: rConfirm.value.freq_hz,
-    });
-  }, [device, openCurveIdx, outputJack, auxInput]);
+  }, [device, openCurveIdx, outputJack, auxInput, setSuspendHealthCheck]);
 
   // --- Manual flow ---
 
