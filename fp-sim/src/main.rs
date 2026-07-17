@@ -2,10 +2,12 @@
 //!
 //! Runs the unmodified fp-core app/clock/config stack on the embassy std
 //! executor, with virtual hardware behind the shared statics:
-//! - MIDI: a "Faderpunk Sim" virtual port pair (performance MIDI + the
-//!   configurator SysEx protocol, exactly as on hardware)
+//! - MIDI: two virtual port pairs mirroring the hardware's USB cables —
+//!   "Faderpunk Sim" (performance) and "Faderpunk Sim Config" (configurator)
 //! - FRAM: a file-backed image (`fp-sim-fram.bin`, override with FP_SIM_FRAM)
 //! - MAX11300/LEDs: logging stand-ins
+//! - Transport: press Enter to start/stop the clock (the hardware's
+//!   Shift+Scene), like on a fresh device the clock starts stopped
 //!
 //! Set FP_SIM_LFO=1 to force the LFO app onto channel 0 for testing.
 
@@ -22,7 +24,9 @@ use static_cell::StaticCell;
 
 use fp_core::layout::{LayoutManager, FORCE_RESPAWN_SIGNAL, LAYOUT_MANAGER, LAYOUT_WATCH};
 use fp_core::storage::{load_global_config, load_layout, migrate_fram, store_layout};
-use fp_core::tasks::clock::{metronome, run_clock_gatekeeper, run_unified_clock_engine};
+use fp_core::tasks::clock::{
+    metronome, run_clock_gatekeeper, run_unified_clock_engine, TransportCmd, TRANSPORT_CMD_CHANNEL,
+};
 use fp_core::tasks::global_config::GLOBAL_CONFIG_WATCH;
 use fp_core::tasks::midi::midi_distributor;
 use fp_core::{platform, state};
@@ -71,13 +75,37 @@ fn main() {
         sys_reset,
     });
 
-    // Must exist before the executor starts; the input connection's callback
-    // thread feeds the RX channel for the whole process lifetime.
-    let midi_out = midi::create_virtual_ports();
+    // Must exist before the executor starts; the input connections' callback
+    // threads feed the RX channels for the whole process lifetime.
+    let ports = midi::create_virtual_ports();
+
+    spawn_stdin_transport_control();
 
     let executor = EXECUTOR.init(Executor::new());
     executor.run(|spawner| {
-        spawner.spawn(boot(spawner, midi_out)).unwrap();
+        spawner.spawn(boot(spawner, ports)).unwrap();
+    });
+}
+
+/// Headless stand-in for the hardware's Shift+Scene transport toggle:
+/// pressing Enter starts/stops the clock, `q` quits.
+fn spawn_stdin_transport_control() {
+    std::thread::spawn(|| {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            if std::io::stdin().read_line(&mut line).is_err() {
+                return;
+            }
+            match line.trim() {
+                "q" | "quit" | "exit" => std::process::exit(0),
+                _ => {
+                    if TRANSPORT_CMD_CHANNEL.try_send(TransportCmd::Toggle).is_ok() {
+                        log::info!("Transport toggled (Enter to toggle again, q to quit)");
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -109,7 +137,7 @@ async fn layout_loop(spawner: Spawner) {
 
 /// Mirrors the firmware's boot sequence in `main.rs`, minus the hardware.
 #[embassy_executor::task]
-async fn boot(spawner: Spawner, midi_out: &'static midi::SharedMidiOut) {
+async fn boot(spawner: Spawner, ports: midi::SimMidiPorts) {
     spawner.spawn(storage::run_storage(fram_path())).unwrap();
 
     migrate_fram().await;
@@ -130,9 +158,12 @@ async fn boot(spawner: Spawner, midi_out: &'static midi::SharedMidiOut) {
     spawner.spawn(metronome()).unwrap();
 
     spawner.spawn(midi_distributor()).unwrap();
-    spawner.spawn(midi::midi_out_bridge(midi_out)).unwrap();
+    spawner
+        .spawn(midi::midi_out_bridge(ports.perf_out))
+        .unwrap();
     spawner.spawn(midi::midi_in_bridge()).unwrap();
-    spawner.spawn(midi::config_loop(midi_out)).unwrap();
+    spawner.spawn(midi::config_in_bridge()).unwrap();
+    spawner.spawn(midi::config_loop(ports.config_out)).unwrap();
 
     spawner.spawn(hw::dac_monitor()).unwrap();
     spawner.spawn(layout_loop(spawner)).unwrap();
@@ -150,6 +181,7 @@ async fn boot(spawner: Spawner, midi_out: &'static midi::SharedMidiOut) {
         layout.count(),
         get_bpm()
     );
+    log::info!("Press Enter to start/stop the clock transport, q+Enter to quit");
 
     LAYOUT_WATCH.sender().send(layout);
 }
