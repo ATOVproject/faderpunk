@@ -1183,7 +1183,7 @@ Generates classic Euclidean rhythms for each of the three main trigger outputs i
 * **Fill 1 / Fill 2 / Fill 3:** Main faders set the number of active beats from 0 to the current Length for each channel.
 * **Offset 1 / Offset 2 / Offset 3:** While holding Shift, press channel buttons 1-3 to rotate each Euclidean pattern by one step.
 * **Chaos Amount:** Controls the probability of randomly flipping a beat on or off each step.
-* **Clock Division:** Shift + Fader 4 sets the step resolution (default 1/16th note).
+* **Clock Division:** Shift + Fader 4 sets the step resolution (default 1/16th).
 * While Shift is held in Euclidean mode, channel buttons light pink to indicate offset control.
 
 #### DnB Mode (Easter Egg)
@@ -1277,7 +1277,7 @@ Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are sh
           "Drums / Euclidean: pattern randomisation and humanisation. DnB: ghost snare trigger probability.",
         faderPlusShiftTitle: "Resolution",
         faderPlusShiftDescription:
-          "Sets clock resolution (Drums / Euclidean only): 32ndT, 32nd, 16thT, 16th (default), 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar. No effect in DnB mode.",
+          "Sets clock resolution (Euclidean only): 32ndT, 32nd, 16thT, 16th (default), 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar. No effect in DnB mode.",
         ledTop: "Accent / Ghost Snare gate output",
         ledBottom: "Chaos / Ghost Probability level",
         ledBottomPlusShift: "Resolution in blue, 16th note shown in yellow",
