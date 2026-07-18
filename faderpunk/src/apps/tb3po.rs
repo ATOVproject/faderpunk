@@ -16,7 +16,8 @@ use libfp::{
 };
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage, ParamStore, SceneEvent,
+    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage,
+    ParamStore, SceneEvent,
 };
 use crate::tasks::leds::LedMode;
 
@@ -449,12 +450,12 @@ pub async fn run(
                     if is_slid_prev {
                         // Glide: output_task will interpolate toward new target
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        slide_target_glob.set(out.as_counts(pitch_range, vpo));
+                        slide_target_glob.set(pitch_as_counts(out, pitch_range, vpo));
                         slide_active_glob.set(true);
                     } else if is_gated {
                         // Snap to new pitch
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        let counts = out.as_counts(pitch_range, vpo);
+                        let counts = pitch_as_counts(out, pitch_range, vpo);
                         slide_target_glob.set(counts);
                         slide_active_glob.set(false);
                     }

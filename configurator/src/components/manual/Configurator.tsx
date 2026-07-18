@@ -310,6 +310,100 @@ export const Configurator = () => (
       <li>4 bars</li>
     </List>
 
+    <H4 id="settings-voct">Custom V/Oct Calibration</H4>
+    <p>
+      Faderpunk stores up to{" "}
+      <strong>four custom V/Oct calibration curves</strong> (Custom 1–4). This
+      allows Faderpunk to achieve near-perfect tracking with any V/Oct
+      oscillator, regardless of the calibration of either the target oscillator
+      or the Faderpunk itself. It can even allow oscillators that are not
+      designed to run on 1V/Oct to track with the pitched apps on Faderpunk.
+      Once calibrated, any app that has a <strong>1V/Oct</strong> parameter can
+      use one of the custom curves instead of the default standard tracking.
+    </p>
+    <p>
+      Each curve shows its measured gain next to the curve name (e.g.,{" "}
+      <em>0.998 V/Oct</em>), or <em>Not calibrated</em> if no measurement has
+      been taken yet. Click <strong>Calibrate</strong> next to a curve to open
+      the calibration wizard. The wizard offers two modes:{" "}
+      <strong>Automated</strong>, where Faderpunk measures the VCO frequency
+      itself via an AUX jack, and <strong>Manual</strong>, where you read the
+      frequency off an external tuner.
+    </p>
+    <H5>What you need</H5>
+    <List>
+      <li>
+        A VCO with a V/Oct input connected to one of the 16 Faderpunk output
+        jacks
+      </li>
+      <li>
+        For Automated mode: the VCO audio output connected to one of the three
+        AUX jacks (Atom, Meteor, or Cube) — Faderpunk measures the frequency
+        itself
+      </li>
+      <li>
+        For Manual mode: a tuner with a frequency meter (hardware or software)
+        connected to the VCO audio output
+      </li>
+    </List>
+    <p>
+      If an app is currently assigned to the output jack you calibrate on,
+      Faderpunk temporarily evicts it for the duration of the calibration and
+      restores it automatically afterward — there's no need to free up the jack
+      first.
+    </p>
+    <H5>Automated calibration wizard</H5>
+    <List>
+      <li>
+        <strong>Setup</strong> — Select <strong>Automated</strong>, the
+        Faderpunk output jack connected to the VCO V/Oct input, and the AUX jack
+        connected to the VCO audio output. Click <strong>Start</strong>.
+      </li>
+      <li>
+        <strong>1V measurement</strong> — Faderpunk outputs 1V and measures the
+        frequency on the AUX jack automatically.
+      </li>
+      <li>
+        <strong>4V measurement</strong> — Faderpunk outputs 4V and measures
+        again. The V/Oct gain is calculated from the two readings.
+      </li>
+      <li>
+        <strong>Confirm</strong> — Faderpunk outputs one calibrated octave above
+        1V and re-measures automatically, showing the deviation in cents. Click{" "}
+        <strong>Save</strong> if the result looks accurate, or{" "}
+        <strong>Recalibrate</strong> to start again.
+      </li>
+    </List>
+    <H5>Manual calibration wizard</H5>
+    <List>
+      <li>
+        <strong>Setup</strong> — Select <strong>Manual</strong> and the
+        Faderpunk output jack connected to the VCO V/Oct input. Click{" "}
+        <strong>Start</strong>.
+      </li>
+      <li>
+        <strong>1V measurement</strong> — Faderpunk outputs 1V. Read the
+        frequency from your tuner and enter it, then click <strong>Next</strong>
+        .
+      </li>
+      <li>
+        <strong>4V measurement</strong> — Faderpunk outputs 4V. Read the new
+        frequency from your tuner and enter it, then click{" "}
+        <strong>Calculate</strong>.
+      </li>
+      <li>
+        <strong>Confirm</strong> — The calculated V/Oct gain is displayed. Click{" "}
+        <strong>Save</strong> to store the calibration, or{" "}
+        <strong>Recalibrate</strong> to start again.
+      </li>
+    </List>
+    <p>
+      The calibration is saved into the device's global configuration. It
+      survives power cycles and is included when you export a setup file. Apps
+      that use the calibrated curve automatically apply the correction without
+      needing to be reconfigured.
+    </p>
+
     <H4 id="settings-misc">Miscellaneous</H4>
     <List>
       <li>

@@ -17,7 +17,8 @@ use libfp::{
 use midly::num::u7;
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
+    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore,
+    SceneEvent,
 };
 
 pub const CHANNELS: usize = 3;
@@ -328,7 +329,7 @@ pub async fn run(
 
                             let register_scaled = scale_to_12bit(register_pitch, length as u8);
                             let raw_att = storage.query(|s| s.pitch_att);
-                            let att_reg = attenuate(register_scaled, raw_att);
+                            let att_reg: u16 = attenuate(register_scaled, raw_att);
                             let octave_offset =
                                 (storage.query(|s| s.octave_shift) / 819).min(4) as i32 - 2;
 
@@ -356,7 +357,7 @@ pub async fn run(
                             midi_note.set(note);
 
                             if !glob_muted.get() {
-                                cv_out.set_value(shifted.as_counts(Range::_0_10V, vpo));
+                                cv_out.set_value(pitch_as_counts(shifted, Range::_0_10V, vpo));
                             }
                             leds.set(
                                 0,

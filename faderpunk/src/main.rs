@@ -42,7 +42,10 @@ use {defmt_rtt as _, panic_probe as _};
 
 use crate::storage::{factory_reset, store_layout};
 
-use layout::{LayoutManager, FORCE_RESPAWN_SIGNAL, LAYOUT_MANAGER, LAYOUT_WATCH};
+use layout::{
+    EvictionCmd, LayoutManager, FORCE_RESPAWN_SIGNAL, LAYOUT_EVICTION_REQ, LAYOUT_EVICTION_RES,
+    LAYOUT_MANAGER, LAYOUT_WATCH,
+};
 use storage::{load_calibration_data, load_global_config, load_layout, migrate_fram};
 use tasks::{
     buttons::{is_channel_button_pressed, is_scene_button_pressed},
@@ -90,24 +93,48 @@ pub static QUANTIZER: LazyLock<Mutex<CriticalSectionRawMutex, Quantizer>> =
 
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
-    use embassy_futures::select::{select, Either};
+    use embassy_futures::select::{select3, Either3};
 
     spawner.spawn(midi_distributor()).unwrap();
     let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
     let mut receiver = LAYOUT_WATCH.receiver().unwrap();
     loop {
-        match select(receiver.changed(), FORCE_RESPAWN_SIGNAL.wait()).await {
-            Either::First(layout) => {
+        match select3(
+            receiver.changed(),
+            FORCE_RESPAWN_SIGNAL.wait(),
+            LAYOUT_EVICTION_REQ.wait(),
+        )
+        .await
+        {
+            Either3::First(layout) => {
                 // Normal layout change
                 if lm.spawn_layout(&layout).await {
                     // Store new layout if it changed
                     store_layout(&layout).await;
                 }
             }
-            Either::Second(_) => {
+            Either3::Second(_) => {
                 // Force respawn requested
                 let layout = receiver.get().await;
                 lm.respawn_all(&layout).await;
+            }
+            Either3::Third(cmd) => {
+                // Scoped, non-persisting eviction/restore for calibration.
+                // The channel is held for the whole evict..restore window so
+                // an unrelated SetLayout/FORCE_RESPAWN_SIGNAL reconciliation
+                // can't spawn an app back into it while calibration holds it.
+                match cmd {
+                    EvictionCmd::Evict(start_channel) => {
+                        lm.set_held(start_channel, true).await;
+                        lm.exit_app(start_channel).await;
+                    }
+                    EvictionCmd::Restore(start_channel, app_id, channels, layout_id) => {
+                        lm.spawn_one(start_channel, app_id, channels, layout_id)
+                            .await;
+                        lm.set_held(start_channel, false).await;
+                    }
+                }
+                LAYOUT_EVICTION_RES.signal(());
             }
         }
     }

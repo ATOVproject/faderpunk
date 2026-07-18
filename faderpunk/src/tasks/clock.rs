@@ -206,7 +206,7 @@ pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(metronome()).unwrap();
 }
 
-async fn make_ext_clock_loop(mut pin: Input<'_>, clock_src: ClockSrc) {
+pub(crate) async fn make_ext_clock_loop(pin: &mut Input<'_>, clock_src: ClockSrc) {
     let sender = SYNC_ENGINE_CHANNEL.sender();
     loop {
         pin.wait_for_falling_edge().await;
@@ -832,9 +832,9 @@ async fn run_clock_sources(aux_inputs: AuxInputs) {
     let cube = Input::new(hexagon_pin, Pull::Up);
 
     let engine_fut = run_unified_clock_engine();
-    let atom_fut = make_ext_clock_loop(atom, ClockSrc::Atom);
-    let meteor_fut = make_ext_clock_loop(meteor, ClockSrc::Meteor);
-    let cube_fut = make_ext_clock_loop(cube, ClockSrc::Cube);
+    let atom_fut = super::voct_freq::aux_pin_loop(atom, ClockSrc::Atom, 0);
+    let meteor_fut = super::voct_freq::aux_pin_loop(meteor, ClockSrc::Meteor, 1);
+    let cube_fut = super::voct_freq::aux_pin_loop(cube, ClockSrc::Cube, 2);
 
     join4(engine_fut, atom_fut, meteor_fut, cube_fut).await;
 }

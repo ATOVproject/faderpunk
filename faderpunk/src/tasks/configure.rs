@@ -1,3 +1,4 @@
+use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
@@ -8,13 +9,19 @@ use postcard::{from_bytes, to_slice};
 use libfp::sysex::{
     pack_7bit, unpack_7bit, MAX_PLAIN_SIZE, MAX_SYSEX_FRAME, SYSEX_EOX, SYSEX_HEADER, SYSEX_START,
 };
-use libfp::{ConfigMsgIn, ConfigMsgOut, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS};
+use libfp::{
+    AuxJackMode, ConfigMsgIn, ConfigMsgOut, Layout, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS,
+};
+use max11300::config::{ConfigMode0, ConfigMode3, ConfigMode5, Mode, Port, DACRANGE};
+use portable_atomic::Ordering;
 
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
-use crate::layout::LAYOUT_WATCH;
+use crate::layout::{EvictionCmd, LAYOUT_EVICTION_REQ, LAYOUT_EVICTION_RES, LAYOUT_WATCH};
 use crate::storage::factory_reset;
 use crate::tasks::global_config::{get_global_config, GLOBAL_CONFIG_WATCH};
+use crate::tasks::max::{MaxCmd, MAX_CHANNEL, MAX_VALUES_DAC};
 use crate::tasks::midi::{SharedUsbSender, CONFIG_CABLE};
+use crate::tasks::voct_freq::{VOCT_MEASURE_REQ, VOCT_MEASURE_RES};
 use crate::version::FIRMWARE_VERSION;
 
 use super::transport::USB_MAX_PACKET_SIZE;
@@ -66,6 +73,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
     let mut proto = ConfigTransport::new(usb_tx);
     let mut layout_receiver = LAYOUT_WATCH.receiver().unwrap();
     let mut layout = layout_receiver.get().await;
+    let mut pending_voct_eviction: Option<(u8, EvictedApp)> = None;
     loop {
         let msg = match proto.read_msg().await {
             Ok(msg) => msg,
@@ -191,6 +199,38 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 factory_reset().await;
                 Ok(())
             }
+            ConfigMsgIn::MeasureVoOct {
+                output_jack,
+                aux_input,
+                dac_counts,
+            } => {
+                handle_measure_voct(
+                    &mut proto,
+                    &layout,
+                    &mut pending_voct_eviction,
+                    output_jack,
+                    aux_input,
+                    dac_counts,
+                )
+                .await
+            }
+            ConfigMsgIn::SetVoOctOutput {
+                output_jack,
+                dac_counts,
+            } => {
+                handle_set_voct_output(
+                    &mut proto,
+                    &layout,
+                    &mut pending_voct_eviction,
+                    output_jack,
+                    dac_counts,
+                )
+                .await
+            }
+            ConfigMsgIn::ReleaseVoOctOutput { output_jack } => {
+                handle_release_voct_output(&mut proto, &mut pending_voct_eviction, output_jack)
+                    .await
+            }
         };
         if let Err(err) = res {
             defmt::warn!("Failed to send config response: {}", err);
@@ -205,6 +245,251 @@ struct ConfigTransport<'a> {
     usb_tx: &'a SharedUsbSender<'a>,
     plain_buf: [u8; MAX_PLAIN_SIZE],
     frame_buf: [u8; MAX_SYSEX_FRAME],
+}
+
+/// (app_id, start_channel, channels, layout_id) of an app temporarily evicted
+/// from its jack for V/Oct calibration.
+type EvictedApp = (u8, usize, usize, u8);
+
+/// Find the app (if any) currently occupying `jack`.
+fn find_jack_owner(layout: &Layout, jack: u8) -> Option<EvictedApp> {
+    let jack = jack as usize;
+    layout.iter().find(|&(_, start_channel, channels, _)| {
+        jack >= start_channel && jack < start_channel + channels
+    })
+}
+
+/// If `jack` is occupied by a running app, temporarily evict it (a scoped,
+/// non-persisting despawn that doesn't touch the persisted layout) and return
+/// its identity so it can be restored with `restore_jack_owner` once
+/// calibration is done. Returns `None` (no-op) if the jack is unassigned.
+async fn evict_jack_owner(layout: &Layout, jack: u8) -> Option<EvictedApp> {
+    let owner = find_jack_owner(layout, jack)?;
+    let (_, start_channel, _, _) = owner;
+    LAYOUT_EVICTION_REQ.signal(EvictionCmd::Evict(start_channel));
+    LAYOUT_EVICTION_RES.wait().await;
+    Some(owner)
+}
+
+/// Respawn a previously-evicted app back onto its original channel(s).
+async fn restore_jack_owner(evicted: EvictedApp) {
+    let (app_id, start_channel, channels, layout_id) = evicted;
+    LAYOUT_EVICTION_REQ.signal(EvictionCmd::Restore(
+        start_channel,
+        app_id,
+        channels,
+        layout_id,
+    ));
+    LAYOUT_EVICTION_RES.wait().await;
+}
+
+/// Set the output jack to 0-10V DAC mode, write `dac_counts`, signal the
+/// clock task to measure frequency on the chosen AUX pin, wait for the result,
+/// then release the jack (Mode1 high-Z). If an app is running on `output_jack`,
+/// it is temporarily evicted and respawned afterward so calibration never
+/// leaves it stranded in high-Z. Shares `pending_eviction` with
+/// `handle_set_voct_output`/`handle_release_voct_output` (rather than
+/// tracking its own eviction locally) so the two flows can never disagree
+/// about whether a jack is currently evicted.
+async fn handle_measure_voct(
+    proto: &mut ConfigTransport<'_>,
+    layout: &Layout,
+    pending_eviction: &mut Option<(u8, EvictedApp)>,
+    output_jack: u8,
+    aux_input: u8,
+    dac_counts: u16,
+) -> Result<(), ProtocolError> {
+    let aux_idx = aux_input as usize;
+    if aux_idx > 2 || output_jack as usize >= 16 {
+        return proto.send_msg(ConfigMsgOut::VoOctCalError).await;
+    }
+
+    let port = match Port::try_from(output_jack as usize) {
+        Ok(p) => p,
+        Err(_) => {
+            return proto.send_msg(ConfigMsgOut::VoOctCalError).await;
+        }
+    };
+
+    // This handler always fully resolves its own eviction before returning,
+    // so start from a clean slate: settle any eviction left pending by the
+    // manual flow first (this handler doesn't reuse it, since it always
+    // restores at the end regardless).
+    if let Some((_, evicted)) = pending_eviction.take() {
+        restore_jack_owner(evicted).await;
+    }
+    let evicted = evict_jack_owner(layout, output_jack).await;
+
+    // If the AUX jack is configured as ClockOut or ResetOut its MAX11300 port
+    // (17 + aux_idx) is in Mode3 (GPO) and will drive the jack voltage, which
+    // would corrupt frequency measurements. Force it to Mode0 (high-Z) for the
+    // duration of the measurement, then restore it afterwards.
+    let aux_port = Port::try_from(17 + aux_idx).unwrap();
+    let aux_was_active = matches!(
+        get_global_config().aux[aux_idx],
+        AuxJackMode::ClockOut(_) | AuxJackMode::ResetOut
+    );
+    if aux_was_active {
+        MAX_CHANNEL
+            .send(MaxCmd::ConfigurePort {
+                port: aux_port,
+                mode: Mode::Mode0(ConfigMode0),
+                gpo_level: None,
+            })
+            .await;
+    }
+
+    // Configure the output jack to 0-10V DAC mode.
+    MAX_CHANNEL
+        .send(MaxCmd::ConfigurePort {
+            port,
+            mode: Mode::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
+            gpo_level: None,
+        })
+        .await;
+
+    // Keep re-writing dac_counts every 5 ms as a defensive guard (in case
+    // eviction above was a no-op, e.g. a future caller skips it). After
+    // 300 ms the VCO has settled; we then trigger the frequency measurement
+    // and wait for the result. The drive loop is cancelled automatically
+    // when select() returns (never() branch wins as soon as
+    // drive_and_measure completes).
+    let drive_and_measure = async {
+        MAX_VALUES_DAC[output_jack as usize].store(dac_counts, Ordering::Relaxed);
+        embassy_time::Timer::after_millis(300).await;
+        // Clear any stale result a previous, timed-out measurement might
+        // still be holding, so it can't be mistaken for this request's answer.
+        VOCT_MEASURE_RES.reset();
+        VOCT_MEASURE_REQ[aux_idx].signal(());
+        with_timeout(Duration::from_secs(30), VOCT_MEASURE_RES.wait()).await
+    };
+    let keep_driving = async {
+        loop {
+            MAX_VALUES_DAC[output_jack as usize].store(dac_counts, Ordering::Relaxed);
+            embassy_time::Timer::after_millis(5).await;
+        }
+    };
+
+    let freq_res = match select(keep_driving, drive_and_measure).await {
+        Either::Second(r) => r,
+        Either::First(_) => unreachable!(),
+    };
+
+    let res = match freq_res {
+        Ok(Ok(freq_hz)) => {
+            proto
+                .send_msg(ConfigMsgOut::VoOctFrequency { freq_hz })
+                .await
+        }
+        _ => proto.send_msg(ConfigMsgOut::VoOctCalError).await,
+    };
+
+    // Release the output jack to high-Z (Mode 0) so apps can reclaim it.
+    MAX_CHANNEL
+        .send(MaxCmd::ConfigurePort {
+            port,
+            mode: Mode::Mode0(ConfigMode0),
+            gpo_level: None,
+        })
+        .await;
+
+    // Restore the AUX port to GPO mode if it was active before measurement.
+    if aux_was_active {
+        MAX_CHANNEL
+            .send(MaxCmd::ConfigurePort {
+                port: aux_port,
+                mode: Mode::Mode3(ConfigMode3),
+                gpo_level: Some(2048),
+            })
+            .await;
+    }
+
+    if let Some(evicted) = evicted {
+        restore_jack_owner(evicted).await;
+    }
+    // Always fully resolved by now, regardless of what pending_eviction held
+    // on entry.
+    *pending_eviction = None;
+
+    res
+}
+
+/// Set `output_jack` to 0-10V DAC mode and write `dac_counts`, then hold it
+/// there for the caller to measure manually (e.g. with an external frequency
+/// counter). If an app is running on `output_jack`, it is temporarily
+/// evicted; `pending_eviction` remembers it (jack, evicted app) across the
+/// paired `ReleaseVoOctOutput` call, since the caller measures externally
+/// with an arbitrary delay in between. Only one eviction is tracked at a
+/// time, matching the configurator's manual flow (which only ever targets
+/// one jack per session) — if a different jack is already pending, it is
+/// restored first.
+async fn handle_set_voct_output(
+    proto: &mut ConfigTransport<'_>,
+    layout: &Layout,
+    pending_eviction: &mut Option<(u8, EvictedApp)>,
+    output_jack: u8,
+    dac_counts: u16,
+) -> Result<(), ProtocolError> {
+    let port = match Port::try_from(output_jack as usize) {
+        Ok(p) if (output_jack as usize) < 16 => p,
+        _ => {
+            return proto.send_msg(ConfigMsgOut::VoOctOutputSet).await;
+        }
+    };
+
+    if let Some((jack, evicted)) = pending_eviction.take() {
+        if jack == output_jack {
+            *pending_eviction = Some((jack, evicted));
+        } else {
+            restore_jack_owner(evicted).await;
+        }
+    }
+    if pending_eviction.is_none() {
+        if let Some(evicted) = evict_jack_owner(layout, output_jack).await {
+            *pending_eviction = Some((output_jack, evicted));
+        }
+    }
+
+    MAX_CHANNEL
+        .send(MaxCmd::ConfigurePort {
+            port,
+            mode: Mode::Mode5(ConfigMode5(DACRANGE::Rg0_10v)),
+            gpo_level: None,
+        })
+        .await;
+    MAX_VALUES_DAC[output_jack as usize].store(dac_counts, Ordering::Relaxed);
+
+    proto.send_msg(ConfigMsgOut::VoOctOutputSet).await
+}
+
+/// Release `output_jack` back to high-Z (Mode 0) so apps can reclaim it,
+/// restoring whatever app `handle_set_voct_output` evicted for this jack.
+async fn handle_release_voct_output(
+    proto: &mut ConfigTransport<'_>,
+    pending_eviction: &mut Option<(u8, EvictedApp)>,
+    output_jack: u8,
+) -> Result<(), ProtocolError> {
+    if let Ok(port) = Port::try_from(output_jack as usize) {
+        if (output_jack as usize) < 16 {
+            MAX_CHANNEL
+                .send(MaxCmd::ConfigurePort {
+                    port,
+                    mode: Mode::Mode0(ConfigMode0),
+                    gpo_level: None,
+                })
+                .await;
+        }
+    }
+
+    if let Some((jack, evicted)) = pending_eviction.take() {
+        if jack == output_jack {
+            restore_jack_owner(evicted).await;
+        } else {
+            *pending_eviction = Some((jack, evicted));
+        }
+    }
+
+    proto.send_msg(ConfigMsgOut::VoOctOutputSet).await
 }
 
 impl<'a> ConfigTransport<'a> {
