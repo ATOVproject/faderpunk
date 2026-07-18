@@ -398,6 +398,9 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
 
       <Modal
         isOpen={openCurveIdx !== null}
+        isDismissable={!isMeasuring}
+        isKeyboardDismissDisabled={isMeasuring}
+        hideCloseButton={isMeasuring}
         onOpenChange={(open) => {
           if (!open) handleClose();
         }}
@@ -413,6 +416,11 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
                 <span className="text-xs font-normal text-gray-400">
                   Don&apos;t refresh or close this page while calibrating.
                 </span>
+                {isMeasuring && (
+                  <span className="text-xs font-normal text-gray-400">
+                    This step finishes on its own within about 30 seconds.
+                  </span>
+                )}
               </ModalHeader>
 
               <ModalBody>
@@ -648,10 +656,6 @@ export const VoOctCurvesSettings = ({ config }: Props) => {
                     </ButtonPrimary>
                     <ButtonSecondary onPress={onClose}>Cancel</ButtonSecondary>
                   </>
-                )}
-
-                {isMeasuring && (
-                  <ButtonSecondary onPress={onClose}>Cancel</ButtonSecondary>
                 )}
 
                 {wizardStep.type === "manual_enter1" && (
