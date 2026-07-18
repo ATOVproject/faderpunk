@@ -200,6 +200,15 @@ fn swung_offset(i: u32, t: Duration, swing: i8) -> Duration {
     Duration::from_ticks((raw.max(0) as u64).min(window_end as u64))
 }
 
+/// How long to wait for the next external pulse before declaring the clock
+/// lost. Falls back to `WATCHDOG_FLOOR` while no period has been measured.
+fn watchdog_duration(measured_period: Option<Duration>) -> Duration {
+    measured_period
+        .map(|p| p * WATCHDOG_MULTIPLIER)
+        .unwrap_or(WATCHDOG_FLOOR)
+        .max(WATCHDOG_FLOOR)
+}
+
 pub async fn start_clock(spawner: &Spawner, aux_inputs: AuxInputs) {
     spawner.spawn(run_clock_sources(aux_inputs)).unwrap();
     spawner.spawn(run_clock_gatekeeper()).unwrap();
@@ -613,22 +622,21 @@ async fn run_unified_clock_engine() {
                             // re-anchor the window on the next pulse.
                             pending_emissions.clear();
                             tick_in_window = 0;
+                            // Re-arm the watchdog from now: the previous
+                            // deadline is anchored to the last pre-stop pulse
+                            // and may already have elapsed, which would fire a
+                            // spurious clock-lost Stop before the first
+                            // resumed pulse arrives.
+                            next_tick_at = Instant::now() + watchdog_duration(measured_ext_period);
                         }
                         ClockInEvent::Continue(_) => {
                             is_running = true;
+                            // Same watchdog re-arm as Start.
+                            next_tick_at = Instant::now() + watchdog_duration(measured_ext_period);
                         }
                         ClockInEvent::Stop(_) => {
                             is_running = false;
                             pending_emissions.clear();
-                            // Invalidate external tracking state so a stale
-                            // `next_tick_at` can't race a later Start/Continue
-                            // (see the identical reset on clock-source change,
-                            // below) and fire a spurious watchdog Stop before
-                            // the real resumed pulse ever arrives.
-                            last_pulse = None;
-                            measured_ext_period = None;
-                            delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
-                            history_idx = 0;
                         }
                         ClockInEvent::Reset(_) => {
                             pending_emissions.clear();
@@ -760,13 +768,8 @@ async fn run_unified_clock_engine() {
 
                     last_pulse = Some(timestamp);
                     // Schedule watchdog: if no pulse arrives within the watchdog window,
-                    // declare external clock lost. Use a generous floor so drastic tempo
-                    // changes (or slow analog clocks) don't trip it.
-                    let watchdog = measured_ext_period
-                        .map(|p| p * WATCHDOG_MULTIPLIER)
-                        .unwrap_or(WATCHDOG_FLOOR)
-                        .max(WATCHDOG_FLOOR);
-                    next_tick_at = timestamp + watchdog;
+                    // declare external clock lost.
+                    next_tick_at = timestamp + watchdog_duration(measured_ext_period);
                 }
             },
 
@@ -822,9 +825,6 @@ async fn run_unified_clock_engine() {
                             .send(ClockInEvent::Stop(config.clock.clock_src))
                             .await;
                         last_pulse = None;
-                        measured_ext_period = None;
-                        delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
-                        history_idx = 0;
                         is_running = false;
                         pending_emissions.clear();
                         tick_in_window = 0;
