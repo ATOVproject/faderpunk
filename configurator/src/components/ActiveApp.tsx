@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Value } from "@atov/fp-config";
 import { useForm } from "react-hook-form";
 import classNames from "classnames";
@@ -32,8 +32,27 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
     register,
     control,
     handleSubmit,
+    watch,
+    getValues,
     formState: { isSubmitting },
   } = useForm();
+  // Snapshot of the form values as of the last successful save. Some HeroUI
+  // inputs (e.g. Select) synthesize onChange events without a native `type`,
+  // so react-hook-form's watch info can't reliably tell a real edit from
+  // other notifications — comparing against this snapshot works regardless.
+  const savedSnapshotRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const subscription = watch((values) => {
+      if (
+        savedSnapshotRef.current !== null &&
+        JSON.stringify(values) !== savedSnapshotRef.current
+      ) {
+        setSaved(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [watch]);
 
   const onSubmit = async (
     data: Record<string, string | boolean | boolean[]>,
@@ -51,8 +70,8 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
       );
     }
     if (device || isSimulator) {
+      savedSnapshotRef.current = JSON.stringify(getValues());
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
     }
   };
 

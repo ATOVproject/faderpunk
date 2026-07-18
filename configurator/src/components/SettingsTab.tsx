@@ -142,8 +142,18 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
   const [configuratorVersion, setConfiguratorVersion] = useState<string>("");
   const {
     handleSubmit,
+    watch,
     formState: { isSubmitting },
   } = methods;
+
+  useEffect(() => {
+    const subscription = watch((_, { type }) => {
+      if (type === "change") {
+        setSaved(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [watch]);
 
   const onSubmit: SubmitHandler<Inputs> = useCallback(
     async (formValues: Inputs) => {
@@ -157,7 +167,6 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
       }
       if (device || isSimulator) {
         setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
       }
     },
     [device, isSimulator, setConfig],
