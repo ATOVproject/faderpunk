@@ -259,6 +259,17 @@ const globalConfigSchema = z.object({
     tonic: taggedObjectSchema,
   }),
   takeover_mode: taggedObjectSchema,
+  // Absent in setup files saved before Custom V/Oct curves existed — default
+  // to uncalibrated rather than failing the whole file.
+  custom_voct_curves: z
+    .array(z.object({ counts_per_oct: z.number().int().min(0).max(65535) }))
+    .length(4)
+    .default([
+      { counts_per_oct: 0 },
+      { counts_per_oct: 0 },
+      { counts_per_oct: 0 },
+      { counts_per_oct: 0 },
+    ]),
 });
 
 export const parseGlobalConfigFromFile = (
@@ -292,7 +303,12 @@ export const parseGlobalConfigFromFile = (
     },
     quantizer: validated.quantizer as GlobalConfig["quantizer"],
     takeover_mode: validated.takeover_mode as GlobalConfig["takeover_mode"],
-    custom_voct_curves: defaultGlobalConfig.custom_voct_curves,
+    custom_voct_curves: [
+      validated.custom_voct_curves[0],
+      validated.custom_voct_curves[1],
+      validated.custom_voct_curves[2],
+      validated.custom_voct_curves[3],
+    ] as GlobalConfig["custom_voct_curves"],
   };
 
   return config;
