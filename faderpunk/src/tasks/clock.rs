@@ -620,6 +620,15 @@ async fn run_unified_clock_engine() {
                         ClockInEvent::Stop(_) => {
                             is_running = false;
                             pending_emissions.clear();
+                            // Invalidate external tracking state so a stale
+                            // `next_tick_at` can't race a later Start/Continue
+                            // (see the identical reset on clock-source change,
+                            // below) and fire a spurious watchdog Stop before
+                            // the real resumed pulse ever arrives.
+                            last_pulse = None;
+                            measured_ext_period = None;
+                            delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
+                            history_idx = 0;
                         }
                         ClockInEvent::Reset(_) => {
                             pending_emissions.clear();
@@ -813,6 +822,9 @@ async fn run_unified_clock_engine() {
                             .send(ClockInEvent::Stop(config.clock.clock_src))
                             .await;
                         last_pulse = None;
+                        measured_ext_period = None;
+                        delta_history = [Duration::from_ticks(0); HISTORY_SIZE];
+                        history_idx = 0;
                         is_running = false;
                         pending_emissions.clear();
                         tick_in_window = 0;
