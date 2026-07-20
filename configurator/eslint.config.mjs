@@ -9,7 +9,7 @@ import prettier from "eslint-plugin-prettier/recommended";
 const tailwindPluginPath = import.meta.resolve("prettier-plugin-tailwindcss");
 
 export default tseslint.config([
-  globalIgnores(["dist"]),
+  globalIgnores(["dist", "src/demo/catalog.ts"]),
   {
     files: ["**/*.{ts,tsx,mjs}"],
     extends: [

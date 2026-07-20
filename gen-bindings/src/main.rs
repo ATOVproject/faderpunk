@@ -1,10 +1,15 @@
 use postcard_bindgen::{generate_bindings, javascript, PackageInfo};
 
+mod catalog;
+
 fn main() {
+    let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+
     javascript::build_package(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
+        repo_root
             .join("configurator")
             .join("node_modules")
             .as_path(),
@@ -48,4 +53,13 @@ fn main() {
         ),
     )
     .unwrap();
+
+    catalog::generate(
+        &repo_root.join("faderpunk").join("src"),
+        &repo_root
+            .join("configurator")
+            .join("src")
+            .join("demo")
+            .join("catalog.ts"),
+    );
 }
