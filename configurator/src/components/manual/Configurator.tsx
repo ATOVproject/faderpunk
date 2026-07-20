@@ -10,31 +10,36 @@ export const Configurator = () => (
       modify internal settings of the Faderpunk device.
     </p>
     <p>
-      The Configurator uses <strong>WebUSB</strong>, a communication protocol
-      that is not supported by all browsers. To access it, you'll need a{" "}
-      <strong>Chromium-based browser</strong>.
+      The Configurator connects to your Faderpunk using{" "}
+      <strong>Web MIDI</strong>, a browser API for talking to MIDI devices. Most
+      modern browsers support it.
     </p>
 
-    <H3 id="compatible-browsers">Compatible Browsers with WebUSB Support:</H3>
+    <H3 id="compatible-browsers">Compatible Browsers with Web MIDI Support:</H3>
     <List>
       <li>Google Chrome</li>
       <li>Microsoft Edge</li>
-      <li>Vivaldi</li>
+      <li>Mozilla Firefox</li>
       <li>Brave</li>
-      <li>Opera</li>
-      <li>Chromium (open-source base)</li>
+      <li>Vivaldi</li>
     </List>
+    <p>
+      <strong>Safari does not support Web MIDI</strong> and can't be used to
+      connect to a Faderpunk.
+    </p>
 
     <p>
-      To get started, open a WebUSB-compatible browser and visit{" "}
+      To get started, open a compatible browser and visit{" "}
       <a className="font-semibold underline" href="https://faderpunk.io">
         https://faderpunk.io
       </a>
       .
       <br />
-      Upon visiting the site, you'll be prompted to connect a device. Click{" "}
-      <strong>"Connect Device"</strong>, and a pop-up will appear allowing you
-      to select and connect to your Faderpunk.
+      Click <strong>"Connect Device"</strong>. The first time you connect, your
+      browser will ask permission to allow MIDI (SysEx) access — click{" "}
+      <strong>Allow</strong>. There's no device picker to navigate: once
+      permission is granted, the Configurator automatically finds your Faderpunk
+      among the available MIDI ports.
     </p>
     <p>
       Once connected, you'll be greeted by the Configurator interface, which
