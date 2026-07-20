@@ -26,7 +26,9 @@ use midly::{
     MidiMessage,
 };
 
-use libfp::{ClockSrc, MidiIn, MidiOut, MidiOutConfig, MidiOutMode, GLOBAL_CHANNELS};
+use libfp::{
+    sysex::SYSEX_HEADER, ClockSrc, MidiIn, MidiOut, MidiOutConfig, MidiOutMode, GLOBAL_CHANNELS,
+};
 
 use crate::{
     events::{EventPubSubPublisher, InputEvent, EVENT_PUBSUB},
@@ -39,7 +41,12 @@ use crate::{
 
 /// Virtual USB-MIDI cable carrying the configurator SysEx protocol.
 /// Cable 0 is performance MIDI.
+///
+/// macOS/CoreMIDI often exposes only a single port for multi-cable USB-MIDI
+/// devices, which maps to cable 0. Config must therefore also be accepted on
+/// cable 0 and answered on cable 0 (see RX path + configure TX).
 pub const CONFIG_CABLE: u8 = 1;
+pub const PERF_CABLE: u8 = 0;
 
 /// Shared USB-MIDI sender: performance MIDI out and the config loop write
 /// through the same endpoint, interleaving per 64-byte USB packet.
@@ -513,17 +520,23 @@ pub async fn midi_in_task<'a>(
                     if len == 0 {
                         continue;
                     }
-                    let packets = usb_rx_buf[..len].chunks_exact(4);
+                    let (packets, _) = usb_rx_buf[..len].as_chunks::<4>();
                     for packet in packets {
                         let cable = packet[0] >> 4;
                         let msg_len = len_from_cin(packet[0]);
-                        if cable == CONFIG_CABLE {
-                            // Config cable: assemble SysEx frames for the
-                            // config loop; anything else is ignored by design.
-                            let cin = packet[0] & 0x0F;
-                            if (0x4..=0x7).contains(&cin)
-                                && config_assembler.feed(cin, &packet[1..1 + msg_len])
-                            {
+                        let cin = packet[0] & 0x0F;
+                        // Dedicated config cable, or our SysEx header on the
+                        // performance cable (macOS single-port hosts).
+                        let config_sysex = (0x4..=0x7).contains(&cin)
+                            && (cable == CONFIG_CABLE
+                                || (cable == PERF_CABLE
+                                    && is_config_sysex_packet(
+                                        cin,
+                                        &packet[1..1 + msg_len],
+                                        &config_assembler,
+                                    )));
+                        if config_sysex {
+                            if config_assembler.feed(cin, &packet[1..1 + msg_len]) {
                                 match Vec::from_slice(config_assembler.frame()) {
                                     Ok(frame) => {
                                         if CONFIG_RX_CHANNEL.try_send(frame).is_err() {
@@ -637,9 +650,33 @@ pub async fn midi_in_task<'a>(
     }
 }
 
-/// Reassembles SysEx frames from cable-1 USB-MIDI event packets (CIN 0x4
-/// start/continue, 0x5/0x6/0x7 end). Collects the frame body without the
-/// F0/F7 delimiters. Oversized frames are dropped whole.
+/// True when this USB-MIDI SysEx event belongs to the configurator protocol.
+/// Used so cable-0 (performance) SysEx can still reach the config loop on
+/// hosts that only expose a single MIDI port.
+fn is_config_sysex_packet(cin: u8, data: &[u8], assembler: &SysExAssembler) -> bool {
+    if assembler.active {
+        return true;
+    }
+    // New frame must open with F0 + our manufacturer/header prefix.
+    if data.first() != Some(&0xF0) {
+        return false;
+    }
+    // First data packet after F0 carries the start of SYSEX_HEADER.
+    let after_f0 = &data[1..];
+    if after_f0.is_empty() {
+        // F0 alone in this packet — accept and let the assembler validate later
+        return (0x4..=0x7).contains(&cin);
+    }
+    after_f0
+        .iter()
+        .zip(SYSEX_HEADER.iter())
+        .all(|(a, b)| a == b)
+}
+
+/// Reassembles SysEx frames from USB-MIDI event packets (CIN 0x4
+/// start/continue, 0x5/0x6/0x7 end) on the config cable or performance cable.
+/// Collects the frame body without the F0/F7 delimiters. Oversized frames are
+/// dropped whole.
 struct SysExAssembler {
     buf: Vec<u8, CONFIG_FRAME_BUF>,
     active: bool,
