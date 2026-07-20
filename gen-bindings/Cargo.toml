@@ -7,3 +7,4 @@ license = "GPL-3.0"
 [dependencies]
 libfp = { path = "../libfp" }
 postcard-bindgen = { version = "0.7.1", features = ["generating"] }
+syn = { version = "2", features = ["full", "extra-traits"] }
