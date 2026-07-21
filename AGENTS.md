@@ -50,10 +50,13 @@ Follow this for **every** task, in order. Do not skip steps.
 
    Then **STOP.** Wait for the user to review and adjust the code. Do not commit.
 
-3. **On the user's go: commit.** A single one-line message in
+3. **On the user's go: commit.** A single one-line subject in
    conventional-commit format (`feat:`, `fix:`, `chore:`, `refactor:`, …,
    optionally scoped e.g. `feat(genseq):`). Commit with the system git user
    (commits are signed). Do **not** add a `Co-authored-by: Claude` trailer.
+   In the commit body, state clearly that an AI coding agent authored the
+   change on the user's behalf (e.g. `Authored by an AI coding agent on
+   behalf of <user>.`).
 
 4. **After committing, ask again** before opening a PR.
 
@@ -67,6 +70,11 @@ Follow this for **every** task, in order. Do not skip steps.
    - **Configurator fix** → steps for how to confirm the fix in the
      **configurator** (browser + live device).
    - Anything else → no checklist.
+
+6. **Never merge, approve, or otherwise accept a PR.** Open the PR and hand
+   it to the user. Merging, approving, enabling auto-merge, or closing via
+   merge is exclusively the user's decision — even if the user asks you to
+   "finish" or "land" the change.
 
 ## Environment & Toolchain
 
@@ -345,7 +353,9 @@ manually in a Chromium browser with a live device connection.
 6. **FRAM address ranges**: Don't overlap storage regions in `storage.rs`.
 7. **Atomic ordering**: Use `Ordering::Relaxed` for non-synchronized state, `Acquire`/`Release` for synchronized.
 8. **Web MIDI requirements**: Browser must support Web MIDI with SysEx (Chromium, Firefox); HTTPS required for non-localhost. The user must grant the MIDI/SysEx permission.
-9. **Commit trailers**: One-line conventional-commit messages; do not add a `Co-authored-by: Claude` trailer.
+9. **Commit messages**: Conventional-commit subject; body must note AI authorship
+   on the user's behalf. Do not add a `Co-authored-by: Claude` trailer. Never
+   merge/approve/accept PRs — only open them for the user.
 
 ## File Structure Summary
 
