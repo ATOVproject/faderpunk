@@ -27,6 +27,7 @@ import {
   parseParamValueFromFile,
   parseGlobalConfigFromFile,
 } from "./validators";
+import { repairUtf8Mojibake } from "./utils";
 
 const LAYOUT_VERSION = 1;
 
@@ -66,8 +67,9 @@ export const getAllApps = async (dev: FpMidiDevice) => {
         appId: app.value[0],
         channels: app.value[1],
         paramCount: app.value[2][0],
-        name: app.value[2][1] as string,
-        description: app.value[2][2] as string,
+        // Device sends UTF-8; older fp-config/Vite prebundles Latin-1-decode.
+        name: repairUtf8Mojibake(app.value[2][1] as string),
+        description: repairUtf8Mojibake(app.value[2][2] as string),
         color: app.value[2][3].tag,
         icon: app.value[2][4].tag,
         params: app.value[2][5],

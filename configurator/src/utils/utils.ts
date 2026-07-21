@@ -20,6 +20,26 @@ export const kebabToPascal = (str: string): string => {
     .join("");
 };
 
+/**
+ * Repair UTF-8 that was wrongly decoded as Latin-1 (classic mojibake:
+ * "Lévy" → "LÃ©vy", "—" → "â"). Safe no-op for already-correct UTF-8 /
+ * ASCII. Needed while postcard-bindgen / Vite prebundles still use
+ * String.fromCharCode for postcard strings.
+ */
+export const repairUtf8Mojibake = (str: string): string => {
+  if (!str) return str;
+  // Fast path: no high bytes interpreted as Latin-1 multi-char sequences.
+  if (![...str].some((c) => c.charCodeAt(0) > 127)) return str;
+  try {
+    const bytes = Uint8Array.from([...str], (c) => c.charCodeAt(0) & 0xff);
+    const fixed = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    // Only accept if it actually changed and looks like a repair.
+    return fixed !== str ? fixed : str;
+  } catch {
+    return str;
+  }
+};
+
 export const pascalToKebab = (str: string): string => {
   if (!str) return "";
   const camelized = str.replace(/^./, (c) => c.toLowerCase());
