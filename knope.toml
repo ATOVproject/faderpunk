@@ -41,6 +41,10 @@ command = "./gen-bindings.sh"
 
 [[workflows.steps]]
 type = "Command"
+command = "./gen-app-library.sh"
+
+[[workflows.steps]]
+type = "Command"
 command = "git add -A"
 
 [[workflows.steps]]

@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-landing
+dist-apps
 dist-ssr
 *.local
 
