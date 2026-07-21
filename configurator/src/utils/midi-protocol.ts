@@ -1,7 +1,7 @@
 import {
   type ConfigMsgIn,
   type ConfigMsgOut,
-  deserialize,
+  deserialize as deserializeRaw,
   serialize,
 } from "@atov/fp-config";
 
@@ -11,6 +11,19 @@ import {
   SYSEX_EOX,
   SYSEX_START,
 } from "./sysex";
+import { repairUtf8Mojibake } from "./utils";
+
+/** postcard-bindgen may Latin-1-decode UTF-8 device strings — repair AppConfig. */
+function deserialize(type: "ConfigMsgOut", payload: Uint8Array) {
+  const result = deserializeRaw(type, payload);
+  const msg = result.value;
+  if (msg.tag === "AppConfig") {
+    const meta = msg.value[2];
+    meta[1] = repairUtf8Mojibake(meta[1]);
+    meta[2] = repairUtf8Mojibake(meta[2]);
+  }
+  return result;
+}
 
 // Timeout for a regular protocol response. Also what lets the connection
 // health check detect an unplugged device (Web MIDI has no blocking read).

@@ -10,6 +10,7 @@ import {
   getDefaultValue,
   getSlots,
   transformParamFormValues,
+  repairUtf8Mojibake,
 } from "../utils/utils";
 import { ButtonPrimary } from "./Button";
 import { Icon } from "./Icon";
@@ -79,7 +80,7 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
           </div>
           <div className="flex-1">
             <p className="text-yellow-fp text-sm font-bold uppercase">App</p>
-            <p className="text-lg font-medium">{app.name}</p>
+            <p className="text-lg font-medium">{repairUtf8Mojibake(app.name)}</p>
           </div>
           <div className="flex-1">
             <p className="text-yellow-fp text-sm font-bold uppercase">
