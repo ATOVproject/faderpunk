@@ -1592,6 +1592,93 @@ On load, both registers are restored at the next phrase boundary so the recalled
       },
     ],
   },
+  {
+    appId: 29,
+    title: "Grooves",
+    description: "Multi-genre MIDI drum grooves with swing",
+    color: "Orange",
+    icon: "die",
+    params: [
+      "MIDI Note Kick",
+      "MIDI Channel Kick",
+      "MIDI Note Snare",
+      "MIDI Channel Snare",
+      "MIDI Note Hats",
+      "MIDI Channel Hats",
+      "Groove",
+      "Swing max %",
+      "GATE %",
+      "Color",
+      "MIDI Out",
+    ],
+    storage: ["Swing", "Density", "Jack mode", "Reversed", "Muted"],
+    text: `Grooves is a one-channel multi-genre drum helper. It always sends three MIDI voices — **Kick**, **Snare**, and **Hats** — clock-synced to a 4/4 bar, with shared MPC-style swing. Use it as a sketch pad for beats, or as a clocked trigger source into a drum machine.
+
+#### Groove (genre)
+
+Configurator **Groove** (or **Shift + long press** on device) selects the pattern family. Cycling on the device persists the param; the Button LED flashes that genre’s color briefly.
+
+What changes by genre (core hits before Density fills):
+- **Dub** — sparse kick on 1 & 3, snare 2 & 4, thin offbeat hats
+- **Disco** — four-on-the-floor, clap/snare 2 & 4, offbeat hats
+- **Hip-Hop** — syncopated boom-bap kicks, snare 2 & 4, steady 8th hats
+- **House** — classic four-on-the-floor + offbeat hats
+- **Techno** — four-on-the-floor, denser hats, snare mostly on 4
+- **Trip-Hop** — laid-back sparse kick/hats, snare leaning on 3
+- **UK Garage** — skippy kick/hat syncopation, snare 2 & 4
+- **Dubstep** — half-time: kick on 1, snare on 3
+
+#### Density, swing, jack
+
+Density is a groove macro (not just hats): as it rises it reveals extra kick, snare, *and* hat hits one at a time. New hits fade in as quiet ghosts and get louder past their reveal point. Ghost-only steps also drag slightly later as density rises (looser pocket).
+
+#### Gestures
+
+| Control | Action |
+| --- | --- |
+| **Fader** | Density — reveal / loudness of fill hits |
+| **Shift + Fader** | Swing — delays offbeat 16ths up to **Swing max %** (default 50% ≈ MPC; 100% = full 16th late) |
+| **Button + Fader** | Jack mode — lower half Any (velocity pulse); upper half Stacked (1/2/4 V Kick/Snare/Hats) |
+| **Short press** | Reset to downbeat |
+| **Long press** | Mute all MIDI and jack output (no fader move) |
+| **Shift + short** | Reverse swing (delays onbeats instead) |
+| **Shift + long** | Cycle genre (persists **Groove** param) |
+
+#### Faders & LEDs
+
+| Control | Edits | Visual feedback |
+| --- | --- | --- |
+| **Fader** | Density | **Top LED** = bar progress in app color. **Bottom LED** flashes on each hit |
+| **Shift + Fader** | Swing | **Top LED** = swing amount in **red** (brighter = more) |
+| **Button + Fader** | Jack mode | **Top LED** = solid **yellow** (Any) or **violet** (Stacked) |
+| **Button LED** | — | app color while playing; white↔off on reverse; brief genre-color flash after Shift+long; off when muted |`,
+    channels: [
+      {
+        jackTitle: "Jack output",
+        jackDescription:
+          "Any mode: one velocity-weighted pulse per hit. Stacked mode: 1 V = kick, 2 V = snare, 4 V = hats.",
+        faderTitle: "Density",
+        faderDescription:
+          "Groove macro — raises the fader to reveal extra kick, snare and hat hits as quiet ghosts that get louder the further you go.",
+        faderPlusShiftTitle: "Swing",
+        faderPlusShiftDescription:
+          "Delays offbeat 16ths, from none up to the Configurator Swing max % (50% ≈ classic MPC).",
+        faderPlusFnTitle: "Jack mode",
+        faderPlusFnDescription:
+          "Lower half of the fader: Any (pulses). Upper half: Stacked (1/2/4 V codes).",
+        fnTitle: "Reset / Mute",
+        fnDescription:
+          "Short press: jump to the downbeat. Long press: mute MIDI and jack (do not move the fader).",
+        fnPlusShiftTitle: "Reverse / Genre",
+        fnPlusShiftDescription:
+          "Short: reverse swing (delay onbeats). Long: cycle genre.",
+        ledTop: "Bar position (app color)",
+        ledTopPlusShift: "Swing amount (red, brighter = more)",
+        ledTopPlusFn: "Yellow = Any mode · Violet = Stacked mode",
+        ledBottom: "Flash on each hit",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
