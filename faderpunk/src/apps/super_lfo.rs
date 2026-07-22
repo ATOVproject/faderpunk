@@ -1,7 +1,7 @@
 //! Super LFO — morphing dual-osc LFO with CV destinations for form params.
 //!
-//! UX convention (b): fun/form on Main fader, structure/time on Shift+Fader
-//! (Heat Pump / Golden Gate / Grooves family — not LFO+ Speed-on-Main).
+//! UX: Ch0 Main=Morph / Third=Skew; Ch1 Main=Character / Third=Warp;
+//! structure/time on Shift+Fader (Speed). Heat Pump / Golden Gate family.
 
 use embassy_futures::{
     join::{join, join5},
@@ -29,6 +29,8 @@ pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 11;
 
 const REVERSE_FADE_MS: u16 = 500;
+/// Hold off periodic button LED writes so LedMode::Flash can finish (~3 cycles @ 60fps).
+const BUTTON_FLASH_MS: u16 = 850;
 const DEST_COUNT: usize = 8;
 
 /// Morph continuum: soft waves → stepped/chaos.
@@ -304,6 +306,9 @@ pub async fn run(
     let glob_phase_origin = app.make_global(0u64);
     let glob_out_muted = app.make_global(storage.query(|s| s.out_muted));
     let glob_frozen_val = app.make_global(2047u16);
+    // Transport hold while clocked: Stop freezes phase/level; Start/Tick releases.
+    // Separate from user freeze (`s.frozen`) so Stop doesn't sticky-toggle that.
+    let glob_clock_held = app.make_global(false);
     let glob_mix_mode = app.make_global(mix_mode);
     let long_press_0 = app.make_global(false);
     let long_press_1 = app.make_global(false);
@@ -311,6 +316,8 @@ pub async fn run(
     let fader_moved_1 = app.make_global(false);
     let glob_reverse_fade = app.make_global(0u16);
     let glob_reverse_fade_up = app.make_global(false);
+    let glob_btn_flash_0 = app.make_global(0u16);
+    let glob_btn_flash_1 = app.make_global(0u16);
     let glob_shift_focus = app.make_global(0xffu8);
     let die = app.use_die();
     let glob_chaos = app.make_global(MorphChaos::new());
@@ -396,6 +403,16 @@ pub async fn run(
                 glob_reverse_fade.set(next);
             }
 
+            // Countdown flash hold-offs (audio loop would otherwise clobber LedMode::Flash).
+            let flash_0 = glob_btn_flash_0.get();
+            if flash_0 > 0 {
+                glob_btn_flash_0.set(flash_0.saturating_sub(1));
+            }
+            let flash_1 = glob_btn_flash_1.get();
+            if flash_1 > 0 {
+                glob_btn_flash_1.set(flash_1.saturating_sub(1));
+            }
+
             let in_mute = storage.query(|s| s.in_mute);
             let in_val = if in_mute {
                 2047
@@ -461,6 +478,8 @@ pub async fn run(
             let lfo_speed = glob_lfo_speed.get();
             let quant_speed = glob_quant_speed.get();
             let lfo_pos = glob_lfo_pos.get();
+            let clock_held = sync && glob_clock_held.get();
+            let held = frozen || clock_held;
 
             let step = if sync {
                 quant_speed / speed_mult as f32
@@ -468,7 +487,7 @@ pub async fn run(
                 lfo_speed / speed_mult as f32
             };
 
-            let next_pos = if frozen {
+            let next_pos = if held {
                 lfo_pos
             } else if reversed {
                 let mut p = lfo_pos - step;
@@ -529,7 +548,7 @@ pub async fn run(
             };
 
             let out_muted = glob_out_muted.get();
-            let effective_val = if frozen && !out_muted {
+            let effective_val = if held && !out_muted {
                 glob_frozen_val.get()
             } else if out_muted {
                 if range.is_bipolar() {
@@ -557,25 +576,24 @@ pub async fn run(
             let show_0 = display_latch(latch_0, 0, shift_focus);
             let show_1 = display_latch(latch_1, 1, shift_focus);
 
-            let led = if range.is_bipolar() {
-                split_unsigned_value(effective_val)
-            } else {
-                [(effective_val / 16) as u8, 0]
-            };
+            // Ch1 Top/Bottom always meter around mid-scale so Bottom lights on the
+            // low half of the wave even when the jack Range is unipolar 0–10V.
+            let led = split_unsigned_value(effective_val);
             let shape_color = morph_color(morph);
+            // Button breath tracks the same wave as Ch1 Top/Bottom; yield to mute /
+            // freeze / reverse-fade / Alt dest / Flash feedback elsewhere.
+            let wave_bright = wave_button_brightness(effective_val, range.is_bipolar());
 
-            // Ch1 button = output presence (app color), not morph shape.
-            if fade_left == 0 {
+            // Ch1 button = app color, brightness = LFO (unless reverse fade / flash owns it).
+            if fade_left == 0 && flash_1 == 0 {
                 if out_muted {
                     leds.unset(1, Led::Button);
-                } else if sync && next_pos as u16 > 2048 {
-                    leds.set(1, Led::Button, led_color, Brightness::Low);
                 } else {
-                    leds.set(1, Led::Button, led_color, Brightness::Mid);
+                    leds.set(1, Led::Button, led_color, wave_bright);
                 }
             }
 
-            // Ch1 Top/Bottom: Main = output level; Alt = red speed (only if focused); Third = character
+            // Ch1 Top/Bottom: Main = output level; Alt = red speed (only if focused); Third = warp
             match show_1 {
                 LatchLayer::Main => {
                     leds.set(1, Led::Top, led_color, Brightness::Custom(led[0]));
@@ -587,11 +605,11 @@ pub async fn run(
                     leds.unset(1, Led::Bottom);
                 }
                 LatchLayer::Third => {
-                    let zone = (storage.query(|s| s.character) / 1366).min(2);
+                    let zone = (storage.query(|s| s.warp) / 1366).min(2);
                     let zone_color = match zone {
-                        0 => Color::Blue,
+                        0 => Color::Green,
                         1 => Color::Yellow,
-                        _ => Color::Orange,
+                        _ => Color::Red,
                     };
                     leds.set(1, Led::Top, zone_color, Brightness::Mid);
                     leds.unset(1, Led::Bottom);
@@ -605,19 +623,23 @@ pub async fn run(
                     leds.set(0, Led::Top, shape_color, Brightness::Custom(morph_bright));
                     let led0 = split_unsigned_value(in_val);
                     leds.set(0, Led::Bottom, led_color, Brightness::Custom(led0[1]));
-                    if frozen {
-                        leds.set(0, Led::Button, Color::White, Brightness::Low);
-                    } else if in_mute {
-                        leds.unset(0, Led::Button);
-                    } else {
-                        leds.set(0, Led::Button, shape_color, Brightness::Mid);
+                    if flash_0 == 0 {
+                        if frozen {
+                            leds.set(0, Led::Button, Color::White, Brightness::Low);
+                        } else if in_mute {
+                            leds.unset(0, Led::Button);
+                        } else {
+                            leds.set(0, Led::Button, shape_color, wave_bright);
+                        }
                     }
                 }
                 LatchLayer::Alt => {
                     let att_bright = (storage.query(|s| s.in_att) / 16) as u8;
                     leds.set(0, Led::Top, Color::Red, Brightness::Custom(att_bright));
                     leds.unset(0, Led::Bottom);
-                    leds.set(0, Led::Button, dest_color(destination), Brightness::Mid);
+                    if flash_0 == 0 {
+                        leds.set(0, Led::Button, dest_color(destination), Brightness::Mid);
+                    }
                 }
                 LatchLayer::Third => {
                     let zone = (storage.query(|s| s.skew) / 1366).min(2);
@@ -631,7 +653,7 @@ pub async fn run(
                 }
             }
 
-            if !frozen {
+            if !held {
                 glob_lfo_pos.set(next_pos);
             }
         }
@@ -684,16 +706,16 @@ pub async fn run(
                     fader_moved_1.set(true);
                 }
                 let target_value = match latch_layer {
-                    LatchLayer::Main => storage.query(|s| s.warp),
+                    LatchLayer::Main => storage.query(|s| s.character),
                     LatchLayer::Alt => storage.query(|s| s.layer_speed),
-                    LatchLayer::Third => storage.query(|s| s.character),
+                    LatchLayer::Third => storage.query(|s| s.warp),
                 };
                 if let Some(new_value) =
                     latch[1].update(fader.get_value_at(1), latch_layer, target_value)
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            storage.modify_and_save(|s| s.warp = new_value);
+                            storage.modify_and_save(|s| s.character = new_value);
                         }
                         LatchLayer::Alt => {
                             glob_shift_focus.set(1);
@@ -702,7 +724,7 @@ pub async fn run(
                         }
                         LatchLayer::Third => {
                             fader_moved_1.set(true);
-                            storage.modify_and_save(|s| s.character = new_value);
+                            storage.modify_and_save(|s| s.warp = new_value);
                         }
                     }
                 }
@@ -719,10 +741,13 @@ pub async fn run(
                     long_press_0.set(false);
                     buttons.wait_for_up(0).await;
                     if !long_press_0.get() {
-                        // Shift+short Ch0: cycle CV destination
-                        storage.modify_and_save(|s| {
+                        // Shift+short Ch0: cycle CV destination + flash dest color
+                        let dest = storage.modify_and_save(|s| {
                             s.dest = (s.dest + 1) % DEST_COUNT;
+                            s.dest
                         });
+                        leds.set_mode(0, Led::Button, LedMode::Flash(dest_color(dest), Some(3)));
+                        glob_btn_flash_0.set(BUTTON_FLASH_MS);
                     }
                 } else {
                     long_press_0.set(false);
@@ -792,8 +817,9 @@ pub async fn run(
                     leds.set_mode(
                         0,
                         Led::Button,
-                        LedMode::Flash(dest_color(mode + 4), Some(3)),
+                        LedMode::Flash(mix_mode_color(mode), Some(3)),
                     );
+                    glob_btn_flash_0.set(BUTTON_FLASH_MS);
                 }
             } else if chan == 1 {
                 long_press_1.set(true);
@@ -803,8 +829,15 @@ pub async fn run(
                         s.clocked
                     });
                     if clocked {
+                        // Already stopped when engaging sync → hold immediately.
+                        if !crate::state::is_clock_running().await {
+                            glob_clock_held.set(true);
+                        }
                         let color = morph_color(storage.query(|s| s.morph));
                         leds.set_mode(1, Led::Button, LedMode::Flash(color, Some(4)));
+                        glob_btn_flash_1.set(BUTTON_FLASH_MS);
+                    } else {
+                        glob_clock_held.set(false);
                     }
                 }
             }
@@ -815,6 +848,9 @@ pub async fn run(
         loop {
             match clk.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Tick => {
+                    if storage.query(|s| s.clocked) {
+                        glob_clock_held.set(false);
+                    }
                     if storage.query(|s| s.clocked) && phase_lock && !storage.query(|s| s.frozen) {
                         let ticks_per_cycle =
                             (glob_div.get() as u64).saturating_mul(speed_mult as u64);
@@ -830,11 +866,21 @@ pub async fn run(
                     }
                     glob_tick.set(true);
                 }
+                ClockEvent::Start => {
+                    if storage.query(|s| s.clocked) {
+                        glob_clock_held.set(false);
+                    }
+                }
+                ClockEvent::Stop => {
+                    if storage.query(|s| s.clocked) {
+                        glob_clock_held.set(true);
+                    }
+                }
                 ClockEvent::Reset => {
+                    // Keep hold if transport is still stopped; just park phase at 0.
                     glob_phase_origin.set(0);
                     glob_lfo_pos.set(0.0);
                 }
-                _ => {}
             }
         }
     };
@@ -871,6 +917,18 @@ pub async fn run(
         clock_handler,
     )
     .await;
+}
+
+fn wave_button_brightness(val: u16, bipolar: bool) -> Brightness {
+    // Floor at Low so troughs never look like mute (Off); compress 0..255 into MIN..255.
+    const MIN: u8 = 110; // Brightness::Low
+    let raw = if bipolar {
+        ((val as i32 - 2047).unsigned_abs() / 8) as u8
+    } else {
+        (val / 16) as u8
+    };
+    let span = 255u16 - MIN as u16;
+    Brightness::Custom(MIN + ((raw as u16 * span) / 255) as u8)
 }
 
 fn cv_mod_u16(base: u16, active: bool, cv_delta: i32) -> u16 {
@@ -1027,22 +1085,26 @@ fn mix_samples(a: u16, b: u16, mode: usize, balance: u16) -> u16 {
     }
 }
 
+/// Even spectrum sweep: morph 0..=4095 → full hue circle 0°..360°
+/// (red → yellow → green → cyan → blue → magenta → red), via HSV.
 fn morph_color(morph: u16) -> Color {
-    let segments = MORPH_NODES - 1;
-    let seg_size = 4096 / segments;
-    let seg = ((morph as usize) / seg_size).min(segments - 1);
-    color_for_node(seg)
+    let hue = (morph.min(4095) as u32 * 360) / 4096; // degrees, wraps red→red
+    let (r, g, b) = hsv_to_rgb(hue as u16);
+    Color::Custom(r, g, b)
 }
 
-fn color_for_node(node: usize) -> Color {
-    match node {
-        0 => Color::Yellow, // Sine
-        1 => Color::Pink,   // Tri
-        2 => Color::Cyan,   // Saw
-        3 => Color::White,  // Square
-        4 => Color::Orange, // Rand walk
-        5 => Color::Violet, // S&H
-        _ => Color::Red,    // Noise
+/// Integer HSV→RGB with S=V=max. Hue in degrees (0..360).
+fn hsv_to_rgb(hue: u16) -> (u8, u8, u8) {
+    let sector = hue / 60; // 0..=5
+                           // Rising/falling ramp within the sector, scaled to 0..=255.
+    let ramp = ((hue % 60) as u32 * 255 / 59) as u8;
+    match sector {
+        0 => (255, ramp, 0),
+        1 => (255 - ramp, 255, 0),
+        2 => (0, 255, ramp),
+        3 => (0, 255 - ramp, 255),
+        4 => (ramp, 0, 255),
+        _ => (255, 0, 255 - ramp),
     }
 }
 
@@ -1057,5 +1119,14 @@ fn dest_color(dest: usize) -> Color {
         6 => Color::Green,  // Warp
         7 => Color::Rose,   // Character
         _ => Color::Yellow,
+    }
+}
+
+fn mix_mode_color(mode: usize) -> Color {
+    match mode {
+        0 => Color::Yellow, // Xfade
+        1 => Color::Cyan,   // Min
+        2 => Color::Orange, // Max
+        _ => Color::White,  // Sum
     }
 }

@@ -1658,7 +1658,7 @@ When you hold Shift and move a fader, the red Shift LED meter follows that fader
 
 | Control | Visual feedback |
 | --- | --- |
-| **Left Fader** | **Top** = morph amount in morph hue. **Bottom** = CV in level. **Button** = morph hue, brightness follows the wave (white low when frozen; off when in-muted) |
+| **Left Fader** | **Top** = morph amount; hue sweeps a continuous HSV spectrum (red→…→red) with the Morph fader. **Bottom** = CV in level. **Button** = same morph hue; brightness breathes with the wave (never fully off — mute is still Off; white low when frozen) |
 | **Shift + Left Fader** | **Top** = attenuator in **red**. **Button** = CV-destination color |
 | **Button + Left Fader** | **Top** = skew zone **cyan / pink / violet**. Bottom off |
 | **Right Fader** | **Top / Bottom** = output meter (pos / neg halves) in app color. **Button** = app color, wave brightness |
@@ -1702,7 +1702,7 @@ There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, anot
         fnPlusShiftTitle: "CV dest / Mix mode",
         fnPlusShiftDescription:
           "Short: cycle CV destination. Long: cycle dual-osc mix mode.",
-        ledTop: "Morph amount (hue follows the shape)",
+        ledTop: "Morph amount (HSV hue sweep with Morph fader)",
         ledTopPlusShift: "Attenuator level (red)",
         ledTopPlusFn: "Skew zone — cyan / pink / violet",
         ledBottom: "CV input level",
@@ -1730,7 +1730,7 @@ There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, anot
         ledTop: "Positive half of the output (app color)",
         ledTopPlusShift: "Speed amount (red)",
         ledTopPlusFn: "Warp zone — green / yellow / red",
-        ledBottom: "Negative half of the output",
+        ledBottom: "Low / negative half of the output (always, even in 0–10 V range)",
         ledBottomPlusShift: "Off",
         ledBottomPlusFn: "Off",
       },
