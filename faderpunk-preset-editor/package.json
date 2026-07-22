@@ -1,0 +1,17 @@
+{
+  "name": "faderpunk-scenes",
+  "version": "0.1.0",
+  "description": "Faderpunk preset bank editor + Playwright push/pull to Configurator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "push": "node push.mjs",
+    "pull": "node pull.mjs",
+    "chrome": "node open-debug-chrome.mjs",
+    "check": "node --check server.mjs && node --check push.mjs && node --check pull.mjs && node --check open-debug-chrome.mjs && node --check midi-sync.mjs && node --check config-url.mjs && node --check i18n.js"
+  },
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

@@ -1,0 +1,29 @@
+# Local/runtime data
+.chrome-profile/
+out/
+node_modules/
+*.log
+.DS_Store
+
+# Downloaded MIDI database and machine-local legacy link
+midi/
+midi-main
+
+# Keep the custom MIDI documentation, not users' uploaded CSVs
+midi-custom/*
+!midi-custom/README.md
+
+# Local firmware builds and project notes
+firmware/
+plans/
+docs-Essential-D1-MIDI.md
+
+# Unrelated local design exports
+fulldesigns-embroidery-threads.ase
+fulldesigns-embroidery-threads.json
+map-to-fulldesigns-threads.jsx
+
+# The global ignore file excludes Markdown; explicitly ship project docs.
+!README.md
+!midi-custom/README.md
+!icons/README.md
