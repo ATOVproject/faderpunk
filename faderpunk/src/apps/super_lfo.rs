@@ -26,7 +26,7 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 10;
+pub const PARAMS: usize = 11;
 
 const REVERSE_FADE_MS: u16 = 500;
 const DEST_COUNT: usize = 8;
@@ -76,6 +76,11 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::Enum {
     name: "Osc B",
     variants: &["Quad", "Octave"],
+})
+.add_param(Param::i32 {
+    name: "Mix balance",
+    min: 0,
+    max: 100,
 });
 
 pub struct Params {
@@ -89,24 +94,75 @@ pub struct Params {
     phase_lock: bool,
     mix_mode: usize,
     osc_b: usize,
+    /// 0% = Osc A only, 50% = center, 100% = Osc B only (Xfade).
+    mix_balance: i32,
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        if values.len() < PARAMS {
+        // Legacy layouts omitted Mix balance (10 params) or used signed −100…+100.
+        let (
+            speed_mult,
+            range,
+            midi_channel,
+            midi_cc,
+            color,
+            nrpn,
+            midi_out,
+            phase_lock,
+            mix_mode,
+            osc_b,
+            mix_balance,
+        ) = if values.len() >= PARAMS {
+            let raw = i32::from_value(values[10]);
+            let mix_balance = if raw < 0 {
+                // Old signed −100…+100 → 0…100%
+                ((raw + 100) / 2).clamp(0, 100)
+            } else {
+                raw.clamp(0, 100)
+            };
+            (
+                usize::from_value(values[0]),
+                Range::from_value(values[1]),
+                MidiChannel::from_value(values[2]),
+                MidiCc::from_value(values[3]),
+                Color::from_value(values[4]),
+                bool::from_value(values[5]),
+                MidiOut::from_value(values[6]),
+                bool::from_value(values[7]),
+                usize::from_value(values[8]),
+                usize::from_value(values[9]),
+                mix_balance,
+            )
+        } else if values.len() >= 10 {
+            (
+                usize::from_value(values[0]),
+                Range::from_value(values[1]),
+                MidiChannel::from_value(values[2]),
+                MidiCc::from_value(values[3]),
+                Color::from_value(values[4]),
+                bool::from_value(values[5]),
+                MidiOut::from_value(values[6]),
+                bool::from_value(values[7]),
+                usize::from_value(values[8]),
+                usize::from_value(values[9]),
+                50,
+            )
+        } else {
             return None;
-        }
+        };
         Some(Self {
-            speed_mult: usize::from_value(values[0]),
-            range: Range::from_value(values[1]),
-            midi_channel: MidiChannel::from_value(values[2]),
-            midi_cc: MidiCc::from_value(values[3]),
-            color: Color::from_value(values[4]),
-            nrpn: bool::from_value(values[5]),
-            midi_out: MidiOut::from_value(values[6]),
-            phase_lock: bool::from_value(values[7]),
-            mix_mode: usize::from_value(values[8]),
-            osc_b: usize::from_value(values[9]),
+            speed_mult,
+            range,
+            midi_channel,
+            midi_cc,
+            color,
+            nrpn,
+            midi_out,
+            phase_lock,
+            mix_mode,
+            osc_b,
+            mix_balance,
         })
     }
 
@@ -122,6 +178,7 @@ impl AppParams for Params {
         vec.push(self.phase_lock.into()).unwrap();
         vec.push(self.mix_mode.into()).unwrap();
         vec.push(self.osc_b.into()).unwrap();
+        vec.push(self.mix_balance.into()).unwrap();
         vec
     }
 }
@@ -183,6 +240,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             phase_lock: true,
             mix_mode: 0,
             osc_b: 0,
+            mix_balance: 50,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -373,7 +431,6 @@ pub async fn run(
                 warp_base,
                 character,
                 attenuation_base,
-                mix_balance,
             ) = storage.query(|s| {
                 (
                     s.clocked,
@@ -384,9 +441,13 @@ pub async fn run(
                     s.warp,
                     s.character,
                     s.layer_attenuation,
-                    s.mix_balance,
                 )
             });
+            // 0% = A, 50% = center, 100% = B (Xfade). Configurator / preset param.
+            let mix_balance = {
+                let pct = params.query(|p| p.mix_balance).clamp(0, 100) as u32;
+                ((pct * 4095) / 100) as u16
+            };
 
             let cv_delta = in_val as i32 - 2047;
             let morph = cv_mod_u16(morph_base, destination == 4, cv_delta);
