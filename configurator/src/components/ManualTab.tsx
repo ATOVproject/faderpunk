@@ -1592,6 +1592,64 @@ On load, both registers are restored at the next phrase boundary so the recalled
       },
     ],
   },
+  {
+    appId: 28,
+    title: "Heat Pump",
+    description: "Clock-synced sidechain ducking envelope",
+    color: "Pink",
+    icon: "ad-env",
+    params: ["Color", "Range", "MIDI Channel", "MIDI CC", "NRPN", "MIDI Out"],
+    storage: ["Release", "Depth", "Invert", "Muted", "Division"],
+    text: `Heat Pump is a one-channel clock-synced ducking envelope for classic house sidechain. On each clock division the CV output drops and recovers with an exponential release — patch it into a filter cutoff or VCA so pads and bass “breathe” with the kick.
+
+#### What you hear / see on CV
+
+By default the jack sits **high when idle** and **ducks downward** on each hit (sidechain-friendly: open when quiet, pull down on the pump). **Invert** flips that polarity (idle low, pump rises). Depth is how far each duck travels; release is how quickly it returns. MIDI CC (if enabled) tracks the same envelope as the jack, so you can pump a soft-synth’s volume or filter from MIDI alone.
+
+#### Gestures
+
+| Control | Action |
+| --- | --- |
+| **Fader** | Release / recovery time (up = faster) |
+| **Shift + Fader** | Duck depth (up = deeper) |
+| **Button + Fader** | — not used on this app |
+| **Short press** | Manual trigger — one pump |
+| **Long press** | Bypass pump, hold idle (keeps CC targets from sticking at silence) |
+| **Shift + short** | Cycle clock division (new instances start at 1/1) |
+| **Shift + long** | Toggle invert (Button LED: white↔off fade) |
+
+#### Faders & LEDs
+
+| Control | Edits | Visual feedback |
+| --- | --- | --- |
+| **Fader** | Release | **Top LED** = envelope level in app color (brighter = higher CV/CC). **Bottom** unused |
+| **Shift + Fader** | Depth | **Top LED** = depth in **red** |
+| **Button LED** | — | Division metronome (color ↔ off): **1/1 = Color param**; faster divisions rotate the palette. Invert toggle: white↔off fade instead |
+
+#### Division
+
+Division is set only on the device (no Configurator Division param). Color, Range, MIDI Channel / CC / Out stay in the Configurator.`,
+    channels: [
+      {
+        jackTitle: "CV Out",
+        jackDescription:
+          "Sidechain envelope. Idle is high by default (ducks down on each hit). MIDI CC, if enabled, follows the same curve.",
+        faderTitle: "Release",
+        faderDescription: "How fast the envelope returns after a duck (up = faster).",
+        faderPlusShiftTitle: "Depth",
+        faderPlusShiftDescription: "How far each duck pulls down (up = deeper).",
+        fnTitle: "Trigger / Bypass",
+        fnDescription:
+          "Short press: fire one duck. Long press: bypass and hold idle.",
+        fnPlusShiftTitle: "Division / Invert",
+        fnPlusShiftDescription:
+          "Short: cycle clock division. Long: invert duck polarity (white↔off Button LED).",
+        ledTop: "Current envelope level (app color)",
+        ledTopPlusShift: "Depth amount (red)",
+        ledBottom: "Unused",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
