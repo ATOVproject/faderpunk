@@ -1609,6 +1609,7 @@ On load, both registers are restored at the next phrase boundary so the recalled
       "Grid Lock",
       "Mix Mode",
       "Osc B",
+      "Mix balance",
     ],
     storage: [
       "Morph",
@@ -1636,10 +1637,10 @@ On load, both registers are restored at the next phrase boundary so the recalled
 
 #### Dual oscillators
 
-Configurator **Mix Mode** and **Osc B** set the dual-osc topology:
+Configurator **Mix Mode**, **Osc B**, and **Mix balance** set the dual-osc topology:
 - **Osc B = Quad** — B is +90° (¼ cycle) from A → quadrature / circular modulation when mixed.
 - **Osc B = Octave** — B runs at 2× phase → octave-up companion.
-- A/B mix balance is fixed at center (equal A and B) for now — there is no live Mix-balance control yet.
+- **Mix balance** 0–100% (default 50%): 0% = A only, 50% = center, 100% = B only (used by **Xfade**; Min / Max / Sum ignore balance).
 - **Xfade** crossfades A↔B by balance. **Min** / **Max** pick the lower / higher sample (harsher, more gated contours). **Sum** averages A and B (thicker, smoother).
 
 **Amp** is output level — live control only via CV destination Amp (storage default is full).
