@@ -63,10 +63,7 @@
         'Applies to rows with port "default". Rows with their own port ignore this.',
       "bar.portAll": "Apply to all",
       "bar.portAllTitle":
-        "Sets the default port on every row (overrides = this port)",
-      "bar.portClear": "Clear overrides",
-      "bar.portClearTitle":
-        "Clears row ports — all rows use the default port again",
+        "Saves the default port and clears row overrides — all rows use default again",
       "bar.pull": "Pull from Punk",
       "bar.pullTitle":
         "Reads layout + params + global from the connected Faderpunk (via Configurator Save Setup)",
@@ -177,7 +174,7 @@
         "Overflow stays in the editor — push only sends 1–16",
       "status.hintFree": "{n} free",
       "status.defaultPortMixed":
-        "Default port → {port}. {n} rows have their own port (ignore default). Use “Apply to all” or “Clear overrides”.",
+        "Default port → {port}. {n} rows have their own port (ignore default). Use “Apply to all”.",
       "status.defaultPortAll": "Default port → {port} (applies to all rows)",
       "status.storageFull":
         "Browser storage full/blocked — saving to server…",
@@ -284,6 +281,14 @@
       "param.groove": "Groove / genre",
       "param.swingHint": "Max swing as % of a 16th when fader is full",
       "param.cvRange": "CV Range",
+      "param.mixMode": "Mix Mode",
+      "param.oscB": "Osc B",
+      "param.mixBalance": "Mix %",
+      "param.mixBalanceHint": "Mix balance −100 (A) … 0 (center) … +100 (B)",
+      "param.gateSpeed": "Gate Speed",
+      "param.vpo": "V/Oct",
+      "param.bypassQ": "Bypass quantizer",
+      "param.bypassQShort": "Bypass Q",
       "desc.portOverrides": " — {n} row port override(s)",
       "dock.done": "Done",
       "dock.waitContinue": "Waiting for Continue…",
@@ -347,10 +352,7 @@
         "Gilt für Zeilen mit Port „default“. Zeilen mit eigenem Port ignorieren das.",
       "bar.portAll": "Auf alle anwenden",
       "bar.portAllTitle":
-        "Setzt den Default-Port auf jede Zeile (Overrides = dieser Port)",
-      "bar.portClear": "Overrides löschen",
-      "bar.portClearTitle":
-        "Löscht Zeilen-Ports — alle nutzen wieder Default-Port",
+        "Speichert den Default-Port und löscht Zeilen-Overrides — alle nutzen wieder Default",
       "bar.pull": "Pull from Punk",
       "bar.pullTitle":
         "Liest Layout+Params+Global vom verbundenen Faderpunk (via Configurator Save Setup)",
@@ -465,7 +467,7 @@
         "Overflow bleibt im Editor — Push sendet nur 1–16",
       "status.hintFree": "{n} frei",
       "status.defaultPortMixed":
-        "Default-Port → {port}. {n} Zeilen haben eigenen Port (ignorieren Default). „Auf alle anwenden“ oder „Overrides löschen“.",
+        "Default-Port → {port}. {n} Zeilen haben eigenen Port (ignorieren Default). „Auf alle anwenden“.",
       "status.defaultPortAll":
         "Default-Port → {port} (gilt für alle Zeilen)",
       "status.storageFull":
@@ -573,8 +575,16 @@
       "param.lfoSpeed": "LFO Speed",
       "param.groove": "Groove / genre",
       "param.swingHint":
-        "Max swing as % of a 16th when fader is full",
+        "Max. Swing als % einer 16tel bei voll ausgeschlagenem Fader",
       "param.cvRange": "CV Range",
+      "param.mixMode": "Mix-Modus",
+      "param.oscB": "Osc B",
+      "param.mixBalance": "Mix %",
+      "param.mixBalanceHint": "Mix-Balance −100 (A) … 0 (Mitte) … +100 (B)",
+      "param.gateSpeed": "Gate-Speed",
+      "param.vpo": "V/Oct",
+      "param.bypassQ": "Quantizer umgehen",
+      "param.bypassQShort": "Bypass Q",
       "desc.portOverrides": " — {n} Zeilen-Port-Override(s)",
       "push.liveOverflow":
         'Preset „{name}“ live · {n} Overflow nur im Editor',
@@ -648,10 +658,7 @@
         'S’applique aux lignes avec le port « default ». Les lignes avec leur propre port l’ignorent.',
       "bar.portAll": "Appliquer à tous",
       "bar.portAllTitle":
-        "Définit le port par défaut sur chaque ligne (overrides = ce port)",
-      "bar.portClear": "Effacer les overrides",
-      "bar.portClearTitle":
-        "Efface les ports de ligne — toutes utilisent à nouveau le port par défaut",
+        "Enregistre le port par défaut et efface les overrides — toutes les lignes utilisent le défaut",
       "bar.pull": "Pull from Punk",
       "bar.pullTitle":
         "Lit layout + params + global depuis le Faderpunk connecté (via Configurator Save Setup)",
@@ -766,7 +773,7 @@
         "L’overflow reste dans l’éditeur — le push n’envoie que 1–16",
       "status.hintFree": "{n} libre(s)",
       "status.defaultPortMixed":
-        "Port par défaut → {port}. {n} lignes ont leur propre port (ignorent le défaut). « Appliquer à tous » ou « Effacer les overrides ».",
+        "Port par défaut → {port}. {n} lignes ont leur propre port (ignorent le défaut). « Appliquer à tous ».",
       "status.defaultPortAll":
         "Port par défaut → {port} (toutes les lignes)",
       "status.storageFull":
@@ -876,6 +883,14 @@
       "param.swingHint":
         "Swing max en % d’une 16e quand le fader est à fond",
       "param.cvRange": "CV Range",
+      "param.mixMode": "Mode Mix",
+      "param.oscB": "Osc B",
+      "param.mixBalance": "Mix %",
+      "param.mixBalanceHint": "Balance mix −100 (A) … 0 (centre) … +100 (B)",
+      "param.gateSpeed": "Vitesse Gate",
+      "param.vpo": "V/Oct",
+      "param.bypassQ": "Contourner le quantizer",
+      "param.bypassQShort": "Bypass Q",
       "desc.portOverrides": " — {n} override(s) de port de ligne",
       "push.liveOverflow":
         'Preset « {name} » actif · {n} overflow éditeur seulement',

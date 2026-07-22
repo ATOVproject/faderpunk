@@ -632,7 +632,7 @@
       gap: 8px 10px;
       margin-top: 2px;
       padding-top: 8px;
-      border-top: 1px solid var(--line);
+      border-top: 1px solid var(--group-line, var(--line));
       justify-content: flex-start;
     }
     .port-row-label {
@@ -662,6 +662,11 @@
     .port-row .port-bits {
       flex: 0 0 auto;
       min-width: 0;
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 12px;
+      min-height: 0;
     }
     .port-row > button {
       flex: 0 0 auto;
@@ -671,11 +676,17 @@
     td select[data-k="lfoSpeed"],
     td select[data-k="cvRange"],
     td select[data-k="midiMode"],
-    td select[data-k="groove"] { min-width: 0; width: 6.5rem; }
-    td .swing-max {
+    td select[data-k="groove"],
+    td select[data-k="mixMode"],
+    td select[data-k="oscB"],
+    td select[data-k="gateSpeed"],
+    td select[data-k="vpo"] { min-width: 0; width: 6.5rem; }
+    td .swing-max,
+    td .mix-balance {
       display: inline-flex; align-items: center; gap: 4px;
       font-size: 12px; color: var(--muted); white-space: nowrap;
     }
+    td .mix-balance input { width: 3.5rem; }
     td .app-cell { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
     td .app-extras { display: flex; flex-wrap: wrap; gap: 4px; }
     td input[data-k="target"] { width: 7.5rem; max-width: 12rem; }
@@ -1227,15 +1238,24 @@
       align-items: end;
       align-content: flex-start;
       padding: 8px 10px 10px;
-      border: 1px solid var(--line-cyan);
+      border: 1px solid var(--group-line, var(--line-cyan));
       border-radius: 8px;
       background: #1a1a1a;
       min-width: 0;
+      --group-line: var(--line-cyan);
     }
-    .global-group:nth-child(4n + 1) { border-color: var(--line-magenta); }
-    .global-group:nth-child(4n + 2) { border-color: var(--line-yellow); }
-    .global-group:nth-child(4n + 3) { border-color: var(--line-cyan); }
-    .global-group:nth-child(4n + 4) { border-color: var(--line-magenta); }
+    .global-group:nth-child(4n + 1) { --group-line: var(--line-magenta); }
+    .global-group:nth-child(4n + 2) { --group-line: var(--line-yellow); }
+    .global-group:nth-child(4n + 3) { --group-line: var(--line-cyan); }
+    .global-group:nth-child(4n + 4) { --group-line: var(--line-magenta); }
+    .global-group input,
+    .global-group select,
+    .global-group button {
+      border-color: var(--group-line);
+    }
+    .global-group button.secondary {
+      border-color: var(--group-line);
+    }
     .global-group-label {
       flex: 1 0 100%;
       font-size: 11px;
@@ -1308,9 +1328,18 @@
       -webkit-mask: var(--aux-icon) no-repeat center / contain;
       mask: var(--aux-icon) no-repeat center / contain;
     }
-    .aux-pair.atom { --aux-tint: #4cafb1; }
-    .aux-pair.meteor { --aux-tint: #fdc42f; }
-    .aux-pair.cube { --aux-tint: #ae348b; }
+    .aux-pair.atom {
+      --aux-tint: var(--fp-cyan);
+      --group-line: var(--line-cyan);
+    }
+    .aux-pair.meteor {
+      --aux-tint: var(--fp-yellow);
+      --group-line: var(--line-yellow);
+    }
+    .aux-pair.cube {
+      --aux-tint: var(--fp-magenta);
+      --group-line: var(--line-magenta);
+    }
     @media (max-width: 820px) {
       .global-group.aux {
         grid-template-columns: 1fr;
@@ -1739,7 +1768,6 @@
               <label><input type="checkbox" data-preset-bit="2" /><span data-i18n="port.out2">Out2</span></label>
             </div>
             <button type="button" class="secondary" id="btnPortAll" data-i18n="bar.portAll" data-i18n-title="bar.portAllTitle" title="">Apply to all</button>
-            <button type="button" class="secondary" id="btnPortClear" data-i18n="bar.portClear" data-i18n-title="bar.portClearTitle" title="">Clear overrides</button>
           </div>
         </div>
 
@@ -2272,6 +2300,7 @@
       const appCol = colorForApp(row.instrumentId || row.app, col);
       const cvR = row.cvRange || "_0_10V";
       let firstEnumPatched = false;
+      let enumIdx = 0;
       let firstNotePatched = false;
       let firstCcPatched = false;
       let firstChPatched = false;
@@ -2341,14 +2370,40 @@
         if (p.tag === "Range" && APPS_WITH_RANGE.has(row.app)) {
           p.value = { tag: cvR };
         }
+        if (p.tag === "Enum") {
+          if (row.app === "super_lfo") {
+            if (enumIdx === 0 && row.lfoSpeed != null) p.value = Number(row.lfoSpeed);
+            else if (enumIdx === 1 && row.mixMode != null) p.value = Number(row.mixMode);
+            else if (enumIdx === 2 && row.oscB != null) p.value = Number(row.oscB);
+            enumIdx++;
+          } else if (
+            APPS_WITH_SPEED.has(row.app) &&
+            !firstEnumPatched &&
+            row.lfoSpeed != null
+          ) {
+            p.value = Number(row.lfoSpeed);
+            firstEnumPatched = true;
+          } else if (
+            row.app === "fibonacci_gate" &&
+            !firstEnumPatched &&
+            row.gateSpeed != null
+          ) {
+            p.value = Math.max(0, Math.min(2, Number(row.gateSpeed)));
+            firstEnumPatched = true;
+          }
+        }
+        if (p.tag === "i32" && row.app === "super_lfo" && row.mixBalance != null) {
+          p.value = Math.max(-100, Math.min(100, Number(row.mixBalance) || 0));
+        }
+        if (p.tag === "VoltPerOct" && row.app === "arp_de_levy" && row.vpo) {
+          p.value = { tag: row.vpo === "Buchla" ? "Buchla" : "Standard" };
+        }
         if (
-          p.tag === "Enum" &&
-          APPS_WITH_SPEED.has(row.app) &&
-          !firstEnumPatched &&
-          row.lfoSpeed != null
+          p.tag === "bool" &&
+          row.app === "arp_de_levy" &&
+          row.bypassQ != null
         ) {
-          p.value = Number(row.lfoSpeed);
-          firstEnumPatched = true;
+          p.value = !!row.bypassQ;
         }
       }
       return out;
@@ -2547,7 +2602,7 @@
       grooves: 11,
       ad: 3, seq8: 14, follower_att: 2, slew: 2, follower: 2, quantizer: 4,
       house_pump: 6, sift: 11,
-      super_lfo: 10,
+      super_lfo: 11,
       arp_de_levy: 6,
     };
 
@@ -2662,14 +2717,20 @@
             enumVal(speed), range(cvR), ch(c), cc(n),
             appCol, nrpn(false), out, bool(true),
           ];
-        case "super_lfo":
-          // Speed, Range, MIDI CH, CC, Color, NRPN, MIDI Out, Grid Lock, Mix Mode, Osc B
+        case "super_lfo": {
+          // Speed, Range, MIDI CH, CC, Color, NRPN, MIDI Out, Grid Lock,
+          // Mix Mode, Osc B, Mix balance (−100…+100)
+          const mixBal = Number.isFinite(Number(row.mixBalance))
+            ? Math.max(-100, Math.min(100, Number(row.mixBalance)))
+            : 0;
           return [
             enumVal(speed), range(cvR), ch(c), cc(n),
             appCol, nrpn(false), out, bool(true),
             enumVal(row.mixMode != null ? row.mixMode : 0),
             enumVal(row.oscB != null ? row.oscB : 0),
+            i32(mixBal),
           ];
+        }
         case "rnd":
           return [range(cvR), ch(c), cc(n), nrpn(false), out];
         case "rnd_plus":
@@ -2754,8 +2815,12 @@
         case "clk_div_plus":
           return [ch(c), note(n), i32(40), enumVal(0), appCol, out];
         // Golden Gate: CH, Note, CC, GATE %, Speed (16th/8th/Quarter), Color, Out
-        case "fibonacci_gate":
-          return [ch(c), note(noteN), cc(ccN), i32(40), enumVal(0), appCol, out];
+        case "fibonacci_gate": {
+          const gateSpeed = Number.isFinite(Number(row.gateSpeed))
+            ? Math.max(0, Math.min(2, Number(row.gateSpeed)))
+            : 0;
+          return [ch(c), note(noteN), cc(ccN), i32(40), enumVal(gateSpeed), appCol, out];
+        }
         // Grooves: Note+CH×3, Groove, Swing max %, GATE %, Color, Out
         case "grooves": {
           const notes = groovesNotes(row);
@@ -2791,8 +2856,14 @@
         case "genseq":
           return [ch(c), note(n), appCol, out, vpo("Standard"), bool(false)];
         // Arp de Lévy: CH, Base Note, Color, Out, V/Oct, Bypass quantizer
-        case "arp_de_levy":
-          return [ch(c), note(n), appCol, out, vpo("Standard"), bool(false)];
+        case "arp_de_levy": {
+          const vpoTag = row.vpo === "Buchla" ? "Buchla" : "Standard";
+          return [
+            ch(c), note(n), appCol, out,
+            vpo(vpoTag),
+            bool(!!row.bypassQ),
+          ];
+        }
         case "tb3po": {
           const tbCol = ["Orange", "Green", "Cyan", "Pink", "Violet"].includes(appCol.value.tag)
             ? appCol
@@ -3413,6 +3484,42 @@
           <option value="2" ${cur === 2 ? "selected" : ""}>Slowest</option>
         </select>`);
       }
+      if (s.app === "super_lfo") {
+        const mixMode = s.mixMode != null ? Number(s.mixMode) : 0;
+        const oscB = s.oscB != null ? Number(s.oscB) : 0;
+        const mixBal = Number.isFinite(Number(s.mixBalance)) ? Number(s.mixBalance) : 0;
+        bits.push(`<select data-i="${idx}" data-k="mixMode" title="${escapeAttr(t("param.mixMode"))}">
+          <option value="0" ${mixMode === 0 ? "selected" : ""}>Xfade</option>
+          <option value="1" ${mixMode === 1 ? "selected" : ""}>Min</option>
+          <option value="2" ${mixMode === 2 ? "selected" : ""}>Max</option>
+          <option value="3" ${mixMode === 3 ? "selected" : ""}>Sum</option>
+        </select>`);
+        bits.push(`<select data-i="${idx}" data-k="oscB" title="${escapeAttr(t("param.oscB"))}">
+          <option value="0" ${oscB === 0 ? "selected" : ""}>Quad</option>
+          <option value="1" ${oscB === 1 ? "selected" : ""}>Octave</option>
+        </select>`);
+        bits.push(`<span class="mix-balance" title="${escapeAttr(t("param.mixBalanceHint"))}">
+          <input data-i="${idx}" data-k="mixBalance" type="number" min="-100" max="100" value="${mixBal}" />${escapeHtml(t("param.mixBalance"))}
+        </span>`);
+      }
+      if (s.app === "fibonacci_gate") {
+        const cur = s.gateSpeed != null ? Number(s.gateSpeed) : 0;
+        bits.push(`<select data-i="${idx}" data-k="gateSpeed" title="${escapeAttr(t("param.gateSpeed"))}">
+          <option value="0" ${cur === 0 ? "selected" : ""}>16th</option>
+          <option value="1" ${cur === 1 ? "selected" : ""}>8th</option>
+          <option value="2" ${cur === 2 ? "selected" : ""}>Quarter</option>
+        </select>`);
+      }
+      if (s.app === "arp_de_levy") {
+        const vpoCur = s.vpo === "Buchla" ? "Buchla" : "Standard";
+        bits.push(`<select data-i="${idx}" data-k="vpo" title="${escapeAttr(t("param.vpo"))}">
+          <option value="Standard" ${vpoCur === "Standard" ? "selected" : ""}>1V/Oct</option>
+          <option value="Buchla" ${vpoCur === "Buchla" ? "selected" : ""}>1.2V/Oct</option>
+        </select>`);
+        bits.push(`<label class="mix-balance" title="${escapeAttr(t("param.bypassQ"))}">
+          <input data-i="${idx}" data-k="bypassQ" type="checkbox" ${s.bypassQ ? "checked" : ""} />${escapeHtml(t("param.bypassQShort"))}
+        </label>`);
+      }
       if (s.app === "grooves") {
         const names = ["Dub", "Disco", "Hip-Hop", "House", "Techno", "Trip-Hop", "UK Garage", "Dubstep"];
         const cur = Number.isFinite(Number(s.groove)) ? Number(s.groove) : 3;
@@ -3425,7 +3532,7 @@
             )
             .join("")}
         </select>`);
-        bits.push(`<span class="swing-max" title="Max swing as % of a 16th when fader is full">
+        bits.push(`<span class="swing-max" title="${escapeAttr(t("param.swingHint"))}">
           <input data-i="${idx}" data-k="swingMax" type="number" min="10" max="100" value="${swingMax}" />% Swing
         </span>`);
       }
@@ -3803,15 +3910,6 @@
       const sc = preset();
       const p = normalizePortKey(portKey || sc.port || "out1");
       sc.port = p;
-      for (const r of sc.rows) r.port = p;
-      saveBank();
-      writePresetPortBits(p);
-      render();
-      setStatus("ok", t("status.allRowsPort", { n: sc.rows.length, port: portLabel(p) }));
-    }
-
-    function clearPortOverrides() {
-      const sc = preset();
       let n = 0;
       for (const r of sc.rows) {
         if (r.port) {
@@ -3820,12 +3918,13 @@
         }
       }
       saveBank();
+      writePresetPortBits(p);
       render();
       setStatus(
         "ok",
         n
-          ? t("status.overridesCleared", { n, port: portLabel(sc.port) })
-          : t("status.noOverrides", { port: portLabel(sc.port) }),
+          ? t("status.overridesCleared", { n, port: portLabel(p) })
+          : t("status.noOverrides", { port: portLabel(p) }),
       );
     }
 
@@ -4034,9 +4133,47 @@
             row.cc = row.ccs[0];
             row.kind = "note";
             if (rowGroove != null) row.groove = rowGroove;
-            const i32s = params.filter((v) => v?.tag === "i32").map((v) => Number(v.value?.[0]));
+            const i32s = params.filter((v) => v?.tag === "i32").map((v) => {
+              const raw = v.value;
+              return Number(Array.isArray(raw) ? raw[0] : raw);
+            });
             // CONFIG order after notes/chs: Groove(Enum), Swing max %, GATE %
             if (Number.isFinite(i32s[0])) row.swingMax = i32s[0];
+          }
+          if (appKey === "super_lfo") {
+            const enums = params
+              .filter((v) => v?.tag === "Enum")
+              .map((v) => Number(v.value));
+            if (Number.isFinite(enums[0])) row.lfoSpeed = enums[0];
+            if (Number.isFinite(enums[1])) row.mixMode = enums[1];
+            if (Number.isFinite(enums[2])) row.oscB = enums[2];
+            const i32s = params
+              .filter((v) => v?.tag === "i32")
+              .map((v) => {
+                const raw = v.value;
+                return Number(Array.isArray(raw) ? raw[0] : raw);
+              });
+            if (Number.isFinite(i32s[0])) {
+              let bal = i32s[0];
+              if (bal < -100 || bal > 100) {
+                bal = Math.round((Math.max(0, Math.min(4095, bal)) * 200) / 4095) - 100;
+              }
+              row.mixBalance = Math.max(-100, Math.min(100, bal));
+            }
+          }
+          if (appKey === "fibonacci_gate") {
+            const enums = params
+              .filter((v) => v?.tag === "Enum")
+              .map((v) => Number(v.value));
+            if (Number.isFinite(enums[0])) {
+              row.gateSpeed = Math.max(0, Math.min(2, enums[0]));
+            }
+          }
+          if (appKey === "arp_de_levy") {
+            const vpoVal = params.find((v) => v?.tag === "VoltPerOct");
+            if (vpoVal?.value?.tag) row.vpo = vpoVal.value.tag;
+            const bools = params.filter((v) => v?.tag === "bool");
+            if (bools.length) row.bypassQ = !!bools[bools.length - 1].value;
           }
           if (APPS_WITH_MIDI_MODE.has(appKey)) row.midiMode = mode;
           if (colorTag) row.color = colorTag;
@@ -4445,7 +4582,7 @@
             <select data-i="${i}" data-k="app">
               ${APP_ORDER.map((k) => {
                 const v = APPS[k];
-                return `<option value="${k}" ${k === s.app ? "selected" : ""}>${v.label} (${v.channels})</option>`;
+                return `<option value="${k}" ${k === s.app ? "selected" : ""}>${v.label} · ${v.channels}</option>`;
               }).join("")}
             </select>
             ${appExtrasHtml(s, i)}
@@ -4766,6 +4903,24 @@
         rowRef.kind = kindForApp(rowRef.app, rowRef.midiMode);
       } else if (k === "lfoSpeed") {
         rowRef.lfoSpeed = Number(el.value);
+      } else if (k === "mixMode") {
+        rowRef.mixMode = Math.max(0, Math.min(3, Number(el.value) || 0));
+        delete rowRef.rawParams;
+      } else if (k === "oscB") {
+        rowRef.oscB = Math.max(0, Math.min(1, Number(el.value) || 0));
+        delete rowRef.rawParams;
+      } else if (k === "mixBalance") {
+        rowRef.mixBalance = Math.max(-100, Math.min(100, Number(el.value) || 0));
+        delete rowRef.rawParams;
+      } else if (k === "gateSpeed") {
+        rowRef.gateSpeed = Math.max(0, Math.min(2, Number(el.value) || 0));
+        delete rowRef.rawParams;
+      } else if (k === "vpo") {
+        rowRef.vpo = el.value === "Buchla" ? "Buchla" : "Standard";
+        delete rowRef.rawParams;
+      } else if (k === "bypassQ") {
+        rowRef.bypassQ = !!el.checked;
+        delete rowRef.rawParams;
       } else if (k === "groove") {
         rowRef.groove = Math.max(0, Math.min(7, Number(el.value) || 0));
         delete rowRef.rawParams;
@@ -4803,7 +4958,7 @@
       // Don't rebuild the table on every keystroke — that resets caret (comment / CH / CC).
       const typing =
         ev.type === "input" &&
-        (k === "target" || k === "cc" || k === "swingMax") &&
+        (k === "target" || k === "cc" || k === "swingMax" || k === "mixBalance") &&
         el.tagName === "INPUT";
       if (!typing) render({ focusHint: focusHintFrom(el) });
     }
@@ -4989,10 +5144,6 @@
     document.getElementById("btnPortAll").onclick = () => {
       syncPresetFromFields();
       applyPortToAllRows(readPresetPortBits());
-    };
-    document.getElementById("btnPortClear").onclick = () => {
-      syncPresetFromFields();
-      clearPortOverrides();
     };
 
     async function pushSetup(setup) {
