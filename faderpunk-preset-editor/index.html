@@ -2393,7 +2393,7 @@
           }
         }
         if (p.tag === "i32" && row.app === "super_lfo" && row.mixBalance != null) {
-          p.value = Math.max(-100, Math.min(100, Number(row.mixBalance) || 0));
+          p.value = Math.max(0, Math.min(100, Number(row.mixBalance) || 50));
         }
         if (p.tag === "VoltPerOct" && row.app === "arp_de_levy" && row.vpo) {
           p.value = { tag: row.vpo === "Buchla" ? "Buchla" : "Standard" };
@@ -2719,10 +2719,10 @@
           ];
         case "super_lfo": {
           // Speed, Range, MIDI CH, CC, Color, NRPN, MIDI Out, Grid Lock,
-          // Mix Mode, Osc B, Mix balance (−100…+100)
+          // Mix Mode, Osc B, Mix balance (0…100%, default 50%)
           const mixBal = Number.isFinite(Number(row.mixBalance))
-            ? Math.max(-100, Math.min(100, Number(row.mixBalance)))
-            : 0;
+            ? Math.max(0, Math.min(100, Number(row.mixBalance)))
+            : 50;
           return [
             enumVal(speed), range(cvR), ch(c), cc(n),
             appCol, nrpn(false), out, bool(true),
@@ -3487,7 +3487,7 @@
       if (s.app === "super_lfo") {
         const mixMode = s.mixMode != null ? Number(s.mixMode) : 0;
         const oscB = s.oscB != null ? Number(s.oscB) : 0;
-        const mixBal = Number.isFinite(Number(s.mixBalance)) ? Number(s.mixBalance) : 0;
+        const mixBal = Number.isFinite(Number(s.mixBalance)) ? Number(s.mixBalance) : 50;
         bits.push(`<select data-i="${idx}" data-k="mixMode" title="${escapeAttr(t("param.mixMode"))}">
           <option value="0" ${mixMode === 0 ? "selected" : ""}>Xfade</option>
           <option value="1" ${mixMode === 1 ? "selected" : ""}>Min</option>
@@ -3499,7 +3499,7 @@
           <option value="1" ${oscB === 1 ? "selected" : ""}>Octave</option>
         </select>`);
         bits.push(`<span class="mix-balance" title="${escapeAttr(t("param.mixBalanceHint"))}">
-          <input data-i="${idx}" data-k="mixBalance" type="number" min="-100" max="100" value="${mixBal}" />${escapeHtml(t("param.mixBalance"))}
+          <input data-i="${idx}" data-k="mixBalance" type="number" min="0" max="100" value="${mixBal}" />${escapeHtml(t("param.mixBalance"))}
         </span>`);
       }
       if (s.app === "fibonacci_gate") {
@@ -4155,10 +4155,14 @@
               });
             if (Number.isFinite(i32s[0])) {
               let bal = i32s[0];
-              if (bal < -100 || bal > 100) {
-                bal = Math.round((Math.max(0, Math.min(4095, bal)) * 200) / 4095) - 100;
+              if (bal < 0) {
+                // Legacy signed −100…+100 → 0…100%
+                bal = Math.round((bal + 100) / 2);
+              } else if (bal > 100) {
+                // Legacy fader-scale 0…4095 → 0…100%
+                bal = Math.round((Math.max(0, Math.min(4095, bal)) * 100) / 4095);
               }
-              row.mixBalance = Math.max(-100, Math.min(100, bal));
+              row.mixBalance = Math.max(0, Math.min(100, bal));
             }
           }
           if (appKey === "fibonacci_gate") {
@@ -4910,7 +4914,7 @@
         rowRef.oscB = Math.max(0, Math.min(1, Number(el.value) || 0));
         delete rowRef.rawParams;
       } else if (k === "mixBalance") {
-        rowRef.mixBalance = Math.max(-100, Math.min(100, Number(el.value) || 0));
+        rowRef.mixBalance = Math.max(0, Math.min(100, Number(el.value) || 50));
         delete rowRef.rawParams;
       } else if (k === "gateSpeed") {
         rowRef.gateSpeed = Math.max(0, Math.min(2, Number(el.value) || 0));
