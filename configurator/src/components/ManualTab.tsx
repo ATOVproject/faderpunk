@@ -1592,6 +1592,84 @@ On load, both registers are restored at the next phrase boundary so the recalled
       },
     ],
   },
+  {
+    appId: 30,
+    title: "Golden Gate",
+    description: "Fibonacci-spaced gates — successive ratios approach φ",
+    color: "Violet",
+    icon: "sequence-square",
+    params: [
+      "MIDI Channel",
+      "MIDI Note",
+      "MIDI CC",
+      "GATE %",
+      "Speed",
+      "Color",
+      "MIDI Out",
+    ],
+    storage: [
+      "Cycle length",
+      "Fibonacci depth",
+      "Muted",
+      "Reversed",
+      "Output mode",
+      "Speed override",
+    ],
+    text: `Golden Gate is a one-channel gate / pitch generator whose hit spacing comes from the Fibonacci sequence (1, 1, 2, 3, 5, 8, 13, and so on). Successive Fibonacci ratios converge on **φ** (the golden ratio ≈ 1.618), so as the pattern uses deeper gaps the rhythm feels increasingly “golden” — still built from whole-number steps, not continuous φ timing by default.
+
+#### What you hear
+
+At shallow depth the hits are denser and more regular; deeper Fibonacci values open larger holes, so the same cycle length feels sparser and more asymmetric. Reverse plays the gaps of *this* filled cycle backwards (not the whole table from its largest value). In pitch modes the jack carries 1V/oct while MIDI sends related notes — either chromatic Fibonacci intervals (12-TET) or near-φ intervals (~833 cents × gap), with MIDI using nearest note + pitch bend (±2 semitone bend range assumed).
+
+#### Gestures
+
+| Control | Action |
+| --- | --- |
+| **Fader** | Cycle length N in steps (bar-aligned; Fibonacci gaps fill, then reset) |
+| **Shift + Fader** | Fibonacci depth — how many sequence values rotate |
+| **Button + Fader** | Speed — up = 16th, middle = 8th, down = quarter (overrides Configurator **Speed**) |
+| **Short press** | Reset to downbeat |
+| **Long press** | Mute (no fader move) |
+| **Shift + short** | Reverse this cycle’s gap order (Button LED: white↔off fade) |
+| **Shift + long** | Cycle output mode: gate+note (app color) → gate+CC (orange) → 12-TET pitch (red) → φ pitch (pink) |
+
+#### Faders & LEDs
+
+| Control | Edits | Visual feedback |
+| --- | --- | --- |
+| **Fader** | Cycle length | **Top LED** = cycle progress in app color. **Bottom LED** flashes on each hit |
+| **Shift + Fader** | Depth | No dedicated meter — Top stays on cycle progress while you edit |
+| **Button + Fader** | Speed | No dedicated meter — Top stays on cycle progress while you edit |
+| **Button LED** | — | Output mode color (app color / orange / red / pink); white↔off on reverse; off when muted |`,
+    channels: [
+      {
+        jackTitle: "Gate / Pitch Out",
+        jackDescription:
+          "Note and CC modes: gate pulse. Pitch modes: 1V/oct CV (MIDI note in parallel).",
+        faderTitle: "Cycle length",
+        faderDescription:
+          "How many steps before the pattern wraps (about 8–32).",
+        faderPlusShiftTitle: "Fibonacci depth",
+        faderPlusShiftDescription:
+          "How far into 1, 1, 2, 3, 5 and beyond the gaps go — shallow = denser, deep = sparser.",
+        faderPlusFnTitle: "Speed",
+        faderPlusFnDescription:
+          "Upper third: 16th · Middle: 8th · Lower third: quarter. Overrides the Speed parameter.",
+        fnTitle: "Reset / Mute",
+        fnDescription:
+          "Short press: restart at the downbeat. Long press: mute (do not move the fader).",
+        fnPlusShiftTitle: "Reverse / Output mode",
+        fnPlusShiftDescription:
+          "Short: reverse this cycle’s gaps. Long: cycle Note → CC → 12-TET pitch → φ pitch.",
+        ledTop: "Progress through the cycle (app color)",
+        ledTopPlusShift:
+          "No depth meter — stays on cycle progress while Shift is held",
+        ledTopPlusFn:
+          "No speed meter — stays on cycle progress while the button is held",
+        ledBottom: "Flash on each hit",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
