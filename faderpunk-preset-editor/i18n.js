@@ -315,9 +315,9 @@
       "app.compat": "Funktioniert mit dem Beta-Configurator",
       "lang.label": "Sprache",
 
-      "push.fabTitle": "Aktives Preset auf den Faderpunk pushen",
+      "push.fabTitle": "Aktives Preset zum Faderpunk: Push",
       "push.fabLine1": "Push",
-      "push.fabLine2": "to Punk",
+      "push.fabLine2": "zum Punk",
 
       "inst.summary": "Dein MIDI-Orchester",
       "inst.groupNew": "Neu",
@@ -365,7 +365,7 @@
       "bar.portAll": "Auf alle anwenden",
       "bar.portAllTitle":
         "Speichert den Default-Port und löscht Zeilen-Overrides — alle nutzen wieder Default",
-      "bar.pull": "Pull from Punk",
+      "bar.pull": "Pull vom Punk",
       "bar.pullTitle":
         "Liest Layout+Params+Global vom verbundenen Faderpunk (via Configurator Save Setup)",
       "bar.groupPreset": "Preset",
@@ -545,7 +545,7 @@
       "pull.replace": "Ersetzen",
       "pull.firstRun":
         "Der Editor startet leer — es werden keine Studio-Presets mitgeliefert.\n\nAktuelles Layout jetzt vom Faderpunk lesen?\n\nGerät muss im Configurator verbunden sein.",
-      "pull.title": "Pull from Punk",
+      "pull.title": "Pull vom Punk",
       "status.emptyBank": "Leerer Editor — Zeilen hinzufügen oder vom Gerät lesen",
       "modal.later": "Später",
       "pull.logStart": "=== Pull vom Gerät ===",
@@ -634,9 +634,9 @@
       "app.compat": "Fonctionne avec le configurateur bêta",
       "lang.label": "Langue",
 
-      "push.fabTitle": "Envoyer le preset actif au Faderpunk",
+      "push.fabTitle": "Push le preset actif vers le Faderpunk",
       "push.fabLine1": "Push",
-      "push.fabLine2": "to Punk",
+      "push.fabLine2": "vers Punk",
 
       "inst.summary": "Votre orchestre MIDI",
       "inst.groupNew": "Nouveau",
@@ -684,7 +684,7 @@
       "bar.portAll": "Appliquer à tous",
       "bar.portAllTitle":
         "Enregistre le port par défaut et efface les overrides — toutes les lignes utilisent le défaut",
-      "bar.pull": "Pull from Punk",
+      "bar.pull": "Pull du Punk",
       "bar.pullTitle":
         "Lit layout + params + global depuis le Faderpunk connecté (via Configurator Save Setup)",
       "bar.groupPreset": "Preset",
@@ -864,7 +864,7 @@
       "pull.replace": "Remplacer",
       "pull.firstRun":
         "L’éditeur démarre vide — aucun preset studio n’est fourni.\n\nLire le layout actuel depuis le Faderpunk maintenant ?\n\nL’appareil doit être connecté dans le Configurator.",
-      "pull.title": "Pull from Punk",
+      "pull.title": "Pull du Punk",
       "status.emptyBank": "Éditeur vide — ajoutez des lignes ou lisez depuis l’appareil",
       "modal.later": "Plus tard",
       "pull.logStart": "=== Pull depuis l’appareil ===",

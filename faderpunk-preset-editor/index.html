@@ -39,7 +39,7 @@
       --tab: #252525;
       --tab-on: #323232;
       --font: "Martian Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
-      --layout-max: 1310px; /* 1260 content + ~50 gutter/padding */
+      --layout-max: 80rem;
       --layout-gutter: 24px;
     }
     * { box-sizing: border-box; }
@@ -55,14 +55,14 @@
       border: 0;
     }
     html {
-      max-width: 100%;
+      max-width: 100vi;
       overflow-x: clip;
       background: var(--bg);
     }
     body {
       margin: 0;
-      width: 100%;
-      min-width: 0;
+      max-inline-size: var(--layout-max);
+      margin-inline: auto;
       overflow-x: clip;
       font: 350 13px/1.45 var(--font);
       font-stretch: condensed;
@@ -70,14 +70,6 @@
       background: var(--bg);
       color: var(--text);
       padding-bottom: var(--dock-pad, 88px);
-    }
-    /* Centers the app column; table scrolls inside this, not the viewport. */
-    .layout {
-      width: 100%;
-      max-width: var(--layout-max);
-      margin-inline: auto;
-      min-width: 0;
-      box-sizing: border-box;
     }
     .fab-push {
       position: fixed;
@@ -101,6 +93,7 @@
       place-content: center;
       text-align: center;
       transform-style: preserve-3d;
+      transform-origin: center center;
       backface-visibility: visible;
       will-change: transform;
       opacity: 1;
@@ -151,7 +144,8 @@
       animation: fab-spin-3d 2.1s cubic-bezier(0.12, 0.7, 0.08, 1) forwards;
     }
     .fab-push.is-spun {
-      transform: perspective(420px) rotateY(1080deg) rotateX(0deg) scale(1);
+      /* Single axis ~125° */
+      transform: perspective(420px) rotate3d(-0.8192, -0.5736, 0, 1080deg) scale(1);
     }
     .fab-push.is-spinning-back {
       animation: fab-spin-3d-back 1.7s cubic-bezier(0.12, 0.7, 0.08, 1) forwards;
@@ -162,24 +156,24 @@
     }
     @keyframes fab-spin-3d {
       0% {
-        transform: perspective(420px) rotateY(0deg) rotateX(0deg) scale(1);
+        transform: perspective(420px) rotate3d(-0.8192, -0.5736, 0, 0deg) scale(1);
       }
       18% {
-        transform: perspective(420px) rotateY(420deg) rotateX(14deg) scale(1.06);
+        transform: perspective(420px) rotate3d(-0.8192, -0.5736, 0, 420deg) scale(1.06);
       }
       100% {
-        transform: perspective(420px) rotateY(1080deg) rotateX(0deg) scale(1);
+        transform: perspective(420px) rotate3d(-0.8192, -0.5736, 0, 1080deg) scale(1);
       }
     }
     @keyframes fab-spin-3d-back {
       0% {
-        transform: perspective(420px) rotateY(1080deg) rotateX(0deg) scale(1);
+        transform: perspective(420px) rotate3d(-0.8192, -0.5736, 0, 1080deg) scale(1);
       }
       22% {
-        transform: perspective(420px) rotateY(720deg) rotateX(-10deg) scale(1.04);
+        transform: perspective(420px) rotate3d(-0.8192, -0.5736, 0, 720deg) scale(1.04);
       }
       100% {
-        transform: perspective(420px) rotateY(0deg) rotateX(0deg) scale(1);
+        transform: perspective(420px) rotate3d(-0.8192, -0.5736, 0, 0deg) scale(1);
       }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -366,18 +360,12 @@
     .tab-add:hover,
     .tab-dup:hover { color: var(--text); border-color: var(--accent); }
     .tab-dup svg { width: 16px; height: 16px; display: block; }
-    .tab-io-split {
-      position: relative;
-      flex: 0 0 auto;
-      display: inline-flex;
-      align-items: stretch;
-      gap: 4px;
-    }
-    .tab-io-split > #btnPull {
+    #btnPull {
       border-radius: 6px;
       white-space: nowrap;
       padding: 8px 12px;
       align-self: stretch;
+      flex: 0 0 auto;
       background: var(--panel);
       border: 1px solid var(--line);
       color: var(--text);
@@ -389,7 +377,7 @@
       line-height: 1.15;
       cursor: pointer;
     }
-    .tab-io-split > #btnPull:hover {
+    #btnPull:hover {
       filter: brightness(1.08);
       border-color: var(--fp-cyan);
     }
@@ -418,11 +406,10 @@
       box-sizing: border-box;
     }
     .tab-io > summary::-webkit-details-marker { display: none; }
-    .tab-io > summary::after {
-      content: "▾";
-      font-size: 11px;
-      line-height: 1;
-      opacity: 0.85;
+    .tab-io > summary svg {
+      width: 16px;
+      height: 16px;
+      display: block;
     }
     .tab-io > summary:hover {
       color: var(--text);
@@ -553,9 +540,7 @@
     .table-scroll {
       width: 100%;
       max-width: 100%;
-      min-width: 0;
       overflow-x: auto;
-      overscroll-behavior-x: contain;
       -webkit-overflow-scrolling: touch;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -1826,7 +1811,6 @@
     <span class="fab-face" aria-hidden="true"></span>
     <span class="fab-lines"><span data-i18n="push.fabLine1">Push</span><span data-i18n="push.fabLine2">to Punk</span></span>
   </button>
-  <div class="layout">
   <header>
     <div class="brand">
       <img class="brand-logo" src="/img/fp-logo.svg" width="55" height="72" alt="Faderpunk">
@@ -1910,20 +1894,24 @@
 
     <div class="tabs-bar">
       <div class="tabs" id="tabs" role="tablist" data-i18n-aria="tabs.aria" aria-label="Presets"></div>
-      <div class="tab-io-split">
-        <button type="button" class="secondary" id="btnPull" data-i18n="bar.pull" data-i18n-title="bar.pullTitle" title="">Pull from Punk</button>
-        <details class="tab-io" id="tabIo">
-          <summary data-i18n-aria="tabs.io" aria-label="Export / Import"></summary>
-          <div class="tab-io-menu">
-            <button class="secondary" id="btnExport" data-i18n="bar.export">JSON ↓</button>
-            <button class="secondary" id="btnExportAll" data-i18n="bar.exportAll">ZIP all JSON</button>
-            <button class="secondary" id="btnCopy" data-i18n="bar.copy">Copy JSON</button>
-            <label><span data-i18n="bar.jsonImport">JSON → active preset</span>
-              <input id="fileIn" type="file" accept="application/json,.json" />
-            </label>
-          </div>
-        </details>
-      </div>
+      <details class="tab-io" id="tabIo">
+        <summary data-i18n-aria="tabs.io" aria-label="Export / Import">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 2.5v7.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            <path d="M5.2 7.2 8 10l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M3 12.5h10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </summary>
+        <div class="tab-io-menu">
+          <button class="secondary" id="btnExport" data-i18n="bar.export">JSON ↓</button>
+          <button class="secondary" id="btnExportAll" data-i18n="bar.exportAll">ZIP all JSON</button>
+          <button class="secondary" id="btnCopy" data-i18n="bar.copy">Copy JSON</button>
+          <label><span data-i18n="bar.jsonImport">JSON → active preset</span>
+            <input id="fileIn" type="file" accept="application/json,.json" />
+          </label>
+        </div>
+      </details>
+      <button type="button" class="secondary" id="btnPull" data-i18n="bar.pull" data-i18n-title="bar.pullTitle" title="">Pull from Punk</button>
       <button type="button" class="tab-cheatsheet" id="btnCheatsheet" data-i18n="bar.cheatsheet" data-i18n-title="bar.cheatsheetTitle" title="">Print cheatsheet ✎</button>
     </div>
 
@@ -5279,10 +5267,10 @@
             },
           )
           .join("") +
-        `<button type="button" class="tab tab-add" id="btnAddPreset" title="${escapeAttr(t("tabs.add"))}" aria-label="${escapeAttr(t("tabs.addAria"))}">+</button>` +
         `<button type="button" class="tab tab-dup" id="btnDupPreset" title="${escapeAttr(t("tabs.dup"))}" aria-label="${escapeAttr(t("tabs.dupAria"))}">` +
         `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 10.5V3.5A1 1 0 0 1 3.5 2.5h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>` +
-        `</button>`;
+        `</button>` +
+        `<button type="button" class="tab tab-add" id="btnAddPreset" title="${escapeAttr(t("tabs.add"))}" aria-label="${escapeAttr(t("tabs.addAria"))}">+</button>`;
 
       el.querySelectorAll("[data-tab]").forEach((btn) => {
         const i = Number(btn.dataset.tab);
@@ -6530,9 +6518,8 @@
       downloadAll().catch((e) => alert(e.message || e));
     };
     document.addEventListener("click", (e) => {
-      const split = document.querySelector(".tab-io-split");
       const io = document.getElementById("tabIo");
-      if (io?.open && split && !split.contains(e.target)) io.open = false;
+      if (io?.open && !io.contains(e.target)) io.open = false;
     });
     document.getElementById("btnCheatsheet").onclick = () => {
       try {
