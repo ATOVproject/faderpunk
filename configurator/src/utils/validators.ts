@@ -86,10 +86,11 @@ export const getParamSchema = (param: Param) => {
         .default({ tag: "MidiCc", value: [32] });
     }
     case "MidiChannel": {
+      // Firmware MidiChannel is 1–16 (human CH); converts to 0–15 u4 when sending.
       return z
         .object({
           tag: z.literal("MidiChannel"),
-          value: z.tuple([z.number().int().min(0).max(15)]),
+          value: z.tuple([z.number().int().min(1).max(16)]),
         })
         .default({ tag: "MidiChannel", value: [1] });
     }

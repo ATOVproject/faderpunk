@@ -24,7 +24,7 @@ export const Apps = ({ apps }: Props) => (
         channel), Random Trigger, Euclid, Envelope Follower, Turing, Turing+,
         MIDI to CV, CV2MIDI, CV/OCT to MIDI, Panner, FP-Grids (per-channel
         trigger mutes), TB-3PO, GenSeq, Bernoulli Gate (button 1 mutes Output A,
-        button 2 mutes Output B)
+        button 2 mutes Output B), Echolot
       </li>
       <li>
         <strong>Long press (no shift)</strong> — AD Envelope, LFO, LFO+
