@@ -10,15 +10,14 @@
     en: {
       "doc.title": "Faderpunk Preset Editor",
       "app.h1": "Preset Editor",
-      "app.compat":
-        "Works with the <a href=\"https://faderpunk.io/beta/#/configurator\" target=\"_blank\" rel=\"noopener noreferrer\">faderpunk.io/beta</a> configurator",
+      "app.compat": "Works with beta configurator",
       "lang.label": "Language",
 
       "push.fabTitle": "Push the active preset to the Faderpunk",
       "push.fabLine1": "Push",
       "push.fabLine2": "to Punk",
 
-      "inst.summary": "Your MIDI instruments",
+      "inst.summary": "Your MIDI orchestra",
       "inst.groupNew": "New",
       "inst.groupList": "Library",
       "inst.empty": "No instruments yet.",
@@ -81,7 +80,8 @@
       "port.out2": "Out2",
       "port.usb": "USB",
       "port.all": "USB+Out1+Out2",
-      "port.default": "Default",
+      "port.default": "Preset",
+      "port.outGroup": "Out",
 
       "global.summary": "Presettings",
       "global.quantizer": "Quantizer",
@@ -116,6 +116,8 @@
       "table.dragTitle": "Drag to reorder",
       "table.fader": "Fader",
       "table.app": "App",
+      "table.faderApp": "Fader/App",
+      "table.param": "Param",
       "table.comment": "Comment",
       "table.flags": "Flags",
       "table.instrument": "Instrument",
@@ -137,7 +139,7 @@
       "row.overflowNeed": "16+ · {need}",
       "row.overflowSep":
         "Overflow — not in push · park here / drag up",
-      "row.portDefault": "default ({port})",
+      "row.portDefault": "preset ({port})",
 
       "preview.summary": "Push preview (JSON)",
       "preview.metaCollapsed": "collapsed · check here on errors",
@@ -310,15 +312,14 @@
     de: {
       "doc.title": "Faderpunk Preset Editor",
       "app.h1": "Preset Editor",
-      "app.compat":
-        "Für den <a href=\"https://faderpunk.io/beta/#/configurator\" target=\"_blank\" rel=\"noopener noreferrer\">faderpunk.io/beta</a>-Configurator",
+      "app.compat": "Funktioniert mit dem Beta-Configurator",
       "lang.label": "Sprache",
 
       "push.fabTitle": "Aktives Preset auf den Faderpunk pushen",
       "push.fabLine1": "Push",
       "push.fabLine2": "to Punk",
 
-      "inst.summary": "Deine MIDI-Instrumente",
+      "inst.summary": "Dein MIDI-Orchester",
       "inst.groupNew": "Neu",
       "inst.groupList": "Bibliothek",
       "inst.empty": "Noch keine Instrumente.",
@@ -381,7 +382,8 @@
       "port.out2": "Out2",
       "port.usb": "USB",
       "port.all": "USB+Out1+Out2",
-      "port.default": "Standard",
+      "port.default": "Preset",
+      "port.outGroup": "Out",
 
       "global.summary": "Presettings",
       "global.quantizer": "Quantizer",
@@ -416,6 +418,8 @@
       "table.dragTitle": "Ziehen zum Umsortieren",
       "table.fader": "Fader",
       "table.app": "App",
+      "table.faderApp": "Fader/App",
+      "table.param": "Param",
       "table.comment": "Kommentar",
       "table.flags": "Flags",
       "table.instrument": "Instrument",
@@ -437,7 +441,7 @@
       "row.overflowNeed": "16+ · {need}",
       "row.overflowSep":
         "Overflow — nicht im Push · hier parken / nach oben ziehen",
-      "row.portDefault": "default ({port})",
+      "row.portDefault": "preset ({port})",
 
       "preview.summary": "Push-Vorschau (JSON)",
       "preview.metaCollapsed": "zugeklappt · bei Fehler hier prüfen",
@@ -627,15 +631,14 @@
     fr: {
       "doc.title": "Éditeur de presets Faderpunk",
       "app.h1": "Éditeur de presets",
-      "app.compat":
-        "Compatible avec le configurateur <a href=\"https://faderpunk.io/beta/#/configurator\" target=\"_blank\" rel=\"noopener noreferrer\">faderpunk.io/beta</a>",
+      "app.compat": "Fonctionne avec le configurateur bêta",
       "lang.label": "Langue",
 
       "push.fabTitle": "Envoyer le preset actif au Faderpunk",
       "push.fabLine1": "Push",
       "push.fabLine2": "to Punk",
 
-      "inst.summary": "Vos instruments MIDI",
+      "inst.summary": "Votre orchestre MIDI",
       "inst.groupNew": "Nouveau",
       "inst.groupList": "Bibliothèque",
       "inst.empty": "Aucun instrument.",
@@ -698,7 +701,8 @@
       "port.out2": "Out2",
       "port.usb": "USB",
       "port.all": "USB+Out1+Out2",
-      "port.default": "Défaut",
+      "port.default": "Preset",
+      "port.outGroup": "Out",
 
       "global.summary": "Presettings",
       "global.quantizer": "Quantizer",
@@ -733,6 +737,8 @@
       "table.dragTitle": "Glisser pour réordonner",
       "table.fader": "Fader",
       "table.app": "App",
+      "table.faderApp": "Fader/App",
+      "table.param": "Param",
       "table.comment": "Commentaire",
       "table.flags": "Indicateurs",
       "table.instrument": "Instrument",
@@ -754,7 +760,7 @@
       "row.overflowNeed": "16+ · {need}",
       "row.overflowSep":
         "Overflow — pas dans le push · garer ici / glisser vers le haut",
-      "row.portDefault": "default ({port})",
+      "row.portDefault": "preset ({port})",
 
       "preview.summary": "Aperçu push (JSON)",
       "preview.metaCollapsed": "replié · vérifier ici en cas d’erreur",

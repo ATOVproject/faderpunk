@@ -84,7 +84,7 @@ export async function fetchRemoteSha() {
   const res = await fetch(SHA_URL, {
     headers: {
       Accept: "application/vnd.github+json",
-      "User-Agent": "faderpunk-scenes-midi-sync",
+      "User-Agent": "faderpunk-preset-editor-midi-sync",
     },
   });
   if (!res.ok) throw new Error(`GitHub SHA lookup failed (${res.status})`);
@@ -102,7 +102,7 @@ export async function readLocalMeta() {
 
 async function downloadZip(destZip) {
   const res = await fetch(ZIP_URL, {
-    headers: { "User-Agent": "faderpunk-scenes-midi-sync" },
+    headers: { "User-Agent": "faderpunk-preset-editor-midi-sync" },
   });
   if (!res.ok || !res.body) {
     throw new Error(`Download failed (${res.status})`);

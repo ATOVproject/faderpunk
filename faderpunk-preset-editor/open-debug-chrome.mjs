@@ -29,7 +29,7 @@ const CHROME =
 function profileChromePids() {
   try {
     const out = execSync(
-      "pgrep -f 'Google Chrome.*faderpunk-scenes/.chrome-profile' || true",
+      `pgrep -f 'Google Chrome.*${PROFILE}' || true`,
       { encoding: "utf8" },
     );
     return out

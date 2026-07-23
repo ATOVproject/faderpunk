@@ -82,7 +82,7 @@ async function connectAnyCdp() {
 function profileChromePids() {
   try {
     const out = execSync(
-      "pgrep -f 'Google Chrome.*faderpunk-scenes/.chrome-profile' || true",
+      `pgrep -f 'Google Chrome.*${PROFILE}' || true`,
       { encoding: "utf8" },
     );
     return out
@@ -134,12 +134,21 @@ async function launchProfileWithCdp(port) {
 
 async function ensureConnected(page) {
   const url = page.url();
-  if (!isLocalConfigurator(url)) {
-    console.log("[1/3] Opening Configurator tab…");
+  const onSelected = (() => {
+    try {
+      return (
+        new URL(url).origin === CONFIG_ORIGIN && /#\/configurator/i.test(url)
+      );
+    } catch {
+      return false;
+    }
+  })();
+  if (!onSelected) {
+    console.log(`[1/3] Opening selected Configurator (${CONFIG_URL})…`);
     await page.goto(CONFIG_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForTimeout(1000);
   } else {
-    console.log("[1/3] Reusing existing Configurator tab (no reload — MIDI stays connected).");
+    console.log(`[1/3] Reusing selected Configurator tab (${CONFIG_ORIGIN}).`);
   }
 
   console.log("[2/3] Settings tab…");
@@ -213,7 +222,9 @@ async function main() {
   const resolved = await resolveConfigUrl();
   CONFIG_URL = resolved.url;
   CONFIG_ORIGIN = configOrigin(CONFIG_URL);
-  console.log(`Configurator: ${CONFIG_URL} [${resolved.source}]`);
+  console.log(
+    `Configurator: ${CONFIG_URL} [${resolved.source}] prefer=${process.env.FP_CONFIG_PREFER || "auto"}`,
+  );
 
   console.log("Looking for CDP (existing Chrome, no kill)…");
   let session = await connectAnyCdp();

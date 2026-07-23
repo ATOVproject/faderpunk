@@ -2899,6 +2899,150 @@
           }
         }
       ]
+    },
+    {
+      "id": 35,
+      "slug": "vamp",
+      "module": "vamp",
+      "channels": 1,
+      "name": "MIDI Vamp",
+      "description": "Chord progressions \u2014 perform, capture, or auto vamp",
+      "color": "Violet",
+      "icon": "NoteGrid",
+      "params": [
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "Root"
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Scale",
+            "variants": [
+              "Ionian",
+              "Dorian",
+              "Phrygian",
+              "Lydian",
+              "Mixolydian",
+              "Aeolian",
+              "Locrian",
+              "Pent Maj",
+              "Pent Min"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Genre",
+            "variants": [
+              "Dub",
+              "Disco",
+              "Hip-Hop",
+              "House",
+              "Techno",
+              "Trip-Hop",
+              "UK Garage",
+              "Dubstep"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Voicing",
+            "variants": [
+              "Triads",
+              "7ths",
+              "9ths",
+              "Spread"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Velocity",
+            "min": 1,
+            "max": 127
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Auto style",
+            "variants": [
+              "Repeat",
+              "Meander"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Start mode",
+            "variants": [
+              "Perform",
+              "Auto"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Capture length",
+            "variants": [
+              "16 bars",
+              "8 bars",
+              "4 bars",
+              "2 bars"
+            ]
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

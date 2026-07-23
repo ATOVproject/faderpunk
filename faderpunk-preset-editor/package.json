@@ -1,5 +1,5 @@
 {
-  "name": "faderpunk-scenes",
+  "name": "faderpunk-preset-editor",
   "version": "0.1.0",
   "description": "Faderpunk preset bank editor + Playwright push/pull to Configurator",
   "private": true,

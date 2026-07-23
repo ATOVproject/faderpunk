@@ -36,11 +36,12 @@ const MIME = {
   ".ttf": "font/ttf",
 };
 
-function runChildScript(scriptName, { timeoutMs = 180_000 } = {}) {
+function runChildScript(scriptName, { timeoutMs = 180_000, env = {} } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [join(__dirname, scriptName)], {
       cwd: __dirname,
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ...env },
     });
     let out = "";
     let err = "";
@@ -84,10 +85,15 @@ function runChildScript(scriptName, { timeoutMs = 180_000 } = {}) {
 }
 
 /** Stream child stdout/stderr as NDJSON lines, then a final {type:"done"} object. */
-function streamChildScriptNdjson(res, scriptName, { timeoutMs = 180_000, t0 = Date.now() } = {}) {
+function streamChildScriptNdjson(
+  res,
+  scriptName,
+  { timeoutMs = 180_000, t0 = Date.now(), env = {} } = {},
+) {
   const child = spawn(process.execPath, [join(__dirname, scriptName)], {
     cwd: __dirname,
     stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ...env },
   });
   let out = "";
   let err = "";
@@ -160,16 +166,31 @@ function streamChildScriptNdjson(res, scriptName, { timeoutMs = 180_000, t0 = Da
   });
 }
 
-async function runPush() {
-  return runChildScript("push.mjs");
+async function runPush(env = {}) {
+  return runChildScript("push.mjs", { env });
 }
 
-async function runDebugChrome() {
-  return runChildScript("open-debug-chrome.mjs", { timeoutMs: 120_000 });
+async function runDebugChrome(env = {}) {
+  return runChildScript("open-debug-chrome.mjs", { timeoutMs: 120_000, env });
 }
 
-async function runPull() {
-  return runChildScript("pull.mjs");
+async function runPull(env = {}) {
+  return runChildScript("pull.mjs", { env });
+}
+
+function configPreferEnv(prefer) {
+  const p = String(prefer || "").toLowerCase();
+  if (p === "local" || p === "beta" || p === "official") {
+    return { FP_CONFIG_PREFER: p };
+  }
+  return {};
+}
+
+function preferFromBody(body) {
+  if (body && typeof body === "object" && body.configPrefer) {
+    return body.configPrefer;
+  }
+  return null;
 }
 
 async function walkCsv(dir, base = dir, out = []) {
@@ -234,18 +255,35 @@ const server = createServer(async (req, res) => {
       const chunks = [];
       for await (const c of req) chunks.push(c);
       const body = Buffer.concat(chunks).toString("utf8");
-      JSON.parse(body);
+      const parsed = JSON.parse(body);
+      // Editor may wrap setup as { setup, configPrefer } or send setup raw.
+      const prefer = preferFromBody(parsed);
+      const setup = parsed?.setup && typeof parsed.setup === "object" ? parsed.setup : parsed;
       await mkdir(join(__dirname, "out"), { recursive: true });
-      await writeFile(SETUP_PATH, body, "utf8");
+      await writeFile(SETUP_PATH, JSON.stringify(setup), "utf8");
       const t0 = Date.now();
-      streamChildScriptNdjson(res, "push.mjs", { t0 });
+      streamChildScriptNdjson(res, "push.mjs", {
+        t0,
+        env: configPreferEnv(prefer),
+      });
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/debug-chrome") {
       const t0 = Date.now();
+      let prefer = url.searchParams.get("prefer");
       try {
-        const result = await runDebugChrome();
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        if (chunks.length) {
+          const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          prefer = preferFromBody(parsed) || prefer;
+        }
+      } catch {
+        /* empty body ok */
+      }
+      try {
+        const result = await runDebugChrome(configPreferEnv(prefer));
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
@@ -270,8 +308,19 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/pull") {
       const t0 = Date.now();
+      let prefer = url.searchParams.get("prefer");
       try {
-        const result = await runPull();
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        if (chunks.length) {
+          const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          prefer = preferFromBody(parsed) || prefer;
+        }
+      } catch {
+        /* empty body ok */
+      }
+      try {
+        const result = await runPull(configPreferEnv(prefer));
         const setup = JSON.parse(await readFile(PULL_PATH, "utf8"));
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(

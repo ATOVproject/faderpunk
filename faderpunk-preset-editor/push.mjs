@@ -351,21 +351,20 @@ async function loadSetupOnPage(page) {
   }
 
   const url = page.url();
-  const onConfigurator = (() => {
+  const onSelectedConfigurator = (() => {
     try {
-      return (
-        new URL(url).origin === CONFIG_ORIGIN && /#\/configurator/i.test(url)
-      );
+      const u = new URL(url);
+      return u.origin === CONFIG_ORIGIN && /#\/configurator/i.test(url);
     } catch {
       return false;
     }
   })();
-  if (!onConfigurator) {
-    console.log("[1/5] Opening Configurator…");
+  if (!onSelectedConfigurator) {
+    console.log(`[1/5] Opening selected Configurator (${CONFIG_URL})…`);
     await page.goto(CONFIG_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForTimeout(800);
   } else {
-    console.log("[1/5] Reusing existing Configurator tab (no reload — MIDI stays connected).");
+    console.log(`[1/5] Reusing selected Configurator tab (${CONFIG_ORIGIN}).`);
   }
 
   // Beta redirects to the landing page (#/) while disconnected — the
@@ -503,7 +502,7 @@ async function connectAnyCdp() {
 
 function profileChromePids() {
   try {
-    const out = execSync("pgrep -f 'Google Chrome.*faderpunk-scenes/.chrome-profile' || true", {
+    const out = execSync(`pgrep -f 'Google Chrome.*${PROFILE}' || true`, {
       encoding: "utf8",
     });
     return out
@@ -562,7 +561,9 @@ async function main() {
   const resolved = await resolveConfigUrl();
   CONFIG_URL = resolved.url;
   CONFIG_ORIGIN = configOrigin(CONFIG_URL);
-  console.log(`Configurator: ${CONFIG_URL} [${resolved.source}]`);
+  console.log(
+    `Configurator: ${CONFIG_URL} [${resolved.source}] prefer=${process.env.FP_CONFIG_PREFER || "auto"}`,
+  );
 
   console.log("Looking for CDP (existing Chrome, no kill)…");
   let session = await connectAnyCdp();

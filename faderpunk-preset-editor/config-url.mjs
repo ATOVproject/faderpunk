@@ -1,17 +1,19 @@
 /**
  * Resolve which configurator to automate against:
  *   1. FP_CONFIG_URL env var (explicit override, always wins)
- *   2. Local Vite dev configurator (http://127.0.0.1:5173) if it responds
- *   3. Hosted beta configurator (https://faderpunk.io/beta) as fallback
- *
- * Local is preferred because it is built from the same branch as the flashed
- * firmware (protocol always in sync, CH16 fix in source, manuals for custom
- * apps). The hosted beta works with the same SysEx protocol but may drift
- * when upstream redeploys.
+ *   2. FP_CONFIG_PREFER=local|beta|official (editor defaults to beta)
+ *   3. Auto: local Vite (:5173) if up, else hosted beta
  */
 
-const LOCAL_URL = "http://127.0.0.1:5173/#/configurator";
-const BETA_URL = "https://faderpunk.io/beta/#/configurator";
+export const LOCAL_URL = "http://127.0.0.1:5173/#/configurator";
+export const BETA_URL = "https://faderpunk.io/beta/#/configurator";
+export const OFFICIAL_URL = "https://faderpunk.io/#/configurator";
+
+export const CONFIG_TARGETS = {
+  local: { url: LOCAL_URL, label: "Local" },
+  beta: { url: BETA_URL, label: "Beta" },
+  official: { url: OFFICIAL_URL, label: "Official" },
+};
 
 async function localConfiguratorUp(timeoutMs = 1200) {
   try {
@@ -24,10 +26,36 @@ async function localConfiguratorUp(timeoutMs = 1200) {
   }
 }
 
-export async function resolveConfigUrl() {
+/**
+ * @param {{ prefer?: "local" | "beta" | "official" | "auto" }} [opts]
+ */
+export async function resolveConfigUrl(opts = {}) {
   if (process.env.FP_CONFIG_URL) {
     return { url: process.env.FP_CONFIG_URL, source: "env (FP_CONFIG_URL)" };
   }
+
+  const prefer = (
+    opts.prefer ||
+    process.env.FP_CONFIG_PREFER ||
+    "auto"
+  ).toLowerCase();
+
+  if (prefer === "local") {
+    const up = await localConfiguratorUp();
+    return {
+      url: LOCAL_URL,
+      source: up
+        ? "local Vite (forced)"
+        : "local Vite (forced — server may be down)",
+    };
+  }
+  if (prefer === "beta") {
+    return { url: BETA_URL, source: "hosted beta (forced)" };
+  }
+  if (prefer === "official") {
+    return { url: OFFICIAL_URL, source: "hosted official (forced)" };
+  }
+
   if (await localConfiguratorUp()) {
     return { url: LOCAL_URL, source: "local Vite dev server" };
   }

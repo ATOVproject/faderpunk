@@ -3,13 +3,20 @@
 Local preset-bank editor for Faderpunk layouts, app parameters, MIDI routing,
 global configuration and instrument definitions.
 
+**Canonical location** inside the Faderpunk repo (`faderpunk-preset-editor/`).
+The older standalone `faderpunk-scenes` repo is deprecated.
+
 The editor ships empty. Use **Pull from Punk** to read the connected device, or
 build a preset manually. Presets are persisted both in browser storage and in
 `out/preset-bank.json` by the local server.
 
+Works with the **beta** configurator (`https://faderpunk.io/beta`). Override with
+`FP_CONFIG_URL` or `FP_CONFIG_PREFER=local|beta|official`.
+
 ## Start
 
 ```bash
+cd faderpunk-preset-editor
 npm install
 npm start
 ```
@@ -21,9 +28,6 @@ Open http://127.0.0.1:3847/.
 - **Pull from Punk** reads the current layout, parameters and global
   configuration through the Configurator.
 - **Push to Punk** loads the active editor preset into the Configurator.
-
-The editor automatically uses a local Configurator on port 5173 when available,
-otherwise the hosted beta Configurator. Override this with `FP_CONFIG_URL`.
 
 The device must be connected in the dedicated Chrome window. Launch it with:
 
@@ -50,7 +54,10 @@ npm run check
 
 ## License
 
-[GPL-3.0](../LICENSE), like the rest of this repository. Icons in `icons/`
-are copies from `configurator/public/icons/` (icon design by papernoise).
-The Martian Mono font in `fonts/` is licensed under the
-[SIL Open Font License](fonts/OFL.txt).
+[AGPL-3.0](LICENSE). Included third-party assets:
+
+- Icons in `icons/` come from the
+  [ATOVproject/faderpunk](https://github.com/ATOVproject/faderpunk)
+  Configurator (GPL-3.0), icon design by papernoise.
+- The Martian Mono font in `fonts/` is licensed under the
+  [SIL Open Font License](fonts/OFL.txt).

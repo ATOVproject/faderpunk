@@ -39,7 +39,7 @@
       --tab: #252525;
       --tab-on: #323232;
       --font: "Martian Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
-      --layout-max: 80rem;
+      --layout-max: 1310px; /* 1260 content + ~50 gutter/padding */
       --layout-gutter: 24px;
     }
     * { box-sizing: border-box; }
@@ -55,14 +55,14 @@
       border: 0;
     }
     html {
-      max-width: 100vi;
+      max-width: 100%;
       overflow-x: clip;
       background: var(--bg);
     }
     body {
       margin: 0;
-      max-inline-size: var(--layout-max);
-      margin-inline: auto;
+      width: 100%;
+      min-width: 0;
       overflow-x: clip;
       font: 350 13px/1.45 var(--font);
       font-stretch: condensed;
@@ -70,6 +70,14 @@
       background: var(--bg);
       color: var(--text);
       padding-bottom: var(--dock-pad, 88px);
+    }
+    /* Centers the app column; table scrolls inside this, not the viewport. */
+    .layout {
+      width: 100%;
+      max-width: var(--layout-max);
+      margin-inline: auto;
+      min-width: 0;
+      box-sizing: border-box;
     }
     .fab-push {
       position: fixed;
@@ -261,6 +269,13 @@
       padding: 4px 8px;
       font: inherit;
       font-size: 12px;
+    }
+    .header-tools {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
     }
     .sub { color: var(--muted); max-width: min(90ch, 100%); margin: 0; font-size: 13px; }
     main {
@@ -538,7 +553,9 @@
     .table-scroll {
       width: 100%;
       max-width: 100%;
+      min-width: 0;
       overflow-x: auto;
+      overscroll-behavior-x: contain;
       -webkit-overflow-scrolling: touch;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -546,7 +563,7 @@
     }
     table {
       width: 100%;
-      min-width: 720px;
+      min-width: 870px;
       border-collapse: collapse;
       background: var(--panel);
     }
@@ -554,15 +571,66 @@
       padding: 7px 9px;
       border-bottom: 1px solid var(--line);
       text-align: left;
-      vertical-align: middle;
+      vertical-align: top;
     }
     td select,
     td input {
       max-width: 100%;
     }
-    td select[data-k="app"] { min-width: 0; width: 9.5rem; }
+    td.fader-cell .fader-app-select {
+      position: relative;
+      display: block;
+      width: 100%;
+      color: var(--fader-led, #888);
+    }
+    td.fader-cell .fader-app-select select[data-k="app"] {
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+      appearance: none;
+      -webkit-appearance: none;
+      background: transparent;
+      color: var(--fader-led, #888);
+      border-color: var(--fader-led, #888);
+      font-weight: 500;
+      padding-right: 1.35rem;
+    }
+    td.fader-cell .fader-app-select .fader-color-tri {
+      position: absolute;
+      right: 0.55rem;
+      top: 50%;
+      transform: translateY(-40%);
+      pointer-events: none;
+    }
+    td.fader-cell .fader-app-select select[data-k="app"]:hover,
+    td.fader-cell .fader-app-select select[data-k="app"]:focus-visible {
+      border-color: var(--fader-led, #888);
+      outline: none;
+    }
+    /* Keep fader-color border; don’t let row hue borders override the app select */
+    tbody tr[data-fader-hue] td.fader-cell .fader-app-select select[data-k="app"],
+    tbody tr[data-fader-hue] td.fader-cell .fader-app-select select[data-k="app"]:hover,
+    tbody tr[data-fader-hue] td.fader-cell .fader-app-select select[data-k="app"]:focus-visible {
+      border-color: var(--fader-led, #888);
+    }
     td select[data-k="instrumentId"] { min-width: 0; width: 9rem; }
     td select[data-k="port"] { min-width: 0; width: 5.5rem; }
+    td.port-cell {
+      width: 1%;
+      max-width: 7.5rem;
+      vertical-align: top;
+    }
+    td.port-cell .port-bits {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--muted);
+      min-height: 0;
+      width: max-content;
+      max-width: 100%;
+    }
     .port-bits {
       display: grid;
       grid-template-columns: auto auto;
@@ -685,13 +753,46 @@
     td select[data-k="echoDelayMode"],
     td select[data-k="echoInterval"],
     td select[data-k="echoRouting"],
-    td select[data-k="echoSignal"] { min-width: 0; width: 6.5rem; }
+    td select[data-k="echoSignal"] { min-width: 0; width: 11.2125rem; } /* 7.475rem × 1.5 */
     td .swing-max,
     td .mix-balance {
       display: inline-flex; align-items: center; gap: 4px;
       font-size: 12px; color: var(--muted); white-space: nowrap;
     }
-    td .mix-balance input { width: 3.5rem; }
+    td .range-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      max-width: 100%;
+      min-width: 0;
+      white-space: nowrap;
+    }
+    td .range-field .range-slider {
+      width: 5.75rem;
+      flex: 1 1 5.75rem;
+      min-width: 4rem;
+      max-width: 8rem;
+      height: 1.2rem;
+      padding: 0;
+      margin: 0;
+      border: 0;
+      background: transparent;
+      accent-color: var(--fader-hue, var(--accent));
+      cursor: pointer;
+    }
+    td .range-field input[type="number"] {
+      width: 4.75rem;
+      flex: 0 0 auto;
+    }
+    td .range-field .range-name {
+      color: var(--muted);
+    }
+    td .mix-balance input,
+    td .swing-max input {
+      width: 4.75rem; /* fits 4 digits + padding */
+    }
     td .mix-balance input[type="checkbox"],
     td .app-extras input[type="checkbox"],
     td .flags-col input[type="checkbox"],
@@ -699,20 +800,59 @@
       width: 14px; height: 14px; padding: 0; margin: 0;
       accent-color: var(--accent); border-radius: 3px; flex: 0 0 auto;
     }
+    td.flags-cell {
+      max-width: 9rem;
+      width: 9rem;
+      min-width: 0;
+      vertical-align: top;
+    }
     td .flags-col {
-      display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
-      font-size: 11px; color: var(--muted); max-width: 9rem;
+      display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: flex-start;
+      font-size: 11px; color: var(--muted);
+      max-width: 100%; min-width: 0; width: 100%;
+      box-sizing: border-box;
     }
     td .flags-col label,
     .flag-chip {
-      display: inline-flex; align-items: center; gap: 4px; margin: 0;
-      cursor: pointer; color: var(--text); white-space: nowrap; line-height: 1;
+      display: inline-flex; align-items: flex-start; gap: 4px; margin: 0;
+      cursor: pointer; color: var(--text); white-space: normal; line-height: 1.25;
+      max-width: 100%; min-width: 0;
     }
-    .flag-chip-group {
-      display: inline-flex; align-items: center; gap: 10px;
+    .flag-chip-group,
+    .port-out-group {
+      display: inline-grid;
+      grid-template-columns: auto auto;
+      column-gap: 6px;
+      row-gap: 0;
+      align-items: start;
+      max-width: 100%;
+      min-width: 0;
+      padding: 3px 6px 3px 5px;
+      border: 1px solid color-mix(in srgb, var(--fader-hue, var(--line)) 45%, transparent);
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--fader-hue, #888) 8%, transparent);
     }
-    .flag-chip-group .vm { color: var(--muted); font-size: 11px; }
-    td .app-cell { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+    .flag-chip-group .vm,
+    .port-out-group .vm {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 450;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 14px;
+      padding-top: 1px;
+      align-self: start;
+    }
+    .flag-chip-stack,
+    .port-out-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .port-out-stack label {
+      font-size: 11px;
+    }
     td .app-extras { display: flex; flex-wrap: wrap; gap: 4px; }
     td input[data-k="target"] { width: 7.5rem; max-width: 12rem; }
     .multi-midi {
@@ -795,16 +935,66 @@
       color: var(--muted); font-size: 12px; background: #1c1414;
     }
     button.row-x {
-      background: transparent; border: 0; color: var(--muted);
-      cursor: pointer; font-size: 14px; padding: 2px 6px;
+      display: inline-grid;
+      place-items: center;
+      box-sizing: border-box;
+      width: 1.6rem;
+      height: 1.6rem;
+      padding: 0;
+      /* equal gap from row top + right edge (padding on td alone was hard to see) */
+      margin: 8px 8px 0 0;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      opacity: 0.55;
     }
-    button.row-x:hover { color: #f88; }
-    td.fader-cell {
-      padding: 0 0 0 5px;
-      vertical-align: stretch;
+    button.row-x::before {
+      content: "×";
+      display: block;
+      line-height: 1;
+      transform: translate(-0.03em, -0.04em);
+    }
+    button.row-x:hover {
+      color: #f88;
+      opacity: 1;
+      background: color-mix(in srgb, #f88 14%, transparent);
+    }
+    td.row-x-cell {
       width: 1%;
+      padding: 0 !important;
+      vertical-align: top;
+      text-align: right;
       white-space: nowrap;
+    }
+    td.fader-cell {
+      padding: 5px 6px 5px 5px;
+      vertical-align: top;
+      width: 1%;
+      min-width: 10.925rem; /* 9.5rem × 1.15 */
+      white-space: normal;
       background: var(--panel);
+    }
+    td.param-cell {
+      vertical-align: top;
+      min-width: 16.3875rem; /* 10.925rem × 1.5 */
+    }
+    .fader-app-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: stretch;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 4px;
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--fader-led, #888) 16%, transparent);
+    }
+    .fader-app-stack .fader-chip {
+      width: 100%;
     }
     .fader-chip {
       --led-dur: 4.2s;
@@ -1636,6 +1826,7 @@
     <span class="fab-face" aria-hidden="true"></span>
     <span class="fab-lines"><span data-i18n="push.fabLine1">Push</span><span data-i18n="push.fabLine2">to Punk</span></span>
   </button>
+  <div class="layout">
   <header>
     <div class="brand">
       <img class="brand-logo" src="/img/fp-logo.svg" width="55" height="72" alt="Faderpunk">
@@ -1643,21 +1834,23 @@
         <h1 data-i18n="app.h1">Preset Editor</h1>
         <p class="compat-note">
           <span class="app-ver">v0.1.0</span>
-          <span data-i18n="app.compat" data-i18n-html>Works with the <a href="https://faderpunk.io/beta/#/configurator" target="_blank" rel="noopener noreferrer">faderpunk.io/beta</a> configurator</span>
+          <span data-i18n="app.compat" data-i18n-html>Works with beta configurator</span>
         </p>
       </div>
     </div>
-    <select id="langSelect" class="lang-switch" aria-label="Language">
-      <option value="en">English</option>
-      <option value="de">Deutsch</option>
-      <option value="fr">Français</option>
-    </select>
+    <div class="header-tools">
+      <select id="langSelect" class="lang-switch" aria-label="Language">
+        <option value="en">English</option>
+        <option value="de">Deutsch</option>
+        <option value="fr">Français</option>
+      </select>
+    </div>
   </header>
 
   <main>
     <details class="instruments">
       <summary>
-        <span data-i18n="inst.summary">Your MIDI instruments</span>
+        <span data-i18n="inst.summary">Your MIDI orchestra</span>
         <span class="summary-leds" aria-hidden="true">
           <span class="summary-led" style="--led:var(--dot-yellow);--led-delay:0s"></span>
           <span class="summary-led" style="--led:var(--dot-cyan);--led-delay:-0.9s"></span>
@@ -1781,12 +1974,7 @@
             <select id="gTakeover" data-i18n-title="global.takeoverTitle" title=""></select>
           </label>
           <div class="port-row" role="group" aria-labelledby="barGroupPort">
-            <div class="port-row-label" id="barGroupPort" data-i18n-title="bar.defaultPortTitle" title="">
-              <span class="port-def-ico" aria-hidden="true">
-                <svg viewBox="0 0 16 16" focusable="false"><path d="M8 1.2l1.76 3.56 3.93.57-2.84 2.77.67 3.91L8 10.16l-3.52 1.85.67-3.91L2.31 5.33l3.93-.57L8 1.2z"/></svg>
-              </span>
-              <span data-i18n="bar.groupPort">MIDI Out</span>
-            </div>
+            <div class="port-row-label" id="barGroupPort" data-i18n="port.default" data-i18n-title="bar.defaultPortTitle" title="">Preset</div>
             <div class="port-bits" id="presetPortBits" data-i18n-title="bar.defaultPortTitle" title="">
               <label><input type="checkbox" data-preset-bit="0" /><span data-i18n="port.usb">USB</span></label>
               <label><input type="checkbox" data-preset-bit="1" /><span data-i18n="port.out1">Out1</span></label>
@@ -1856,11 +2044,11 @@
       <table>
         <thead>
           <tr>
-            <th data-i18n="table.fader" data-i18n-title="table.dragTitle" title="">Fader</th>
-            <th data-i18n="table.app">App</th>
+            <th data-i18n="table.faderApp" data-i18n-title="table.dragTitle" title="">Fader/App</th>
+            <th data-i18n="table.param">Param</th>
             <th data-i18n="table.instrument">Instrument</th>
-            <th data-i18n="table.ccNote">MIDI CC / Note</th>
             <th data-i18n="table.ch">MIDI CH</th>
+            <th data-i18n="table.ccNote">MIDI CC / Note</th>
             <th data-i18n="table.port">MIDI Out</th>
             <th data-i18n="table.flags">Flags</th>
             <th></th>
@@ -2058,6 +2246,7 @@
       super_lfo: { id: 32, channels: 2, label: "Super LFO" },
       echolot: { id: 33, channels: 1, label: "Echolot" },
       arp_de_levy: { id: 34, channels: 1, label: "Arp de Lévy" },
+      vamp: { id: 35, channels: 1, label: "MIDI Vamp" },
     };
 
     const APP_ORDER = Object.keys(APPS).sort((a, b) =>
@@ -2100,6 +2289,7 @@
       super_lfo: "sine",
       echolot: "sine",
       arp_de_levy: "soft-random",
+      vamp: "note-grid",
     };
 
     // MidiOut flags: [usb, out1, out2] — all non-empty combinations
@@ -2174,16 +2364,18 @@
       const flags = flagsFromPort(s.port || defaultPort);
       const bits = isDefault
         ? ""
-        : `<label class="bit"><input type="checkbox" data-i="${idx}" data-k="portBit" data-bit="0" ${flags[0] ? "checked" : ""} /><span>${escapeHtml(t("port.usb"))}</span></label>
-        <label class="bit"><input type="checkbox" data-i="${idx}" data-k="portBit" data-bit="1" ${flags[1] ? "checked" : ""} /><span>${escapeHtml(t("port.out1"))}</span></label>
-        <label class="bit"><input type="checkbox" data-i="${idx}" data-k="portBit" data-bit="2" ${flags[2] ? "checked" : ""} /><span>${escapeHtml(t("port.out2"))}</span></label>`;
+        : `<span class="port-out-group" title="${escapeAttr(t("table.port"))}">
+          <span class="vm">${escapeHtml(t("port.outGroup"))}</span>
+          <span class="port-out-stack">
+            <label class="bit"><input type="checkbox" data-i="${idx}" data-k="portBit" data-bit="0" ${flags[0] ? "checked" : ""} /><span>${escapeHtml(t("port.usb"))}</span></label>
+            <label class="bit"><input type="checkbox" data-i="${idx}" data-k="portBit" data-bit="1" ${flags[1] ? "checked" : ""} /><span>${escapeHtml(t("port.out1"))}</span></label>
+            <label class="bit"><input type="checkbox" data-i="${idx}" data-k="portBit" data-bit="2" ${flags[2] ? "checked" : ""} /><span>${escapeHtml(t("port.out2"))}</span></label>
+          </span>
+        </span>`;
       return `<div class="port-bits${isDefault ? "" : " has-bits"}" data-i="${idx}">
         <label class="port-def" title="${escapeAttr(t("row.portDefault", { port: portLabel(defaultPort) }))}">
           <input type="checkbox" data-i="${idx}" data-k="portDefault" ${isDefault ? "checked" : ""} />
-          <span class="port-def-ico" aria-hidden="true">
-            <svg viewBox="0 0 16 16" focusable="false"><path d="M8 1.2l1.76 3.56 3.93.57-2.84 2.77.67 3.91L8 10.16l-3.52 1.85.67-3.91L2.31 5.33l3.93-.57L8 1.2z"/></svg>
-          </span>
-          <span class="visually-hidden">${escapeHtml(t("port.default"))}</span>
+          <span>${escapeHtml(t("port.default"))}</span>
         </label>
         ${bits}
       </div>`;
@@ -2297,6 +2489,10 @@
     const STORAGE_KEY_LEGACY = [];
     const ACTIVE_KEY = "fp-preset-active-v20";
     const INST_KEY = "fp-instruments-v6";
+    /** Push/pull always target the hosted beta configurator. */
+    function getConfigPrefer() {
+      return "beta";
+    }
     const RECENT_CSV_KEY = "fp-recent-csv-v1";
 
     /** @type {Array<{id:string,name:string,midiCh:number,csv?:string,ccs:Array<{cc:number,name:string}>}>} */
@@ -2578,6 +2774,7 @@
       super_lfo: "Cyan",
       echolot: "Cyan",
       arp_de_levy: "Rose",
+      vamp: "Violet",
     };
 
     /** Apps where our paramsFor emits Color (basic LFO / Random have none) */
@@ -2587,7 +2784,7 @@
       "probatrigger", "bernoulli", "fibonacci_gate", "notefader", "rnd_plus", "fp_grids",
       "clk_div", "clk_div_plus", "genseq", "tb3po", "panner", "cv2midi",
       "cv2midinote", "midi2cv", "follower", "offset_att", "slew", "quantizer",
-      "house_pump", "sift", "grooves", "super_lfo", "echolot", "arp_de_levy",
+      "house_pump", "sift", "grooves", "super_lfo", "echolot", "arp_de_levy", "vamp",
     ]);
     // Apps without MidiOut in CONFIG (CV-only / MIDI-in)
     const APPS_NO_MIDIOUT = new Set([
@@ -2605,7 +2802,7 @@
     const NOTE_APPS = new Set([
       "turing", "clkturing", "euclid", "probatrigger", "bernoulli", "notefader",
       "fp_grids", "genseq", "clk_div", "clk_div_plus", "tb3po",
-      "grooves", "arp_de_levy",
+      "grooves", "arp_de_levy", "vamp",
     ]);
     /** Apps with no MidiCc/MidiNote param at all (firmware CONFIG has neither) —
      * the CC/Note column doesn't apply, so show it muted instead of a fake "CC". */
@@ -2660,6 +2857,7 @@
       super_lfo: 11,
       echolot: 15,
       arp_de_levy: 6,
+      vamp: 11,
     };
 
     function resolveColor(row, idx = 0) {
@@ -2735,13 +2933,23 @@
             : "";
       const ledDur = (3.6 + (ledSeed % 7) * 0.42).toFixed(2);
       const ledDelay = (-((ledSeed * 1.13) % 7)).toFixed(2);
+      const appOpts = APP_ORDER.map((k) => {
+        const v = APPS[k];
+        return `<option value="${k}" ${k === s.app ? "selected" : ""}>${v.label} · ${v.channels}</option>`;
+      }).join("");
       return `<td class="fader-cell">
-        <div class="fader-chip${waveClass}" style="background:${bg};color:${fg};--led-dur:${ledDur}s;--led-delay:${ledDelay}s">
-          <div class="fader-id drag-handle${isRange ? " is-range" : ""}" draggable="true" title="${escapeAttr(t("row.drag"))} · ${escapeAttr(APPS[s.app]?.label || s.app)} · ${escapeAttr(tag)}">
-            <span class="app-icon" style="--app-icon:url('/icons/${escapeAttr(icon)}.svg')" aria-hidden="true"></span>
-            ${numHtml}
+        <div class="fader-app-stack" style="--fader-led:${bg};--fader-led-fg:${fg}">
+          <div class="fader-chip${waveClass}" style="background:${bg};color:${fg};--led-dur:${ledDur}s;--led-delay:${ledDelay}s">
+            <div class="fader-id drag-handle${isRange ? " is-range" : ""}" draggable="true" title="${escapeAttr(t("row.drag"))} · ${escapeAttr(APPS[s.app]?.label || s.app)} · ${escapeAttr(tag)}">
+              <span class="app-icon" style="--app-icon:url('/icons/${escapeAttr(icon)}.svg')" aria-hidden="true"></span>
+              ${numHtml}
+            </div>
+            ${faderColorHookHtml(s, idx)}
           </div>
-          ${faderColorHookHtml(s, idx)}
+          <div class="fader-app-select">
+            <select data-i="${idx}" data-k="app">${appOpts}</select>
+            <span class="fader-color-tri" aria-hidden="true"></span>
+          </div>
         </div>
       </td>`;
     }
@@ -2946,6 +3154,24 @@
             ch(c), note(n), appCol, out,
             vpo(vpoTag),
             bool(!!row.bypassQ),
+          ];
+        }
+        // MIDI Vamp: Out, CH, Root, Scale, Genre, Voicing, Velocity,
+        // Auto style, Start mode, Capture length, Color
+        case "vamp": {
+          const rootN = row.note != null ? rowNoteNum(row) : 48;
+          return [
+            out,
+            ch(c),
+            note(rootN),
+            enumVal(row.vampScale != null ? row.vampScale : 5), // Aeolian
+            enumVal(row.vampGenre != null ? row.vampGenre : 3), // House
+            enumVal(row.vampVoicing != null ? row.vampVoicing : 0),
+            i32(Math.max(1, Math.min(127, Number(row.vampVelocity) || 100))),
+            enumVal(row.vampAutoStyle != null ? row.vampAutoStyle : 0),
+            enumVal(row.vampStartMode != null ? row.vampStartMode : 0),
+            enumVal(row.vampCapture != null ? row.vampCapture : 1), // 8 bars
+            appCol,
           ];
         }
         case "tb3po": {
@@ -3393,7 +3619,8 @@
     function noteOptionsHtml(selected) {
       const cur = Math.max(0, Math.min(127, Number(selected) || 0));
       let html = "";
-      for (let i = 0; i <= 127; i++) {
+      // High notes first (top), low notes last (bottom) — like a keyboard
+      for (let i = 127; i >= 0; i--) {
         html += `<option value="${i}" ${i === cur ? "selected" : ""}>${escapeHtml(midiNoteLabel(i))}</option>`;
       }
       return html;
@@ -3766,6 +3993,41 @@
       row.schemaValues = cat.params.map((p) => defaultValueForParam(p, row, portKey));
       // Overlay denormalized column fields onto matching slots
       applyColumnOverlaysToSchema(row, portKey);
+      if (row.app === "vamp") {
+        // Firmware defaults: Root C3 (48), Aeolian, House, Velocity 100, Capture 8 bars
+        const sv = row.schemaValues;
+        const byTag = (tag, nth = 0) => {
+          let n = 0;
+          for (let i = 0; i < cat.params.length; i++) {
+            if (cat.params[i]?.tag === tag) {
+              if (n === nth) return i;
+              n++;
+            }
+          }
+          return -1;
+        };
+        const noteI = byTag("MidiNote");
+        if (noteI >= 0 && (row.note == null || row.note === "")) {
+          sv[noteI] = note(48);
+          row.note = 48;
+        }
+        const enums = [];
+        cat.params.forEach((p, i) => {
+          if (p?.tag === "Enum") enums.push(i);
+        });
+        // Scale, Genre, Voicing, Auto style, Start mode, Capture length
+        const enumDefaults = [5, 3, 0, 0, 0, 1];
+        enums.forEach((ei, j) => {
+          if (j < enumDefaults.length && sv[ei]?.tag === "Enum" && sv[ei].value === 0 && enumDefaults[j] !== 0) {
+            if (j === 0 || j === 1 || j === 5) sv[ei] = enumVal(enumDefaults[j]);
+          }
+        });
+        const i32I = byTag("i32");
+        if (i32I >= 0 && sv[i32I]?.tag === "i32") {
+          const v = Number(Array.isArray(sv[i32I].value) ? sv[i32I].value[0] : sv[i32I].value);
+          if (!Number.isFinite(v) || v === 64) sv[i32I] = i32(100);
+        }
+      }
       return row.schemaValues;
     }
 
@@ -3844,6 +4106,40 @@
       }
     }
 
+    /** Slider + number + visible min–max for bounded numeric params. */
+    function rangeFieldHtml({
+      idx,
+      key,
+      value,
+      min,
+      max,
+      step = "1",
+      label = "",
+      title = "",
+      pi = null,
+    }) {
+      const piAttr = pi == null ? "" : ` data-pi="${pi}"`;
+      const tip =
+        title ||
+        (label ? `${label} (${min}–${max})` : `${min}–${max}`);
+      const shared = `data-i="${idx}" data-k="${escapeAttr(key)}"${piAttr} min="${min}" max="${max}" step="${step}" value="${value}"`;
+      return `<span class="range-field" title="${escapeAttr(tip)}">
+        <input type="range" class="range-slider" ${shared} aria-label="${escapeAttr(label || tip)}" />
+        <input type="number" ${shared} aria-label="${escapeAttr(label || tip)}" />
+        ${label ? `<span class="range-name">${escapeHtml(label)}</span>` : ""}
+      </span>`;
+    }
+
+    function syncRangePair(el) {
+      if (!(el instanceof HTMLInputElement)) return;
+      if (el.type !== "range" && el.type !== "number") return;
+      const wrap = el.closest(".range-field");
+      if (!wrap) return;
+      wrap.querySelectorAll("input[type='range'], input[type='number']").forEach((sib) => {
+        if (sib !== el) sib.value = el.value;
+      });
+    }
+
     function schemaControlHtml(param, value, idx, pi) {
       const tag = param.tag;
       const name = param.value?.name || tag;
@@ -3859,14 +4155,27 @@
         return `<select data-i="${idx}" data-k="sv" data-pi="${pi}" title="${title}">${opts}</select>`;
       }
       if (tag === "i32" || tag === "f32") {
-        const min = param.value?.min;
-        const max = param.value?.max;
-        const cur =
-          tag === "i32"
-            ? Number(value?.value) || 0
-            : Number(value?.value) || 0;
+        const min = Number(param.value?.min);
+        const max = Number(param.value?.max);
+        const step = tag === "f32" ? "0.01" : "1";
+        let cur = Number(value?.value);
+        if (!Number.isFinite(cur)) cur = Number.isFinite(min) ? min : 0;
+        if (Number.isFinite(min) && Number.isFinite(max) && max > min) {
+          cur = Math.max(min, Math.min(max, cur));
+          return rangeFieldHtml({
+            idx,
+            key: "sv",
+            pi,
+            value: cur,
+            min,
+            max,
+            step,
+            label: name,
+            title: `${name} (${min}–${max})`,
+          });
+        }
         return `<span class="mix-balance" title="${title}">
-          <input data-i="${idx}" data-k="sv" data-pi="${pi}" type="number" min="${min}" max="${max}" step="${tag === "f32" ? "0.01" : "1"}" value="${cur}" />${escapeHtml(name)}
+          <input data-i="${idx}" data-k="sv" data-pi="${pi}" type="number" min="${Number.isFinite(min) ? min : ""}" max="${Number.isFinite(max) ? max : ""}" step="${step}" value="${cur}" />${escapeHtml(name)}
         </span>`;
       }
       if (tag === "bool") {
@@ -3914,8 +4223,10 @@
         const flags = value?.value?.[0] || [true, true];
         return `<span class="flag-chip-group" title="${escapeAttr(t("midi.inFlagsTitle"))}">
           <span class="vm">In</span>
-          <label class="flag-chip"><input data-i="${idx}" data-k="sv" data-pi="${pi}" data-bit="0" type="checkbox" ${flags[0] ? "checked" : ""} />USB</label>
-          <label class="flag-chip"><input data-i="${idx}" data-k="sv" data-pi="${pi}" data-bit="1" type="checkbox" ${flags[1] ? "checked" : ""} />DIN</label>
+          <span class="flag-chip-stack">
+            <label class="flag-chip"><input data-i="${idx}" data-k="sv" data-pi="${pi}" data-bit="0" type="checkbox" ${flags[0] ? "checked" : ""} />USB</label>
+            <label class="flag-chip"><input data-i="${idx}" data-k="sv" data-pi="${pi}" data-bit="1" type="checkbox" ${flags[1] ? "checked" : ""} />DIN</label>
+          </span>
         </span>`;
       }
       if (tag === "MidiChannel") {
@@ -4016,9 +4327,15 @@
           <option value="0" ${oscB === 0 ? "selected" : ""}>Quad</option>
           <option value="1" ${oscB === 1 ? "selected" : ""}>Octave</option>
         </select>`);
-        bits.push(`<span class="mix-balance" title="${escapeAttr(t("param.mixBalanceHint"))}">
-          <input data-i="${idx}" data-k="mixBalance" type="number" min="0" max="100" value="${mixBal}" />${escapeHtml(t("param.mixBalance"))}
-        </span>`);
+        bits.push(rangeFieldHtml({
+          idx,
+          key: "mixBalance",
+          value: mixBal,
+          min: 0,
+          max: 100,
+          label: t("param.mixBalance"),
+          title: t("param.mixBalanceHint"),
+        }));
       }
       if (s.app === "echolot") {
         const echoIo = s.echoIo != null ? Number(s.echoIo) : 0;
@@ -4038,9 +4355,15 @@
           <option value="0" ${echoDelayMode === 0 ? "selected" : ""}>ms</option>
           <option value="1" ${echoDelayMode === 1 ? "selected" : ""}>Clock</option>
         </select>`);
-        bits.push(`<span class="mix-balance" title="${escapeAttr(t("param.echoMaxMsHint"))}">
-          <input data-i="${idx}" data-k="echoMaxMs" type="number" min="10" max="2000" value="${echoMaxMs}" />${escapeHtml(t("param.echoMaxMs"))}
-        </span>`);
+        bits.push(rangeFieldHtml({
+          idx,
+          key: "echoMaxMs",
+          value: echoMaxMs,
+          min: 10,
+          max: 2000,
+          label: t("param.echoMaxMs"),
+          title: t("param.echoMaxMsHint"),
+        }));
         bits.push(`<select data-i="${idx}" data-k="echoInterval" title="${escapeAttr(t("param.echoInterval"))}">
           <option value="0" ${echoInterval === 0 ? "selected" : ""}>Fixed</option>
           <option value="1" ${echoInterval === 1 ? "selected" : ""}>Stack</option>
@@ -4087,9 +4410,15 @@
             )
             .join("")}
         </select>`);
-        bits.push(`<span class="swing-max" title="${escapeAttr(t("param.swingHint"))}">
-          <input data-i="${idx}" data-k="swingMax" type="number" min="10" max="100" value="${swingMax}" />% Swing
-        </span>`);
+        bits.push(rangeFieldHtml({
+          idx,
+          key: "swingMax",
+          value: swingMax,
+          min: 10,
+          max: 100,
+          label: "% Swing",
+          title: t("param.swingHint"),
+        }));
       }
       if (APPS_WITH_RANGE.has(s.app)) {
         const cur = s.cvRange || "_0_10V";
@@ -5164,23 +5493,13 @@
       const sc = preset();
       tr.innerHTML = `
         ${faderCellHtml(s, { overflow })}
-        <td>
-          <div class="app-cell">
-            <select data-i="${i}" data-k="app">
-              ${APP_ORDER.map((k) => {
-                const v = APPS[k];
-                return `<option value="${k}" ${k === s.app ? "selected" : ""}>${v.label} · ${v.channels}</option>`;
-              }).join("")}
-            </select>
-            ${appExtrasHtml(s, i)}
-          </div>
-        </td>
+        <td class="param-cell">${appExtrasHtml(s, i) || `<span class="led-muted">—</span>`}</td>
         <td>${instrumentSelectHtml(s, i)}</td>
-        <td>${ccCellHtml(s, i)}</td>
         <td>${chCellHtml(s, i)}</td>
-        <td>${portBitsHtml(s, i, sc.port)}</td>
-        <td>${flagsColHtml(s, i)}</td>
-        <td><button type="button" class="row-x" data-remove-row="${i}" title="${escapeAttr(t("row.remove"))}">×</button></td>
+        <td>${ccCellHtml(s, i)}</td>
+        <td class="port-cell">${portBitsHtml(s, i, sc.port)}</td>
+        <td class="flags-cell">${flagsColHtml(s, i)}</td>
+        <td class="row-x-cell"><button type="button" class="row-x" data-remove-row="${i}" title="${escapeAttr(t("row.remove"))}" aria-label="${escapeAttr(t("row.remove"))}"></button></td>
       `;
       return tr;
     }
@@ -5431,6 +5750,7 @@
       const sc = preset();
       const rowRef = sc.rows[i];
       if (!rowRef) return;
+      syncRangePair(el);
       if (k === "sv") {
         const pi = Number(el.dataset.pi);
         const cat = catalogApp(rowRef.app);
@@ -5824,7 +6144,7 @@
       const res = await fetch("/api/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(setup),
+        body: JSON.stringify({ setup, configPrefer: getConfigPrefer() }),
       });
       if (!res.ok && !res.body) {
         const data = await res.json().catch(() => ({}));
@@ -5973,7 +6293,11 @@
       appendPushLog(t("push.openLocal"));
       setPushMeta(t("push.metaChrome"));
       try {
-        const res = await fetch("/api/debug-chrome", { method: "POST" });
+        const res = await fetch("/api/debug-chrome", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ configPrefer: getConfigPrefer() }),
+        });
         const data = await res.json().catch(() => ({}));
         if (data.log) {
           for (const line of String(data.log).split("\n")) {
@@ -6133,7 +6457,11 @@
         setPushMeta(`pull · ${((Date.now() - t0) / 1000).toFixed(0)}s`);
       }, 500);
       try {
-        const res = await fetch("/api/pull", { method: "POST" });
+        const res = await fetch("/api/pull", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ configPrefer: getConfigPrefer() }),
+        });
         const data = await res.json().catch(() => ({}));
         if (data.log) {
           for (const line of String(data.log).split("\n")) {
