@@ -42,6 +42,18 @@ const GENRE_NAMES: &[&str] = &[
     "Dubstep",
 ];
 
+/// Match Grooves so Shift+Fader genre pick is recognizable across apps.
+const GENRE_COLORS: [Color; NUM_GENRES] = [
+    Color::Orange, // Dub
+    Color::Yellow, // Disco
+    Color::Red,    // Hip-Hop
+    Color::Pink,   // House
+    Color::Cyan,   // Techno
+    Color::Violet, // Trip-Hop
+    Color::Green,  // UK Garage
+    Color::Blue,   // Dubstep
+];
+
 const CAPTURE_NAMES: &[&str] = &["16 bars", "8 bars", "4 bars", "2 bars"];
 /// Bars for each Capture length enum index.
 const CAPTURE_BARS: [u32; 4] = [16, 8, 4, 2];
@@ -420,7 +432,7 @@ fn load_genre_into(slots: &mut [u8; VAMP_CAP], genre: usize) -> u8 {
     n as u8
 }
 
-#[embassy_executor::task(pool_size = 16 / CHANNELS)]
+#[embassy_executor::task(pool_size = 4)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     let param_store = ParamStore::<Params>::new(
         app.app_id,
@@ -521,6 +533,11 @@ pub async fn run(
     let chord_held = app.make_global(false);
     let ring_write = app.make_global(0u8);
     let ring_len = app.make_global(0u8);
+    // Clock watch → voice engine (never await MIDI inside the clock subscriber).
+    let pending_play = app.make_global(false);
+    let pending_degree = app.make_global(0u8);
+    let pending_release = app.make_global(false);
+    let pending_record = app.make_global(false);
 
     // Shared vamp slots + ring (mutated under single-writer futures via globals for indices).
     let slots_cell = app.make_global([0u8; VAMP_CAP]);
@@ -607,9 +624,58 @@ pub async fn run(
         }
     };
 
+    let clock_watch = async {
+        let mut auto_step: usize = 0;
+        let mut current_degree: u8 = glob_degree.get();
+        loop {
+            match clock.wait_for_event(ClockDivision::_1).await {
+                ClockEvent::Tick => {
+                    if !(glob_mode_auto.get() && glob_auto_running.get()) {
+                        continue;
+                    }
+                    let div = glob_div.get().max(1);
+                    let clkn = ticks() as u32;
+                    if clkn.is_multiple_of(div) {
+                        let slots_now = slots_cell.get();
+                        let count = glob_slot_count.get().max(1) as usize;
+                        let degree = if glob_meander.get() {
+                            let tension = glob_tension.get();
+                            if tension > 512 {
+                                let genre = GenrePreset::get(glob_genre.get());
+                                let next = pick_markov(current_degree, genre.markov, &die);
+                                if tension < 3000 && die.roll() > tension {
+                                    slots_now[auto_step % count]
+                                } else {
+                                    next
+                                }
+                            } else {
+                                slots_now[auto_step % count]
+                            }
+                        } else {
+                            slots_now[auto_step % count]
+                        };
+                        current_degree = degree;
+                        glob_slot_idx.set((auto_step % count) as u8);
+                        pending_degree.set(degree);
+                        pending_record.set(true);
+                        pending_play.set(true);
+                        auto_step = auto_step.wrapping_add(1);
+                    }
+                    if clkn % div == (div * 80 / 100).clamp(1, div.saturating_sub(1)) {
+                        pending_release.set(true);
+                    }
+                }
+                ClockEvent::Stop | ClockEvent::Reset => {
+                    pending_release.set(true);
+                    auto_step = 0;
+                }
+                _ => {}
+            }
+        }
+    };
+
     let engine = async {
         let mut sounding: Vec<u8, SOUNDING_CAP> = Vec::new();
-        let mut auto_step: usize = 0;
         let mut current_degree: u8 = glob_degree.get();
 
         let release_all = async |sounding: &mut Vec<u8, SOUNDING_CAP>| {
@@ -637,7 +703,6 @@ pub async fn run(
         };
 
         loop {
-            // Panic
             if panic_flag.get() {
                 release_all(&mut sounding).await;
                 const ALL_SOUND_OFF: u8 = 120;
@@ -646,66 +711,35 @@ pub async fn run(
                 midi.send_cc(MidiCc::from(ALL_NOTES_OFF), 0).await;
                 sounding.clear();
                 chord_held.set(false);
+                pending_play.set(false);
+                pending_release.set(false);
                 panic_flag.set(false);
                 glob_activity.set(0);
             }
 
-            // Capture request flagged by long-press handler via capture_flash==255 pulse + flag
-            // handled in button path; engine watches a dedicated global:
-            // (capture applied in button handler writing slots_cell)
+            if pending_release.get() {
+                pending_release.set(false);
+                release_all(&mut sounding).await;
+            }
 
-            if glob_mode_auto.get() && glob_auto_running.get() {
-                match clock.wait_for_event(ClockDivision::_1).await {
-                    ClockEvent::Tick => {
-                        let div = glob_div.get().max(1);
-                        let clkn = ticks() as u32;
-                        if clkn.is_multiple_of(div) {
-                            let slots_now = slots_cell.get();
-                            let count = glob_slot_count.get().max(1) as usize;
-                            let degree = if glob_meander.get() {
-                                let tension = glob_tension.get();
-                                // High tension → more random Markov; low → stick to progression.
-                                if tension > 512 {
-                                    let genre = GenrePreset::get(glob_genre.get());
-                                    let next = pick_markov(current_degree, genre.markov, &die);
-                                    // Blend toward progression step when tension mid.
-                                    if tension < 3000 && die.roll() > tension {
-                                        slots_now[auto_step % count]
-                                    } else {
-                                        next
-                                    }
-                                } else {
-                                    slots_now[auto_step % count]
-                                }
-                            } else {
-                                slots_now[auto_step % count]
-                            };
-                            current_degree = degree;
-                            glob_slot_idx.set((auto_step % count) as u8);
-                            play_degree(&mut sounding, degree, true).await;
-                            auto_step = auto_step.wrapping_add(1);
-                        }
-                        // Gate off at 80% of division
-                        if clkn % div == (div * 80 / 100).clamp(1, div.saturating_sub(1)) {
-                            release_all(&mut sounding).await;
-                        }
-                    }
-                    ClockEvent::Stop | ClockEvent::Reset => {
-                        release_all(&mut sounding).await;
-                        auto_step = 0;
-                    }
-                    _ => {}
-                }
-            } else {
-                // Perform: chord hold driven by chord_held + degree changes
-                app.delay_millis(1).await;
+            if pending_play.get() {
+                pending_play.set(false);
+                let degree = pending_degree.get();
+                let record = pending_record.get();
+                pending_record.set(false);
+                current_degree = degree;
+                play_degree(&mut sounding, degree, record).await;
+            }
+
+            // Perform: chord hold (Auto voice comes only from pending_play).
+            if !glob_mode_auto.get() {
                 if chord_held.get() {
                     let deg = glob_degree.get();
                     if sounding.is_empty() || current_degree != deg {
                         current_degree = deg;
                         play_degree(&mut sounding, deg, true).await;
                     }
-                } else if !sounding.is_empty() && !glob_mode_auto.get() {
+                } else if !sounding.is_empty() {
                     release_all(&mut sounding).await;
                 }
             }
@@ -716,6 +750,8 @@ pub async fn run(
             if glob_capture_flash.get() > 0 {
                 glob_capture_flash.set(glob_capture_flash.get().saturating_sub(4));
             }
+
+            app.delay_millis(1).await;
         }
     };
 
@@ -741,15 +777,19 @@ pub async fn run(
 
             long_press_fired.set(false);
             if glob_mode_auto.get() {
-                // Auto: short = start/stop (on release if not long-press)
+                // Auto: short = play/pause chord autoplay (global clock is Scene+Shift only)
                 buttons.wait_for_up(0).await;
                 if long_press_fired.get() {
                     // Capture already handled in long_press
                     continue;
                 }
-                let running = !glob_auto_running.get();
-                glob_auto_running.set(running);
-                storage.modify_and_save(|s| s.auto_running = running);
+                let playing = !glob_auto_running.get();
+                glob_auto_running.set(playing);
+                if !playing {
+                    // Pause: silence current chord; clock keeps running independently.
+                    pending_release.set(true);
+                }
+                storage.modify_and_save(|s| s.auto_running = playing);
             } else {
                 // Perform: hold = chord; release = note off (unless long-press capture)
                 let count = glob_slot_count.get().max(1) as usize;
@@ -903,38 +943,41 @@ pub async fn run(
                     let meter = (slot * 4095) / count.max(1);
                     let led = split_unsigned_value(meter);
                     let pulse = glob_activity.get();
-                    let color = if glob_mode_auto.get() {
+                    // Perform = app color; Auto = orange (bright=play, dim=pause).
+                    let (fader_color, button_color, button_bright) = if glob_mode_auto.get() {
                         if glob_auto_running.get() {
-                            led_color
+                            (Color::Orange, Color::Orange, Brightness::High)
                         } else {
-                            Color::Orange
+                            (Color::Orange, Color::Orange, Brightness::Low)
                         }
                     } else {
-                        led_color
+                        (led_color, led_color, LED_BRIGHTNESS)
                     };
-                    leds.set(0, Led::Top, color, Brightness::Custom(led[0].max(pulse)));
+                    leds.set(
+                        0,
+                        Led::Top,
+                        fader_color,
+                        Brightness::Custom(led[0].max(pulse)),
+                    );
                     leds.set(
                         0,
                         Led::Bottom,
-                        color,
+                        fader_color,
                         Brightness::Custom(led[1].max(pulse / 2)),
                     );
                     if flash == 0 {
-                        if glob_mode_auto.get() && !glob_auto_running.get() {
-                            leds.set(0, Led::Button, Color::Orange, Brightness::Low);
-                        } else {
-                            leds.set(0, Led::Button, color, LED_BRIGHTNESS);
-                        }
+                        leds.set(0, Led::Button, button_color, button_bright);
                     }
                 }
                 LatchLayer::Alt => {
-                    let g = glob_genre.get() as u16;
-                    let meter = (g * 4095) / (NUM_GENRES as u16).max(1);
+                    let g = glob_genre.get().min(NUM_GENRES - 1);
+                    let color = GENRE_COLORS[g];
+                    let meter = (g as u16 * 4095) / (NUM_GENRES as u16).max(1);
                     let led = split_unsigned_value(meter);
-                    leds.set(0, Led::Top, Color::Green, Brightness::Custom(led[0]));
-                    leds.set(0, Led::Bottom, Color::Green, Brightness::Custom(led[1]));
+                    leds.set(0, Led::Top, color, Brightness::Custom(led[0]));
+                    leds.set(0, Led::Bottom, color, Brightness::Custom(led[1]));
                     if flash == 0 {
-                        leds.set(0, Led::Button, Color::Green, LED_BRIGHTNESS);
+                        leds.set(0, Led::Button, color, Brightness::High);
                     }
                 }
                 LatchLayer::Third => {
@@ -989,12 +1032,15 @@ pub async fn run(
 
     join(
         long_press,
-        join5(
-            engine,
-            button_handler,
-            fader_handler,
-            led_handler,
-            scene_handler,
+        join(
+            clock_watch,
+            join5(
+                engine,
+                button_handler,
+                fader_handler,
+                led_handler,
+                scene_handler,
+            ),
         ),
     )
     .await;
