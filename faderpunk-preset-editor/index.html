@@ -680,13 +680,38 @@
     td select[data-k="mixMode"],
     td select[data-k="oscB"],
     td select[data-k="gateSpeed"],
-    td select[data-k="vpo"] { min-width: 0; width: 6.5rem; }
+    td select[data-k="vpo"],
+    td select[data-k="echoIo"],
+    td select[data-k="echoDelayMode"],
+    td select[data-k="echoInterval"],
+    td select[data-k="echoRouting"],
+    td select[data-k="echoSignal"] { min-width: 0; width: 6.5rem; }
     td .swing-max,
     td .mix-balance {
       display: inline-flex; align-items: center; gap: 4px;
       font-size: 12px; color: var(--muted); white-space: nowrap;
     }
     td .mix-balance input { width: 3.5rem; }
+    td .mix-balance input[type="checkbox"],
+    td .app-extras input[type="checkbox"],
+    td .flags-col input[type="checkbox"],
+    .flag-chip input[type="checkbox"] {
+      width: 14px; height: 14px; padding: 0; margin: 0;
+      accent-color: var(--accent); border-radius: 3px; flex: 0 0 auto;
+    }
+    td .flags-col {
+      display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
+      font-size: 11px; color: var(--muted); max-width: 9rem;
+    }
+    td .flags-col label,
+    .flag-chip {
+      display: inline-flex; align-items: center; gap: 4px; margin: 0;
+      cursor: pointer; color: var(--text); white-space: nowrap; line-height: 1;
+    }
+    .flag-chip-group {
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .flag-chip-group .vm { color: var(--muted); font-size: 11px; }
     td .app-cell { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
     td .app-extras { display: flex; flex-wrap: wrap; gap: 4px; }
     td input[data-k="target"] { width: 7.5rem; max-width: 12rem; }
@@ -1837,7 +1862,7 @@
             <th data-i18n="table.ccNote">MIDI CC / Note</th>
             <th data-i18n="table.ch">MIDI CH</th>
             <th data-i18n="table.port">MIDI Out</th>
-            <th data-i18n="table.comment">Comment</th>
+            <th data-i18n="table.flags">Flags</th>
             <th></th>
           </tr>
         </thead>
@@ -2031,7 +2056,8 @@
       grooves: { id: 30, channels: 1, label: "Grooves" },
       fibonacci_gate: { id: 31, channels: 1, label: "Golden Gate" },
       super_lfo: { id: 32, channels: 2, label: "Super LFO" },
-      arp_de_levy: { id: 33, channels: 1, label: "Arp de Lévy" },
+      echolot: { id: 33, channels: 1, label: "Echolot" },
+      arp_de_levy: { id: 34, channels: 1, label: "Arp de Lévy" },
     };
 
     const APP_ORDER = Object.keys(APPS).sort((a, b) =>
@@ -2072,6 +2098,7 @@
       grooves: "die",
       fibonacci_gate: "sequence-square",
       super_lfo: "sine",
+      echolot: "sine",
       arp_de_levy: "soft-random",
     };
 
@@ -2340,6 +2367,33 @@
         }
         return out;
       }
+      if (row.app === "echolot") {
+        const chs = echolotChs(row);
+        const enums = [
+          Number(row.echoIo != null ? row.echoIo : 0),
+          Number(row.echoDelayMode != null ? row.echoDelayMode : 0),
+          Number(row.echoInterval != null ? row.echoInterval : 0),
+          Number(row.echoRouting != null ? row.echoRouting : 0),
+          Number(row.echoSignal != null ? row.echoSignal : 0),
+        ];
+        const maxMs = Math.max(10, Math.min(2000, Number(row.echoMaxMs) || 500));
+        let ci = 0;
+        let ei = 0;
+        for (const p of out) {
+          if (!p || typeof p !== "object") continue;
+          if (p.tag === "MidiChannel" && ci < 3) p.value = [chs[ci++]];
+          if (p.tag === "Enum" && ei < enums.length) {
+            p.value = Math.max(0, enums[ei++]);
+          }
+          if (p.tag === "i32") p.value = [maxMs];
+          if (p.tag === "MidiCc") p.value = [rowCcNum(row)];
+          if (p.tag === "MidiNote") p.value = [rowNoteNum(row)];
+          if (p.tag === "MidiOut") p.value = [flagsFromPort(wantPort)];
+          if (p.tag === "Color" && appCol?.value?.tag) p.value = { tag: appCol.value.tag };
+          if (p.tag === "Range") p.value = { tag: cvR === "_Neg5_5V" ? cvR : "_0_10V" };
+        }
+        return out;
+      }
       for (const p of out) {
         if (!p || typeof p !== "object") continue;
         if (p.tag === "MidiChannel" && !firstChPatched) {
@@ -2522,6 +2576,7 @@
       house_pump: "Pink",
       grooves: "Orange",
       super_lfo: "Cyan",
+      echolot: "Cyan",
       arp_de_levy: "Rose",
     };
 
@@ -2532,7 +2587,7 @@
       "probatrigger", "bernoulli", "fibonacci_gate", "notefader", "rnd_plus", "fp_grids",
       "clk_div", "clk_div_plus", "genseq", "tb3po", "panner", "cv2midi",
       "cv2midinote", "midi2cv", "follower", "offset_att", "slew", "quantizer",
-      "house_pump", "sift", "grooves", "super_lfo", "arp_de_levy",
+      "house_pump", "sift", "grooves", "super_lfo", "echolot", "arp_de_levy",
     ]);
     // Apps without MidiOut in CONFIG (CV-only / MIDI-in)
     const APPS_NO_MIDIOUT = new Set([
@@ -2541,11 +2596,11 @@
     const APPS_WITH_SPEED = new Set(["lfo", "lfo_plus", "super_lfo"]);
     const APPS_WITH_MIDI_MODE = new Set(["turing", "clkturing"]);
     /** Firmware exposes MidiNote and MidiCc together (not XOR via MidiMode). */
-    const APPS_WITH_NOTE_AND_CC = new Set(["fibonacci_gate", "midi2cv"]);
+    const APPS_WITH_NOTE_AND_CC = new Set(["fibonacci_gate", "midi2cv", "echolot"]);
     const APPS_WITH_RANGE = new Set([
       "lfo", "lfo_plus", "rnd", "control", "turing", "clkturing", "automator",
       "panner", "cv2midi", "cv2midinote", "follower", "offset_att", "slew", "quantizer",
-      "house_pump", "sift", "super_lfo",
+      "house_pump", "sift", "super_lfo", "echolot",
     ]);
     const NOTE_APPS = new Set([
       "turing", "clkturing", "euclid", "probatrigger", "bernoulli", "notefader",
@@ -2603,6 +2658,7 @@
       ad: 3, seq8: 14, follower_att: 2, slew: 2, follower: 2, quantizer: 4,
       house_pump: 6, sift: 11,
       super_lfo: 11,
+      echolot: 15,
       arp_de_levy: 6,
     };
 
@@ -2698,6 +2754,12 @@
         }
         // Incomplete/shifted pull (often LFO+ without Range) → firmware defaults to MIDI CH1
         delete row.rawParams;
+      }
+      // Schema-driven path: full Param[] from firmware CONFIG catalog
+      if (catalogApp(row.app)) {
+        ensureSchemaValues(row, portKey);
+        applyColumnOverlaysToSchema(row, portKey);
+        return enforceRowMidi(structuredClone(row.schemaValues), row);
       }
       const out = midiOut(row.port || portKey);
       const col = resolveColor(row, idx);
@@ -2855,6 +2917,28 @@
           ];
         case "genseq":
           return [ch(c), note(n), appCol, out, vpo("Standard"), bool(false)];
+        // Echolot: I/O, Delay mode, Max delay ms, Interval, Routing, Signal,
+        // Range, Color, MIDI In, MIDI In CH, MIDI Out, Out A, Out B, CC, Note
+        case "echolot": {
+          const echs = echolotChs(row);
+          return [
+            enumVal(row.echoIo != null ? row.echoIo : 0),
+            enumVal(row.echoDelayMode != null ? row.echoDelayMode : 0),
+            i32(Math.max(10, Math.min(2000, Number(row.echoMaxMs) || 500))),
+            enumVal(row.echoInterval != null ? row.echoInterval : 0),
+            enumVal(row.echoRouting != null ? row.echoRouting : 0),
+            enumVal(row.echoSignal != null ? row.echoSignal : 0),
+            range(cvR === "_Neg5_5V" ? cvR : "_0_10V"),
+            appCol,
+            midiIn([true, true]),
+            ch(echs[0]),
+            out,
+            ch(echs[1]),
+            ch(echs[2]),
+            cc(ccN),
+            note(noteN),
+          ];
+        }
         // Arp de Lévy: CH, Base Note, Color, Out, V/Oct, Bypass quantizer
         case "arp_de_levy": {
           const vpoTag = row.vpo === "Buchla" ? "Buchla" : "Standard";
@@ -2950,6 +3034,17 @@
             if (i32i === 0) p.value = [Math.max(10, Math.min(100, swingMax))];
             i32i++;
           }
+        }
+        return params;
+      }
+      if (row.app === "echolot") {
+        const chs = echolotChs(row);
+        let ci = 0;
+        for (const p of params) {
+          if (!p || typeof p !== "object") continue;
+          if (p.tag === "MidiChannel" && ci < 3) p.value = [chs[ci++]];
+          if (p.tag === "MidiCc") p.value = [rowCcNum(row)];
+          if (p.tag === "MidiNote") p.value = [rowNoteNum(row)];
         }
         return params;
       }
@@ -3341,6 +3436,24 @@
       row.kind = "note";
     }
 
+    /** Echolot: MIDI In CH, Out A, Out B (+ Note & CC). */
+    const ECHOLOT_CHS = ["In", "OutA", "OutB"];
+    function echolotChs(row) {
+      const base = Math.max(1, Math.min(16, Number(row.ch) || 1));
+      const raw = Array.isArray(row.chs) ? row.chs : null;
+      return [0, 1, 2].map((i) => {
+        const v = Number(raw?.[i]);
+        if (Number.isFinite(v) && v >= 1 && v <= 16) return v;
+        return i === 2 ? Math.min(16, base + 1) : base;
+      });
+    }
+    function ensureEcholotMidi(row) {
+      if (!row || row.app !== "echolot") return;
+      row.chs = echolotChs(row);
+      row.ch = row.chs[0];
+      ensureNoteAndCc(row);
+    }
+
     const FP_GRIDS_VOICES = ["BD", "SD", "HH", "X"];
     function gridsChs(row) {
       const base = Math.max(1, Math.min(16, Number(row.ch) || 1));
@@ -3394,6 +3507,44 @@
             <select data-i="${idx}" data-k="chs" data-slot="${slot}" title="${escapeAttr(t("midi.chLabel", { lab }))}">${opts}</select>`;
         }).join("");
         return `<div class="multi-midi" title="${escapeAttr(t("midi.groovesChTitle"))}">${rows}</div>`;
+      }
+      if (s.app === "echolot") {
+        const chs = echolotChs(s);
+        const rows = ECHOLOT_CHS.map((lab, slot) => {
+          const opts = Array.from({ length: 16 }, (_, i) => {
+            const n = i + 1;
+            return `<option value="${n}" ${chs[slot] === n ? "selected" : ""}>${n}</option>`;
+          }).join("");
+          return `<span class="vm">${lab}</span>
+            <select data-i="${idx}" data-k="chs" data-slot="${slot}" title="${escapeAttr(t("midi.chLabel", { lab }))}">${opts}</select>`;
+        }).join("");
+        return `<div class="multi-midi" title="${escapeAttr(t("midi.echolotChTitle"))}">${rows}</div>`;
+      }
+      // Generic: multiple named MidiChannel params from catalog
+      {
+        const cat = catalogApp(s.app);
+        const chParams = (cat?.params || [])
+          .map((p, i) => ({ p, i }))
+          .filter((x) => x.p.tag === "MidiChannel");
+        if (chParams.length > 1) {
+          ensureSchemaValues(s);
+          const rows = chParams
+            .map(({ p, i: pi }, slot) => {
+              const lab = (p.value?.name || `CH${slot + 1}`).replace(/^MIDI\s*/i, "").slice(0, 8);
+              const cur = Math.max(
+                1,
+                Math.min(16, Number(s.schemaValues?.[pi]?.value?.[0]) || Number(s.ch) || 1),
+              );
+              const opts = Array.from({ length: 16 }, (_, i) => {
+                const n = i + 1;
+                return `<option value="${n}" ${cur === n ? "selected" : ""}>${n}</option>`;
+              }).join("");
+              return `<span class="vm" title="${escapeAttr(p.value?.name || lab)}">${escapeHtml(lab)}</span>
+                <select data-i="${idx}" data-k="sv" data-pi="${pi}" title="${escapeAttr(p.value?.name || lab)}">${opts}</select>`;
+            })
+            .join("");
+          return `<div class="multi-midi">${rows}</div>`;
+        }
       }
       return (() => {
         const cur = Math.max(1, Math.min(16, Number(s.ch) || 1));
@@ -3467,7 +3618,374 @@
       Sand: "#ffd878", Violet: "#f600ff", LightBlue: "#7381ff", Rose: "#ff7878",
     };
 
+
+    // --- Apps catalog (firmware CONFIG → JSON via tools/gen-apps-catalog.py) ---
+    // Same Param field defs the configurator uses (GetAllApps / AppParam).
+    let APPS_CATALOG = null; // { apps: [...] }
+    let APPS_CATALOG_BY_SLUG = {};
+
+    function catalogApp(slug) {
+      return APPS_CATALOG_BY_SLUG[slug] || null;
+    }
+
+    async function loadAppsCatalog() {
+      try {
+        const res = await fetch("/apps-catalog.json", { cache: "no-store" });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json();
+        APPS_CATALOG = data;
+        APPS_CATALOG_BY_SLUG = Object.fromEntries(
+          (data.apps || []).map((a) => [a.slug, a]),
+        );
+        // Keep APP_PARAM_MIN in sync when catalog is present
+        for (const a of data.apps || []) {
+          APP_PARAM_MIN[a.slug] = a.params.length;
+        }
+        return true;
+      } catch (e) {
+        console.warn("apps-catalog.json missing — legacy extras only", e);
+        APPS_CATALOG = null;
+        APPS_CATALOG_BY_SLUG = {};
+        return false;
+      }
+    }
+
+    const RANGE_LABELS = {
+      _0_10V: "0–10V",
+      _0_5V: "0–5V",
+      _Neg5_5V: "±5V",
+    };
+
+    function defaultValueForParam(param, row, portKey) {
+      const tag = param?.tag;
+      if (tag === "Enum") return enumVal(0);
+      if (tag === "i32") {
+        const min = Number(param.value?.min) || 0;
+        const max = Number(param.value?.max) || 0;
+        const mid = Math.round((min + max) / 2);
+        return i32(Math.max(min, Math.min(max, mid)));
+      }
+      if (tag === "f32") {
+        const min = Number(param.value?.min) || 0;
+        const max = Number(param.value?.max) || 0;
+        return { tag: "f32", value: (min + max) / 2 };
+      }
+      if (tag === "bool") return bool(false);
+      if (tag === "Range") {
+        const want = row?.cvRange;
+        const vars = (param.value?.variants || []).map((v) => v.tag || v);
+        const pick = vars.includes(want) ? want : vars[0] || "_0_10V";
+        return range(pick);
+      }
+      if (tag === "Color") {
+        const col = resolveColor(row || {}, 0);
+        return colorForApp(row?.app, col);
+      }
+      if (tag === "Curve") {
+        const vars = (param.value?.variants || []).map((v) => v.tag || v);
+        return curve(vars[0] || "Linear");
+      }
+      if (tag === "Waveform") {
+        const vars = (param.value?.variants || []).map((v) => v.tag || v);
+        return { tag: "Waveform", value: { tag: vars[0] || "Sine" } };
+      }
+      if (tag === "Note") {
+        const vars = (param.value?.variants || []).map((v) => v.tag || v);
+        return { tag: "Note", value: { tag: vars[0] || "C" } };
+      }
+      if (tag === "MidiChannel") return ch(Math.max(1, Math.min(16, Number(row?.ch) || 1)));
+      if (tag === "MidiCc") return cc(rowCcNum(row || {}));
+      if (tag === "MidiNote") return note(rowNoteNum(row || {}));
+      if (tag === "MidiOut") return midiOut(row?.port || portKey || "usb");
+      if (tag === "MidiIn") return midiIn([true, true]);
+      if (tag === "MidiNrpn") return nrpn(false);
+      if (tag === "MidiMode") return midiMode(rowMidiMode(row || {}));
+      if (tag === "VoltPerOct") return vpo(row?.vpo === "Buchla" ? "Buchla" : "Standard");
+      return { tag: "None" };
+    }
+
+    /** Indices handled by table columns / special multi-MIDI UIs — omit from extras. */
+    function schemaClaimedIndices(cat, row) {
+      const claimed = new Set();
+      const params = cat.params || [];
+      const specialMulti =
+        row.app === "fp_grids" || row.app === "grooves" || row.app === "echolot";
+      let firstCh = true;
+      let firstCc = true;
+      let firstNote = true;
+      params.forEach((p, i) => {
+        if (!p) return;
+        if (p.tag === "MidiOut" || p.tag === "Color") {
+          claimed.add(i);
+          return;
+        }
+        if (p.tag === "MidiChannel") {
+          if (specialMulti || firstCh) {
+            claimed.add(i);
+            firstCh = false;
+          }
+          return;
+        }
+        if (p.tag === "MidiCc") {
+          if (row.kind === "cc" || row.kind === "both" || APPS_WITH_NOTE_AND_CC.has(row.app)) {
+            if (firstCc) {
+              claimed.add(i);
+              firstCc = false;
+            }
+          }
+          return;
+        }
+        if (p.tag === "MidiNote") {
+          if (
+            row.kind === "note" ||
+            row.kind === "both" ||
+            APPS_WITH_NOTE_AND_CC.has(row.app) ||
+            specialMulti
+          ) {
+            if (specialMulti || firstNote) {
+              claimed.add(i);
+              firstNote = false;
+            }
+          }
+        }
+      });
+      return claimed;
+    }
+
+    function ensureSchemaValues(row, portKey) {
+      const cat = catalogApp(row.app);
+      if (!cat) return null;
+      const n = cat.params.length;
+      if (Array.isArray(row.schemaValues) && row.schemaValues.length === n) {
+        return row.schemaValues;
+      }
+      if (Array.isArray(row.rawParams) && row.rawParams.length === n) {
+        row.schemaValues = structuredClone(row.rawParams);
+        return row.schemaValues;
+      }
+      row.schemaValues = cat.params.map((p) => defaultValueForParam(p, row, portKey));
+      // Overlay denormalized column fields onto matching slots
+      applyColumnOverlaysToSchema(row, portKey);
+      return row.schemaValues;
+    }
+
+    function applyColumnOverlaysToSchema(row, portKey) {
+      const cat = catalogApp(row.app);
+      if (!cat || !Array.isArray(row.schemaValues)) return;
+      const wantPort = row.port || portKey;
+      const col = resolveColor(row, 0);
+      let ci = 0;
+      let notei = 0;
+      const chs =
+        row.app === "fp_grids"
+          ? gridsChs(row)
+          : row.app === "grooves"
+            ? groovesChs(row)
+            : row.app === "echolot"
+              ? echolotChs(row)
+              : null;
+      const notes =
+        row.app === "fp_grids"
+          ? gridsNotes(row)
+          : row.app === "grooves"
+            ? groovesNotes(row)
+            : null;
+      cat.params.forEach((p, i) => {
+        const v = row.schemaValues[i];
+        if (!v || !p) return;
+        if (p.tag === "MidiOut") v.value = [flagsFromPort(wantPort)];
+        if (p.tag === "Color" && APP_PARAM_COLORS.has(col)) v.value = { tag: col };
+        if (p.tag === "Range" && row.cvRange) v.value = { tag: row.cvRange };
+        if (p.tag === "MidiMode") v.value = { tag: rowMidiMode(row) };
+        if (p.tag === "MidiChannel") {
+          if (chs && ci < chs.length) {
+            v.value = [chs[ci++]];
+          } else if (ci === 0) {
+            v.value = [Math.max(1, Math.min(16, Number(row.ch) || 1))];
+            ci++;
+          } else {
+            ci++;
+          }
+        }
+        if (p.tag === "MidiCc" && (row.kind === "cc" || row.kind === "both")) {
+          v.value = [rowCcNum(row)];
+        }
+        if (p.tag === "MidiNote") {
+          if (notes && notei < notes.length) {
+            v.value = [notes[notei++]];
+          } else if (row.kind === "note" || row.kind === "both") {
+            v.value = [rowNoteNum(row)];
+          }
+        }
+      });
+    }
+
+    function schemaValueAt(row, pi) {
+      ensureSchemaValues(row);
+      return row.schemaValues?.[pi];
+    }
+
+    function setSchemaValue(row, pi, value) {
+      ensureSchemaValues(row);
+      row.schemaValues[pi] = value;
+      delete row.rawParams;
+      // Mirror a few tags into denormalized fields used by columns / legacy
+      const cat = catalogApp(row.app);
+      const p = cat?.params?.[pi];
+      if (!p) return;
+      if (p.tag === "Range" && value?.value?.tag) row.cvRange = value.value.tag;
+      if (p.tag === "MidiMode" && value?.value?.tag) {
+        row.midiMode = value.value.tag === "Cc" ? "Cc" : "Note";
+        row.kind = kindForApp(row.app, row.midiMode);
+      }
+      if (p.tag === "VoltPerOct" && value?.value?.tag) row.vpo = value.value.tag;
+      if (p.tag === "bool" && /bypass|quant/i.test(p.value?.name || "")) {
+        row.bypassQ = !!value.value;
+      }
+    }
+
+    function schemaControlHtml(param, value, idx, pi) {
+      const tag = param.tag;
+      const name = param.value?.name || tag;
+      const title = escapeAttr(name);
+      if (tag === "Enum") {
+        const cur = Number(value?.value) || 0;
+        const opts = (param.value?.variants || [])
+          .map(
+            (lab, i) =>
+              `<option value="${i}" ${cur === i ? "selected" : ""}>${escapeHtml(lab)}</option>`,
+          )
+          .join("");
+        return `<select data-i="${idx}" data-k="sv" data-pi="${pi}" title="${title}">${opts}</select>`;
+      }
+      if (tag === "i32" || tag === "f32") {
+        const min = param.value?.min;
+        const max = param.value?.max;
+        const cur =
+          tag === "i32"
+            ? Number(value?.value) || 0
+            : Number(value?.value) || 0;
+        return `<span class="mix-balance" title="${title}">
+          <input data-i="${idx}" data-k="sv" data-pi="${pi}" type="number" min="${min}" max="${max}" step="${tag === "f32" ? "0.01" : "1"}" value="${cur}" />${escapeHtml(name)}
+        </span>`;
+      }
+      if (tag === "bool") {
+        return `<label class="flag-chip" title="${title}">
+          <input data-i="${idx}" data-k="sv" data-pi="${pi}" type="checkbox" ${value?.value ? "checked" : ""} />${escapeHtml(name)}
+        </label>`;
+      }
+      if (tag === "Range" || tag === "Curve" || tag === "Waveform" || tag === "Note" || tag === "VoltPerOct") {
+        const cur = value?.value?.tag || "";
+        const opts = (param.value?.variants || [])
+          .map((v) => {
+            const t = v.tag || v;
+            const lab =
+              tag === "Range"
+                ? RANGE_LABELS[t] || t
+                : tag === "VoltPerOct"
+                  ? t === "Buchla"
+                    ? "1.2V/Oct"
+                    : "1V/Oct"
+                  : t;
+            return `<option value="${escapeAttr(t)}" ${cur === t ? "selected" : ""}>${escapeHtml(lab)}</option>`;
+          })
+          .join("");
+        // VoltPerOct has no variants in schema — fixed pair
+        const fixed =
+          tag === "VoltPerOct" && !(param.value?.variants || []).length
+            ? `<option value="Standard" ${cur !== "Buchla" ? "selected" : ""}>1V/Oct</option>
+               <option value="Buchla" ${cur === "Buchla" ? "selected" : ""}>1.2V/Oct</option>`
+            : opts;
+        return `<select data-i="${idx}" data-k="sv" data-pi="${pi}" title="${title}">${fixed}</select>`;
+      }
+      if (tag === "MidiMode") {
+        const cur = value?.value?.tag === "Cc" ? "Cc" : "Note";
+        return `<select data-i="${idx}" data-k="sv" data-pi="${pi}" title="${title}">
+          <option value="Note" ${cur === "Note" ? "selected" : ""}>Note</option>
+          <option value="Cc" ${cur === "Cc" ? "selected" : ""}>CC</option>
+        </select>`;
+      }
+      if (tag === "MidiNrpn") {
+        return `<label class="flag-chip" title="NRPN">
+          <input data-i="${idx}" data-k="sv" data-pi="${pi}" type="checkbox" ${value?.value ? "checked" : ""} />NRPN
+        </label>`;
+      }
+      if (tag === "MidiIn") {
+        const flags = value?.value?.[0] || [true, true];
+        return `<span class="flag-chip-group" title="${escapeAttr(t("midi.inFlagsTitle"))}">
+          <span class="vm">In</span>
+          <label class="flag-chip"><input data-i="${idx}" data-k="sv" data-pi="${pi}" data-bit="0" type="checkbox" ${flags[0] ? "checked" : ""} />USB</label>
+          <label class="flag-chip"><input data-i="${idx}" data-k="sv" data-pi="${pi}" data-bit="1" type="checkbox" ${flags[1] ? "checked" : ""} />DIN</label>
+        </span>`;
+      }
+      if (tag === "MidiChannel") {
+        const cur = Math.max(1, Math.min(16, Number(value?.value?.[0]) || 1));
+        const opts = Array.from({ length: 16 }, (_, i) => {
+          const n = i + 1;
+          return `<option value="${n}" ${cur === n ? "selected" : ""}>${n}</option>`;
+        }).join("");
+        return `<span class="mix-balance" title="${title}">
+          <select data-i="${idx}" data-k="sv" data-pi="${pi}">${opts}</select>${escapeHtml(name)}
+        </span>`;
+      }
+      if (tag === "MidiCc" || tag === "MidiNote") {
+        const cur = Math.max(0, Math.min(127, Number(value?.value?.[0]) || 0));
+        return `<span class="mix-balance" title="${title}">
+          <input data-i="${idx}" data-k="sv" data-pi="${pi}" type="number" min="0" max="127" value="${cur}" />${escapeHtml(name)}
+        </span>`;
+      }
+      return "";
+    }
+
+    /** bool / MidiNrpn / MidiIn move to the dedicated Flags column instead of app-extras. */
+    function schemaFlagTags(cat) {
+      return (cat?.params || [])
+        .map((p, i) => ({ p, i }))
+        .filter((x) => x.p.tag === "bool" || x.p.tag === "MidiNrpn" || x.p.tag === "MidiIn");
+    }
+
+    function schemaExtrasHtml(s, idx) {
+      const cat = catalogApp(s.app);
+      if (!cat) return "";
+      ensureSchemaValues(s);
+      const claimed = schemaClaimedIndices(cat, s);
+      const flagIdx = new Set(schemaFlagTags(cat).map((x) => x.i));
+      const bits = [];
+      cat.params.forEach((p, pi) => {
+        if (claimed.has(pi) || flagIdx.has(pi)) return;
+        const html = schemaControlHtml(p, s.schemaValues[pi], idx, pi);
+        if (html) bits.push(html);
+      });
+      if (!bits.length) return "";
+      return `<span class="app-extras" title="${escapeAttr("From firmware CONFIG / apps-catalog.json")}">${bits.join("")}</span>`;
+    }
+
+    /** Common column for all checkbox-like params (Bypass quantizer, Grid Lock, NRPN, MIDI In, …). */
+    function flagsColHtml(s, idx) {
+      const cat = catalogApp(s.app);
+      if (cat) {
+        ensureSchemaValues(s);
+        const flagParams = schemaFlagTags(cat);
+        if (!flagParams.length) return `<span class="led-muted">—</span>`;
+        const bits = flagParams.map(({ p, i: pi }) =>
+          schemaControlHtml(p, s.schemaValues[pi], idx, pi),
+        );
+        return `<span class="flags-col">${bits.join("")}</span>`;
+      }
+      if (s.app === "arp_de_levy") {
+        return `<span class="flags-col"><label class="flag-chip" title="${escapeAttr(t("param.bypassQ"))}">
+          <input data-i="${idx}" data-k="bypassQ" type="checkbox" ${s.bypassQ ? "checked" : ""} />${escapeHtml(t("param.bypassQShort"))}
+        </label></span>`;
+      }
+      return `<span class="led-muted">—</span>`;
+    }
+
+
     function appExtrasHtml(s, idx) {
+      // Prefer firmware CONFIG catalog (same Param defs as configurator).
+      if (catalogApp(s.app)) {
+        return schemaExtrasHtml(s, idx);
+      }
       const bits = [];
       if (APPS_WITH_MIDI_MODE.has(s.app)) {
         const cur = rowMidiMode(s);
@@ -3501,6 +4019,43 @@
         bits.push(`<span class="mix-balance" title="${escapeAttr(t("param.mixBalanceHint"))}">
           <input data-i="${idx}" data-k="mixBalance" type="number" min="0" max="100" value="${mixBal}" />${escapeHtml(t("param.mixBalance"))}
         </span>`);
+      }
+      if (s.app === "echolot") {
+        const echoIo = s.echoIo != null ? Number(s.echoIo) : 0;
+        const echoDelayMode = s.echoDelayMode != null ? Number(s.echoDelayMode) : 0;
+        const echoMaxMs = Number.isFinite(Number(s.echoMaxMs))
+          ? Math.max(10, Math.min(2000, Number(s.echoMaxMs)))
+          : 500;
+        const echoInterval = s.echoInterval != null ? Number(s.echoInterval) : 0;
+        const echoRouting = s.echoRouting != null ? Number(s.echoRouting) : 0;
+        const echoSignal = s.echoSignal != null ? Number(s.echoSignal) : 0;
+        bits.push(`<select data-i="${idx}" data-k="echoIo" title="${escapeAttr(t("param.echoIo"))}">
+          <option value="0" ${echoIo === 0 ? "selected" : ""}>MIDI→MIDI</option>
+          <option value="1" ${echoIo === 1 ? "selected" : ""}>MIDI→CV</option>
+          <option value="2" ${echoIo === 2 ? "selected" : ""}>CV→MIDI</option>
+        </select>`);
+        bits.push(`<select data-i="${idx}" data-k="echoDelayMode" title="${escapeAttr(t("param.echoDelayMode"))}">
+          <option value="0" ${echoDelayMode === 0 ? "selected" : ""}>ms</option>
+          <option value="1" ${echoDelayMode === 1 ? "selected" : ""}>Clock</option>
+        </select>`);
+        bits.push(`<span class="mix-balance" title="${escapeAttr(t("param.echoMaxMsHint"))}">
+          <input data-i="${idx}" data-k="echoMaxMs" type="number" min="10" max="2000" value="${echoMaxMs}" />${escapeHtml(t("param.echoMaxMs"))}
+        </span>`);
+        bits.push(`<select data-i="${idx}" data-k="echoInterval" title="${escapeAttr(t("param.echoInterval"))}">
+          <option value="0" ${echoInterval === 0 ? "selected" : ""}>Fixed</option>
+          <option value="1" ${echoInterval === 1 ? "selected" : ""}>Stack</option>
+          <option value="2" ${echoInterval === 2 ? "selected" : ""}>Pong</option>
+        </select>`);
+        bits.push(`<select data-i="${idx}" data-k="echoRouting" title="${escapeAttr(t("param.echoRouting"))}">
+          <option value="0" ${echoRouting === 0 ? "selected" : ""}>Single</option>
+          <option value="1" ${echoRouting === 1 ? "selected" : ""}>Ping-Pong</option>
+        </select>`);
+        bits.push(`<select data-i="${idx}" data-k="echoSignal" title="${escapeAttr(t("param.echoSignal"))}">
+          <option value="0" ${echoSignal === 0 ? "selected" : ""}>Pitch</option>
+          <option value="1" ${echoSignal === 1 ? "selected" : ""}>Gate</option>
+          <option value="2" ${echoSignal === 2 ? "selected" : ""}>CV→CC</option>
+          <option value="3" ${echoSignal === 3 ? "selected" : ""}>Gate→Note</option>
+        </select>`);
       }
       if (s.app === "fibonacci_gate") {
         const cur = s.gateSpeed != null ? Number(s.gateSpeed) : 0;
@@ -4165,6 +4720,31 @@
               row.mixBalance = Math.max(0, Math.min(100, bal));
             }
           }
+          if (appKey === "echolot") {
+            const enums = params
+              .filter((v) => v?.tag === "Enum")
+              .map((v) => Number(v.value));
+            if (Number.isFinite(enums[0])) row.echoIo = Math.max(0, Math.min(2, enums[0]));
+            if (Number.isFinite(enums[1])) row.echoDelayMode = Math.max(0, Math.min(1, enums[1]));
+            if (Number.isFinite(enums[2])) row.echoInterval = Math.max(0, Math.min(2, enums[2]));
+            if (Number.isFinite(enums[3])) row.echoRouting = Math.max(0, Math.min(1, enums[3]));
+            if (Number.isFinite(enums[4])) row.echoSignal = Math.max(0, Math.min(3, enums[4]));
+            const i32s = params
+              .filter((v) => v?.tag === "i32")
+              .map((v) => {
+                const raw = v.value;
+                return Number(Array.isArray(raw) ? raw[0] : raw);
+              });
+            if (Number.isFinite(i32s[0])) {
+              row.echoMaxMs = Math.max(10, Math.min(2000, i32s[0]));
+            }
+            const baseCh = Number(channel) || 1;
+            row.chs = [0, 1, 2].map((i) =>
+              Number.isFinite(allChs[i]) ? allChs[i] : i === 2 ? Math.min(16, baseCh + 1) : baseCh,
+            );
+            row.ch = row.chs[0];
+            ensureNoteAndCc(row);
+          }
           if (appKey === "fibonacci_gate") {
             const enums = params
               .filter((v) => v?.tag === "Enum")
@@ -4184,6 +4764,9 @@
           if (port) row.port = port;
           if (lfoSpeed != null) row.lfoSpeed = lfoSpeed;
           if (cvRange) row.cvRange = cvRange;
+          if (catalogApp(appKey) && params.length) {
+            row.schemaValues = structuredClone(params);
+          }
           const previous = previousRows[rowIndex];
           const preferredId =
             previous?.app === row.app ? previous.instrumentId : "";
@@ -4596,7 +5179,7 @@
         <td>${ccCellHtml(s, i)}</td>
         <td>${chCellHtml(s, i)}</td>
         <td>${portBitsHtml(s, i, sc.port)}</td>
-        <td><input data-i="${i}" data-k="target" type="text" value="${escapeAttr(s.target)}" /></td>
+        <td>${flagsColHtml(s, i)}</td>
         <td><button type="button" class="row-x" data-remove-row="${i}" title="${escapeAttr(t("row.remove"))}">×</button></td>
       `;
       return tr;
@@ -4848,25 +5431,81 @@
       const sc = preset();
       const rowRef = sc.rows[i];
       if (!rowRef) return;
-      if (k === "app") {
+      if (k === "sv") {
+        const pi = Number(el.dataset.pi);
+        const cat = catalogApp(rowRef.app);
+        const param = cat?.params?.[pi];
+        if (!param) return;
+        let next;
+        if (param.tag === "bool" || param.tag === "MidiNrpn") {
+          next = { tag: param.tag === "MidiNrpn" ? "MidiNrpn" : "bool", value: !!el.checked };
+        } else if (param.tag === "MidiIn") {
+          ensureSchemaValues(rowRef);
+          const cur = rowRef.schemaValues[pi]?.value?.[0]?.slice?.() || [true, true];
+          const bit = Number(el.dataset.bit);
+          cur[bit] = !!el.checked;
+          if (!cur.some(Boolean)) cur[bit] = true;
+          next = { tag: "MidiIn", value: [cur] };
+        } else if (param.tag === "Enum") {
+          next = enumVal(Number(el.value) || 0);
+        } else if (param.tag === "i32") {
+          const min = Number(param.value?.min) || 0;
+          const max = Number(param.value?.max) || 0;
+          next = i32(Math.max(min, Math.min(max, Number(el.value) || min)));
+        } else if (param.tag === "f32") {
+          const min = Number(param.value?.min) || 0;
+          const max = Number(param.value?.max) || 0;
+          const n = Number(el.value);
+          next = { tag: "f32", value: Math.max(min, Math.min(max, Number.isFinite(n) ? n : min)) };
+        } else if (
+          param.tag === "Range" ||
+          param.tag === "Curve" ||
+          param.tag === "Waveform" ||
+          param.tag === "Note" ||
+          param.tag === "VoltPerOct" ||
+          param.tag === "MidiMode"
+        ) {
+          next = { tag: param.tag, value: { tag: el.value } };
+        } else if (param.tag === "MidiChannel") {
+          next = ch(el.value);
+        } else if (param.tag === "MidiCc") {
+          next = cc(el.value);
+        } else if (param.tag === "MidiNote") {
+          next = note(el.value);
+        } else {
+          return;
+        }
+        setSchemaValue(rowRef, pi, next);
+      } else if (k === "app") {
         rowRef.app = el.value;
         if (!APPS_WITH_MIDI_MODE.has(el.value)) delete rowRef.midiMode;
         else if (!rowRef.midiMode) rowRef.midiMode = "Note";
         rowRef.kind = kindForApp(el.value, rowMidiMode(rowRef));
         delete rowRef.rawParams;
+        delete rowRef.schemaValues;
         if (el.value === "fp_grids") ensureGridsMidi(rowRef);
         else if (el.value === "grooves") {
           ensureGroovesMidi(rowRef);
           if (rowRef.groove == null) rowRef.groove = 3;
+        } else if (el.value === "echolot") {
+          ensureEcholotMidi(rowRef);
         } else if (APPS_WITH_NOTE_AND_CC.has(el.value)) {
           ensureNoteAndCc(rowRef);
+          delete rowRef.chs;
         } else {
           delete rowRef.chs;
           delete rowRef.ccs;
           delete rowRef.groove;
+          delete rowRef.echoIo;
+          delete rowRef.echoDelayMode;
+          delete rowRef.echoMaxMs;
+          delete rowRef.echoInterval;
+          delete rowRef.echoRouting;
+          delete rowRef.echoSignal;
           if (rowRef.kind !== "both") delete rowRef.note;
         }
         // Overflow stays visible — no auto-trim; drag or „Auf 16 kürzen“
+        if (catalogApp(rowRef.app)) ensureSchemaValues(rowRef);
       } else if (k === "target") {
         rowRef.target = el.value;
       } else if (k === "instrumentId") {
@@ -4881,6 +5520,14 @@
           if (rowRef.app === "grooves") {
             rowRef.chs = [inst.midiCh, inst.midiCh, inst.midiCh];
             ensureGroovesMidi(rowRef);
+          }
+          if (rowRef.app === "echolot") {
+            rowRef.chs = [
+              inst.midiCh,
+              inst.midiCh,
+              Math.min(16, Number(inst.midiCh) + 1),
+            ];
+            ensureEcholotMidi(rowRef);
           }
           if (inst.ccs?.length && rowRef.kind !== "note") {
             const hit = inst.ccs.find((c) => Number(c.cc) === Number(rowRef.cc));
@@ -4931,11 +5578,34 @@
       } else if (k === "swingMax") {
         rowRef.swingMax = Math.max(10, Math.min(100, Number(el.value) || 50));
         delete rowRef.rawParams;
+      } else if (k === "echoIo") {
+        rowRef.echoIo = Math.max(0, Math.min(2, Number(el.value) || 0));
+        delete rowRef.rawParams;
+      } else if (k === "echoDelayMode") {
+        rowRef.echoDelayMode = Math.max(0, Math.min(1, Number(el.value) || 0));
+        delete rowRef.rawParams;
+      } else if (k === "echoMaxMs") {
+        rowRef.echoMaxMs = Math.max(10, Math.min(2000, Number(el.value) || 500));
+        delete rowRef.rawParams;
+      } else if (k === "echoInterval") {
+        rowRef.echoInterval = Math.max(0, Math.min(2, Number(el.value) || 0));
+        delete rowRef.rawParams;
+      } else if (k === "echoRouting") {
+        rowRef.echoRouting = Math.max(0, Math.min(1, Number(el.value) || 0));
+        delete rowRef.rawParams;
+      } else if (k === "echoSignal") {
+        rowRef.echoSignal = Math.max(0, Math.min(3, Number(el.value) || 0));
+        delete rowRef.rawParams;
       } else if (k === "cvRange") {
         rowRef.cvRange = el.value;
       } else if (k === "chs") {
         const slot = Number(el.dataset.slot);
-        const chs = rowRef.app === "grooves" ? groovesChs(rowRef) : gridsChs(rowRef);
+        const chs =
+          rowRef.app === "grooves"
+            ? groovesChs(rowRef)
+            : rowRef.app === "echolot"
+              ? echolotChs(rowRef)
+              : gridsChs(rowRef);
         chs[slot] = Math.max(1, Math.min(16, Number(el.value) || 1));
         rowRef.chs = chs;
         rowRef.ch = chs[0];
@@ -4962,7 +5632,7 @@
       // Don't rebuild the table on every keystroke — that resets caret (comment / CH / CC).
       const typing =
         ev.type === "input" &&
-        (k === "target" || k === "cc" || k === "swingMax" || k === "mixBalance") &&
+        (k === "target" || k === "cc" || k === "swingMax" || k === "mixBalance" || k === "echoMaxMs" || k === "sv") &&
         el.tagName === "INPUT";
       if (!typing) render({ focusHint: focusHintFrom(el) });
     }
@@ -5730,6 +6400,7 @@
       document.querySelectorAll(".app-ver").forEach((el) => {
         el.textContent = `v${APP_VERSION}`;
       });
+      await loadAppsCatalog();
       const fromServer = await hydrateBankFromServer();
       await refillCsvSelect();
       await loadInstruments();

@@ -1,0 +1,2904 @@
+{
+  "version": 1,
+  "source": "faderpunk/src/apps/*.rs CONFIG (tools/gen-apps-catalog.py)",
+  "apps": [
+    {
+      "id": 1,
+      "slug": "control",
+      "module": "control",
+      "channels": 1,
+      "name": "Control",
+      "description": "Simple MIDI/CV controller",
+      "color": "Violet",
+      "icon": "Fader",
+      "params": [
+        {
+          "tag": "Curve",
+          "value": {
+            "name": "Curve",
+            "variants": [
+              {
+                "tag": "Linear"
+              },
+              {
+                "tag": "Logarithmic"
+              },
+              {
+                "tag": "Exponential"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Mute on release"
+          }
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Invert"
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Store state"
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Button mode",
+            "variants": [
+              "Mute",
+              "CC toggle",
+              "CC momentary",
+              "Program Change",
+              "Invert toggle",
+              "Invert momentary"
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "Button Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "Button CC / PC"
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "slug": "lfo",
+      "module": "lfo",
+      "channels": 1,
+      "name": "LFO",
+      "description": "Multi shape LFO",
+      "color": "Yellow",
+      "icon": "Sine",
+      "params": [
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Speed",
+            "variants": [
+              "Normal",
+              "Slow",
+              "Slowest"
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Grid Lock"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "slug": "ad",
+      "module": "ad",
+      "channels": 2,
+      "name": "AD Envelope",
+      "description": "Variable curve AD, ASR or looping AD",
+      "color": "Yellow",
+      "icon": "AdEnv",
+      "params": [
+        {
+          "tag": "MidiIn"
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "MIDI retrigger"
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "slug": "rnd",
+      "module": "rnd",
+      "channels": 1,
+      "name": "Random CC/CV",
+      "description": "Generate random CC and CV values",
+      "color": "Green",
+      "icon": "Random",
+      "params": [
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "slug": "seq8",
+      "module": "seq8",
+      "channels": 8,
+      "name": "Sequencer",
+      "description": "4 x 16 step CV/gate sequencers",
+      "color": "Yellow",
+      "icon": "Sequence",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel 1"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel 2"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel 3"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel 4"
+          }
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Track 2: velocity lane"
+          }
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Track 4: velocity lane"
+          }
+        },
+        {
+          "tag": "MidiIn"
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "Track 1: transpose CH"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "Track 2: transpose CH"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "Track 3: transpose CH"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "Track 4: transpose CH"
+          }
+        },
+        {
+          "tag": "VoltPerOct"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Bypass quantizer"
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "slug": "turing",
+      "module": "turing",
+      "channels": 1,
+      "name": "Turing",
+      "description": "Turing machine, synched to internal clock",
+      "color": "Blue",
+      "icon": "SequenceSquare",
+      "params": [
+        {
+          "tag": "MidiMode"
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "CC number"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "Base Note"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_0_5V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Gate Out"
+          }
+        },
+        {
+          "tag": "VoltPerOct"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Bypass quantizer"
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "slug": "clkturing",
+      "module": "clkturing",
+      "channels": 2,
+      "name": "Turing+",
+      "description": "Turing machine, with clock input",
+      "color": "Pink",
+      "icon": "SequenceSquare",
+      "params": [
+        {
+          "tag": "MidiMode"
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "CC number"
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_0_5V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "Base note"
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "VoltPerOct"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Bypass quantizer"
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "slug": "euclid",
+      "module": "euclid",
+      "channels": 2,
+      "name": "Euclid",
+      "description": "Euclidean sequencer",
+      "color": "Orange",
+      "icon": "Euclid",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note 1"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI NOTE 2"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "slug": "probatrigger",
+      "module": "probatrigger",
+      "channels": 1,
+      "name": "Random Triggers",
+      "description": "Generate random triggers on clock",
+      "color": "Cyan",
+      "icon": "Die",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "slug": "notefader",
+      "module": "notefader",
+      "channels": 1,
+      "name": "Note Fader",
+      "description": "Play MIDI notes manually or on clock",
+      "color": "Rose",
+      "icon": "Note",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "Base note"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Span",
+            "min": 1,
+            "max": 120
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Out",
+            "variants": [
+              "CV",
+              "Gate"
+            ]
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "VoltPerOct"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Bypass quantizer"
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "slug": "offset_att",
+      "module": "offset_att",
+      "channels": 2,
+      "name": "Offset+Attenuverter",
+      "description": "Offset and attenuvert CV",
+      "color": "Rose",
+      "icon": "Attenuate",
+      "params": [
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "slug": "slew",
+      "module": "slew",
+      "channels": 2,
+      "name": "Slew Limiter",
+      "description": "Slows CV changes",
+      "color": "Green",
+      "icon": "SoftRandom",
+      "params": [
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "slug": "follower",
+      "module": "follower",
+      "channels": 2,
+      "name": "Envelope Follower",
+      "description": "Audio amplitude to CV",
+      "color": "Pink",
+      "icon": "EnvFollower",
+      "params": [
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "slug": "quantizer",
+      "module": "quantizer",
+      "channels": 2,
+      "name": "Quantizer",
+      "description": "Quantize CV passing through",
+      "color": "Blue",
+      "icon": "Quantize",
+      "params": [
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "VoltPerOct"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Bypass quantizer"
+          }
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "slug": "midi2cv",
+      "module": "midi2cv",
+      "channels": 1,
+      "name": "MIDI to CV",
+      "description": "Multifunctional MIDI to CV",
+      "color": "Cyan",
+      "icon": "KnobRound",
+      "params": [
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Mode",
+            "variants": [
+              "CC",
+              "Pitch",
+              "Gate",
+              "Velocity",
+              "AT",
+              "Bend",
+              "Note Gate"
+            ]
+          }
+        },
+        {
+          "tag": "Curve",
+          "value": {
+            "name": "Curve",
+            "variants": [
+              {
+                "tag": "Linear"
+              },
+              {
+                "tag": "Logarithmic"
+              },
+              {
+                "tag": "Exponential"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Bend Range",
+            "min": 1,
+            "max": 24
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note"
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiIn"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Velocity on Gate"
+          }
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "slug": "cv2midi",
+      "module": "cv2midi",
+      "channels": 1,
+      "name": "CV to MIDI",
+      "description": "CV to MIDI CC",
+      "color": "Violet",
+      "icon": "NoteGrid",
+      "params": [
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "slug": "cv2midinote",
+      "module": "cv2midinote",
+      "channels": 2,
+      "name": "CV/OCT to MIDI",
+      "description": "CV and gate to MIDI note converter",
+      "color": "Orange",
+      "icon": "NoteBox",
+      "params": [
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Delay (ms)",
+            "min": 0,
+            "max": 10
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "VoltPerOct"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Bypass quantizer"
+          }
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "slug": "clk_div",
+      "module": "clk_div",
+      "channels": 1,
+      "name": "Clock Divider",
+      "description": "Simple clock divider",
+      "color": "Orange",
+      "icon": "NoteBox",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Divisions",
+            "variants": [
+              "Straight",
+              "Triplets",
+              "Both"
+            ]
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "slug": "panner",
+      "module": "panner",
+      "channels": 2,
+      "name": "Panner",
+      "description": "Use with 2 VCA to do panning or cross fading",
+      "color": "Blue",
+      "icon": "Stereo",
+      "params": [
+        {
+          "tag": "Curve",
+          "value": {
+            "name": "Curve",
+            "variants": [
+              {
+                "tag": "Linear"
+              },
+              {
+                "tag": "Logarithmic"
+              },
+              {
+                "tag": "Exponential"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_0_5V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC 1"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC 2"
+          }
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Mute on release"
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Store state"
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "slug": "rnd_plus",
+      "module": "rnd_plus",
+      "channels": 2,
+      "name": "Random+",
+      "description": "Generate random CC and CV values with assignable CV input",
+      "color": "Green",
+      "icon": "Random",
+      "params": [
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Bipolar"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "slug": "clk_div_plus",
+      "module": "clk_div_plus",
+      "channels": 2,
+      "name": "Clock Divider+",
+      "description": "Clock divider with assignable CV input",
+      "color": "Orange",
+      "icon": "NoteBox",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Divisions",
+            "variants": [
+              "Straight",
+              "Triplets",
+              "Both"
+            ]
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "slug": "lfo_plus",
+      "module": "lfo_plus",
+      "channels": 2,
+      "name": "LFO+",
+      "description": "Multi shape LFO with CV input",
+      "color": "Yellow",
+      "icon": "Sine",
+      "params": [
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Speed",
+            "variants": [
+              "Normal",
+              "Slow",
+              "Slowest"
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Grid Lock"
+          }
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "slug": "fp_grids",
+      "module": "fp_grids",
+      "channels": 4,
+      "name": "FP Grids",
+      "description": "Topographic drum sequencer port of Mutable Instruments Grids, synced to internal clock",
+      "color": "SkyBlue",
+      "icon": "Euclid",
+      "params": [
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note 1"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note 2"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note 3"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI DnB Ghost Note"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "Note 1 MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "Note 2 MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "Note 3 MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "DnB Ghost Note MIDI Channel"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "MIDI Velocity",
+            "min": 1,
+            "max": 127
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "MIDI Accent Vel",
+            "min": 1,
+            "max": 127
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "slug": "tb3po",
+      "module": "tb3po",
+      "channels": 3,
+      "name": "TB-3PO",
+      "description": "TB-303 acid pattern generator",
+      "color": "Orange",
+      "icon": "SoftRandom",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "VoltPerOct"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "slug": "automator",
+      "module": "automator",
+      "channels": 1,
+      "name": "Automator",
+      "description": "CV gesture looper",
+      "color": "Cyan",
+      "icon": "Fader",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Resolution",
+            "variants": [
+              "24 ppqn / 2 bars",
+              "12 ppqn / 4 bars",
+              "6 ppqn / 8 bars"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "slug": "genseq",
+      "module": "genseq",
+      "channels": 3,
+      "name": "GenSeq",
+      "description": "Generative sequencer with Turing machine registers",
+      "color": "Yellow",
+      "icon": "Sequence",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "Base Note"
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "VoltPerOct"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Bypass quantizer"
+          }
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "slug": "bernoulli",
+      "module": "bernoulli",
+      "channels": 2,
+      "name": "Bernoulli Gate",
+      "description": "Two-output Bernoulli gate synced to internal clock",
+      "color": "Cyan",
+      "icon": "Die",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note A"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note B"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "slug": "sift",
+      "module": "sift",
+      "channels": 2,
+      "name": "Sift",
+      "description": "Threshold and level sequencer",
+      "color": "Rose",
+      "icon": "SequenceSquare",
+      "params": [
+        {
+          "tag": "i32",
+          "value": {
+            "name": "CV Steps",
+            "min": 1,
+            "max": 32
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Gate Steps",
+            "min": 1,
+            "max": 32
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_0_5V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Polarity",
+            "variants": [
+              "Positive",
+              "Bipolar",
+              "Negative"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Min CV x0.1V",
+            "min": -50,
+            "max": 100
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Max CV x0.1V",
+            "min": -50,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Clock Division",
+            "variants": [
+              "4 bars",
+              "2 bars",
+              "1 bar",
+              "1/2",
+              "1/4",
+              "1/8T",
+              "1/8",
+              "1/16T",
+              "1/16",
+              "1/32T",
+              "1/32",
+              "1/64"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Gate Length %",
+            "min": 5,
+            "max": 95
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "slug": "house_pump",
+      "module": "heat_pump",
+      "channels": 1,
+      "name": "Heat Pump",
+      "description": "Clock-synced sidechain ducking envelope",
+      "color": "Pink",
+      "icon": "AdEnv",
+      "params": [
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Yellow"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Green"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "slug": "grooves",
+      "module": "grooves",
+      "channels": 1,
+      "name": "Grooves",
+      "description": "Multi-genre MIDI drum grooves with swing",
+      "color": "Orange",
+      "icon": "Die",
+      "params": [
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note Kick"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel Kick"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note Snare"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel Snare"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note Hats"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel Hats"
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Groove",
+            "variants": [
+              "Dub",
+              "Disco",
+              "Hip-Hop",
+              "House",
+              "Techno",
+              "Trip-Hop",
+              "UK Garage",
+              "Dubstep"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Swing max %",
+            "min": 10,
+            "max": 100
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Yellow"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Rose"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "slug": "fibonacci_gate",
+      "module": "fibonacci_gate",
+      "channels": 1,
+      "name": "Golden Gate",
+      "description": "Fibonacci-spaced gates \u2014 successive ratios approach \u03c6",
+      "color": "Violet",
+      "icon": "SequenceSquare",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "GATE %",
+            "min": 1,
+            "max": 100
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Speed",
+            "variants": [
+              "16th",
+              "8th",
+              "Quarter"
+            ]
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "slug": "super_lfo",
+      "module": "super_lfo",
+      "channels": 2,
+      "name": "Super LFO",
+      "description": "Morphing dual-osc LFO with CV form control",
+      "color": "Cyan",
+      "icon": "Sine",
+      "params": [
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Speed",
+            "variants": [
+              "Normal",
+              "Slow",
+              "Slowest"
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiNrpn"
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Grid Lock"
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Mix Mode",
+            "variants": [
+              "Xfade",
+              "Min",
+              "Max",
+              "Sum"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Osc B",
+            "variants": [
+              "Quad",
+              "Octave"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Mix balance",
+            "min": 0,
+            "max": 100
+          }
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "slug": "echolot",
+      "module": "echolot",
+      "channels": 1,
+      "name": "Echolot",
+      "description": "MIDI/CV delay with feedback and pitch shift",
+      "color": "Cyan",
+      "icon": "Sine",
+      "params": [
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "I/O",
+            "variants": [
+              "MIDI\u2192MIDI",
+              "MIDI\u2192CV",
+              "CV\u2192MIDI"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Delay mode",
+            "variants": [
+              "ms",
+              "Clock"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "Max delay (ms)",
+            "min": 10,
+            "max": 2000
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Interval mode",
+            "variants": [
+              "Fixed",
+              "Stack",
+              "Pong"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Routing",
+            "variants": [
+              "Single",
+              "Ping-Pong"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Signal",
+            "variants": [
+              "Pitch",
+              "Gate",
+              "CV\u2192CC",
+              "Gate\u2192Note"
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiIn"
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI In CH"
+          }
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Out A"
+          }
+        },
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Out B"
+          }
+        },
+        {
+          "tag": "MidiCc",
+          "value": {
+            "name": "MIDI CC"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "MIDI Note"
+          }
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "slug": "arp_de_levy",
+      "module": "arp_de_levy",
+      "channels": 1,
+      "name": "Arp de L\u00e9vy",
+      "description": "L\u00e9vy-flight generative arpeggiator \u2014 evolving phrase, classic arp modes",
+      "color": "Rose",
+      "icon": "SoftRandom",
+      "params": [
+        {
+          "tag": "MidiChannel",
+          "value": {
+            "name": "MIDI Channel"
+          }
+        },
+        {
+          "tag": "MidiNote",
+          "value": {
+            "name": "Base Note"
+          }
+        },
+        {
+          "tag": "Color",
+          "value": {
+            "name": "Color",
+            "variants": [
+              {
+                "tag": "Rose"
+              },
+              {
+                "tag": "Cyan"
+              },
+              {
+                "tag": "Blue"
+              },
+              {
+                "tag": "Green"
+              },
+              {
+                "tag": "Orange"
+              },
+              {
+                "tag": "Pink"
+              },
+              {
+                "tag": "Violet"
+              },
+              {
+                "tag": "Yellow"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "MidiOut"
+        },
+        {
+          "tag": "VoltPerOct"
+        },
+        {
+          "tag": "bool",
+          "value": {
+            "name": "Bypass quantizer"
+          }
+        }
+      ]
+    }
+  ]
+}
