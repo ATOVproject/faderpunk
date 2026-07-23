@@ -32,6 +32,10 @@ const VELOCITY_FLOOR: u16 = 300;
 const QUEUE_CAP: usize = 32;
 const SOUNDING_CAP: usize = 32;
 const GATE_THRESH: u16 = 406;
+/// Peak white button flash on note/gate in (full scale).
+const INPUT_FLASH_PEAK: u8 = 255;
+/// While muted, show the same flash at ~20% so MIDI In stays visible without looking “live”.
+const INPUT_FLASH_MUTED_SCALE: u16 = 51; // 51/255 ≈ 20%
 /// Straight note-length table for clock-synced delay (same as clk_div "Straight").
 const CLOCK_DIVISION_MODE: usize = 0;
 
@@ -536,7 +540,7 @@ pub async fn run(
                         MidiMessage::NoteOn { key, vel },
                     ) if vel > 0 => {
                         // Always flash on NoteOn so MIDI In is verifiable (even when muted).
-                        input_flash_glob.set(255);
+                        input_flash_glob.set(INPUT_FLASH_PEAK);
                         if accept_new {
                             enqueue(
                                 &mut queue,
@@ -577,7 +581,7 @@ pub async fn run(
                         SIG_PITCH,
                         MidiMessage::NoteOn { key, vel },
                     ) if vel > 0 => {
-                        input_flash_glob.set(255);
+                        input_flash_glob.set(INPUT_FLASH_PEAK);
                         if accept_new {
                             let n = note_num(
                                 key.as_int(),
@@ -605,7 +609,7 @@ pub async fn run(
                         SIG_GATE,
                         MidiMessage::NoteOn { key, vel },
                     ) if vel > 0 => {
-                        input_flash_glob.set(255);
+                        input_flash_glob.set(INPUT_FLASH_PEAK);
                         if accept_new {
                             enqueue(
                                 &mut queue,
@@ -650,7 +654,7 @@ pub async fn run(
                     if sig == SIG_GATE_NOTE {
                         let high = inval >= GATE_THRESH;
                         if high && !prev_gate {
-                            input_flash_glob.set(255);
+                            input_flash_glob.set(INPUT_FLASH_PEAK);
                             if accept_new {
                                 enqueue(
                                     &mut queue,
@@ -993,13 +997,19 @@ pub async fn run(
             glob_latch_layer.set(latch_layer);
 
             // Incoming-note flash (white) — shown even when muted, to diagnose MIDI In.
+            // Muted: same decay envelope, peak shown at ~20% so mute still reads as muted.
             let input_flash = input_flash_glob.get();
             if input_flash > 0 {
+                let shown = if glob_muted.get() {
+                    ((input_flash as u16 * INPUT_FLASH_MUTED_SCALE) / 255) as u8
+                } else {
+                    input_flash
+                };
                 leds.set(
                     0,
                     Led::Button,
                     Color::White,
-                    Brightness::Custom(input_flash),
+                    Brightness::Custom(shown.max(1)),
                 );
                 input_flash_glob.set(input_flash.saturating_sub(10));
             }

@@ -1637,7 +1637,7 @@ Feedback is **regenerative** (classic delay): the queue usually holds only the *
 | --- | --- | --- | --- |
 | **Top / Bottom** | Delay amount (app color); **delay-cycle blink** at feedback brightness (10–100%); Ping-Pong: Top = Out A, Bottom = Out B; faint **queue depth** when idle | Feedback (**green**): low = Bottom, high = Top | Interval (**red**): down = Bottom, up = Top |
 | **Button** | Idle Mid; **white flash = MIDI/CV note in**; app-color blink = delay fire (feedback 10–100%) | **Green**, brightness = feedback | **Red**, brightness = |interval| |
-| **Muted** | Top/Bottom off; **white input flash still works** (so you can verify MIDI In while muted) | | |
+| **Muted** | Top/Bottom off; **white input flash still works at ~20%** (verify MIDI In while muted) | | |
 
 #### Feedback (sound + LEDs)
 
