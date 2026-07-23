@@ -7,11 +7,21 @@ use crate::storage;
 /// Persisted to FRAM as CBOR. Adding/removing fields is migration-free as long
 /// as every field carries `#[cbor(default)]` and a fresh `#[n(N)]`. See the
 /// `GlobalConfig` doc comment in `libfp::lib` for the full convention.
-#[derive(Serialize, Deserialize, Encode, Decode, Clone, Copy, Default, Debug)]
+#[derive(Serialize, Deserialize, Encode, Decode, Clone, Copy, Debug)]
 pub struct RuntimeState {
     #[n(0)]
     #[cbor(default)]
     pub clock_is_running: bool,
+}
+
+/// A factory-fresh unit (empty/unreadable FRAM) boots with the internal
+/// clock running, rather than requiring the user to press Start first.
+impl Default for RuntimeState {
+    fn default() -> Self {
+        Self {
+            clock_is_running: true,
+        }
+    }
 }
 
 static STATE: Mutex<CriticalSectionRawMutex, RuntimeState> = Mutex::new(RuntimeState {
