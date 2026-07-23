@@ -513,7 +513,7 @@ pub async fn midi_in_task<'a>(
                     if len == 0 {
                         continue;
                     }
-                    let packets = usb_rx_buf[..len].chunks_exact(4);
+                    let (packets, _) = usb_rx_buf[..len].as_chunks::<4>();
                     for packet in packets {
                         let cable = packet[0] >> 4;
                         let msg_len = len_from_cin(packet[0]);

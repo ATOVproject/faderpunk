@@ -26,4 +26,5 @@ register_apps!(
     25 => automator,
     26 => genseq,
     27 => bernoulli,
+    35 => vamp,
 );
