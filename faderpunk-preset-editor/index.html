@@ -784,6 +784,7 @@
     td select[data-k="mixMode"],
     td select[data-k="oscB"],
     td select[data-k="gateSpeed"],
+    td select[data-k="gateMode"],
     td select[data-k="vpo"],
     td select[data-k="echoIo"],
     td select[data-k="echoDelayMode"],
@@ -2761,13 +2762,13 @@
           ) {
             p.value = Number(row.lfoSpeed);
             firstEnumPatched = true;
-          } else if (
-            row.app === "fibonacci_gate" &&
-            !firstEnumPatched &&
-            row.gateSpeed != null
-          ) {
-            p.value = Math.max(0, Math.min(2, Number(row.gateSpeed)));
-            firstEnumPatched = true;
+          } else if (row.app === "fibonacci_gate") {
+            if (enumIdx === 0 && row.gateSpeed != null) {
+              p.value = Math.max(0, Math.min(9, Number(row.gateSpeed)));
+            } else if (enumIdx === 3 && row.gateMode != null) {
+              p.value = Math.max(0, Math.min(3, Number(row.gateMode)));
+            }
+            enumIdx++;
           }
         }
         if (p.tag === "i32" && row.app === "super_lfo" && row.mixBalance != null) {
@@ -2991,7 +2992,7 @@
       clkturing: 10, euclid: 6, probatrigger: 5, bernoulli: 6, notefader: 9,
       automator: 7, fp_grids: 13, clk_div: 6, clk_div_plus: 6, genseq: 6,
       tb3po: 4, panner: 10, cv2midi: 6, cv2midinote: 7, midi2cv: 9,
-      fibonacci_gate: 11,
+      fibonacci_gate: 12,
       grooves: 15,
       ad: 3, seq8: 14, follower_att: 2, slew: 2, follower: 2, quantizer: 4,
       house_pump: 9, heat_pump: 9, sift: 11,
@@ -3229,14 +3230,18 @@
         case "clk_div":
         case "clk_div_plus":
           return [ch(c), note(n), i32(40), enumVal(0), appCol, out];
-        // Golden Gate: CH, Note, CC, GATE %, Speed, Color, Out, Jack, Range, CV Dest, CV Att
+        // Golden Gate: CH, Note, CC, GATE %, Speed, Color, Out, Jack, Range, CV Dest, CV Att, Mode
         case "fibonacci_gate": {
           const gateSpeed = Number.isFinite(Number(row.gateSpeed))
-            ? Math.max(0, Math.min(2, Number(row.gateSpeed)))
+            ? Math.max(0, Math.min(9, Number(row.gateSpeed)))
+            : 8; // default 1/16
+          const gateMode = Number.isFinite(Number(row.gateMode))
+            ? Math.max(0, Math.min(3, Number(row.gateMode)))
             : 0;
           return [
             ch(c), note(noteN), cc(ccN), i32(40), enumVal(gateSpeed), appCol, out,
             enumVal(0), range(cvR === "_Neg5_5V" ? cvR : "_0_10V"), enumVal(0), i32(100),
+            enumVal(gateMode),
           ];
         }
         // Grooves: Note+CH×3, Groove, Swing, GATE %, Color, Out, Jack, Range, CV Dest, CV Att
@@ -4020,6 +4025,17 @@
           ${ccValueControlHtml(s, idx, rowCcNum(s), { key: "cc" })}
         </div>`;
       }
+      if (s.app === "fibonacci_gate") {
+        coerceParamDeps(s);
+        ensureNoteAndCc(s);
+        const mode = paramDeps(s).ggMidiMode || "note";
+        if (mode === "cc") {
+          return `<span class="cc-cell"><span class="span">CC</span>
+            ${ccValueControlHtml(s, idx, rowCcNum(s), { key: "cc" })}</span>`;
+        }
+        return `<span class="cc-cell"><span class="span">Note</span>
+          ${noteSelectHtml(idx, rowNoteNum(s), { key: "note" })}</span>`;
+      }
       if (s.kind === "none") {
         return `<span class="led-muted" title="${escapeAttr(APPS[s.app]?.label || s.app || "")}: kein CC/Note-Parameter">—</span>`;
       }
@@ -4304,8 +4320,8 @@
       const labels = new Map();
       const enumAllow = new Map();
       const enumLabels = new Map();
-      /** @type {{ hide: Set<number>, labels: Map<number,string>, enumAllow: Map<number, number[]>, enumLabels: Map<number, Map<number,string>>, echolotChSlots?: number[], echolotCcMode?: 'none'|'note'|'cc'|'both' }} */
-      const out = { hide, labels, enumAllow, enumLabels, echolotChSlots: null, echolotCcMode: null };
+      /** @type {{ hide: Set<number>, labels: Map<number,string>, enumAllow: Map<number, number[]>, enumLabels: Map<number, Map<number,string>>, echolotChSlots?: number[], echolotCcMode?: 'none'|'note'|'cc'|'both', ggMidiMode?: 'note'|'cc' }} */
+      const out = { hide, labels, enumAllow, enumLabels, echolotChSlots: null, echolotCcMode: null, ggMidiMode: null };
 
       if (row.app === "echolot") {
         const io = schemaEnumIndex(row, 0); // 0 MIDI→MIDI, 1 MIDI→CV, 2 CV→MIDI
@@ -4391,6 +4407,22 @@
           if (rangeI >= 0) hide.add(rangeI);
           if (vpoI >= 0) hide.add(vpoI);
         }
+        if (row.app === "fibonacci_gate") {
+          // Mode: Note / Pitch / Phi → MIDI Note; CC → MIDI CC
+          const modeI = byName(/^Mode$/i);
+          const noteI = (cat?.params || []).findIndex((p) => p.tag === "MidiNote");
+          const ccI = (cat?.params || []).findIndex((p) => p.tag === "MidiCc");
+          const mode =
+            modeI >= 0
+              ? schemaEnumIndex(row, modeI)
+              : Math.max(0, Math.min(3, Number(row.gateMode) || 0));
+          if (mode === 1) {
+            if (noteI >= 0) hide.add(noteI);
+          } else if (ccI >= 0) {
+            hide.add(ccI);
+          }
+          out.ggMidiMode = mode === 1 ? "cc" : "note";
+        }
         if (row.app === "vamp") {
           // 7 Auto style, 8 Start mode (0 Perform / 1 Auto), 9 Capture length
           const startMode = schemaEnumIndex(row, 8);
@@ -4462,6 +4494,21 @@
         row.echoRouting = schemaEnumIndex(row, 4);
         row.echoSignal = schemaEnumIndex(row, 5);
       }
+      if (row.app === "fibonacci_gate") {
+        const cat = catalogApp(row.app);
+        const modeI = (cat?.params || []).findIndex(
+          (p) => p?.tag === "Enum" && /^Mode$/i.test(p?.value?.name || ""),
+        );
+        const speedI = (cat?.params || []).findIndex(
+          (p) => p?.tag === "Enum" && /^Speed$/i.test(p?.value?.name || ""),
+        );
+        if (modeI >= 0) {
+          row.gateMode = Math.max(0, Math.min(3, schemaEnumIndex(row, modeI)));
+        }
+        if (speedI >= 0) {
+          row.gateSpeed = Math.max(0, Math.min(9, schemaEnumIndex(row, speedI)));
+        }
+      }
     }
 
     function setSchemaValue(row, pi, value) {
@@ -4480,6 +4527,14 @@
       if (p.tag === "VoltPerOct" && value?.value?.tag) row.vpo = value.value.tag;
       if (p.tag === "bool" && /bypass|quant/i.test(p.value?.name || "")) {
         row.bypassQ = !!value.value;
+      }
+      if (p.tag === "Enum" && row.app === "fibonacci_gate") {
+        if (/^Mode$/i.test(p.value?.name || "")) {
+          row.gateMode = Math.max(0, Math.min(3, Number(value?.value) || 0));
+        }
+        if (/^Speed$/i.test(p.value?.name || "")) {
+          row.gateSpeed = Math.max(0, Math.min(9, Number(value?.value) || 0));
+        }
       }
       if (p.tag === "Enum") coerceParamDeps(row);
     }
@@ -4653,7 +4708,8 @@
         s.app === "house_pump" ||
         s.app === "heat_pump" ||
         s.app === "arp_de_levy" ||
-        s.app === "vamp"
+        s.app === "vamp" ||
+        s.app === "fibonacci_gate"
       ) {
         const jackI = cat.params.findIndex((p) => p?.value?.name === "Jack");
         if (jackI >= 0) order = [jackI, ...order.filter((i) => i !== jackI)];
@@ -4827,11 +4883,25 @@
         }
       }
       if (s.app === "fibonacci_gate") {
-        const cur = s.gateSpeed != null ? Number(s.gateSpeed) : 0;
+        const speedLabs = ["1/1", "1/2", "1/4.", "1/4", "1/8.", "1/4T", "1/8", "1/8T", "1/16", "1/32"];
+        const curSpeed = s.gateSpeed != null ? Number(s.gateSpeed) : 8;
         bits.push(`<select data-i="${idx}" data-k="gateSpeed" title="${escapeAttr(t("param.gateSpeed"))}">
-          <option value="0" ${cur === 0 ? "selected" : ""}>16th</option>
-          <option value="1" ${cur === 1 ? "selected" : ""}>8th</option>
-          <option value="2" ${cur === 2 ? "selected" : ""}>Quarter</option>
+          ${speedLabs
+            .map(
+              (lab, i) =>
+                `<option value="${i}" ${curSpeed === i ? "selected" : ""}>${lab}</option>`,
+            )
+            .join("")}
+        </select>`);
+        const modeLabs = ["Note", "CC", "Pitch", "Phi"];
+        const curMode = s.gateMode != null ? Number(s.gateMode) : 0;
+        bits.push(`<select data-i="${idx}" data-k="gateMode" title="${escapeAttr(t("param.gateMode"))}">
+          ${modeLabs
+            .map(
+              (lab, i) =>
+                `<option value="${i}" ${curMode === i ? "selected" : ""}>${lab}</option>`,
+            )
+            .join("")}
         </select>`);
       }
       if (s.app === "arp_de_levy") {
@@ -5524,8 +5594,12 @@
             const enums = params
               .filter((v) => v?.tag === "Enum")
               .map((v) => Number(v.value));
+            // Speed, Jack, CV Dest, Mode
             if (Number.isFinite(enums[0])) {
-              row.gateSpeed = Math.max(0, Math.min(2, enums[0]));
+              row.gateSpeed = Math.max(0, Math.min(9, enums[0]));
+            }
+            if (Number.isFinite(enums[3])) {
+              row.gateMode = Math.max(0, Math.min(3, enums[3]));
             }
           }
           if (appKey === "arp_de_levy") {
@@ -6347,8 +6421,27 @@
         rowRef.mixBalance = Math.max(0, Math.min(100, Number(el.value) || 50));
         delete rowRef.rawParams;
       } else if (k === "gateSpeed") {
-        rowRef.gateSpeed = Math.max(0, Math.min(2, Number(el.value) || 0));
+        rowRef.gateSpeed = Math.max(0, Math.min(9, Number(el.value) || 0));
         delete rowRef.rawParams;
+        if (catalogApp(rowRef.app)) {
+          ensureSchemaValues(rowRef);
+          const cat = catalogApp(rowRef.app);
+          const speedI = (cat?.params || []).findIndex(
+            (p) => p?.tag === "Enum" && /^Speed$/i.test(p?.value?.name || ""),
+          );
+          if (speedI >= 0) rowRef.schemaValues[speedI] = enumVal(rowRef.gateSpeed);
+        }
+      } else if (k === "gateMode") {
+        rowRef.gateMode = Math.max(0, Math.min(3, Number(el.value) || 0));
+        delete rowRef.rawParams;
+        if (catalogApp(rowRef.app)) {
+          ensureSchemaValues(rowRef);
+          const cat = catalogApp(rowRef.app);
+          const modeI = (cat?.params || []).findIndex(
+            (p) => p?.tag === "Enum" && /^Mode$/i.test(p?.value?.name || ""),
+          );
+          if (modeI >= 0) rowRef.schemaValues[modeI] = enumVal(rowRef.gateMode);
+        }
       } else if (k === "vpo") {
         rowRef.vpo = el.value === "Buchla" ? "Buchla" : "Standard";
         delete rowRef.rawParams;

@@ -2406,7 +2406,7 @@
       "module": "fibonacci_gate",
       "channels": 1,
       "name": "Golden Gate",
-      "description": "Fibonacci-spaced gates \u2014 successive ratios approach \u03c6",
+      "description": "Fibonacci-spaced gates — successive ratios approach φ",
       "color": "Violet",
       "icon": "SequenceSquare",
       "params": [
@@ -2441,9 +2441,16 @@
           "value": {
             "name": "Speed",
             "variants": [
-              "16th",
-              "8th",
-              "Quarter"
+              "1/1",
+              "1/2",
+              "1/4.",
+              "1/4",
+              "1/8.",
+              "1/4T",
+              "1/8",
+              "1/8T",
+              "1/16",
+              "1/32"
             ]
           }
         },
@@ -2523,6 +2530,18 @@
             "name": "CV Att",
             "min": 0,
             "max": 100
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Mode",
+            "variants": [
+              "Note",
+              "CC",
+              "Pitch",
+              "Phi"
+            ]
           }
         }
       ]
@@ -2665,9 +2684,9 @@
           "value": {
             "name": "I/O",
             "variants": [
-              "MIDI\u2192MIDI",
-              "MIDI\u2192CV",
-              "CV\u2192MIDI"
+              "MIDI→MIDI",
+              "MIDI→CV",
+              "CV→MIDI"
             ]
           }
         },
@@ -2717,8 +2736,8 @@
             "variants": [
               "Pitch",
               "Gate",
-              "CV\u2192CC",
-              "Gate\u2192Note"
+              "CV→CC",
+              "Gate→Note"
             ]
           }
         },
@@ -2811,8 +2830,8 @@
       "slug": "arp_de_levy",
       "module": "arp_de_levy",
       "channels": 1,
-      "name": "Arp de L\u00e9vy",
-      "description": "L\u00e9vy-flight generative arpeggiator \u2014 evolve, texture, and flight character",
+      "name": "Arp de Lévy",
+      "description": "Lévy-flight generative arpeggiator — evolve, texture, and flight character",
       "color": "Rose",
       "icon": "SoftRandom",
       "params": [
@@ -2923,7 +2942,7 @@
       "module": "vamp",
       "channels": 1,
       "name": "MIDI Vamp",
-      "description": "Chord progressions \u2014 perform, capture, or auto vamp",
+      "description": "Chord progressions — perform, capture, or auto vamp",
       "color": "Violet",
       "icon": "NoteGrid",
       "params": [
