@@ -1592,6 +1592,142 @@ On load, both registers are restored at the next phrase boundary so the recalled
       },
     ],
   },
+  {
+    appId: 33,
+    title: "Echolot",
+    description: "MIDI/CV delay with feedback and pitch shift",
+    color: "Cyan",
+    icon: "sine",
+    params: [
+      "I/O",
+      "Delay mode",
+      "Max delay (ms)",
+      "Interval mode",
+      "Routing",
+      "Signal",
+      "Range",
+      "Color",
+      "MIDI In",
+      "MIDI In CH",
+      "MIDI Out",
+      "MIDI Out A",
+      "MIDI Out B",
+      "MIDI CC",
+      "MIDI Note",
+    ],
+    storage: ["Delay", "Feedback", "Interval", "Muted"],
+    text: `Echolot is a one-channel **delay / echo / harmonizer** for MIDI and CV. Incoming events are delayed, optionally transposed, and can regenerate with decaying velocity (feedback). Use it to double a voice on another MIDI channel, slapback-echo notes, or delay gates and CCs into the modular domain.
+
+#### Hardware UX
+
+| Layer | How | Fader controls |
+| --- | --- | --- |
+| **Main** | Fader alone | **Delay time** — fader up = faster (shorter delay); free ms or clock divisions when Delay mode = Clock |
+| **Alt** | **Shift + Fader** | **Feedback** (0–100%) — how loud / strong each regenerated repeat is |
+| **Third** | **Button held + Fader** | **Interval** (−12…+12 semitones) for note/gate pitch shift |
+
+| Gesture | Action |
+| --- | --- |
+| **Short press** | **Mute / ring-out** — block new inputs; queued echoes keep playing (and feedback can finish). Note-offs still accepted. |
+| **Long press** | **Panic / hard kill** (on release, only if you didn't move Interval) — notes off, CC 120/123, empty queue, CV → 0 |
+
+Feedback is **regenerative** (classic delay): the queue usually holds only the *next* tap. When it fires, another is scheduled with velocity × feedback, until velocity &lt; ~7% or 8 repeats. Shift+Fader / Button+Fader do not clear the trail.
+
+| LED (channel) | Main | Shift (Alt) | Button held (Third) |
+| --- | --- | --- | --- |
+| **Top / Bottom** | Delay amount (app color); **delay-cycle blink** at feedback brightness (10–100%); Ping-Pong: Top = Out A, Bottom = Out B; faint **queue depth** when idle | Feedback (**green**): low = Bottom, high = Top | Interval (**red**): down = Bottom, up = Top |
+| **Button** | Idle Mid; **white flash = MIDI/CV note in**; app-color blink = delay fire (feedback 10–100%) | **Green**, brightness = feedback | **Red**, brightness = |interval| |
+| **Muted** | Top/Bottom off; **white input flash still works at ~20%** (verify MIDI In while muted) | | |
+
+#### Feedback (sound + LEDs)
+
+**Shift + Fader** sets feedback 0–100%:
+
+- **0%** — one delayed hit only (doubler / slapback); no regenerated repeats
+- **>0%** — each fired note/gate schedules another generation with velocity × feedback
+- Stops at max **8** repeats or when velocity falls below ~**7%** (internal floor)
+- Applies to **note/gate** streams (MIDI→MIDI, MIDI→CV Gate, CV→MIDI Gate→Note) — not pitch-hold or CV→CC
+
+Every time a delayed event **fires**, and also on a **free-running delay metronome** (same period as Delay — works with no input):
+
+- **Button** blinks at brightness mapped from feedback: **10%…100%** of full LED scale (low feedback = soft tick, high = bright flash), then decays
+- **Top / Bottom** also pulse at that brightness; with **Ping-Pong** routing, Top = Out A fires, Bottom = Out B fires
+- A faint residual glow shows **queue depth** (how much is still waiting) when idle
+
+While you hold **Shift**, Top/Bottom show feedback in **green** (low at Bottom, high at Top) and the button brightness tracks feedback. Hold the **channel button** for interval in **red** (down at Bottom, up at Top); button brightness tracks |semitones|.
+
+#### I/O modes
+
+Configurator **I/O** picks the path. The jack is only used when CV is involved (one jack = in **or** out).
+
+| I/O | Jack | What is delayed |
+| --- | --- | --- |
+| **MIDI→MIDI** | unused | MIDI notes (in CH → Out A / B) |
+| **MIDI→CV** | **Out** | Notes become Pitch CV or Gate (see Signal) |
+| **CV→MIDI** | **In** | Gate→Note or continuous CV→CC (see Signal) |
+
+#### Signal (context-dependent)
+
+| Signal | Meaningful when | Behavior |
+| --- | --- | --- |
+| **Pitch** | MIDI→CV | Delayed note-on sets pitch CV (holds last pitch; note-off does not zero) |
+| **Gate** | MIDI→CV | Delayed note-on → high, note-off → low; feedback can echo gates |
+| **CV→CC** | CV→MIDI | CV changes are delayed and sent as MIDI CC |
+| **Gate→Note** | CV→MIDI | Rising gate → delayed note-on (MIDI Note + Interval); falling → note-off |
+
+Wrong Signal choices for the current I/O are ignored (Pitch/Gate for MIDI→CV; CV→CC / Gate→Note for CV→MIDI).
+
+#### Interval & routing
+
+| Param | Options | Notes |
+| --- | --- | --- |
+| **Interval mode** | Fixed / Stack / Pong | Fixed = same shift every generation; Stack = +N, +2N, …; Pong = +N, −N, +N… |
+| **Routing** | Single / Ping-Pong | MIDI→MIDI only: repeats alternate **Out A** ↔ **Out B** (see LED Top/Bottom) |
+
+#### Delay timing
+
+| Delay mode | Fader meaning |
+| --- | --- |
+| **ms** | Fader up = shorter delay (0 at top … **Max delay** at bottom) |
+| **Clock** | Musical divisions (straight note-length table, same idea as Clock Divider “Straight”) |
+
+Clock **Stop** / **Reset** clears the queue when in Clock mode.
+
+#### Typical patches
+
+- **Harmony doubler:** MIDI→MIDI, Interval = +7 (Fifth), Feedback low or 0, Out A = synth B.
+- **Slapback:** MIDI→MIDI, short Delay, Feedback 0, Interval 0 — soft 10% button ticks on each delay.
+- **Echo trail:** Feedback up (brighter blinks); Interval Fixed or Pong for melodic cascades.
+- **Stereo MIDI ping-pong:** Routing = Ping-Pong, two Out channels → two devices (watch Top vs Bottom).
+- **Delayed gate into modular:** MIDI→CV + Gate, or CV→MIDI + Gate→Note the other way.`,
+    channels: [
+      {
+        jackTitle: "CV jack (mode-dependent)",
+        jackDescription:
+          "Unused in MIDI→MIDI. **Out** for MIDI→CV (Pitch or Gate). **In** for CV→MIDI (Gate→Note or CV→CC).",
+        faderTitle: "Delay",
+        faderDescription:
+          "Delay time: fader up = faster/shorter (ms capped by Max delay, or clock division).",
+        faderPlusShiftTitle: "Feedback",
+        faderPlusShiftDescription:
+          "0–100% regeneration (velocity × feedback per repeat). Also sets delay-cycle LED blink brightness (10–100%).",
+        faderPlusFnTitle: "Interval",
+        faderPlusFnDescription:
+          "Pitch shift −12…+12 semitones (note/gate paths).",
+        fnTitle: "Mute / Panic",
+        fnDescription:
+          "Short: mute (ring-out — no new input, queue finishes). Long: hard kill — notes off + CC 120/123 + empty queue.",
+        ledTop:
+          "Delay amount; delay-cycle blink (feedback 10–100%); Ping-Pong Out A; queue depth when idle",
+        ledTopPlusShift: "Feedback level (green)",
+        ledTopPlusFn: "Positive interval (red)",
+        ledBottom:
+          "Delay amount; delay-cycle blink / Ping-Pong Out B; queue depth when idle",
+        ledBottomPlusShift: "Feedback level (green)",
+        ledBottomPlusFn: "Negative interval (red)",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
