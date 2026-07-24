@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Faderpunk WIP Apps — UX Cheatsheet</title>
+<style>
+  @page { size: A4; margin: 9mm 10mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 8pt;
+    line-height: 1.25;
+    color: #111;
+    margin: 0;
+  }
+  h1 { font-size: 14pt; margin: 0 0 2pt; letter-spacing: -0.02em; }
+  .sub { font-size: 7.5pt; color: #444; margin: 0 0 6pt; }
+  .legend {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 3pt 8pt;
+    border: 1px solid #222;
+    padding: 4pt 6pt;
+    margin-bottom: 6pt;
+    background: #f6f6f4;
+  }
+  .jack-note {
+    border: 1px solid #222;
+    padding: 4pt 6pt;
+    margin-bottom: 6pt;
+    background: #eef3f7;
+  }
+  .app {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1.4px solid #111;
+    margin: 0 0 5.5pt;
+  }
+  .app-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6pt;
+    padding: 3pt 6pt;
+    border-bottom: 1px solid #111;
+    background: #111;
+    color: #fff;
+  }
+  .app-head h2 { font-size: 10pt; margin: 0; flex: 1; }
+  .app-head .id { font-size: 7.5pt; opacity: 0.75; }
+  .app-head .desc { font-size: 7.5pt; font-weight: 400; opacity: 0.92; max-width: 48%; text-align: right; }
+  .app-body { padding: 4pt 6pt 5pt; }
+  .cols {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 1.05fr;
+    gap: 4pt 8pt;
+  }
+  h3 {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 1.5pt;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 1pt;
+  }
+  ul { margin: 0; padding-left: 10pt; }
+  li { margin: 0 0 0.5pt; }
+  .manual {
+    margin-top: 3.5pt;
+    padding-top: 3pt;
+    border-top: 1px dashed #999;
+    font-size: 7.5pt;
+  }
+  .manual p { margin: 0 0 2pt; }
+  .tag {
+    display: inline-block;
+    font-size: 6.5pt;
+    border: 1px solid currentColor;
+    padding: 0 2.5pt;
+    margin-left: 3pt;
+    vertical-align: middle;
+  }
+  .draft { color: #fc6; border-color: #fc6; }
+  .ready { color: #8d8; border-color: #8d8; }
+  footer { margin-top: 4pt; font-size: 7pt; color: #555; }
+  code { font-family: "IBM Plex Mono", Menlo, monospace; font-size: 7pt; }
+</style>
+</head>
+<body>
+
+<h1>Faderpunk WIP Apps — UX Cheatsheet</h1>
+<p class="sub">Synced to <code>test/playground</code> (CV Jack In/Out) · 24 Jul 2026 · A4 print</p>
+
+<div class="legend">
+  <div><strong>Main</strong> — Fader alone</div>
+  <div><strong>Alt</strong> — Shift + Fader</div>
+  <div><strong>Third</strong> — Channel button held + Fader</div>
+  <div><strong>Short</strong> — Tap button</div>
+  <div><strong>Long</strong> — Hold button (long-press)</div>
+  <div><strong>Shift+…</strong> — Global Shift + gesture</div>
+</div>
+
+<div class="jack-note">
+  <strong>Jack CV Out / CV In</strong> (Heat Pump, Grooves, Golden Gate, Arp de Lévy; Vamp is MIDI-only + CV Dest on its jack path):
+  <strong>CV Out</strong> = app drives the jack · <strong>CV In</strong> = jack modulates a <strong>CV Dest</strong> (attenuated by <strong>CV Att</strong> 0–100%).
+  Device-cycle Dest: Heat Pump &amp; Super LFO via <strong>Shift+Short</strong> (others: Configurator).
+  Golden Gate + Jack=CV In → MIDI-first (no CV/gate outs).
+</div>
+
+<!-- HEAT PUMP -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 29</span>
+    <h2>Heat Pump <span class="tag ready">ready</span></h2>
+    <span class="desc">Clock-synced sidechain ducking envelope</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Release (up = faster recovery)</li>
+          <li><strong>Alt</strong> — Duck depth (red LED)</li>
+          <li><strong>Third</strong> — unused</li>
+        </ul>
+        <h3>Jack params</h3>
+        <ul>
+          <li>Jack: CV Out / CV In</li>
+          <li>CV Dest: Depth · Release · Duck</li>
+          <li>Dest colors: Red · Yellow · Cyan</li>
+          <li>CV Att 0–100%</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Manual duck trigger</li>
+          <li><strong>Long</strong> — Mute / bypass (hold idle)</li>
+          <li><strong>Shift+Short (CV Out)</strong> — Cycle clock division</li>
+          <li><strong>Shift+Short (CV In)</strong> — Cycle CV Dest (flash)</li>
+          <li><strong>Shift+Long</strong> — Invert duck direction</li>
+        </ul>
+      </div>
+      <div>
+        <h3>LEDs / other params</h3>
+        <ul>
+          <li>Button metronome Mid→Low per division</li>
+          <li>1/1 uses Color param</li>
+          <li>Invert: white ↔ off fade</li>
+          <li>Color, Range, MIDI CH/CC, NRPN, MIDI Out</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Clock-synced ducking envelope: each division pulse ducks, then recovers by Release. Depth sets how far. Mute bypasses so CV/MIDI stay at idle. Invert flips duck direction. With Jack=CV In, Shift+Short cycles Depth/Release/Duck instead of division; CV Att scales the modulation.</p>
+    </div>
+  </div>
+</section>
+
+<!-- GROOVES -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 30</span>
+    <h2>Grooves <span class="tag ready">ready</span></h2>
+    <span class="desc">Multi-genre MIDI drum grooves with swing</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Density (extra hits)</li>
+          <li><strong>Alt</strong> — Swing</li>
+          <li><strong>Third</strong> — CV-jack activity mode: low=Any, high=Stacked</li>
+        </ul>
+        <h3>Genres</h3>
+        <ul>
+          <li>Dub → Disco → Hip-Hop → House → Techno → Trip-Hop → UK Garage → Dubstep</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Reset to downbeat</li>
+          <li><strong>Long</strong> — Mute (notes off)</li>
+          <li><strong>Shift+Short</strong> — Reverse swing</li>
+          <li><strong>Shift+Long</strong> — Cycle genre (flash)</li>
+        </ul>
+        <h3>Jack params</h3>
+        <ul>
+          <li>Jack: CV Out / CV In</li>
+          <li>CV Dest: Density · Swing · Reset</li>
+          <li>Range, CV Att</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>Kick / Snare / Hats: note + channel</li>
+          <li>Groove, Swing max %, GATE %, Color, MIDI Out</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Genre MIDI drums on the global clock. Density reveals hits; Swing max % caps the Alt fader. Third picks how the CV Out jack reflects simultaneous hits (Any vs Stacked). Jack=CV In modulates Density/Swing or triggers Reset (set Dest in Configurator).</p>
+    </div>
+  </div>
+</section>
+
+<!-- GOLDEN GATE -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 31</span>
+    <h2>Golden Gate <span class="tag ready">ready</span></h2>
+    <span class="desc">Fibonacci-spaced gates — ratios → φ</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Fibonacci depth</li>
+          <li><strong>Alt</strong> — Cycle length N</li>
+          <li><strong>Third</strong> — Speed: up=16th · mid=8th · down=quarter</li>
+        </ul>
+        <h3>Jack params</h3>
+        <ul>
+          <li>Jack: CV Out / CV In (In = MIDI-first, no outs)</li>
+          <li>CV Dest: Depth · Cycle · Reset</li>
+          <li>Range, CV Att</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Reset to downbeat</li>
+          <li><strong>Long</strong> — Mute</li>
+          <li><strong>Shift+Short</strong> — Reverse gap direction</li>
+          <li><strong>Shift+Long</strong> — Cycle out mode</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Out modes</h3>
+        <ul>
+          <li>Gate+Note · Gate+CC (orange)</li>
+          <li>Pitch 12-TET (red) · Pitch φ (pink)</li>
+        </ul>
+        <h3>Params</h3>
+        <ul>
+          <li>MIDI CH/Note/CC, GATE %, Speed, Color, MIDI Out</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Fills cycle length N with Fibonacci gaps; deeper sets approach φ. Short resets; Shift+Short reverses travel; Button+Fader sets local speed. Shift+Long cycles Note/CC/Pitch/φ. Jack=CV In drops CV/gate outs and uses Dest for Depth/Cycle/Reset.</p>
+    </div>
+  </div>
+</section>
+
+<!-- SUPER LFO -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 32</span>
+    <h2>Super LFO <span class="tag ready">ready</span></h2>
+    <span class="desc">Morphing dual-osc LFO · 2 channels</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Ch0 Main</strong> — Morph · <strong>Third</strong> — Skew</li>
+          <li><strong>Ch1 Main</strong> — Character · <strong>Third</strong> — Warp</li>
+          <li><strong>Alt</strong> — Speed (red when focused)</li>
+        </ul>
+        <h3>CV destinations (Ch0 Shift+Short)</h3>
+        <ul>
+          <li>Yel Speed · Pink Phase · Cyan Amp · Red Reset</li>
+          <li>Orange Morph · Violet Skew · Green Warp · Rose Character</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Ch0 Short</strong> — Freeze toggle (white)</li>
+          <li><strong>Ch0 Long</strong> — In mute</li>
+          <li><strong>Ch0 Shift+Short</strong> — Cycle CV Dest</li>
+          <li><strong>Ch0 Shift+Long</strong> — Cycle Mix Mode</li>
+          <li><strong>Ch1 Short</strong> — Phase reset</li>
+          <li><strong>Ch1 Long</strong> — Out mute</li>
+          <li><strong>Ch1 Shift+Short</strong> — Phase reverse</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>Speed, Range, MIDI, Grid Lock</li>
+          <li>Mix Mode: Xfade / Min / Max / Sum</li>
+          <li>Osc B: Quad / Octave · Mix balance 0–100%</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Dual-osc morphing LFO. Ch0 Morph/Skew, Ch1 Character/Warp, Shift+Fader = Speed. Ch0 jack CV Dest is cycled on device. Freeze holds the wave; In-mute silences CV-in; Out-mute silences output. Grid Lock ties phase to the clock when clocked.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ECHOLOT -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 33</span>
+    <h2>Echolot <span class="tag draft">draft</span></h2>
+    <span class="desc">MIDI/CV delay with feedback and pitch shift</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Delay (up = shorter / faster)</li>
+          <li><strong>Alt</strong> — Feedback</li>
+          <li><strong>Third</strong> — Pitch interval</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Mute / ring-out</li>
+          <li><strong>Long</strong> — Panic (clear queue); skipped if Third used this hold</li>
+        </ul>
+        <h3>LEDs</h3>
+        <ul>
+          <li>White flash on MIDI/gate in (~20% when muted)</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>I/O: MIDI→MIDI · MIDI→CV · CV→MIDI</li>
+          <li>Delay: ms / Clock · Max delay</li>
+          <li>Interval: Fixed / Stack / Pong</li>
+          <li>Routing: Single / Ping-Pong</li>
+          <li>Signal: Pitch / Gate / CV→CC / Gate→Note</li>
+          <li>MIDI In/Out A/B, CC, Note, Range, Color</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Delay with feedback and optional pitch intervals. Mute = ring-out (block new input; queue plays out). Long Panic clears the trail — Button+Fader Interval edits never panic that hold. MIDI In always flashes white for diagnosis when muted.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ARP DE LÉVY -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 34</span>
+    <h2>Arp de Lévy <span class="tag ready">ready</span></h2>
+    <span class="desc">Lévy-flight arp — evolve, texture, flight character</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Evolve / mutation (0 = frozen)</li>
+          <li><strong>Alt</strong> — Texture (density / phrase / swing feel)</li>
+          <li><strong>Third</strong> — Lévy α / flight character</li>
+        </ul>
+        <h3>Jack params</h3>
+        <ul>
+          <li>Jack: CV Out / CV In</li>
+          <li>CV Dest: Evolve · Texture · Reroll</li>
+          <li>Range, CV Att · V/Oct · Bypass quantizer</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Reroll note pool (+ reset)</li>
+          <li><strong>Long</strong> — Mute</li>
+          <li><strong>Shift+Short</strong> — Reverse playback</li>
+          <li><strong>Shift+Long</strong> — Cycle octave span 1→2→3→4</li>
+        </ul>
+        <h3>Octave LED</h3>
+        <ul>
+          <li>Blue · Cyan · Yellow · Red</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>MIDI CH, Base Note, Color, MIDI Out</li>
+          <li>CV pitch + MIDI (dual path)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Generative arp whose pool evolves with Lévy-flight mutations. Main bottom freezes; raise to wander. Texture shapes phrase density/length; Third sets flight character (α). Shift+Long walks octave span (button color). Jack=CV In can modulate Evolve/Texture or fire Reroll.</p>
+    </div>
+  </div>
+</section>
+
+<!-- MIDI VAMP -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 35</span>
+    <h2>MIDI Vamp <span class="tag draft">draft</span></h2>
+    <span class="desc">Chord progressions — perform, capture, auto · MIDI</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main (Perform)</strong> — Scrub vamp slots</li>
+          <li><strong>Main (Auto)</strong> — Tension</li>
+          <li><strong>Alt</strong> — Genre (+ Capture clip slot if clip exists)</li>
+          <li><strong>Third</strong> — Autoplay clock division</li>
+        </ul>
+        <h3>CV params</h3>
+        <ul>
+          <li>CV Dest: Macro · Panic · CV Att</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Shift+Button</strong> — Perform ↔ Auto</li>
+          <li><strong>Perform hold</strong> — Chord on; release = off</li>
+          <li><strong>Auto short</strong> — Play / pause</li>
+          <li><strong>Perform Long</strong> — Capture last N bars → timed clip, jump Auto+Play</li>
+          <li><strong>Auto Long</strong> — Clear clip, reload genre preset</li>
+          <li><strong>Shift+Long</strong> — Panic</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>Root, Scale, Genre, Voicing, Velocity</li>
+          <li>Auto style: Repeat / Meander</li>
+          <li>Start mode: Perform / Auto</li>
+          <li>Capture: 16 / 8 / 4 / 2 bars</li>
+          <li>LED: Perform = app color; Auto = orange (bright=play)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> MIDI chord vamp. Perform: scrub + hold to play; Long captures a timed clip of recent harmony and arms Auto playback. Auto: short play/pause; Long clears the clip and reloads genre DNA. Alt picks genre (and Capture slot when a clip exists). CV Dest Macro modulates scrub/tension; Panic can fire from CV.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Source: <code>test/playground</code> app sources · pool_size on feat branches is 16/CHANNELS (playground uses 4).
+  Condensed manuals from CONFIG + firmware comments — not yet in the configurator Manual tab.
+</footer>
+
+</body>
+</html>
