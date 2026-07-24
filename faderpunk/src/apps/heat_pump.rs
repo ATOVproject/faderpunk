@@ -7,16 +7,20 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, utils::midi_gate, AppIcon, Brightness, ClockDivision, Color,
-    Config, Curve, MidiCc, MidiChannel, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue,
+    latch::LatchLayer,
+    utils::{attenuate_bipolar, midi_gate},
+    AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
+    Range, Value, APP_MAX_PARAMS,
 };
 
-use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
+use crate::{
+    app::{App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent},
+    tasks::leds::LedMode,
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 9;
 
 const MIN_RELEASE_MS: f32 = 10.0;
 /// Tick spacing at 24 PPQN (whole-note / N), slow → fast.
@@ -27,6 +31,19 @@ const INVERT_FADE_MS: u16 = 500;
 /// Actual duck is capped to half the current pulse slot so Mid stays visible on fast divisions.
 const BUTTON_DUCK_MS: u16 = 25;
 const BUTTON_DUCK_MIN_MS: u16 = 4;
+/// Hold off periodic button LED writes so LedMode::Flash can finish.
+const BUTTON_FLASH_MS: u16 = 850;
+
+const JACK_OUT: usize = 0;
+const JACK_IN: usize = 1;
+
+const DEST_DEPTH: usize = 0;
+const DEST_RELEASE: usize = 1;
+const DEST_DUCK: usize = 2;
+const DEST_COUNT: usize = 3;
+
+/// Rising-edge threshold for trigger dest (bipolar mid + margin), same as Super LFO Reset.
+const TRIG_HIGH: u16 = 2458;
 
 /// Base palette for division identity. Index 0 is White; for a user-chosen
 /// color we rotate so that color lands on 1/1 (see `color_for_division`).
@@ -71,7 +88,20 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::MidiCc { name: "MIDI CC" })
 .add_param(Param::MidiNrpn)
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::Enum {
+    name: "Jack",
+    variants: &["CV Out", "CV In"],
+})
+.add_param(Param::Enum {
+    name: "CV Dest",
+    variants: &["Depth", "Release", "Duck"],
+})
+.add_param(Param::i32 {
+    name: "CV Att",
+    min: 0,
+    max: 100,
+});
 
 pub struct Params {
     color: Color,
@@ -80,32 +110,54 @@ pub struct Params {
     midi_cc: MidiCc,
     nrpn: bool,
     midi_out: MidiOut,
+    jack_mode: usize,
+    dest: usize,
+    cv_att: i32,
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
         // Legacy layout had Division at [0]; shift indices if present.
-        let (color, range, midi_channel, midi_cc, nrpn, midi_out) = if values.len() >= 7 {
-            (
-                Color::from_value(values[1]),
-                Range::from_value(values[2]),
-                MidiChannel::from_value(values[3]),
-                MidiCc::from_value(values[4]),
-                bool::from_value(values[5]),
-                MidiOut::from_value(values[6]),
-            )
-        } else if values.len() >= PARAMS {
-            (
-                Color::from_value(values[0]),
-                Range::from_value(values[1]),
-                MidiChannel::from_value(values[2]),
-                MidiCc::from_value(values[3]),
-                bool::from_value(values[4]),
-                MidiOut::from_value(values[5]),
-            )
-        } else {
-            return None;
-        };
+        let (color, range, midi_channel, midi_cc, nrpn, midi_out, jack_mode, dest, cv_att) =
+            if values.len() >= 9 {
+                (
+                    Color::from_value(values[0]),
+                    Range::from_value(values[1]),
+                    MidiChannel::from_value(values[2]),
+                    MidiCc::from_value(values[3]),
+                    bool::from_value(values[4]),
+                    MidiOut::from_value(values[5]),
+                    usize::from_value(values[6]),
+                    usize::from_value(values[7]),
+                    i32::from_value(values[8]),
+                )
+            } else if values.len() >= 7 {
+                (
+                    Color::from_value(values[1]),
+                    Range::from_value(values[2]),
+                    MidiChannel::from_value(values[3]),
+                    MidiCc::from_value(values[4]),
+                    bool::from_value(values[5]),
+                    MidiOut::from_value(values[6]),
+                    JACK_OUT,
+                    DEST_DEPTH,
+                    100,
+                )
+            } else if values.len() >= 6 {
+                (
+                    Color::from_value(values[0]),
+                    Range::from_value(values[1]),
+                    MidiChannel::from_value(values[2]),
+                    MidiCc::from_value(values[3]),
+                    bool::from_value(values[4]),
+                    MidiOut::from_value(values[5]),
+                    JACK_OUT,
+                    DEST_DEPTH,
+                    100,
+                )
+            } else {
+                return None;
+            };
         Some(Self {
             color,
             range,
@@ -113,6 +165,9 @@ impl AppParams for Params {
             midi_cc,
             nrpn,
             midi_out,
+            jack_mode: jack_mode.min(1),
+            dest: dest.min(DEST_COUNT - 1),
+            cv_att: cv_att.clamp(0, 100),
         })
     }
 
@@ -124,6 +179,9 @@ impl AppParams for Params {
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.jack_mode.into()).unwrap();
+        vec.push(self.dest.into()).unwrap();
+        vec.push(self.cv_att.into()).unwrap();
         vec
     }
 }
@@ -137,10 +195,18 @@ pub struct Storage {
     /// Live division index; always starts at 1/1 (0) for new instances.
     #[serde(default = "default_division")]
     division: usize,
+    #[serde(default)]
+    dest: usize,
+    #[serde(default = "default_in_att")]
+    in_att: u16,
 }
 
 fn default_division() -> usize {
     0 // 1/1 — user color
+}
+
+fn default_in_att() -> u16 {
+    4095
 }
 
 impl Default for Storage {
@@ -151,6 +217,8 @@ impl Default for Storage {
             invert: false,
             muted: false,
             division: default_division(),
+            dest: DEST_DEPTH,
+            in_att: default_in_att(),
         }
     }
 }
@@ -162,6 +230,23 @@ fn idle_level(invert: bool) -> f32 {
         0.0
     } else {
         4095.0
+    }
+}
+
+fn att_from_pct(pct: i32) -> u16 {
+    ((pct.clamp(0, 100) as u32 * 4095) / 100) as u16
+}
+
+fn mod_u16(base: u16, in_val: u16) -> u16 {
+    (base as i32 + in_val as i32 - 2047).clamp(0, 4095) as u16
+}
+
+fn dest_color(dest: usize) -> Color {
+    match dest {
+        DEST_DEPTH => Color::Red,
+        DEST_RELEASE => Color::Yellow,
+        DEST_DUCK => Color::Cyan,
+        _ => Color::Yellow,
     }
 }
 
@@ -192,6 +277,9 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             midi_cc: MidiCc::from(32u8.saturating_add(app.start_channel as u8)),
             nrpn: false,
             midi_out: MidiOut([false, false, false]),
+            jack_mode: JACK_OUT,
+            dest: DEST_DEPTH,
+            cv_att: 100,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -218,11 +306,28 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (led_color, range) = params.query(|p| (p.color, p.range));
+    let (led_color, range, jack_mode, p_dest, p_att) =
+        params.query(|p| (p.color, p.range, p.jack_mode, p.dest, p.cv_att));
     let (midi_out, midi_chan, midi_cc, nrpn) =
         params.query(|p| (p.midi_out, p.midi_channel, p.midi_cc, p.nrpn));
 
-    let output = app.make_out_jack(0, range).await;
+    // Configurator Dest/Att are start values; apply on each run() (param edits restart run).
+    storage.modify_and_save(|s| {
+        s.dest = p_dest.min(DEST_COUNT - 1);
+        s.in_att = att_from_pct(p_att);
+    });
+
+    let output = if jack_mode == JACK_OUT {
+        Some(app.make_out_jack(0, range).await)
+    } else {
+        None
+    };
+    let input = if jack_mode == JACK_IN {
+        Some(app.make_in_jack(0, Range::_Neg5_5V).await)
+    } else {
+        None
+    };
+
     let faders = app.use_faders();
     let buttons = app.use_buttons();
     let leds = app.use_leds();
@@ -230,13 +335,15 @@ pub async fn run(
     let ticks = clock.get_ticker();
     let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
 
-    let (release, depth, invert, muted, division_idx) = storage.query(|s| {
+    let (release, depth, invert, muted, division_idx, dest, in_att) = storage.query(|s| {
         (
             s.release,
             s.depth,
             s.invert,
             s.muted,
             s.division.min(DIVISION_TICKS.len() - 1),
+            s.dest.min(DEST_COUNT - 1),
+            s.in_att,
         )
     });
 
@@ -248,11 +355,14 @@ pub async fn run(
     let glob_division = app.make_global(division_idx);
     let glob_trigger = app.make_global(false);
     let glob_level = app.make_global(idle_level(invert));
+    let glob_dest = app.make_global(dest);
+    let glob_in_att = app.make_global(in_att);
     let long_press_fired = app.make_global(false);
     // Remaining ms of invert LED fade; 0 = inactive.
     let glob_invert_fade = app.make_global(0u16);
     // true = none→white, false = white→none.
     let glob_invert_fade_up = app.make_global(false);
+    let glob_btn_flash = app.make_global(0u16);
 
     if muted {
         leds.unset(0, Led::Button);
@@ -264,6 +374,7 @@ pub async fn run(
         let mut last_button_slot: u8 = 0xff;
         let mut ms_in_slot: u16 = 0;
         let mut last_blink_division: usize = usize::MAX;
+        let mut prev_gate_high = false;
         loop {
             app.delay_millis(1).await;
 
@@ -274,22 +385,48 @@ pub async fn run(
             let idle = idle_level(invert);
             let muted = glob_muted.get();
 
+            let mut eff_depth = glob_depth.get();
+            let mut eff_release = glob_release.get();
+
+            if let Some(ref input) = input {
+                let in_val = attenuate_bipolar(input.get_value(), glob_in_att.get());
+                let destination = glob_dest.get().min(DEST_COUNT - 1);
+                match destination {
+                    DEST_DEPTH => {
+                        eff_depth = mod_u16(eff_depth, in_val);
+                        prev_gate_high = false;
+                    }
+                    DEST_RELEASE => {
+                        eff_release = mod_u16(eff_release, in_val);
+                        prev_gate_high = false;
+                    }
+                    DEST_DUCK => {
+                        let high = in_val >= TRIG_HIGH;
+                        if high && !prev_gate_high {
+                            glob_trigger.set(true);
+                        }
+                        prev_gate_high = high;
+                    }
+                    _ => {
+                        prev_gate_high = false;
+                    }
+                }
+            }
+
             let mut level = glob_level.get();
 
             if glob_trigger.get() {
                 glob_trigger.set(false);
-                let depth = glob_depth.get();
                 level = if invert {
-                    depth as f32
+                    eff_depth as f32
                 } else {
-                    4095u16.saturating_sub(depth) as f32
+                    4095u16.saturating_sub(eff_depth) as f32
                 };
             }
 
             // Fader up = faster recovery: invert the fader before the curve.
-            let release_ms = Curve::Exponential.at(4095u16.saturating_sub(glob_release.get()))
-                as f32
-                + MIN_RELEASE_MS;
+            let release_ms =
+                Curve::Exponential.at(4095u16.saturating_sub(eff_release)) as f32 + MIN_RELEASE_MS;
             let step = 4095.0 / release_ms;
             if level < idle {
                 level = (level + step).min(idle);
@@ -302,7 +439,9 @@ pub async fn run(
             // Mute = bypass the pump: hold idle so CV/MIDI don't stick at silence
             // (e.g. CC7 volume frozen at 0 on a Minitaur).
             let effective_out = if muted { idle as u16 } else { out };
-            output.set_value(effective_out);
+            if let Some(ref output) = output {
+                output.set_value(effective_out);
+            }
 
             if midi_out.is_some() {
                 let gate_val = midi_gate(effective_out, nrpn);
@@ -310,6 +449,11 @@ pub async fn run(
                     midi.send_cc(midi_cc, effective_out).await;
                     last_midi_val = gate_val;
                 }
+            }
+
+            let flash_left = glob_btn_flash.get();
+            if flash_left > 0 {
+                glob_btn_flash.set(flash_left.saturating_sub(1));
             }
 
             // Invert feedback (white↔off) suppresses the division metronome.
@@ -323,7 +467,7 @@ pub async fn run(
                 };
                 leds.set(0, Led::Button, Color::White, Brightness::Custom(bright));
                 glob_invert_fade.set(fade_left.saturating_sub(1));
-            } else {
+            } else if flash_left == 0 {
                 // Button metronome: Mid→Low duck up to 4× per division.
                 // Duck length tracks slot duration (≤25ms, half Mid) so fast
                 // divisions still blink instead of sticking on Low.
@@ -335,6 +479,13 @@ pub async fn run(
                     last_button_slot = 0xff;
                     ms_in_slot = 0;
                     leds.unset(0, Led::Button);
+                } else if latch_active_layer == LatchLayer::Alt && jack_mode == JACK_IN {
+                    leds.set(
+                        0,
+                        Led::Button,
+                        dest_color(glob_dest.get()),
+                        Brightness::Mid,
+                    );
                 } else {
                     if division != last_blink_division {
                         last_blink_division = division;
@@ -379,7 +530,18 @@ pub async fn run(
                     );
                     leds.unset(0, Led::Bottom);
                 }
-                LatchLayer::Third => {}
+                LatchLayer::Third => {
+                    if jack_mode == JACK_IN {
+                        let att = glob_in_att.get();
+                        leds.set(
+                            0,
+                            Led::Top,
+                            Color::Cyan,
+                            Brightness::Custom((att / 16) as u8),
+                        );
+                    }
+                    leds.unset(0, Led::Bottom);
+                }
             }
         }
     };
@@ -410,7 +572,13 @@ pub async fn run(
             let target_value = match latch_layer {
                 LatchLayer::Main => storage.query(|s| s.release),
                 LatchLayer::Alt => storage.query(|s| s.depth),
-                LatchLayer::Third => 0,
+                LatchLayer::Third => {
+                    if jack_mode == JACK_IN {
+                        storage.query(|s| s.in_att)
+                    } else {
+                        0
+                    }
+                }
             };
 
             if let Some(new_value) = latch.update(faders.get_value(), latch_layer, target_value) {
@@ -427,7 +595,14 @@ pub async fn run(
                             s.depth = new_value;
                         });
                     }
-                    LatchLayer::Third => {}
+                    LatchLayer::Third => {
+                        if jack_mode == JACK_IN {
+                            glob_in_att.set(new_value);
+                            storage.modify_and_save(|s| {
+                                s.in_att = new_value;
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -441,12 +616,23 @@ pub async fn run(
                 long_press_fired.set(false);
                 buttons.wait_for_up(0).await;
                 if !long_press_fired.get() {
-                    // Shift + short: cycle division (1/1 = user color).
-                    let next = (glob_division.get() + 1) % DIVISION_TICKS.len();
-                    glob_division.set(next);
-                    storage.modify_and_save(|s| {
-                        s.division = next;
-                    });
+                    if jack_mode == JACK_IN {
+                        // Shift + short (CV In): cycle destination + flash dest color.
+                        let next = storage.modify_and_save(|s| {
+                            s.dest = (s.dest + 1) % DEST_COUNT;
+                            s.dest
+                        });
+                        glob_dest.set(next);
+                        leds.set_mode(0, Led::Button, LedMode::Flash(dest_color(next), Some(3)));
+                        glob_btn_flash.set(BUTTON_FLASH_MS);
+                    } else {
+                        // Shift + short (CV Out): cycle division (1/1 = user color).
+                        let next = (glob_division.get() + 1) % DIVISION_TICKS.len();
+                        glob_division.set(next);
+                        storage.modify_and_save(|s| {
+                            s.division = next;
+                        });
+                    }
                 }
             } else {
                 long_press_fired.set(false);
@@ -490,20 +676,25 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let (release, depth, invert, muted, division) = storage.query(|s| {
-                        (
-                            s.release,
-                            s.depth,
-                            s.invert,
-                            s.muted,
-                            s.division.min(DIVISION_TICKS.len() - 1),
-                        )
-                    });
+                    let (release, depth, invert, muted, division, dest, in_att) =
+                        storage.query(|s| {
+                            (
+                                s.release,
+                                s.depth,
+                                s.invert,
+                                s.muted,
+                                s.division.min(DIVISION_TICKS.len() - 1),
+                                s.dest.min(DEST_COUNT - 1),
+                                s.in_att,
+                            )
+                        });
                     glob_release.set(release);
                     glob_depth.set(depth);
                     glob_invert.set(invert);
                     glob_muted.set(muted);
                     glob_division.set(division);
+                    glob_dest.set(dest);
+                    glob_in_att.set(in_att);
                     glob_level.set(idle_level(invert));
                     if muted {
                         leds.unset(0, Led::Button);
