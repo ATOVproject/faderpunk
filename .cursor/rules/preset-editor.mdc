@@ -1,0 +1,13 @@
+---
+description: Preset editor lives in-repo; never use faderpunk-scenes
+globs:
+  - faderpunk-preset-editor/**
+  - "**/faderpunk-scenes/**"
+alwaysApply: false
+---
+
+# Preset editor location
+
+- **Use:** `faderpunk-preset-editor/` in this monorepo (branch `add-preset-editor` or worktree `faderpunk-preset-editor-wt`).
+- **Never** open, edit, or `move_agent_to_root` into `faderpunk-scenes` or `~/Projects/_archived/faderpunk-scenes`.
+- If a path under `faderpunk-scenes` appears, stop and switch to `faderpunk-preset-editor/` instead.

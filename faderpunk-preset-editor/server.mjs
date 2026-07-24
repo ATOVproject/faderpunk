@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, access } from "node:fs/promises";
 import { join, extname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createReadStream } from "node:fs";
 import {
   ensureMidiCatalog,
@@ -16,6 +16,29 @@ import {
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PORT = 3847;
+
+/** Push/pull need playwright; auto-install once if node_modules is missing. */
+async function ensurePlaywright() {
+  const marker = join(__dirname, "node_modules", "playwright", "package.json");
+  try {
+    await access(marker);
+    return;
+  } catch {
+    /* missing */
+  }
+  console.warn("playwright missing — running npm install…");
+  const r = spawnSync("npm", ["install"], {
+    cwd: __dirname,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+  if (r.status !== 0) {
+    console.error(
+      "npm install failed. From faderpunk-preset-editor/ run: npm install",
+    );
+    process.exit(1);
+  }
+}
 const SETUP_PATH = join(__dirname, "out", "current-setup.json");
 const PULL_PATH = join(__dirname, "out", "pulled-setup.json");
 const BANK_PATH = join(__dirname, "out", "preset-bank.json");
@@ -481,6 +504,8 @@ const server = createServer(async (req, res) => {
     res.end(JSON.stringify({ ok: false, error: String(e.message || e) }));
   }
 });
+
+await ensurePlaywright();
 
 server.listen(PORT, "127.0.0.1", async () => {
   console.log(`Faderpunk preset editor: http://127.0.0.1:${PORT}/`);

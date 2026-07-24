@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="i18n-pending">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,6 +7,57 @@
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" type="image/png" href="/favicon.png" />
   <script src="/i18n.js"></script>
+  <script>
+    /* Apply stored/nav lang before first paint of chrome text. */
+    try {
+      document.documentElement.lang = getLang();
+    } catch (_) {}
+  </script>
+  <style>
+    /* Hide English markup until applyI18n() runs; splash stays visible. */
+    html.i18n-pending body > *:not(#i18nSplash) {
+      visibility: hidden !important;
+    }
+    #i18nSplash {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: grid;
+      place-content: center;
+      background: #141414;
+      pointer-events: none;
+    }
+    html.i18n-ready #i18nSplash { display: none; }
+    .i18n-spinner {
+      width: 28px;
+      height: 28px;
+      border: 2px solid color-mix(in srgb, #4cafb1 35%, #1a1a1a);
+      border-top-color: #4cafb1;
+      border-radius: 50%;
+      animation: i18n-spin 0.7s linear infinite;
+    }
+    @keyframes i18n-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .i18n-spinner { animation: none; border-top-color: #4cafb1; opacity: 0.85; }
+    }
+    /* Chrome: ghost / empty clicks during & shortly after View Transitions */
+    html.vt-block,
+    html.vt-block * {
+      pointer-events: none !important;
+    }
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation-duration: 0.2s;
+      animation-timing-function: ease;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      ::view-transition-group(*),
+      ::view-transition-old(*),
+      ::view-transition-new(*) {
+        animation: none !important;
+      }
+    }
+  </style>
   <style>
     @font-face {
       font-family: "Martian Mono";
@@ -1818,6 +1869,9 @@
   </style>
 </head>
 <body>
+  <div id="i18nSplash" role="status" aria-live="polite" aria-busy="true">
+    <div class="i18n-spinner" aria-hidden="true"></div>
+  </div>
   <button type="button" class="fab-push" id="btnPush" data-i18n-title="push.fabTitle" title="Push the active preset to the Faderpunk">
     <span class="fab-face" aria-hidden="true"></span>
     <span class="fab-lines"><span data-i18n="push.fabLine1">Push</span><span data-i18n="push.fabLine2">to Punk</span></span>
@@ -2104,8 +2158,83 @@
   </div>
 
   <script>
+    /* Localize static chrome immediately (before the large app script parses). */
+    try {
+      applyI18n();
+      document.documentElement.classList.add("i18n-ready");
+      document.documentElement.classList.remove("i18n-pending");
+      const splash = document.getElementById("i18nSplash");
+      if (splash) splash.setAttribute("aria-busy", "false");
+    } catch (e) {
+      console.warn("i18n boot", e);
+      document.documentElement.classList.add("i18n-ready");
+      document.documentElement.classList.remove("i18n-pending");
+    }
+  </script>
+  <script>
     /** Bump with package.json version when tagging releases */
     const APP_VERSION = "0.1.0";
+
+    /** Reveal UI once static chrome is localized (avoids EN→DE/FR flicker). */
+    function markI18nReady() {
+      applyI18n();
+      const html = document.documentElement;
+      html.classList.add("i18n-ready");
+      html.classList.remove("i18n-pending");
+      const splash = document.getElementById("i18nSplash");
+      if (splash) splash.setAttribute("aria-busy", "false");
+    }
+
+    /** Snapshot of editor-only visibility — VT when this changes (dep params). */
+    function depsSignature(row) {
+      if (!row) return "";
+      const d = paramDeps(row);
+      const hide = [...d.hide].sort((a, b) => a - b).join(",");
+      const slots = (d.echolotChSlots || []).join(",");
+      const labels = [...d.labels.entries()]
+        .map(([k, v]) => `${k}:${v}`)
+        .sort()
+        .join(",");
+      return `${hide}|${slots}|${d.echolotCcMode || ""}|${labels}`;
+    }
+
+    /**
+     * View Transition wrapper. Blocks pointer events during + short grace after
+     * to avoid Chrome "empty click" / ghost hits on the old snapshot.
+     */
+    async function withViewTransition(update) {
+      const reduce =
+        typeof matchMedia === "function" &&
+        matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const canVt =
+        !reduce && typeof document.startViewTransition === "function";
+      if (!canVt) {
+        update();
+        return;
+      }
+      const html = document.documentElement;
+      const swallow = (ev) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+      };
+      html.classList.add("vt-block");
+      document.addEventListener("click", swallow, true);
+      document.addEventListener("pointerdown", swallow, true);
+      document.addEventListener("pointerup", swallow, true);
+      try {
+        const vt = document.startViewTransition(() => {
+          update();
+        });
+        await vt.finished;
+      } catch {
+        /* aborted / unsupported mid-flight */
+      }
+      await new Promise((r) => setTimeout(r, 90));
+      document.removeEventListener("click", swallow, true);
+      document.removeEventListener("pointerdown", swallow, true);
+      document.removeEventListener("pointerup", swallow, true);
+      html.classList.remove("vt-block");
+    }
 
     /** In-page dialog — native confirm/alert often auto-dismiss in Cursor/embedded browsers */
     function uiConfirm(message, { title = t("modal.confirm"), ok = t("modal.continue"), cancel = t("modal.stop") } = {}) {
@@ -2245,7 +2374,7 @@
       super_lfo: { id: 32, channels: 2, label: "Super LFO" },
       echolot: { id: 33, channels: 1, label: "Echolot" },
       arp_de_levy: { id: 34, channels: 1, label: "Arp de Lévy" },
-      vamp: { id: 35, channels: 1, label: "MIDI Vamp" },
+      vamp: { id: 35, channels: 1, label: "Chord Vamp" },
     };
 
     const APP_ORDER = Object.keys(APPS).sort((a, b) =>
@@ -2869,7 +2998,7 @@
       super_lfo: 11,
       echolot: 15,
       arp_de_levy: 10,
-      vamp: 13,
+      vamp: 16,
     };
 
     function resolveColor(row, idx = 0) {
@@ -3183,10 +3312,12 @@
             i32(100),
           ];
         }
-        // MIDI Vamp: Out, CH, Root, Scale, Genre, Voicing, Velocity,
-        // Auto style, Start mode, Capture length, Color, CV Dest, CV Att
+        // Chord Vamp: Out, CH, Root, Scale, Genre, Voicing, Velocity,
+        // Auto style, Start mode, Capture length, Color,
+        // Jack, Range, V/Oct, CV Dest, CV Att
         case "vamp": {
           const rootN = row.note != null ? rowNoteNum(row) : 48;
+          const jackOut = row.cvJack === "out" || row.cvJack === 0;
           return [
             out,
             ch(c),
@@ -3199,6 +3330,9 @@
             enumVal(row.vampStartMode != null ? row.vampStartMode : 0),
             enumVal(row.vampCapture != null ? row.vampCapture : 1), // 8 bars
             appCol,
+            enumVal(jackOut ? 0 : 1), // default CV In (legacy)
+            range(cvR === "_Neg5_5V" ? cvR : "_0_10V"),
+            vpo(row.vpo === "Buchla" ? "Buchla" : "Standard"),
             enumVal(0),
             i32(100),
           ];
@@ -4227,13 +4361,15 @@
       }
 
       // Shared Jack / Range / CV Dest / CV Att pattern (WIP CV-jack apps).
-      // Jack=Out → Range for the DAC; Dest/Att unused. Jack=In → Dest/Att; Range unused (In is ±5V).
+      // Jack=Out → Range (+ V/Oct when present) for the DAC; Dest/Att unused.
+      // Jack=In → Dest/Att; Range/V/Oct unused (In is ±5V).
       if (
         row.app === "house_pump" ||
         row.app === "heat_pump" ||
         row.app === "grooves" ||
         row.app === "fibonacci_gate" ||
-        row.app === "arp_de_levy"
+        row.app === "arp_de_levy" ||
+        row.app === "vamp"
       ) {
         const cat = catalogApp(row.app);
         const byName = (re) => {
@@ -4246,21 +4382,21 @@
         const rangeI = byName(/^Range$/i);
         const destI = byName(/CV\s*Dest/i);
         const attI = byName(/CV\s*Att/i);
+        const vpoI = (cat?.params || []).findIndex((p) => p?.tag === "VoltPerOct");
         const jack = jackI >= 0 ? schemaEnumIndex(row, jackI) : 0; // 0 Out, 1 In
         if (jack === 0) {
           if (destI >= 0) hide.add(destI);
           if (attI >= 0) hide.add(attI);
         } else {
           if (rangeI >= 0) hide.add(rangeI);
+          if (vpoI >= 0) hide.add(vpoI);
         }
-        return out;
-      }
-
-      if (row.app === "vamp") {
-        // 7 Auto style, 8 Start mode (0 Perform / 1 Auto), 9 Capture length
-        const startMode = schemaEnumIndex(row, 8);
-        if (startMode === 0) hide.add(7); // Auto style only in Auto
-        // Capture length is used by Perform long-press; keep visible in both modes.
+        if (row.app === "vamp") {
+          // 7 Auto style, 8 Start mode (0 Perform / 1 Auto), 9 Capture length
+          const startMode = schemaEnumIndex(row, 8);
+          if (startMode === 0) hide.add(7); // Auto style only in Auto
+          // Capture length used by Perform Shift+Long; keep visible in both modes.
+        }
         return out;
       }
 
@@ -4516,7 +4652,8 @@
       if (
         s.app === "house_pump" ||
         s.app === "heat_pump" ||
-        s.app === "arp_de_levy"
+        s.app === "arp_de_levy" ||
+        s.app === "vamp"
       ) {
         const jackI = cat.params.findIndex((p) => p?.value?.name === "Jack");
         if (jackI >= 0) order = [jackI, ...order.filter((i) => i !== jackI)];
@@ -5603,10 +5740,11 @@
         const i = Number(btn.dataset.tab);
         btn.addEventListener("click", (ev) => {
           if (ev.target.closest("[data-remove]")) return;
+          if (i === active) return;
           syncPresetFromFields();
           active = i;
           syncFieldsFromPreset();
-          render();
+          render({ vt: true });
         });
         btn.addEventListener("dragstart", (ev) => {
           if (ev.target.closest("[data-remove]")) {
@@ -5866,6 +6004,15 @@
     }
 
     function render(opts = {}) {
+      const run = () => renderNow(opts);
+      if (opts.vt) {
+        void withViewTransition(run);
+        return;
+      }
+      run();
+    }
+
+    function renderNow(opts = {}) {
       const sx = window.scrollX;
       const sy = window.scrollY;
       const tableScroll = document.querySelector(".table-scroll");
@@ -6065,6 +6212,7 @@
       const sc = preset();
       const rowRef = sc.rows[i];
       if (!rowRef) return;
+      const beforeDeps = depsSignature(rowRef);
       syncRangePair(el);
       if (k === "sv") {
         const pi = Number(el.dataset.pi);
@@ -6269,7 +6417,10 @@
         ev.type === "input" &&
         (k === "target" || k === "cc" || k === "swingMax" || k === "mixBalance" || k === "echoMaxMs" || k === "sv") &&
         el.tagName === "INPUT";
-      if (!typing) render({ focusHint: focusHintFrom(el) });
+      if (!typing) {
+        const depChanged = beforeDeps !== depsSignature(rowRef);
+        render({ focusHint: focusHintFrom(el), vt: depChanged });
+      }
     }
 
     function fileNameFor(sc) {
@@ -7039,6 +7190,7 @@
     });
 
     async function bootstrap() {
+      markI18nReady();
       document.querySelectorAll(".app-ver").forEach((el) => {
         el.textContent = `v${APP_VERSION}`;
       });
@@ -7059,7 +7211,9 @@
       const langSel = document.getElementById("langSelect");
       if (langSel) {
         langSel.value = getLang();
-        langSel.onchange = () => setLang(langSel.value);
+        langSel.onchange = () => {
+          void withViewTransition(() => setLang(langSel.value));
+        };
       }
       window.afterLangChange = () => {
         applyI18n();
