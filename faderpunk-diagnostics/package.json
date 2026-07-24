@@ -1,0 +1,33 @@
+{
+  "name": "faderpunk-diagnostics",
+  "private": true,
+  "version": "0.1.0",
+  "license": "GPL-3.0",
+  "description": "Live MIDI scope, waveform profile, and audible monitor for Faderpunk apps",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "chrome": "node open-chrome.mjs"
+  },
+  "dependencies": {
+    "@atov/fp-config": "file:../configurator/node_modules/@atov/fp-config",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react-swc": "^3.11.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.3.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild"
+    ]
+  }
+}
