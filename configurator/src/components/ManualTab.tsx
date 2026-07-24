@@ -1592,6 +1592,100 @@ On load, both registers are restored at the next phrase boundary so the recalled
       },
     ],
   },
+  {
+    appId: 32,
+    title: "Arp de Lévy",
+    description:
+      "Lévy-flight generative arpeggiator — evolving phrase, classic arp modes",
+    color: "Rose",
+    icon: "soft-random",
+    params: [
+      "MIDI Channel",
+      "Base Note",
+      "Color",
+      "MIDI Out",
+      "V/Oct",
+      "Bypass quantizer",
+    ],
+    storage: [
+      "Mutation rate",
+      "Texture",
+      "Octave span",
+      "Muted",
+      "Reversed",
+      "Arp mode",
+      "Note pool",
+      "Phrase length",
+    ],
+    text: `Arp de Lévy is a one-channel generative arpeggiator. It keeps a persistent note pool and walks it with **Lévy-flight** steps — mostly small melodic moves (1–3 semitones), occasionally a larger jump (up to an octave) — so the phrase evolves without turning into white-noise pitch. CV (1V/oct, quantized unless **Bypass quantizer**) and MIDI note fire together on each hit. **V/Oct** selects Eurorack 1V/oct or Buchla 1.2V/oct scaling.
+
+#### Mutation and texture
+
+Mutation rate freezes the pool at the bottom and applies more Lévy edits at each phrase boundary as you raise it. Texture jointly moves density (rests), phrase length (from 16 steps down to 4), and swing — sparse/long/swung at the bottom, dense/short/tighter toward the top.
+
+#### Classic arp modes
+
+**Shift + long press** cycles how the pool is read (**Button LED** color):
+
+| Mode | Button LED | Playback |
+| --- | --- | --- |
+| **Up** | App color | Low → high through the pool |
+| **Down** | Orange | High → low |
+| **UpDown** | Yellow | Ascend then descend |
+| **DownUp** | Lime | Descend then ascend |
+| **Random** | Red | Random pool note each step |
+| **Converge** | Pink | Outside of pool inward |
+
+Lévy mutation still rewrites the *pool* over time; the mode only changes playback order through that pool.
+
+#### Gestures
+
+| Control | Action |
+| --- | --- |
+| **Fader** | Mutation rate (0 = freeze loop) |
+| **Shift + Fader** | Texture macro (density + phrase length + swing) |
+| **Button + Fader** | Octave span 1–4 |
+| **Short press** | Reroll pool from base note + reset phrase |
+| **Long press** | Mute (no fader move) |
+| **Shift + short** | Reverse playback |
+| **Shift + long** | Cycle classic arp mode |
+
+#### Faders & LEDs
+
+| Control | Edits | Visual feedback |
+| --- | --- | --- |
+| **Fader** | Mutation | **Top LED** = phrase progress in app color. **Bottom LED** flashes on each hit |
+| **Shift + Fader** | Texture | **Top LED** = texture in **orange** (brighter = denser/shorter) |
+| **Button + Fader** | Octaves | **Top LED** = **blue / cyan / yellow / red** (1 to 4 octaves) |
+| **Button LED** | — | Current arp-mode color; white↔off on reverse; off when muted |
+
+Scenes store the live note pool and phrase length.`,
+    channels: [
+      {
+        jackTitle: "Pitch CV Out",
+        jackDescription:
+          "Pitch CV (1 V/oct or 1.2 V/oct). MIDI note fires in parallel unless muted.",
+        faderTitle: "Mutation rate",
+        faderDescription:
+          "How strongly the note pool Lévy-walks at each phrase boundary. Bottom = frozen loop.",
+        faderPlusShiftTitle: "Texture",
+        faderPlusShiftDescription:
+          "One macro for density (rests), phrase length (from 16 steps down to 4), and swing.",
+        faderPlusFnTitle: "Octave span",
+        faderPlusFnDescription: "How many octaves the pool may cover (1–4).",
+        fnTitle: "Reroll / Mute",
+        fnDescription:
+          "Short press: new note pool from the base note and restart the phrase. Long press: mute the output.",
+        fnPlusShiftTitle: "Reverse / Mode",
+        fnPlusShiftDescription:
+          "Short: reverse playback. Long: cycle Up / Down / UpDown / DownUp / Random / Converge.",
+        ledTop: "Phrase position (app color)",
+        ledTopPlusShift: "Texture amount (orange, brighter = denser/shorter)",
+        ledTopPlusFn: "Octaves — blue / cyan / yellow / red (1–4)",
+        ledBottom: "Flash on each hit",
+      },
+    ],
+  },
 ];
 
 export const ManualTab = () => {
