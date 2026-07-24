@@ -7,8 +7,12 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, quantizer::Pitch, AppIcon, Brightness, ClockDivision, Color,
-    Config, MidiChannel, MidiNote, MidiOut, Note, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    ext::FromValue,
+    latch::LatchLayer,
+    quantizer::Pitch,
+    utils::attenuate_bipolar,
+    AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Note, Param,
+    Range, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 use midly::num::u7;
 
@@ -17,7 +21,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 10;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 /// Reverse gesture LED feedback length (white↔off fade), same as Golden Gate / Heat Pump.
@@ -28,22 +32,32 @@ const MIN_PHRASE: usize = 4;
 const MAX_PHRASE: usize = 16;
 /// Ticks per 16th at 24 PPQN.
 const STEP_DIV: u32 = 6;
-/// Heavy-tailed Lévy step table (semitones). Small moves dominate; rare large jumps.
-const LEVY_STEPS: [i8; 16] = [1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 5, 5, 8, 8, 12];
-
-const MODE_UP: u8 = 0;
-const MODE_DOWN: u8 = 1;
-const MODE_UP_DOWN: u8 = 2;
-const MODE_DOWN_UP: u8 = 3;
-const MODE_RANDOM: u8 = 4;
-const MODE_CONVERGE: u8 = 5;
-const MODE_COUNT: u8 = 6;
+/// Local Lévy table (semitones): mostly 1–3, rare 5.
+const LEVY_LOCAL: [i8; 16] = [1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 5, 5];
+/// Wild Lévy table: small moves still present, large jumps common.
+const LEVY_WILD: [i8; 16] = [1, 2, 3, 3, 5, 5, 7, 8, 8, 10, 12, 12, 14, 17, 19, 24];
 
 const OCT_COLORS: [Color; 4] = [Color::Blue, Color::Cyan, Color::Yellow, Color::Red];
 
+const CV_JACK_OUT: usize = 0;
+const CV_JACK_IN: usize = 1;
+const DEST_MUTATION: usize = 0;
+const DEST_TEXTURE: usize = 1;
+const DEST_REROLL: usize = 2;
+const DEST_COUNT: usize = 3;
+const TRIG_HIGH: u16 = 2458;
+
+fn att_from_pct(pct: i32) -> u16 {
+    ((pct.clamp(0, 100) as u32 * 4095) / 100) as u16
+}
+
+fn mod_u16(base: u16, in_val: u16) -> u16 {
+    (base as i32 + in_val as i32 - 2047).clamp(0, 4095) as u16
+}
+
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Arp de Lévy",
-    "Lévy-flight generative arpeggiator — evolving phrase, classic arp modes",
+    "Lévy-flight generative arpeggiator — evolve, texture, and flight character",
     Color::Rose,
     AppIcon::SoftRandom,
 )
@@ -68,6 +82,23 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::VoltPerOct)
 .add_param(Param::bool {
     name: "Bypass quantizer",
+})
+.add_param(Param::Enum {
+    name: "Jack",
+    variants: &["CV Out", "CV In"],
+})
+.add_param(Param::Range {
+    name: "Range",
+    variants: &[Range::_0_10V, Range::_Neg5_5V],
+})
+.add_param(Param::Enum {
+    name: "CV Dest",
+    variants: &["Evolve", "Texture", "Reroll"],
+})
+.add_param(Param::i32 {
+    name: "CV Att",
+    min: 0,
+    max: 100,
 });
 
 pub struct Params {
@@ -77,6 +108,10 @@ pub struct Params {
     midi_out: MidiOut,
     vpo: VoltPerOct,
     bypass: bool,
+    cv_jack: usize,
+    range: Range,
+    cv_dest: usize,
+    cv_att: i32,
 }
 
 impl Default for Params {
@@ -88,15 +123,29 @@ impl Default for Params {
             midi_out: MidiOut::default(),
             vpo: VoltPerOct::Standard,
             bypass: false,
+            cv_jack: CV_JACK_OUT,
+            range: Range::_0_10V,
+            cv_dest: DEST_MUTATION,
+            cv_att: 100,
         }
     }
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        if values.len() < PARAMS {
+        if values.len() < 6 {
             return None;
         }
+        let (cv_jack, range, cv_dest, cv_att) = if values.len() >= PARAMS {
+            (
+                usize::from_value(values[6]).min(1),
+                Range::from_value(values[7]),
+                usize::from_value(values[8]).min(DEST_COUNT - 1),
+                i32::from_value(values[9]).clamp(0, 100),
+            )
+        } else {
+            (CV_JACK_OUT, Range::_0_10V, DEST_MUTATION, 100)
+        };
         Some(Self {
             midi_channel: MidiChannel::from_value(values[0]),
             note: MidiNote::from_value(values[1]),
@@ -104,6 +153,10 @@ impl AppParams for Params {
             midi_out: MidiOut::from_value(values[3]),
             vpo: VoltPerOct::from_value(values[4]),
             bypass: bool::from_value(values[5]),
+            cv_jack,
+            range,
+            cv_dest,
+            cv_att,
         })
     }
 
@@ -115,22 +168,26 @@ impl AppParams for Params {
         vec.push(self.midi_out.into()).unwrap();
         vec.push(self.vpo.into()).unwrap();
         vec.push(self.bypass.into()).unwrap();
+        vec.push(self.cv_jack.into()).unwrap();
+        vec.push(self.range.into()).unwrap();
+        vec.push(self.cv_dest.into()).unwrap();
+        vec.push(self.cv_att.into()).unwrap();
         vec
     }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Storage {
-    /// Main fader: mutation rate (raw 12-bit).
+    /// Main fader: evolve / mutation rate (raw 12-bit).
     fader_saved: u16,
     /// Shift fader: texture macro (raw 12-bit).
     shift_fader_saved: u16,
-    /// Button+fader: octave span 1..=4 (raw 12-bit).
-    octave_saved: u16,
+    /// Button+fader: Lévy α / flight character (raw 12-bit).
+    alpha_saved: u16,
+    /// Octave span 1..=4 (cycled by Shift+long).
+    octaves: u8,
     muted: bool,
     reversed: bool,
-    /// Classic arp playback mode.
-    mode: u8,
     /// Persistent note pool as MIDI note numbers.
     pool: [u8; POOL_CAP],
     /// How many pool slots are live (mirrors texture-derived length; persisted).
@@ -147,10 +204,10 @@ impl Default for Storage {
         Self {
             fader_saved: 0, // frozen by default
             shift_fader_saved: 2048,
-            octave_saved: 1365, // ~2 octaves
+            alpha_saved: 2048, // balanced flight
+            octaves: 2,
             muted: false,
             reversed: false,
-            mode: MODE_UP,
             pool,
             phrase_len: 8,
         }
@@ -159,8 +216,21 @@ impl Default for Storage {
 
 impl AppStorage for Storage {}
 
-fn octaves_from_value(value: u16) -> u8 {
-    1 + (value / 1024).min(3) as u8
+fn clamp_octaves(o: u8) -> u8 {
+    o.clamp(1, 4)
+}
+
+fn cycle_octaves(o: u8) -> u8 {
+    let o = clamp_octaves(o);
+    if o >= 4 {
+        1
+    } else {
+        o + 1
+    }
+}
+
+fn octave_color(octaves: u8) -> Color {
+    OCT_COLORS[(clamp_octaves(octaves) - 1) as usize]
 }
 
 /// Texture → (density 0..=4095 hit threshold, phrase_len, swing_ticks).
@@ -176,17 +246,6 @@ fn texture_from_value(value: u16) -> (u16, usize, u32) {
     (density, phrase, swing)
 }
 
-fn mode_color(mode: u8, led_color: Color) -> Color {
-    match mode {
-        MODE_DOWN => Color::Orange,
-        MODE_UP_DOWN => Color::Yellow,
-        MODE_DOWN_UP => Color::Lime,
-        MODE_RANDOM => Color::Red,
-        MODE_CONVERGE => Color::Pink,
-        _ => led_color,
-    }
-}
-
 fn base_midi(note: MidiNote) -> u8 {
     u7::from(note).as_int()
 }
@@ -195,9 +254,13 @@ fn clamp_note(n: i16) -> u8 {
     n.clamp(0, 127) as u8
 }
 
-fn levy_delta(die: &Die) -> i8 {
-    let idx = (die.roll() as usize) % LEVY_STEPS.len();
-    let mag = LEVY_STEPS[idx];
+/// α (0..=4095) blends Local→Wild: probability of sampling the wild table.
+fn levy_delta(die: &Die, alpha: u16) -> i8 {
+    let mag = if die.roll() < alpha {
+        LEVY_WILD[(die.roll() as usize) % LEVY_WILD.len()]
+    } else {
+        LEVY_LOCAL[(die.roll() as usize) % LEVY_LOCAL.len()]
+    };
     if die.roll() & 1 == 0 {
         mag
     } else {
@@ -205,12 +268,19 @@ fn levy_delta(die: &Die) -> i8 {
     }
 }
 
-fn mutate_pool(pool: &mut [u8; POOL_CAP], phrase_len: usize, lo: u8, hi: u8, die: &Die) {
+fn mutate_pool(
+    pool: &mut [u8; POOL_CAP],
+    phrase_len: usize,
+    lo: u8,
+    hi: u8,
+    alpha: u16,
+    die: &Die,
+) {
     if phrase_len == 0 {
         return;
     }
     let i = (die.roll() as usize) % phrase_len;
-    let next = clamp_note(pool[i] as i16 + levy_delta(die) as i16);
+    let next = clamp_note(pool[i] as i16 + levy_delta(die, alpha) as i16);
     pool[i] = next.clamp(lo, hi);
 }
 
@@ -225,39 +295,12 @@ fn reroll_pool(pool: &mut [u8; POOL_CAP], phrase_len: usize, lo: u8, hi: u8, die
     }
 }
 
-/// Map playback step → pool index for the classic arp modes.
-fn pool_index(step: usize, len: usize, mode: u8, reversed: bool) -> usize {
+/// Sequential walk through the pool; reverse flips direction.
+fn pool_index(step: usize, len: usize, reversed: bool) -> usize {
     if len == 0 {
         return 0;
     }
-    let i = match mode {
-        MODE_DOWN => len - 1 - (step % len),
-        MODE_UP_DOWN => {
-            let cycle = (len * 2).saturating_sub(2).max(1);
-            let s = step % cycle;
-            if s < len {
-                s
-            } else {
-                cycle - s
-            }
-        }
-        MODE_DOWN_UP => {
-            let cycle = (len * 2).saturating_sub(2).max(1);
-            let s = step % cycle;
-            let up = if s < len { s } else { cycle - s };
-            len - 1 - up
-        }
-        MODE_CONVERGE => {
-            let half = step % len;
-            if half.is_multiple_of(2) {
-                half / 2
-            } else {
-                len - 1 - half / 2
-            }
-        }
-        // UP and RANDOM resolved by caller (RANDOM picks at fire time).
-        _ => step % len,
-    };
+    let i = step % len;
     if reversed {
         len - 1 - i
     } else {
@@ -303,8 +346,21 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_out, midi_chan, base_note, led_color, vpo, bypass) =
-        params.query(|p| (p.midi_out, p.midi_channel, p.note, p.color, p.vpo, p.bypass));
+    let (midi_out, midi_chan, base_note, led_color, vpo, bypass, cv_jack, range, cv_dest, cv_att) =
+        params.query(|p| {
+            (
+                p.midi_out,
+                p.midi_channel,
+                p.note,
+                p.color,
+                p.vpo,
+                p.bypass,
+                p.cv_jack.min(1),
+                p.range,
+                p.cv_dest.min(DEST_COUNT - 1),
+                att_from_pct(p.cv_att),
+            )
+        });
 
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
@@ -312,28 +368,38 @@ pub async fn run(
     let buttons = app.use_buttons();
     let leds = app.use_leds();
     let die = app.use_die();
-    let quantizer = app.use_quantizer(Range::_0_10V, vpo, bypass);
+    let quantizer = app.use_quantizer(range, vpo, bypass);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
-    let cv_jack = app.make_out_jack(0, Range::_0_10V).await;
+    let out_jack = if cv_jack == CV_JACK_OUT {
+        Some(app.make_out_jack(0, range).await)
+    } else {
+        None
+    };
+    let in_jack = if cv_jack == CV_JACK_IN {
+        Some(app.make_in_jack(0, Range::_Neg5_5V).await)
+    } else {
+        None
+    };
+    let glob_cv_val = app.make_global(2047u16);
 
     let (
         fader_saved,
         shift_fader_saved,
-        octave_saved,
+        alpha_saved,
+        octaves_saved,
         muted,
         reversed,
-        mode,
         pool_saved,
         phrase_saved,
     ) = storage.query(|s| {
         (
             s.fader_saved,
             s.shift_fader_saved,
-            s.octave_saved,
+            s.alpha_saved,
+            s.octaves,
             s.muted,
             s.reversed,
-            s.mode,
             s.pool,
             s.phrase_len,
         )
@@ -341,10 +407,10 @@ pub async fn run(
 
     let glob_muted = app.make_global(muted);
     let glob_reversed = app.make_global(reversed);
-    let glob_mode = app.make_global(mode.min(MODE_COUNT - 1));
     let glob_mutation = app.make_global(fader_saved);
     let glob_texture = app.make_global(shift_fader_saved);
-    let glob_octave = app.make_global(octave_saved);
+    let glob_alpha = app.make_global(alpha_saved);
+    let glob_octaves = app.make_global(clamp_octaves(octaves_saved));
     let glob_phrase =
         app.make_global(phrase_saved.clamp(MIN_PHRASE as u8, MAX_PHRASE as u8) as usize);
     let glob_reset = app.make_global(false);
@@ -362,7 +428,9 @@ pub async fn run(
     for n in pool_saved {
         midi.send_note_off(MidiNote::from(n)).await;
     }
-    cv_jack.set_value(0);
+    if let Some(ref jack) = out_jack {
+        jack.set_value(0);
+    }
 
     if muted {
         leds.unset(0, Led::Button);
@@ -370,7 +438,7 @@ pub async fn run(
         leds.set(
             0,
             Led::Button,
-            mode_color(glob_mode.get(), led_color),
+            octave_color(glob_octaves.get()),
             LED_BRIGHTNESS,
         );
     }
@@ -398,16 +466,23 @@ pub async fn run(
                     gate_off_at = None;
                     step = 0;
                     glob_reset.set(false);
-                    cv_jack.set_value(0);
+                    if let Some(ref jack) = out_jack {
+        jack.set_value(0);
+    }
                     leds.unset(0, Led::Top);
                     leds.unset(0, Led::Bottom);
                 }
                 ClockEvent::Tick => {
                     let clkn = ticks() as u32;
-                    let octaves = octaves_from_value(glob_octave.get());
+                    let octaves = clamp_octaves(glob_octaves.get());
                     let lo = base_midi(base_note);
                     let hi = clamp_note(lo as i16 + (octaves as i16) * 12);
-                    let (density, phrase_len, swing) = texture_from_value(glob_texture.get());
+                    let texture_val = if cv_jack == CV_JACK_IN && cv_dest == DEST_TEXTURE {
+                        mod_u16(glob_texture.get(), glob_cv_val.get())
+                    } else {
+                        glob_texture.get()
+                    };
+                    let (density, phrase_len, swing) = texture_from_value(texture_val);
                     glob_phrase.set(phrase_len);
 
                     if glob_reload_pool.get() {
@@ -442,11 +517,12 @@ pub async fn run(
                                 if !glob_muted.get() {
                                     fire_note(
                                         &midi,
-                                        &cv_jack,
+                                        out_jack.as_ref(),
                                         &quantizer,
                                         &leds,
                                         led_color,
                                         vpo,
+                                        range,
                                         raw,
                                         &mut note_on,
                                     )
@@ -464,14 +540,19 @@ pub async fn run(
                             step = 0;
                         }
 
-                        // At phrase boundary: Lévy-mutate according to mutation rate.
+                        // At phrase boundary: Lévy-mutate according to evolve rate + α.
                         if step == 0 {
-                            let mut mutation = glob_mutation.get();
+                            let mut mutation = if cv_jack == CV_JACK_IN && cv_dest == DEST_MUTATION {
+                                mod_u16(glob_mutation.get(), glob_cv_val.get())
+                            } else {
+                                glob_mutation.get()
+                            };
+                            let alpha = glob_alpha.get();
                             let mut changed = false;
                             // Number of mutations scales with fader (0 = freeze).
                             while mutation > 0 {
                                 if die.roll() < mutation {
-                                    mutate_pool(&mut pool, phrase_len, lo, hi, &die);
+                                    mutate_pool(&mut pool, phrase_len, lo, hi, alpha, &die);
                                     changed = true;
                                 }
                                 mutation = mutation.saturating_sub(1024);
@@ -484,13 +565,8 @@ pub async fn run(
                             }
                         }
 
-                        let mode = glob_mode.get();
                         let reversed = glob_reversed.get();
-                        let idx = if mode == MODE_RANDOM {
-                            (die.roll() as usize) % phrase_len.max(1)
-                        } else {
-                            pool_index(step, phrase_len, mode, reversed)
-                        };
+                        let idx = pool_index(step, phrase_len, reversed);
                         let raw = pool[idx].clamp(lo, hi);
 
                         // Density: rest if roll >= density threshold.
@@ -503,11 +579,12 @@ pub async fn run(
                             } else {
                                 fire_note(
                                     &midi,
-                                    &cv_jack,
+                                    out_jack.as_ref(),
                                     &quantizer,
                                     &leds,
                                     led_color,
                                     vpo,
+                                    range,
                                     raw,
                                     &mut note_on,
                                 )
@@ -572,7 +649,7 @@ pub async fn run(
                         leds.set(
                             0,
                             Led::Button,
-                            mode_color(glob_mode.get(), led_color),
+                            octave_color(glob_octaves.get()),
                             LED_BRIGHTNESS,
                         );
                     }
@@ -587,12 +664,17 @@ pub async fn run(
             long_press_fired.set(true);
 
             if buttons.is_shift_pressed() {
-                // Shift + long: cycle classic arp mode.
-                let mode = (glob_mode.get() + 1) % MODE_COUNT;
-                glob_mode.set(mode);
-                storage.modify_and_save(|s| s.mode = mode);
+                // Shift + long: cycle octave span 1→2→3→4.
+                let octaves = cycle_octaves(glob_octaves.get());
+                glob_octaves.set(octaves);
+                storage.modify_and_save(|s| s.octaves = octaves);
                 if !glob_muted.get() {
-                    leds.set(0, Led::Button, mode_color(mode, led_color), LED_BRIGHTNESS);
+                    leds.set(
+                        0,
+                        Led::Button,
+                        octave_color(octaves),
+                        LED_BRIGHTNESS,
+                    );
                 }
             }
         }
@@ -611,11 +693,7 @@ pub async fn run(
             let target_value = match latch_layer {
                 LatchLayer::Main => storage.query(|s| s.fader_saved),
                 LatchLayer::Alt => storage.query(|s| s.shift_fader_saved),
-                LatchLayer::Third => {
-                    // Center of current octave zone (1..=4).
-                    let oct = octaves_from_value(glob_octave.get()).saturating_sub(1);
-                    oct as u16 * 1024 + 512
-                }
+                LatchLayer::Third => storage.query(|s| s.alpha_saved),
             };
 
             if let Some(new_value) = latch.update(faders.get_value(), latch_layer, target_value) {
@@ -635,8 +713,8 @@ pub async fn run(
                     }
                     LatchLayer::Third => {
                         glob_fader_moved.set(true);
-                        glob_octave.set(new_value);
-                        storage.modify_and_save(|s| s.octave_saved = new_value);
+                        glob_alpha.set(new_value);
+                        storage.modify_and_save(|s| s.alpha_saved = new_value);
                     }
                 }
             }
@@ -648,23 +726,23 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let (fader_saved, shift_fader_saved, octave_saved, muted, reversed, mode) =
+                    let (fader_saved, shift_fader_saved, alpha_saved, octaves, muted, reversed) =
                         storage.query(|s| {
                             (
                                 s.fader_saved,
                                 s.shift_fader_saved,
-                                s.octave_saved,
+                                s.alpha_saved,
+                                s.octaves,
                                 s.muted,
                                 s.reversed,
-                                s.mode,
                             )
                         });
                     glob_mutation.set(fader_saved);
                     glob_texture.set(shift_fader_saved);
-                    glob_octave.set(octave_saved);
+                    glob_alpha.set(alpha_saved);
+                    glob_octaves.set(clamp_octaves(octaves));
                     glob_muted.set(muted);
                     glob_reversed.set(reversed);
-                    glob_mode.set(mode.min(MODE_COUNT - 1));
                     let (_, phrase, _) = texture_from_value(shift_fader_saved);
                     glob_phrase.set(phrase);
                     glob_reroll.set(false);
@@ -678,7 +756,7 @@ pub async fn run(
                         leds.set(
                             0,
                             Led::Button,
-                            mode_color(glob_mode.get(), led_color),
+                            octave_color(glob_octaves.get()),
                             LED_BRIGHTNESS,
                         );
                     }
@@ -691,8 +769,23 @@ pub async fn run(
     };
 
     let shift = async {
+        let mut prev_gate_high = false;
         loop {
             app.delay_millis(1).await;
+            if let Some(ref input) = in_jack {
+                let in_val = attenuate_bipolar(input.get_value(), cv_att);
+                glob_cv_val.set(in_val);
+                if cv_dest == DEST_REROLL {
+                    let high = in_val >= TRIG_HIGH;
+                    if high && !prev_gate_high {
+                        glob_reroll.set(true);
+                        glob_reset.set(true);
+                    }
+                    prev_gate_high = high;
+                } else {
+                    prev_gate_high = false;
+                }
+            }
             let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
             {
                 LatchLayer::Alt
@@ -703,7 +796,7 @@ pub async fn run(
             };
             glob_latch_layer.set(latch_active_layer);
 
-            // Layer LED feedback for Alt (texture) / Third (octaves).
+            // Layer LED feedback for Alt (texture) / Third (Lévy α).
             match latch_active_layer {
                 LatchLayer::Alt => {
                     let t = glob_texture.get();
@@ -715,8 +808,13 @@ pub async fn run(
                     );
                 }
                 LatchLayer::Third => {
-                    let oct = octaves_from_value(glob_octave.get()).saturating_sub(1) as usize;
-                    leds.set(0, Led::Top, OCT_COLORS[oct], Brightness::High);
+                    let a = glob_alpha.get();
+                    leds.set(
+                        0,
+                        Led::Top,
+                        Color::Violet,
+                        Brightness::Custom((a / 16) as u8),
+                    );
                 }
                 LatchLayer::Main => {}
             }
@@ -737,7 +835,7 @@ pub async fn run(
                     leds.set(
                         0,
                         Led::Button,
-                        mode_color(glob_mode.get(), led_color),
+                        octave_color(glob_octaves.get()),
                         LED_BRIGHTNESS,
                     );
                 } else if next == 0 && glob_muted.get() {
@@ -757,21 +855,24 @@ pub async fn run(
 #[allow(clippy::too_many_arguments)]
 async fn fire_note(
     midi: &crate::app::MidiOutput,
-    cv_jack: &crate::app::OutJack,
+    cv_jack: Option<&crate::app::OutJack>,
     quantizer: &crate::app::Quantizer,
     leds: &crate::app::Leds<CHANNELS>,
     led_color: Color,
     vpo: VoltPerOct,
+    out_range: Range,
     raw: u8,
     note_on: &mut Option<MidiNote>,
 ) {
     // Quantize via 1V/oct counts derived from the MIDI note, then emit both
     // CV and MIDI (same dual-path idea as GenSeq / Golden Gate pitch modes).
     let pitch = note_to_pitch(raw);
-    let counts = pitch.as_counts(Range::_0_10V, vpo);
+    let counts = pitch.as_counts(out_range, vpo);
     let q = quantizer.get_quantized_note(counts).await;
-    let out_counts = q.as_counts(Range::_0_10V, vpo);
-    cv_jack.set_value(out_counts);
+    let out_counts = q.as_counts(out_range, vpo);
+    if let Some(jack) = cv_jack {
+        jack.set_value(out_counts);
+    }
 
     let midi_n = q.as_midi();
     // Prefer quantized pitch; fall back to raw if bypass leaves us at 0.
