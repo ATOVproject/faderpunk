@@ -7,8 +7,11 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config, MidiCc,
-    MidiChannel, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue,
+    latch::LatchLayer,
+    utils::attenuate_bipolar,
+    AppIcon, Brightness, ClockDivision, Color, Config, MidiCc, MidiChannel, MidiNote, MidiOut,
+    Param, Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -16,7 +19,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 7;
+pub const PARAMS: usize = 11;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 /// Reverse gesture LED feedback length (white↔off fade), same as Heat Pump invert.
@@ -38,6 +41,22 @@ const MODE_PITCH_PHI: u8 = 3;
 
 /// ≈1200·log₂(φ) cents — one golden-ratio frequency step.
 const PHI_CENTS: u32 = 833;
+
+const CV_JACK_OUT: usize = 0;
+const CV_JACK_IN: usize = 1;
+const DEST_DEPTH: usize = 0;
+const DEST_CYCLE: usize = 1;
+const DEST_RESET: usize = 2;
+const DEST_COUNT: usize = 3;
+const TRIG_HIGH: u16 = 2458;
+
+fn att_from_pct(pct: i32) -> u16 {
+    ((pct.clamp(0, 100) as u32 * 4095) / 100) as u16
+}
+
+fn mod_u16(base: u16, in_val: u16) -> u16 {
+    (base as i32 + in_val as i32 - 2047).clamp(0, 4095) as u16
+}
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "Golden Gate",
@@ -72,7 +91,24 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::Enum {
+    name: "Jack",
+    variants: &["CV Out", "CV In"],
+})
+.add_param(Param::Range {
+    name: "Range",
+    variants: &[Range::_0_10V, Range::_Neg5_5V],
+})
+.add_param(Param::Enum {
+    name: "CV Dest",
+    variants: &["Depth", "Cycle", "Reset"],
+})
+.add_param(Param::i32 {
+    name: "CV Att",
+    min: 0,
+    max: 100,
+});
 
 pub struct Params {
     midi_channel: MidiChannel,
@@ -82,13 +118,27 @@ pub struct Params {
     gatel: i32,
     speed: usize,
     color: Color,
+    cv_jack: usize,
+    range: Range,
+    cv_dest: usize,
+    cv_att: i32,
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        if values.len() < PARAMS {
+        if values.len() < 7 {
             return None;
         }
+        let (cv_jack, range, cv_dest, cv_att) = if values.len() >= PARAMS {
+            (
+                usize::from_value(values[7]).min(1),
+                Range::from_value(values[8]),
+                usize::from_value(values[9]).min(DEST_COUNT - 1),
+                i32::from_value(values[10]).clamp(0, 100),
+            )
+        } else {
+            (CV_JACK_OUT, Range::_0_10V, DEST_DEPTH, 100)
+        };
         Some(Self {
             midi_channel: MidiChannel::from_value(values[0]),
             note: MidiNote::from_value(values[1]),
@@ -97,6 +147,10 @@ impl AppParams for Params {
             speed: usize::from_value(values[4]),
             color: Color::from_value(values[5]),
             midi_out: MidiOut::from_value(values[6]),
+            cv_jack,
+            range,
+            cv_dest,
+            cv_att,
         })
     }
 
@@ -109,6 +163,10 @@ impl AppParams for Params {
         vec.push(self.speed.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.cv_jack.into()).unwrap();
+        vec.push(self.range.into()).unwrap();
+        vec.push(self.cv_dest.into()).unwrap();
+        vec.push(self.cv_att.into()).unwrap();
         vec
     }
 }
@@ -261,6 +319,10 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             gatel: 50,
             speed: 0,
             color: Color::Violet,
+            cv_jack: CV_JACK_OUT,
+            range: Range::_0_10V,
+            cv_dest: DEST_DEPTH,
+            cv_att: 100,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -287,17 +349,22 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_out, midi_chan, note, cc, gatel, param_speed, led_color) = params.query(|p| {
-        (
-            p.midi_out,
-            p.midi_channel,
-            p.note,
-            p.cc,
-            p.gatel as u32,
-            p.speed,
-            p.color,
-        )
-    });
+    let (midi_out, midi_chan, note, cc, gatel, param_speed, led_color, cv_jack, range, cv_dest, cv_att) =
+        params.query(|p| {
+            (
+                p.midi_out,
+                p.midi_channel,
+                p.note,
+                p.cc,
+                p.gatel as u32,
+                p.speed,
+                p.color,
+                p.cv_jack.min(1),
+                p.range,
+                p.cv_dest.min(DEST_COUNT - 1),
+                att_from_pct(p.cv_att),
+            )
+        });
 
     let mut clock = app.use_clock();
     let ticks = clock.get_ticker();
@@ -335,13 +402,34 @@ pub async fn run(
             )
         });
 
+    let glob_fader_raw = app.make_global(fader_saved);
+    let glob_cycle_raw = app.make_global(shift_fader_saved);
+    let glob_cv_val = app.make_global(2047u16);
+
     // Both handles address the same port; the hardware mode (GPO vs DAC)
     // follows whichever make_* call ran last. Reconfigured on mode toggle.
-    let cv_jack = app.make_out_jack(0, Range::_0_10V).await;
-    let gate_jack = app.make_gate_jack(0, 4095).await;
-    if is_pitch_mode(out_mode) {
-        app.make_out_jack(0, Range::_0_10V).await;
-        cv_jack.set_value(0);
+    // When Jack=CV In, skip outs entirely (MIDI-first).
+    let cv_out = if cv_jack == CV_JACK_OUT {
+        let j = app.make_out_jack(0, range).await;
+        Some(j)
+    } else {
+        None
+    };
+    let gate_out = if cv_jack == CV_JACK_OUT {
+        Some(app.make_gate_jack(0, 4095).await)
+    } else {
+        None
+    };
+    let cv_in = if cv_jack == CV_JACK_IN {
+        Some(app.make_in_jack(0, Range::_Neg5_5V).await)
+    } else {
+        None
+    };
+    if cv_jack == CV_JACK_OUT && is_pitch_mode(out_mode) {
+        app.make_out_jack(0, range).await;
+        if let Some(ref j) = cv_out {
+            j.set_value(0);
+        }
     }
 
     // make_gate_jack drives the port high on configure; force a known-off
@@ -351,8 +439,10 @@ pub async fn run(
     if is_pitch_mode(out_mode) {
         midi.send_pitch_bend(8192).await;
     }
-    if !is_pitch_mode(out_mode) {
-        gate_jack.set_low().await;
+    if cv_jack == CV_JACK_OUT && !is_pitch_mode(out_mode) {
+        if let Some(ref gate_jack) = gate_out {
+            gate_jack.set_low().await;
+        }
     }
 
     glob_muted.set(muted);
@@ -407,7 +497,7 @@ pub async fn run(
                     step = 0;
                     glob_reset.set(false);
                     if !is_pitch_mode(cached_mode) {
-                        gate_jack.set_low().await;
+                        if let Some(ref gate_jack) = gate_out { gate_jack.set_low().await; }
                     }
                     leds.unset(0, Led::Top);
                     leds.unset(0, Led::Bottom);
@@ -418,12 +508,18 @@ pub async fn run(
                     // Mode changed on the device: reconfigure the jack.
                     let mode = glob_mode.get();
                     if mode != cached_mode {
-                        if is_pitch_mode(mode) {
-                            app.make_out_jack(0, Range::_0_10V).await;
-                            cv_jack.set_value(0);
-                        } else {
-                            app.make_gate_jack(0, 4095).await;
-                            gate_jack.set_low().await;
+                        if cv_jack == CV_JACK_OUT {
+                            if is_pitch_mode(mode) {
+                                app.make_out_jack(0, range).await;
+                                if let Some(ref j) = cv_out {
+                                    j.set_value(0);
+                                }
+                            } else {
+                                app.make_gate_jack(0, 4095).await;
+                                if let Some(ref gate_jack) = gate_out {
+                                    gate_jack.set_low().await;
+                                }
+                            }
                         }
                         // Leaving φ mode: recenter any pitch bend left behind.
                         if cached_mode == MODE_PITCH_PHI {
@@ -454,7 +550,7 @@ pub async fn run(
                         if hit && !glob_muted.get() {
                             match cached_mode {
                                 MODE_GATE_CC => {
-                                    gate_jack.set_high().await;
+                                    if let Some(ref gate_jack) = gate_out { gate_jack.set_high().await; }
                                     midi.send_cc(cc, 4095).await;
                                     cc_on = true;
                                 }
@@ -465,7 +561,7 @@ pub async fn run(
                                         glob_depth.get(),
                                         glob_reversed.get(),
                                     );
-                                    cv_jack.set_value(semis_to_counts(semis));
+                                    if let Some(ref cv_jack) = cv_out { cv_jack.set_value(semis_to_counts(semis)); }
                                     let n = { note }.transpose(semis as i8);
                                     midi.send_note_on(n, 4095).await;
                                     note_on = Some(n);
@@ -478,14 +574,14 @@ pub async fn run(
                                         glob_reversed.get(),
                                     );
                                     let cents = (gap as u32 * PHI_CENTS).min(2400);
-                                    cv_jack.set_value(cents_to_counts(cents));
+                                    if let Some(ref cv_jack) = cv_out { cv_jack.set_value(cents_to_counts(cents)); }
                                     let (n, bend) = note_and_bend(note, cents);
                                     midi.send_pitch_bend(bend).await;
                                     midi.send_note_on(n, 4095).await;
                                     note_on = Some(n);
                                 }
                                 _ => {
-                                    gate_jack.set_high().await;
+                                    if let Some(ref gate_jack) = gate_out { gate_jack.set_high().await; }
                                     midi.send_note_on(note, 4095).await;
                                     note_on = Some(note);
                                 }
@@ -508,7 +604,7 @@ pub async fn run(
                             cc_on = false;
                         }
                         if !is_pitch_mode(cached_mode) {
-                            gate_jack.set_low().await;
+                            if let Some(ref gate_jack) = gate_out { gate_jack.set_low().await; }
                         }
                         leds.set(0, Led::Bottom, led_color, Brightness::Off);
                     }
@@ -580,7 +676,7 @@ pub async fn run(
                         midi.send_note_off(note).await;
                         midi.send_cc(cc, 0).await;
                         if !is_pitch_mode(glob_mode.get()) {
-                            gate_jack.set_low().await;
+                            if let Some(ref gate_jack) = gate_out { gate_jack.set_low().await; }
                         }
                         leds.unset(0, Led::Button);
                         leds.unset(0, Led::Bottom);
@@ -636,6 +732,7 @@ pub async fn run(
             if let Some(new_value) = latch.update(faders.get_value(), latch_layer, target_value) {
                 match latch_layer {
                     LatchLayer::Main => {
+                        glob_fader_raw.set(new_value);
                         glob_depth.set(depth_from_value(new_value));
                         glob_mask.set(build_mask(
                             glob_cycle.get(),
@@ -645,6 +742,7 @@ pub async fn run(
                         storage.modify_and_save(|s| s.fader_saved = new_value);
                     }
                     LatchLayer::Alt => {
+                        glob_cycle_raw.set(new_value);
                         glob_cycle.set(cycle_from_value(new_value));
                         glob_mask.set(build_mask(
                             glob_cycle.get(),
@@ -690,6 +788,8 @@ pub async fn run(
                     if speed_saved <= 2 {
                         glob_speed.set(speed_saved);
                     }
+                    glob_fader_raw.set(fader_saved);
+                    glob_cycle_raw.set(shift_fader_saved);
                     glob_depth.set(depth_from_value(fader_saved));
                     glob_cycle.set(cycle_from_value(shift_fader_saved));
                     glob_mask.set(build_mask(
@@ -719,8 +819,53 @@ pub async fn run(
     };
 
     let shift = async {
+        let mut prev_gate_high = false;
+        let mut last_depth = glob_depth.get();
+        let mut last_cycle = glob_cycle.get();
         loop {
             app.delay_millis(1).await;
+            if let Some(ref input) = cv_in {
+                let in_val = attenuate_bipolar(input.get_value(), cv_att);
+                glob_cv_val.set(in_val);
+                match cv_dest {
+                    DEST_DEPTH => {
+                        let d = depth_from_value(mod_u16(glob_fader_raw.get(), in_val));
+                        if d != last_depth {
+                            last_depth = d;
+                            glob_depth.set(d);
+                            glob_mask.set(build_mask(
+                                glob_cycle.get(),
+                                d,
+                                glob_reversed.get(),
+                            ));
+                        }
+                        prev_gate_high = false;
+                    }
+                    DEST_CYCLE => {
+                        let c = cycle_from_value(mod_u16(glob_cycle_raw.get(), in_val));
+                        if c != last_cycle {
+                            last_cycle = c;
+                            glob_cycle.set(c);
+                            glob_mask.set(build_mask(
+                                c,
+                                glob_depth.get(),
+                                glob_reversed.get(),
+                            ));
+                        }
+                        prev_gate_high = false;
+                    }
+                    DEST_RESET => {
+                        let high = in_val >= TRIG_HIGH;
+                        if high && !prev_gate_high {
+                            glob_reset.set(true);
+                        }
+                        prev_gate_high = high;
+                    }
+                    _ => {
+                        prev_gate_high = false;
+                    }
+                }
+            }
             let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
             {
                 LatchLayer::Alt
