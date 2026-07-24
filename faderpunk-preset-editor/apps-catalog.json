@@ -2696,7 +2696,7 @@
             "variants": [
               "Fixed",
               "Stack",
-              "Pong"
+              "Bounce"
             ]
           }
         },
@@ -2783,13 +2783,13 @@
         {
           "tag": "MidiChannel",
           "value": {
-            "name": "MIDI Out A"
+            "name": "MIDI Out"
           }
         },
         {
           "tag": "MidiChannel",
           "value": {
-            "name": "MIDI Out B"
+            "name": "MIDI Out Pong"
           }
         },
         {

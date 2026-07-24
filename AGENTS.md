@@ -346,6 +346,17 @@ manually in a Chromium browser with a live device connection.
 7. **Atomic ordering**: Use `Ordering::Relaxed` for non-synchronized state, `Acquire`/`Release` for synchronized.
 8. **Web MIDI requirements**: Browser must support Web MIDI with SysEx (Chromium, Firefox); HTTPS required for non-localhost. The user must grant the MIDI/SysEx permission.
 9. **Commit trailers**: One-line conventional-commit messages; do not add a `Co-authored-by: Claude` trailer.
+10. **Preset editor path**: Edit only `faderpunk-preset-editor/` in this repo (branch `add-preset-editor`, or worktree `faderpunk-preset-editor-wt`). Never use the retired standalone `faderpunk-scenes` tree (archived under `~/Projects/_archived/faderpunk-scenes` if present). A stub README may remain at the old path — do not treat it as a workspace root.
+
+## Preset Editor
+
+Local preset-bank UI lives in **`faderpunk-preset-editor/`** (not the Configurator, not `faderpunk-scenes`).
+
+```bash
+cd faderpunk-preset-editor
+npm install && npm start   # http://127.0.0.1:3847/
+npm run chrome             # dedicated Chrome profile
+```
 
 ## File Structure Summary
 

@@ -39,7 +39,7 @@
       --tab: #252525;
       --tab-on: #323232;
       --font: "Martian Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
-      --layout-max: 80rem;
+      --layout-max: calc(80rem + 150px);
       --layout-gutter: 24px;
     }
     * { box-sizing: border-box; }
@@ -839,6 +839,17 @@
       font-size: 11px;
     }
     td .app-extras { display: flex; flex-wrap: wrap; gap: 4px; }
+    td .app-extras.stack {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    td .app-extras .extras-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+    }
     td input[data-k="target"] { width: 7.5rem; max-width: 12rem; }
     .multi-midi {
       display: grid; grid-template-columns: auto auto;
@@ -2794,7 +2805,7 @@
     const APPS_WITH_SPEED = new Set(["lfo", "lfo_plus", "super_lfo"]);
     const APPS_WITH_MIDI_MODE = new Set(["turing", "clkturing"]);
     /** Firmware exposes MidiNote and MidiCc together (not XOR via MidiMode). */
-    const APPS_WITH_NOTE_AND_CC = new Set(["fibonacci_gate", "midi2cv", "echolot"]);
+    const APPS_WITH_NOTE_AND_CC = new Set(["fibonacci_gate", "echolot"]);
     const APPS_WITH_RANGE = new Set([
       "lfo", "lfo_plus", "rnd", "control", "turing", "clkturing", "automator",
       "panner", "cv2midi", "cv2midinote", "follower", "offset_att", "slew", "quantizer",
@@ -2805,10 +2816,10 @@
       "fp_grids", "genseq", "clk_div", "clk_div_plus", "tb3po",
       "grooves", "arp_de_levy", "vamp",
     ]);
-    /** Apps with no MidiCc/MidiNote param at all (firmware CONFIG has neither) —
-     * the CC/Note column doesn't apply, so show it muted instead of a fake "CC". */
+    /** Apps with no MidiCc/MidiNote in the shared column (show —).
+     * midi2cv: Note/CC are mode-dependent and live in app-extras only. */
     const NONE_APPS = new Set([
-      "ad", "seq8", "offset_att", "slew", "follower", "quantizer", "sift",
+      "ad", "seq8", "offset_att", "slew", "follower", "quantizer", "sift", "midi2cv",
     ]);
     function rowMidiMode(row) {
       // Firmware MidiMode: Note (no CC out) | Cc
@@ -3681,8 +3692,16 @@
       row.kind = "note";
     }
 
-    /** Echolot: MIDI In CH, Out A, Out B (+ Note & CC). */
-    const ECHOLOT_CHS = ["In", "OutA", "OutB"];
+    /** Echolot CH labels: Single → Out; Ping-Pong → Out Ping / Out Pong. */
+    function echolotChLabel(row, slot) {
+      if (slot === 0) return "In";
+      const routing =
+        row.app === "echolot" ? schemaEnumIndex(row, 4) : Number(row.echoRouting) || 0;
+      const pingPong = schemaEnumIndex(row, 0) === 0 && routing === 1;
+      if (slot === 1) return pingPong ? "Out Ping" : "Out";
+      if (slot === 2) return "Out Pong";
+      return `CH${slot}`;
+    }
     function echolotChs(row) {
       const base = Math.max(1, Math.min(16, Number(row.ch) || 1));
       const raw = Array.isArray(row.chs) ? row.chs : null;
@@ -3754,15 +3773,24 @@
         return `<div class="multi-midi" title="${escapeAttr(t("midi.groovesChTitle"))}">${rows}</div>`;
       }
       if (s.app === "echolot") {
+        coerceParamDeps(s);
         const chs = echolotChs(s);
-        const rows = ECHOLOT_CHS.map((lab, slot) => {
-          const opts = Array.from({ length: 16 }, (_, i) => {
-            const n = i + 1;
-            return `<option value="${n}" ${chs[slot] === n ? "selected" : ""}>${n}</option>`;
-          }).join("");
-          return `<span class="vm">${lab}</span>
+        const deps = paramDeps(s);
+        const slots = deps.echolotChSlots || [0, 1, 2];
+        if (!slots.length) {
+          return `<span class="led-muted" title="No MIDI channel in this I/O mode">—</span>`;
+        }
+        const rows = slots
+          .map((slot) => {
+            const lab = echolotChLabel(s, slot);
+            const opts = Array.from({ length: 16 }, (_, i) => {
+              const n = i + 1;
+              return `<option value="${n}" ${chs[slot] === n ? "selected" : ""}>${n}</option>`;
+            }).join("");
+            return `<span class="vm">${lab}</span>
             <select data-i="${idx}" data-k="chs" data-slot="${slot}" title="${escapeAttr(t("midi.chLabel", { lab }))}">${opts}</select>`;
-        }).join("");
+          })
+          .join("");
         return `<div class="multi-midi" title="${escapeAttr(t("midi.echolotChTitle"))}">${rows}</div>`;
       }
       // Generic: multiple named MidiChannel params from catalog
@@ -3835,6 +3863,28 @@
             ${noteSelectHtml(idx, n, { key: "ccs", slot, title: t("midi.noteLabel", { lab }) })}`;
         }).join("");
         return `<div class="multi-midi" title="${escapeAttr(t("midi.groovesNoteTitle"))}">${rows}</div>`;
+      }
+      if (s.app === "echolot") {
+        coerceParamDeps(s);
+        const mode = paramDeps(s).echolotCcMode || "none";
+        if (mode === "none") {
+          return `<span class="led-muted" title="No Note/CC in this I/O mode">—</span>`;
+        }
+        ensureNoteAndCc(s);
+        if (mode === "note") {
+          return `<span class="cc-cell"><span class="span">Note</span>
+            ${noteSelectHtml(idx, rowNoteNum(s), { key: "note" })}</span>`;
+        }
+        if (mode === "cc") {
+          return `<span class="cc-cell"><span class="span">CC</span>
+            ${ccValueControlHtml(s, idx, rowCcNum(s), { key: "cc" })}</span>`;
+        }
+        return `<div class="multi-midi" title="MIDI Note + CC">
+          <span class="vm">Note</span>
+          ${noteSelectHtml(idx, rowNoteNum(s), { key: "note" })}
+          <span class="vm">CC</span>
+          ${ccValueControlHtml(s, idx, rowCcNum(s), { key: "cc" })}
+        </div>`;
       }
       if (s.kind === "none") {
         return `<span class="led-muted" title="${escapeAttr(APPS[s.app]?.label || s.app || "")}: kein CC/Note-Parameter">—</span>`;
@@ -4105,6 +4155,179 @@
       return row.schemaValues?.[pi];
     }
 
+    function schemaEnumIndex(row, pi) {
+      const v = schemaValueAt(row, pi);
+      if (v?.tag === "Enum") return Number(v.value) || 0;
+      return 0;
+    }
+
+    /**
+     * Editor-only param visibility / enum filters (firmware still stores full vectors).
+     * Apps opt in here — no libfp dependency metadata required.
+     */
+    function paramDeps(row) {
+      const hide = new Set();
+      const labels = new Map();
+      const enumAllow = new Map();
+      const enumLabels = new Map();
+      /** @type {{ hide: Set<number>, labels: Map<number,string>, enumAllow: Map<number, number[]>, enumLabels: Map<number, Map<number,string>>, echolotChSlots?: number[], echolotCcMode?: 'none'|'note'|'cc'|'both' }} */
+      const out = { hide, labels, enumAllow, enumLabels, echolotChSlots: null, echolotCcMode: null };
+
+      if (row.app === "echolot") {
+        const io = schemaEnumIndex(row, 0); // 0 MIDI→MIDI, 1 MIDI→CV, 2 CV→MIDI
+        const delayMode = schemaEnumIndex(row, 1); // 0 ms, 1 Clock
+        const routing = schemaEnumIndex(row, 4);
+        let signal = schemaEnumIndex(row, 5);
+        if (io === 1) signal = signal === 1 ? 1 : 0;
+        else if (io === 2) signal = signal === 2 ? 2 : 3;
+        else signal = -1;
+
+        if (delayMode !== 0) hide.add(2); // Max delay (ms)
+        if (io !== 0) hide.add(4); // Routing (MIDI→MIDI only)
+        if (io === 0) hide.add(5); // Signal unused
+        else if (io === 1) enumAllow.set(5, [0, 1]); // Pitch | Gate
+        else enumAllow.set(5, [2, 3]); // CV→CC | Gate→Note
+
+        if (io === 0) hide.add(6); // Range (no jack)
+        if ((io === 1 && signal === 1) || (io === 2 && signal === 2)) hide.add(3); // Interval
+
+        if (io === 2) {
+          hide.add(8); // MidiIn
+          hide.add(9); // MIDI In CH
+        }
+        if (io === 1) {
+          hide.add(11); // Out A
+          hide.add(12); // Out B
+          hide.add(13); // CC
+          hide.add(14); // Note
+        }
+        if (io === 0) {
+          hide.add(13);
+          hide.add(14);
+          if (routing !== 1) hide.add(12); // Out Pong only when Routing = Ping-Pong
+        }
+        if (io === 2) {
+          // Firmware CV→MIDI only sends on Out.
+          hide.add(12);
+          if (signal === 2) hide.add(14);
+          if (signal === 3) hide.add(13);
+        }
+
+        // Interval option 2: Bounce (was Pong) — distinct from Routing Ping-Pong / Out Pong.
+        enumLabels.set(3, new Map([[2, "Bounce"]]));
+
+        const slots = [];
+        if (io === 0 || io === 1) slots.push(0); // In
+        if (io === 0 || io === 2) slots.push(1); // Out / Out Ping
+        if (io === 0 && routing === 1) slots.push(2); // Out Pong
+        out.echolotChSlots = slots;
+        out.echolotCcMode =
+          io === 2 && signal === 2 ? "cc" : io === 2 && signal === 3 ? "note" : "none";
+        return out;
+      }
+
+      // Shared Jack / Range / CV Dest / CV Att pattern (WIP CV-jack apps).
+      // Jack=Out → Range for the DAC; Dest/Att unused. Jack=In → Dest/Att; Range unused (In is ±5V).
+      if (
+        row.app === "house_pump" ||
+        row.app === "heat_pump" ||
+        row.app === "grooves" ||
+        row.app === "fibonacci_gate" ||
+        row.app === "arp_de_levy"
+      ) {
+        const cat = catalogApp(row.app);
+        const byName = (re) => {
+          const i = (cat?.params || []).findIndex(
+            (p) => p?.value?.name && re.test(String(p.value.name)),
+          );
+          return i >= 0 ? i : -1;
+        };
+        const jackI = byName(/^Jack$/i);
+        const rangeI = byName(/^Range$/i);
+        const destI = byName(/CV\s*Dest/i);
+        const attI = byName(/CV\s*Att/i);
+        const jack = jackI >= 0 ? schemaEnumIndex(row, jackI) : 0; // 0 Out, 1 In
+        if (jack === 0) {
+          if (destI >= 0) hide.add(destI);
+          if (attI >= 0) hide.add(attI);
+        } else {
+          if (rangeI >= 0) hide.add(rangeI);
+        }
+        return out;
+      }
+
+      if (row.app === "vamp") {
+        // 7 Auto style, 8 Start mode (0 Perform / 1 Auto), 9 Capture length
+        const startMode = schemaEnumIndex(row, 8);
+        if (startMode === 0) hide.add(7); // Auto style only in Auto
+        // Capture length is used by Perform long-press; keep visible in both modes.
+        return out;
+      }
+
+      if (row.app === "midi2cv") {
+        // 0 Mode, 1 Curve, 2 CH, 3 CC, 4 Bend, 5 Note, 6 Color, 7 MidiIn, 8 Vel-on-Gate
+        const mode = schemaEnumIndex(row, 0);
+        const show = new Set([0, 2, 6, 7]);
+        if (mode === 0) {
+          show.add(1);
+          show.add(3);
+        } else if (mode === 4) {
+          show.add(1); // AT uses curve path
+        } else if (mode === 2) {
+          show.add(8);
+        } else if (mode === 5) {
+          show.add(4);
+        } else if (mode === 6) {
+          show.add(5);
+          show.add(8);
+        }
+        for (let i = 0; i <= 8; i++) if (!show.has(i)) hide.add(i);
+        return out;
+      }
+
+      if (row.app === "turing" || row.app === "clkturing") {
+        const mode = rowMidiMode(row);
+        const cat = catalogApp(row.app);
+        (cat?.params || []).forEach((p, i) => {
+          if (p.tag === "MidiCc" && mode === "Note") hide.add(i);
+          if (p.tag === "MidiNote" && mode === "Cc") hide.add(i);
+        });
+        return out;
+      }
+
+      if (row.app === "control") {
+        const buttonMode = schemaEnumIndex(row, 8);
+        // Button Channel / CC unused for Mute
+        if (buttonMode === 0) {
+          hide.add(9);
+          hide.add(10);
+        }
+        // Mute-on-release only for edge-toggle modes
+        if (buttonMode === 2 || buttonMode === 3 || buttonMode === 5) hide.add(4);
+        return out;
+      }
+
+      return out;
+    }
+
+    /** Keep dependent enums / denormalized echo* fields coherent after edits. */
+    function coerceParamDeps(row) {
+      if (!row || !catalogApp(row.app)) return;
+      ensureSchemaValues(row);
+      if (row.app === "echolot") {
+        const io = schemaEnumIndex(row, 0);
+        const sig = schemaEnumIndex(row, 5);
+        if (io === 1 && sig > 1) row.schemaValues[5] = enumVal(0);
+        if (io === 2 && sig < 2) row.schemaValues[5] = enumVal(3);
+        row.echoIo = io;
+        row.echoDelayMode = schemaEnumIndex(row, 1);
+        row.echoMaxMs = Number(schemaValueAt(row, 2)?.value) || row.echoMaxMs || 500;
+        row.echoInterval = schemaEnumIndex(row, 3);
+        row.echoRouting = schemaEnumIndex(row, 4);
+        row.echoSignal = schemaEnumIndex(row, 5);
+      }
+    }
+
     function setSchemaValue(row, pi, value) {
       ensureSchemaValues(row);
       row.schemaValues[pi] = value;
@@ -4122,6 +4345,7 @@
       if (p.tag === "bool" && /bypass|quant/i.test(p.value?.name || "")) {
         row.bypassQ = !!value.value;
       }
+      if (p.tag === "Enum") coerceParamDeps(row);
     }
 
     /** Slider + number + visible min–max for bounded numeric params. */
@@ -4158,17 +4382,22 @@
       });
     }
 
-    function schemaControlHtml(param, value, idx, pi) {
+    function schemaControlHtml(param, value, idx, pi, deps = null) {
       const tag = param.tag;
-      const name = param.value?.name || tag;
+      const name = deps?.labels?.get(pi) || param.value?.name || tag;
       const title = escapeAttr(name);
       if (tag === "Enum") {
-        const cur = Number(value?.value) || 0;
-        const opts = (param.value?.variants || [])
-          .map(
-            (lab, i) =>
-              `<option value="${i}" ${cur === i ? "selected" : ""}>${escapeHtml(lab)}</option>`,
-          )
+        const variants = param.value?.variants || [];
+        const allow = deps?.enumAllow?.get(pi);
+        const indices = allow && allow.length ? allow : variants.map((_, i) => i);
+        const curRaw = Number(value?.value) || 0;
+        const cur = indices.includes(curRaw) ? curRaw : indices[0] || 0;
+        const opts = indices
+          .map((i) => {
+            const override = deps?.enumLabels?.get(pi)?.get(i);
+            const lab = override ?? variants[i] ?? String(i);
+            return `<option value="${i}" ${cur === i ? "selected" : ""}>${escapeHtml(lab)}</option>`;
+          })
           .join("");
         return `<select data-i="${idx}" data-k="sv" data-pi="${pi}" title="${title}">${opts}</select>`;
       }
@@ -4277,16 +4506,47 @@
       const cat = catalogApp(s.app);
       if (!cat) return "";
       ensureSchemaValues(s);
+      coerceParamDeps(s);
       const claimed = schemaClaimedIndices(cat, s);
       const flagIdx = new Set(schemaFlagTags(cat).map((x) => x.i));
+      const deps = paramDeps(s);
       const bits = [];
-      cat.params.forEach((p, pi) => {
-        if (claimed.has(pi) || flagIdx.has(pi)) return;
-        const html = schemaControlHtml(p, s.schemaValues[pi], idx, pi);
-        if (html) bits.push(html);
-      });
+      let order = cat.params.map((_, pi) => pi);
+      // Jack (CV Out/In) first — drives Dest/Att visibility.
+      if (
+        s.app === "house_pump" ||
+        s.app === "heat_pump" ||
+        s.app === "arp_de_levy"
+      ) {
+        const jackI = cat.params.findIndex((p) => p?.value?.name === "Jack");
+        if (jackI >= 0) order = [jackI, ...order.filter((i) => i !== jackI)];
+      }
+      const pushBit = (pi) => {
+        const p = cat.params[pi];
+        if (!p || claimed.has(pi) || flagIdx.has(pi) || deps.hide.has(pi)) return;
+        const html = schemaControlHtml(p, s.schemaValues[pi], idx, pi, deps);
+        if (html) bits.push({ pi, html, name: p.value?.name || "" });
+      };
+      order.forEach(pushBit);
       if (!bits.length) return "";
-      return `<span class="app-extras" title="${escapeAttr("From firmware CONFIG / apps-catalog.json")}">${bits.join("")}</span>`;
+
+      // Grooves: Jack In/Out (+ Dest/Att) on their own row under groove/swing extras.
+      if (s.app === "grooves") {
+        const jackRow = bits.filter((b) =>
+          /^(Jack|CV\s*Dest|CV\s*Att)$/i.test(b.name),
+        );
+        const mainRow = bits.filter(
+          (b) => !/^(Jack|CV\s*Dest|CV\s*Att)$/i.test(b.name),
+        );
+        const mainHtml = mainRow.map((b) => b.html).join("");
+        const jackHtml = jackRow.map((b) => b.html).join("");
+        return `<span class="app-extras stack" title="${escapeAttr("From firmware CONFIG / apps-catalog.json")}">
+          ${mainHtml ? `<span class="extras-row">${mainHtml}</span>` : ""}
+          ${jackHtml ? `<span class="extras-row">${jackHtml}</span>` : ""}
+        </span>`;
+      }
+
+      return `<span class="app-extras" title="${escapeAttr("From firmware CONFIG / apps-catalog.json")}">${bits.map((b) => b.html).join("")}</span>`;
     }
 
     /** Common column for all checkbox-like params (Bypass quantizer, Grid Lock, NRPN, MIDI In, …). */
@@ -4294,10 +4554,12 @@
       const cat = catalogApp(s.app);
       if (cat) {
         ensureSchemaValues(s);
-        const flagParams = schemaFlagTags(cat);
+        coerceParamDeps(s);
+        const deps = paramDeps(s);
+        const flagParams = schemaFlagTags(cat).filter((x) => !deps.hide.has(x.i));
         if (!flagParams.length) return `<span class="led-muted">—</span>`;
         const bits = flagParams.map(({ p, i: pi }) =>
-          schemaControlHtml(p, s.schemaValues[pi], idx, pi),
+          schemaControlHtml(p, s.schemaValues[pi], idx, pi, deps),
         );
         return `<span class="flags-col">${bits.join("")}</span>`;
       }
@@ -4363,7 +4625,16 @@
           : 500;
         const echoInterval = s.echoInterval != null ? Number(s.echoInterval) : 0;
         const echoRouting = s.echoRouting != null ? Number(s.echoRouting) : 0;
-        const echoSignal = s.echoSignal != null ? Number(s.echoSignal) : 0;
+        let echoSignal = s.echoSignal != null ? Number(s.echoSignal) : 0;
+        if (echoIo === 1 && echoSignal > 1) echoSignal = 0;
+        if (echoIo === 2 && echoSignal < 2) echoSignal = 3;
+        const showMaxMs = echoDelayMode === 0;
+        const showRouting = echoIo === 0;
+        const showSignal = echoIo !== 0;
+        const showInterval =
+          echoIo === 0 ||
+          (echoIo === 1 && echoSignal === 0) ||
+          (echoIo === 2 && echoSignal === 3);
         bits.push(`<select data-i="${idx}" data-k="echoIo" title="${escapeAttr(t("param.echoIo"))}">
           <option value="0" ${echoIo === 0 ? "selected" : ""}>MIDI→MIDI</option>
           <option value="1" ${echoIo === 1 ? "selected" : ""}>MIDI→CV</option>
@@ -4373,30 +4644,50 @@
           <option value="0" ${echoDelayMode === 0 ? "selected" : ""}>ms</option>
           <option value="1" ${echoDelayMode === 1 ? "selected" : ""}>Clock</option>
         </select>`);
-        bits.push(rangeFieldHtml({
-          idx,
-          key: "echoMaxMs",
-          value: echoMaxMs,
-          min: 10,
-          max: 2000,
-          label: t("param.echoMaxMs"),
-          title: t("param.echoMaxMsHint"),
-        }));
-        bits.push(`<select data-i="${idx}" data-k="echoInterval" title="${escapeAttr(t("param.echoInterval"))}">
-          <option value="0" ${echoInterval === 0 ? "selected" : ""}>Fixed</option>
-          <option value="1" ${echoInterval === 1 ? "selected" : ""}>Stack</option>
-          <option value="2" ${echoInterval === 2 ? "selected" : ""}>Pong</option>
-        </select>`);
-        bits.push(`<select data-i="${idx}" data-k="echoRouting" title="${escapeAttr(t("param.echoRouting"))}">
-          <option value="0" ${echoRouting === 0 ? "selected" : ""}>Single</option>
-          <option value="1" ${echoRouting === 1 ? "selected" : ""}>Ping-Pong</option>
-        </select>`);
-        bits.push(`<select data-i="${idx}" data-k="echoSignal" title="${escapeAttr(t("param.echoSignal"))}">
-          <option value="0" ${echoSignal === 0 ? "selected" : ""}>Pitch</option>
-          <option value="1" ${echoSignal === 1 ? "selected" : ""}>Gate</option>
-          <option value="2" ${echoSignal === 2 ? "selected" : ""}>CV→CC</option>
-          <option value="3" ${echoSignal === 3 ? "selected" : ""}>Gate→Note</option>
-        </select>`);
+        if (showMaxMs) {
+          bits.push(rangeFieldHtml({
+            idx,
+            key: "echoMaxMs",
+            value: echoMaxMs,
+            min: 10,
+            max: 2000,
+            label: t("param.echoMaxMs"),
+            title: t("param.echoMaxMsHint"),
+          }));
+        }
+        if (showInterval) {
+          bits.push(`<select data-i="${idx}" data-k="echoInterval" title="${escapeAttr(t("param.echoInterval"))}">
+            <option value="0" ${echoInterval === 0 ? "selected" : ""}>Fixed</option>
+            <option value="1" ${echoInterval === 1 ? "selected" : ""}>Stack</option>
+            <option value="2" ${echoInterval === 2 ? "selected" : ""}>Bounce</option>
+          </select>`);
+        }
+        if (showRouting) {
+          bits.push(`<select data-i="${idx}" data-k="echoRouting" title="${escapeAttr(t("param.echoRouting"))}">
+            <option value="0" ${echoRouting === 0 ? "selected" : ""}>Single</option>
+            <option value="1" ${echoRouting === 1 ? "selected" : ""}>Ping-Pong</option>
+          </select>`);
+        }
+        if (showSignal) {
+          const sigOpts =
+            echoIo === 1
+              ? [
+                  [0, "Pitch"],
+                  [1, "Gate"],
+                ]
+              : [
+                  [2, "CV→CC"],
+                  [3, "Gate→Note"],
+                ];
+          bits.push(`<select data-i="${idx}" data-k="echoSignal" title="${escapeAttr(t("param.echoSignal"))}">
+            ${sigOpts
+              .map(
+                ([v, lab]) =>
+                  `<option value="${v}" ${echoSignal === v ? "selected" : ""}>${lab}</option>`,
+              )
+              .join("")}
+          </select>`);
+        }
       }
       if (s.app === "fibonacci_gate") {
         const cur = s.gateSpeed != null ? Number(s.gateSpeed) : 0;

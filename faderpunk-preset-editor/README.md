@@ -4,7 +4,10 @@ Local preset-bank editor for Faderpunk layouts, app parameters, MIDI routing,
 global configuration and instrument definitions.
 
 **Canonical location** inside the Faderpunk repo (`faderpunk-preset-editor/`).
-The older standalone `faderpunk-scenes` repo is deprecated.
+
+The older standalone `faderpunk-scenes` repo is retired. Local copy (if any) lives
+under `~/Projects/_archived/faderpunk-scenes`; a stub at `~/Projects/faderpunk-scenes`
+only points here. Do not run or edit that tree.
 
 The editor ships empty. Use **Pull from Punk** to read the connected device, or
 build a preset manually. Presets are persisted both in browser storage and in
