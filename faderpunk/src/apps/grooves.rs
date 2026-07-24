@@ -7,8 +7,11 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
-    MidiChannel, MidiNote, MidiOut, Param, Range, Value, APP_MAX_PARAMS,
+    ext::FromValue,
+    latch::LatchLayer,
+    utils::attenuate_bipolar,
+    AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param,
+    Range, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -16,7 +19,7 @@ use crate::app::{
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 11;
+pub const PARAMS: usize = 15;
 
 const LED_BRIGHTNESS: Brightness = Brightness::Mid;
 /// Reverse-swing LED feedback (white↔off), same as Heat Pump / Golden Gate.
@@ -29,6 +32,16 @@ const STEPS_PER_BAR: u32 = 16;
 
 const JACK_ANY: u8 = 0;
 const JACK_STACKED: u8 = 1;
+
+const CV_JACK_OUT: usize = 0;
+const CV_JACK_IN: usize = 1;
+
+const DEST_DENSITY: usize = 0;
+const DEST_SWING: usize = 1;
+const DEST_RESET: usize = 2;
+const DEST_COUNT: usize = 3;
+
+const TRIG_HIGH: u16 = 2458;
 
 const NUM_GENRES: usize = 8;
 
@@ -197,7 +210,24 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Rose,
     ],
 })
-.add_param(Param::MidiOut);
+.add_param(Param::MidiOut)
+.add_param(Param::Enum {
+    name: "Jack",
+    variants: &["CV Out", "CV In"],
+})
+.add_param(Param::Range {
+    name: "Range",
+    variants: &[Range::_0_10V, Range::_Neg5_5V],
+})
+.add_param(Param::Enum {
+    name: "CV Dest",
+    variants: &["Density", "Swing", "Reset"],
+})
+.add_param(Param::i32 {
+    name: "CV Att",
+    min: 0,
+    max: 100,
+});
 
 pub struct Params {
     note_kick: MidiNote,
@@ -211,13 +241,27 @@ pub struct Params {
     gatel: i32,
     color: Color,
     midi_out: MidiOut,
+    cv_jack: usize,
+    range: Range,
+    cv_dest: usize,
+    cv_att: i32,
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        if values.len() < PARAMS {
+        if values.len() < 11 {
             return None;
         }
+        let (cv_jack, range, cv_dest, cv_att) = if values.len() >= PARAMS {
+            (
+                usize::from_value(values[11]).min(1),
+                Range::from_value(values[12]),
+                usize::from_value(values[13]).min(DEST_COUNT - 1),
+                i32::from_value(values[14]).clamp(0, 100),
+            )
+        } else {
+            (CV_JACK_OUT, Range::_0_10V, DEST_DENSITY, 100)
+        };
         Some(Self {
             note_kick: MidiNote::from_value(values[0]),
             midi_channel_kick: MidiChannel::from_value(values[1]),
@@ -230,6 +274,10 @@ impl AppParams for Params {
             gatel: i32::from_value(values[8]),
             color: Color::from_value(values[9]),
             midi_out: MidiOut::from_value(values[10]),
+            cv_jack,
+            range,
+            cv_dest,
+            cv_att,
         })
     }
 
@@ -246,8 +294,20 @@ impl AppParams for Params {
         vec.push(self.gatel.into()).unwrap();
         vec.push(self.color.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
+        vec.push(self.cv_jack.into()).unwrap();
+        vec.push(self.range.into()).unwrap();
+        vec.push(self.cv_dest.into()).unwrap();
+        vec.push(self.cv_att.into()).unwrap();
         vec
     }
+}
+
+fn att_from_pct(pct: i32) -> u16 {
+    ((pct.clamp(0, 100) as u32 * 4095) / 100) as u16
+}
+
+fn mod_u16(base: u16, in_val: u16) -> u16 {
+    (base as i32 + in_val as i32 - 2047).clamp(0, 4095) as u16
 }
 
 #[derive(Serialize, Deserialize)]
@@ -395,6 +455,10 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             gatel: 40,
             color: Color::Orange,
             midi_out: MidiOut::default(),
+            cv_jack: CV_JACK_OUT,
+            range: Range::_0_10V,
+            cv_dest: DEST_DENSITY,
+            cv_att: 100,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -433,6 +497,10 @@ pub async fn run(
         swing_max_pct,
         gatel,
         led_color,
+        cv_jack,
+        range,
+        cv_dest,
+        cv_att,
     ) = params.query(|p| {
         (
             p.midi_out,
@@ -446,6 +514,10 @@ pub async fn run(
             p.swing_max_pct.clamp(10, 100),
             p.gatel,
             p.color,
+            p.cv_jack.min(1),
+            p.range,
+            p.cv_dest.min(DEST_COUNT - 1),
+            att_from_pct(p.cv_att),
         )
     });
 
@@ -457,8 +529,19 @@ pub async fn run(
     let midi_kick = app.use_midi_output(midi_out, midi_channel_kick, false);
     let midi_snare = app.use_midi_output(midi_out, midi_channel_snare, false);
     let midi_hats = app.use_midi_output(midi_out, midi_channel_hats, false);
-    let jack = app.make_out_jack(0, Range::_0_10V).await;
-    jack.set_value(0);
+    let out_jack = if cv_jack == CV_JACK_OUT {
+        Some(app.make_out_jack(0, range).await)
+    } else {
+        None
+    };
+    let in_jack = if cv_jack == CV_JACK_IN {
+        Some(app.make_in_jack(0, Range::_Neg5_5V).await)
+    } else {
+        None
+    };
+    if let Some(ref jack) = out_jack {
+        jack.set_value(0);
+    }
 
     let (swing, density, jack_mode, reversed, muted) =
         storage.query(|s| (s.swing, s.density, s.jack_mode, s.reversed, s.muted));
@@ -471,6 +554,7 @@ pub async fn run(
     let glob_genre = app.make_global(genre);
     let glob_muted = app.make_global(muted);
     let glob_reset = app.make_global(false);
+    let glob_cv_val = app.make_global(2047u16);
     let long_press_fired = app.make_global(false);
     let glob_fader_moved = app.make_global(false);
     let glob_latch_layer = app.make_global(LatchLayer::Main);
@@ -515,7 +599,9 @@ pub async fn run(
                         midi_hats.send_note_off(note_hats).await;
                         hats_on = false;
                     }
-                    jack.set_value(0);
+                    if let Some(ref jack) = out_jack {
+                        jack.set_value(0);
+                    }
                     gate_off_at = None;
                     origin_set = false;
                     last_fired_slot = u32::MAX;
@@ -538,9 +624,14 @@ pub async fn run(
                     let slot = pos / SIXTEENTH;
                     let step = (pos / SIXTEENTH) % STEPS_PER_BAR;
                     let phase = pos % SIXTEENTH;
+                    let swing_val = if cv_jack == CV_JACK_IN && cv_dest == DEST_SWING {
+                        mod_u16(glob_swing.get(), glob_cv_val.get())
+                    } else {
+                        glob_swing.get()
+                    };
                     let delay = swing_phase(
                         step,
-                        glob_swing.get(),
+                        swing_val,
                         glob_reversed.get(),
                         glob_swing_max.get(),
                     )
@@ -561,7 +652,9 @@ pub async fn run(
                                 midi_hats.send_note_off(note_hats).await;
                                 hats_on = false;
                             }
-                            jack.set_value(0);
+                            if let Some(ref jack) = out_jack {
+                        jack.set_value(0);
+                    }
                             gate_off_at = None;
                             leds.set(0, Led::Bottom, led_color, Brightness::Off);
                         }
@@ -570,7 +663,11 @@ pub async fn run(
                     // Fire-once guard: a swing/density change mid-window
                     // can't skip a step or fire it twice.
                     if slot != last_fired_slot && !glob_muted.get() {
-                        let density = glob_density.get();
+                        let density = if cv_jack == CV_JACK_IN && cv_dest == DEST_DENSITY {
+                            mod_u16(glob_density.get(), glob_cv_val.get())
+                        } else {
+                            glob_density.get()
+                        };
                         let genre = glob_genre.get().min(NUM_GENRES - 1);
                         let pat = &PATTERNS[genre];
 
@@ -655,7 +752,9 @@ pub async fn run(
                                 } else {
                                     any_pulse_level(do_kick, do_snare, do_hats)
                                 };
-                                jack.set_value(level);
+                                if let Some(ref jack) = out_jack {
+                                    jack.set_value(level);
+                                }
                                 gate_off_at = Some(clkn.wrapping_add(gate_len));
                                 leds.set(0, Led::Bottom, led_color, Brightness::High);
                             }
@@ -718,7 +817,9 @@ pub async fn run(
                     storage.modify_and_save(|s| s.muted = muted);
                     if muted {
                         leds.unset(0, Led::Button);
+                        if let Some(ref jack) = out_jack {
                         jack.set_value(0);
+                    }
                         midi_kick.send_note_off(note_kick).await;
                         midi_snare.send_note_off(note_snare).await;
                         midi_hats.send_note_off(note_hats).await;
@@ -820,8 +921,22 @@ pub async fn run(
     };
 
     let shift = async {
+        let mut prev_gate_high = false;
         loop {
             app.delay_millis(1).await;
+            if let Some(ref input) = in_jack {
+                let in_val = attenuate_bipolar(input.get_value(), cv_att);
+                glob_cv_val.set(in_val);
+                if cv_dest == DEST_RESET {
+                    let high = in_val >= TRIG_HIGH;
+                    if high && !prev_gate_high {
+                        glob_reset.set(true);
+                    }
+                    prev_gate_high = high;
+                } else {
+                    prev_gate_high = false;
+                }
+            }
             let latch_active_layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0)
             {
                 LatchLayer::Alt
