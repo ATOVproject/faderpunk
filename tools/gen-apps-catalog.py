@@ -297,7 +297,7 @@ def main() -> int:
 
     # Sanity: echolot = 15, control = 13
     by_slug = {a["slug"]: a for a in apps}
-    expect = {"echolot": 15, "control": 13, "super_lfo": 11, "grooves": 11}
+    expect = {"echolot": 15, "control": 13, "super_lfo": 11, "grooves": 15, "house_pump": 9, "fibonacci_gate": 11, "arp_de_levy": 10, "vamp": 13}
     for slug, n in expect.items():
         got = len(by_slug.get(slug, {}).get("params", []))
         if got != n:

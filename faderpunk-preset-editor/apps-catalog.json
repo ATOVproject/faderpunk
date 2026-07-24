@@ -2138,147 +2138,6 @@
       ]
     },
     {
-      "id": 28,
-      "slug": "sift",
-      "module": "sift",
-      "channels": 2,
-      "name": "Sift",
-      "description": "Threshold and level sequencer",
-      "color": "Rose",
-      "icon": "SequenceSquare",
-      "params": [
-        {
-          "tag": "i32",
-          "value": {
-            "name": "CV Steps",
-            "min": 1,
-            "max": 32
-          }
-        },
-        {
-          "tag": "i32",
-          "value": {
-            "name": "Gate Steps",
-            "min": 1,
-            "max": 32
-          }
-        },
-        {
-          "tag": "Range",
-          "value": {
-            "name": "Range",
-            "variants": [
-              {
-                "tag": "_0_10V"
-              },
-              {
-                "tag": "_0_5V"
-              },
-              {
-                "tag": "_Neg5_5V"
-              }
-            ]
-          }
-        },
-        {
-          "tag": "Enum",
-          "value": {
-            "name": "Polarity",
-            "variants": [
-              "Positive",
-              "Bipolar",
-              "Negative"
-            ]
-          }
-        },
-        {
-          "tag": "i32",
-          "value": {
-            "name": "Min CV x0.1V",
-            "min": -50,
-            "max": 100
-          }
-        },
-        {
-          "tag": "i32",
-          "value": {
-            "name": "Max CV x0.1V",
-            "min": -50,
-            "max": 100
-          }
-        },
-        {
-          "tag": "Enum",
-          "value": {
-            "name": "Clock Division",
-            "variants": [
-              "4 bars",
-              "2 bars",
-              "1 bar",
-              "1/2",
-              "1/4",
-              "1/8T",
-              "1/8",
-              "1/16T",
-              "1/16",
-              "1/32T",
-              "1/32",
-              "1/64"
-            ]
-          }
-        },
-        {
-          "tag": "i32",
-          "value": {
-            "name": "Gate Length %",
-            "min": 5,
-            "max": 95
-          }
-        },
-        {
-          "tag": "Color",
-          "value": {
-            "name": "Color",
-            "variants": [
-              {
-                "tag": "Blue"
-              },
-              {
-                "tag": "Green"
-              },
-              {
-                "tag": "Rose"
-              },
-              {
-                "tag": "Orange"
-              },
-              {
-                "tag": "Cyan"
-              },
-              {
-                "tag": "Pink"
-              },
-              {
-                "tag": "Violet"
-              },
-              {
-                "tag": "Yellow"
-              }
-            ]
-          }
-        },
-        {
-          "tag": "MidiChannel",
-          "value": {
-            "name": "MIDI Channel"
-          }
-        },
-        {
-          "tag": "MidiOut"
-        }
-      ]
-    },
-    {
       "id": 29,
       "slug": "house_pump",
       "module": "heat_pump",
@@ -2351,6 +2210,35 @@
         },
         {
           "tag": "MidiOut"
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Jack",
+            "variants": [
+              "CV Out",
+              "CV In"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "CV Dest",
+            "variants": [
+              "Depth",
+              "Release",
+              "Duck"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "CV Att",
+            "min": 0,
+            "max": 100
+          }
         }
       ]
     },
@@ -2466,6 +2354,49 @@
         },
         {
           "tag": "MidiOut"
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Jack",
+            "variants": [
+              "CV Out",
+              "CV In"
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "CV Dest",
+            "variants": [
+              "Density",
+              "Swing",
+              "Reset"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "CV Att",
+            "min": 0,
+            "max": 100
+          }
         }
       ]
     },
@@ -2550,6 +2481,49 @@
         },
         {
           "tag": "MidiOut"
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Jack",
+            "variants": [
+              "CV Out",
+              "CV In"
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "CV Dest",
+            "variants": [
+              "Depth",
+              "Cycle",
+              "Reset"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "CV Att",
+            "min": 0,
+            "max": 100
+          }
         }
       ]
     },
@@ -2838,7 +2812,7 @@
       "module": "arp_de_levy",
       "channels": 1,
       "name": "Arp de L\u00e9vy",
-      "description": "L\u00e9vy-flight generative arpeggiator \u2014 evolving phrase, classic arp modes",
+      "description": "L\u00e9vy-flight generative arpeggiator \u2014 evolve, texture, and flight character",
       "color": "Rose",
       "icon": "SoftRandom",
       "params": [
@@ -2896,6 +2870,49 @@
           "tag": "bool",
           "value": {
             "name": "Bypass quantizer"
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Jack",
+            "variants": [
+              "CV Out",
+              "CV In"
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "CV Dest",
+            "variants": [
+              "Evolve",
+              "Texture",
+              "Reroll"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "CV Att",
+            "min": 0,
+            "max": 100
           }
         }
       ]
@@ -3040,6 +3057,24 @@
                 "tag": "Yellow"
               }
             ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "CV Dest",
+            "variants": [
+              "Macro",
+              "Panic"
+            ]
+          }
+        },
+        {
+          "tag": "i32",
+          "value": {
+            "name": "CV Att",
+            "min": 0,
+            "max": 100
           }
         }
       ]

@@ -7,7 +7,7 @@
  * 3) Fresh persistent profile + --remote-debugging-port=9223 (so next push reuses it)
  */
 import { chromium } from "playwright";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync, spawn } from "node:child_process";
@@ -233,112 +233,126 @@ async function recoverConnectionAfterLoad(page) {
   }
 }
 
-const APP_ID_NAME = {
-  1: "Control",
-  2: "LFO",
-  6: "Turing",
-  7: "Turing+",
-  8: "Euclid",
-  9: "Random Triggers",
-  10: "Note Fader",
-  22: "LFO+",
-  23: "FP Grids",
-  24: "TB-3PO",
-  25: "Automator",
-  26: "GenSeq",
-  27: "Bernoulli Gate",
-  28: "Sift",
-  29: "Heat Pump",
-  30: "Grooves",
-  31: "Golden Gate",
-  32: "Super LFO",
-  33: "Arp de Lévy",
-};
-
-/** Fallback: Active-Apps UI → CH16 + Save (falls Validator-Patch nicht greift). */
+/**
+ * Temporary beta workaround (remove when upstream MidiChannel zod is 1–16):
+ * Load Setup rejects value 16 → default [1]. After load, walk every Active-App
+ * MidiChannel input; if the setup wanted 16 there and the UI shows something
+ * else, fill 16 + Save. No per-app name logic.
+ */
 async function fixMidiChannel16AfterLoad(page, setup) {
-  const need = (setup?.layout || []).filter((lay) =>
-    (lay.params || []).some(
-      (p) => p?.tag === "MidiChannel" && Number(p.value?.[0]) === 16,
-    ),
-  );
-  if (!need.length) return;
+  // startChannel (1-based fader) → Set of MidiChannel ordinals that must be 16
+  const want = new Map();
+  for (const lay of setup?.layout || []) {
+    const start = (lay.startChannel ?? 0) + 1;
+    let ord = 0;
+    for (const p of lay.params || []) {
+      if (p?.tag !== "MidiChannel") continue;
+      if (Number(p.value?.[0]) === 16) {
+        if (!want.has(start)) want.set(start, new Set());
+        want.get(start).add(ord);
+      }
+      ord += 1;
+    }
+  }
+  if (!want.size) return;
 
   console.log(
-    `[5c/5] CH16 UI follow-up (backup): ${need.length} app(s)…`,
+    `[5c/5] CH16 UI follow-up (temp): ${[...want.entries()]
+      .map(([s, ords]) => `fader${s}[${[...ords].join(",")}]`)
+      .join(", ")}`,
   );
 
-  const appsTab = page.getByRole("tab", { name: /^apps$/i });
-  if (await appsTab.count()) {
-    await appsTab.first().click().catch(() => {});
+  const deviceTab = page.getByRole("tab", { name: /^device$/i });
+  if (await deviceTab.count()) {
+    await deviceTab.first().click().catch(() => {});
     await page.waitForTimeout(600);
   }
-
-  for (const lay of need) {
-    const start = (lay.startChannel ?? 0) + 1;
-    const name = APP_ID_NAME[lay.appId] || "";
-    const result = await page.evaluate(
-      ({ name, start }) => {
-        const detailsList = [...document.querySelectorAll("form details, details")];
-        const details =
-          detailsList.find((d) => {
-            const t = d.textContent || "";
-            if (!name || !t.includes(name)) return false;
-            // Channel column: "11" or "9-11"
-            return (
-              new RegExp(`(?:^|\\D)${start}(?:-\\d+)?(?:\\D|$)`).test(t) ||
-              detailsList.filter((x) => (x.textContent || "").includes(name))
-                .length === 1
-            );
-          }) || null;
-        if (!details) return { ok: false, reason: `details for ${name}@${start} missing` };
-        details.open = true;
-        const form = details.closest("form") || details.querySelector("form");
-        const inputs = [
-          ...details.querySelectorAll(
-            'input[name^="param-MidiChannel"], input[type="number"]',
-          ),
-        ];
-        const chInputs = inputs.filter((inp) => {
-          if (/param-MidiChannel/i.test(inp.name || "")) return true;
-          const block = inp.closest("div")?.textContent || "";
-          return /MIDI\s*Channel/i.test(block);
-        });
-        const targets = chInputs.length ? chInputs : inputs.slice(0, 1);
-        if (!targets.length) {
-          return { ok: false, reason: "no channel input", nInputs: inputs.length };
-        }
-        const setter = Object.getOwnPropertyDescriptor(
-          HTMLInputElement.prototype,
-          "value",
-        )?.set;
-        for (const inp of targets) {
-          setter?.call(inp, "16");
-          inp.dispatchEvent(new Event("input", { bubbles: true }));
-          inp.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-        const btn =
-          form?.querySelector('button[type="submit"]') ||
-          [...(form?.querySelectorAll("button") || [])].find((b) =>
-            /^Save$/i.test(b.textContent || ""),
-          );
-        if (!btn) return { ok: false, reason: "no save", value: targets[0].value };
-        btn.click();
-        return { ok: true, value: targets[0].value, name };
-      },
-      { name, start },
-    );
-    console.log(
-      result?.ok
-        ? `  → ${name || "app"} fader ${start}: CH16 Save (value “${result.value}”)`
-        : `  ⚠ ${name || "app"} fader ${start}: ${result?.reason || result}`,
-    );
-    await page.waitForTimeout(900);
+  const cancelLayout = page.getByRole("button", { name: /^cancel$/i });
+  if (await cancelLayout.count()) {
+    await cancelLayout.first().click().catch(() => {});
+    await page.waitForTimeout(300);
   }
+
+  const detailsList = page.locator("details");
+  const nDetails = await detailsList.count();
+  let fixed = 0;
+
+  for (let d = 0; d < nDetails; d++) {
+    const row = detailsList.nth(d);
+    const summary = ((await row.locator("summary").innerText().catch(() => "")) || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    // ActiveApp summary: "… CHANNEL 7" / "CHANNELS 3-4"
+    const m = summary.match(/\bCHANNELS?\s+(\d+)(?:\s*-\s*\d+)?/i);
+    if (!m) continue;
+    const start = Number(m[1]);
+    const ords = want.get(start);
+    if (!ords?.size) continue;
+
+    await row.locator("summary").click({ force: true }).catch(() => {});
+    await page.waitForTimeout(150);
+
+    const inputs = row.locator('input[name^="param-MidiChannel"]');
+    const nCh = await inputs.count();
+    if (!nCh) {
+      console.log(`  ⚠ fader ${start}: no param-MidiChannel inputs`);
+      continue;
+    }
+
+    let changed = false;
+    for (const o of ords) {
+      if (o >= nCh) {
+        console.log(`  ⚠ fader ${start}: MidiChannel ordinal ${o} missing (have ${nCh})`);
+        continue;
+      }
+      const inp = inputs.nth(o);
+      const cur = await inp.inputValue().catch(() => "");
+      if (String(cur) === "16") continue;
+      await inp.click({ force: true });
+      await inp.fill("");
+      await inp.fill("16");
+      await inp.blur().catch(() => {});
+      changed = true;
+      console.log(`  → fader ${start} MidiChannel#${o}: “${cur}” → 16`);
+    }
+    if (!changed) continue;
+
+    const save = row
+      .locator('button[type="submit"]')
+      .or(row.getByRole("button", { name: /^save$/i }));
+    await save.first().click({ force: true });
+    await page.waitForTimeout(900);
+    fixed += 1;
+  }
+
+  console.log(
+    fixed
+      ? `  → CH16 follow-up saved ${fixed} app form(s)`
+      : "  ⚠ CH16 follow-up: nothing saved (already 16, or no matching forms)",
+  );
+}
+
+function sanitizeMidiChannelsInSetup(setup) {
+  let fixed = 0;
+  for (const lay of setup?.layout || []) {
+    for (const p of lay.params || []) {
+      if (p?.tag !== "MidiChannel") continue;
+      const raw = Number(p.value?.[0]);
+      const n = Number.isFinite(raw) ? Math.max(1, Math.min(16, raw)) : 1;
+      if (n !== raw) fixed += 1;
+      p.value = [n];
+    }
+  }
+  return fixed;
 }
 
 async function loadSetupOnPage(page) {
   const setupJson = JSON.parse(await readFile(SETUP_PATH, "utf8"));
+  const clamped = sanitizeMidiChannelsInSetup(setupJson);
+  if (clamped) {
+    console.log(`[0/5] Clamped ${clamped} MidiChannel value(s) into 1–16`);
+    await writeFile(SETUP_PATH, JSON.stringify(setupJson), "utf8");
+  }
   const expectedTakeover = setupJson?.config?.takeover_mode?.tag;
   const needsCh16 = layoutHasMidiCh16(setupJson);
   if (expectedTakeover) {
@@ -395,7 +409,7 @@ async function loadSetupOnPage(page) {
 
   // First Load opens Recall-Setup modal
   const chooseLoad = page.getByRole("button", { name: /^load$/i }).first();
-  await chooseLoad.click({ timeout: 10000 });
+  await chooseLoad.click({ timeout: 15000, force: true });
   await page.waitForTimeout(800);
 
   // Modal: ensure app params + global config are recalled (MidiOut lives in app params!)
@@ -431,7 +445,13 @@ async function loadSetupOnPage(page) {
 
   if (needsCh16) {
     try {
-      await fixMidiChannel16AfterLoad(page, setupJson);
+      // Hosted beta still needs this; local with fixed validators should not.
+      // FP_SKIP_CH16_FIX=1 → prove Load Setup alone keeps CH16.
+      if (process.env.FP_SKIP_CH16_FIX !== "1") {
+        await fixMidiChannel16AfterLoad(page, setupJson);
+      } else {
+        console.log("[5c/5] CH16 UI follow-up skipped (FP_SKIP_CH16_FIX=1)");
+      }
       const dropped =
         !(await isOnConfigurator(page)) ||
         (await page

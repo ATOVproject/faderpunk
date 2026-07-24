@@ -2650,6 +2650,17 @@
     /** Firmware AppParams::from_values needs full typed slots — incomplete pull JSON → defaults (CH1). */
     function rawParamsUsable(app, params) {
       if (!Array.isArray(params) || !params.length) return false;
+      const cat = catalogApp(app);
+      // Catalog apps: require exact CONFIG length + tag sequence (rejects
+      // shifted/foreign pulls that still contain MidiOut — e.g. Heat Pump
+      // with a 13-slot Control-shaped Curve blob → ConfigMsgIn serialize fail).
+      if (cat?.params?.length) {
+        if (params.length !== cat.params.length) return false;
+        for (let i = 0; i < cat.params.length; i++) {
+          if (params[i]?.tag !== cat.params[i]?.tag) return false;
+        }
+        return true;
+      }
       const min = APP_PARAM_MIN[app];
       if (min != null && params.length < min) return false;
       const tags = params.map((p) => p?.tag);
@@ -2680,8 +2691,10 @@
       return { tag: "Range", value: { tag } };
     }
     function ch(n) {
-      // Firmware MidiChannel is 1–16 (wire format subtracts 1 internally)
-      return { tag: "MidiChannel", value: [Number(n)] };
+      // Firmware MidiChannel is 1–16 (wire format subtracts 1 internally).
+      // Never emit 0 or >16 — beta Load Setup used to clamp/reject 16 → default 1.
+      const v = Math.max(1, Math.min(16, Number(n)));
+      return { tag: "MidiChannel", value: [Number.isFinite(v) ? v : 1] };
     }
     function cc(n) {
       return { tag: "MidiCc", value: [Number(n)] };
@@ -2838,14 +2851,14 @@
       clkturing: 10, euclid: 6, probatrigger: 5, bernoulli: 6, notefader: 9,
       automator: 7, fp_grids: 13, clk_div: 6, clk_div_plus: 6, genseq: 6,
       tb3po: 4, panner: 10, cv2midi: 6, cv2midinote: 7, midi2cv: 9,
-      fibonacci_gate: 7,
-      grooves: 11,
+      fibonacci_gate: 11,
+      grooves: 15,
       ad: 3, seq8: 14, follower_att: 2, slew: 2, follower: 2, quantizer: 4,
-      house_pump: 6, sift: 11,
+      house_pump: 9, heat_pump: 9, sift: 11,
       super_lfo: 11,
       echolot: 15,
-      arp_de_levy: 6,
-      vamp: 11,
+      arp_de_levy: 10,
+      vamp: 13,
     };
 
     function resolveColor(row, idx = 0) {
@@ -2993,8 +3006,9 @@
           return [range(cvR), ch(c), cc(n), nrpn(false), out];
         case "rnd_plus":
           return [bool(false), ch(c), cc(n), nrpn(false), out, appCol];
+        case "heat_pump":
         case "house_pump":
-          // Color, Range, MIDI CH, MIDI CC, NRPN, MIDI Out (division is device-only)
+          // Color, Range, CH, CC, NRPN, Out, Jack, CV Dest, CV Att
           return [
             appCol,
             range(cvR === "_Neg5_5V" ? cvR : "_0_10V"),
@@ -3002,6 +3016,9 @@
             cc(n),
             nrpn(false),
             out,
+            enumVal(0),
+            enumVal(0),
+            i32(100),
           ];
         case "probatrigger":
           return [ch(c), note(n), i32(40), appCol, out];
@@ -3072,14 +3089,17 @@
         case "clk_div":
         case "clk_div_plus":
           return [ch(c), note(n), i32(40), enumVal(0), appCol, out];
-        // Golden Gate: CH, Note, CC, GATE %, Speed (16th/8th/Quarter), Color, Out
+        // Golden Gate: CH, Note, CC, GATE %, Speed, Color, Out, Jack, Range, CV Dest, CV Att
         case "fibonacci_gate": {
           const gateSpeed = Number.isFinite(Number(row.gateSpeed))
             ? Math.max(0, Math.min(2, Number(row.gateSpeed)))
             : 0;
-          return [ch(c), note(noteN), cc(ccN), i32(40), enumVal(gateSpeed), appCol, out];
+          return [
+            ch(c), note(noteN), cc(ccN), i32(40), enumVal(gateSpeed), appCol, out,
+            enumVal(0), range(cvR === "_Neg5_5V" ? cvR : "_0_10V"), enumVal(0), i32(100),
+          ];
         }
-        // Grooves: Note+CH×3, Groove, Swing max %, GATE %, Color, Out
+        // Grooves: Note+CH×3, Groove, Swing, GATE %, Color, Out, Jack, Range, CV Dest, CV Att
         case "grooves": {
           const notes = groovesNotes(row);
           const chs = groovesChs(row);
@@ -3094,6 +3114,10 @@
             i32(40),
             appCol,
             out,
+            enumVal(0),
+            range(cvR === "_Neg5_5V" ? cvR : "_0_10V"),
+            enumVal(0),
+            i32(100),
           ];
         }
         // Sift: CV Steps, Gate Steps, Range, Polarity, Min CV, Max CV,
@@ -3135,17 +3159,21 @@
             note(noteN),
           ];
         }
-        // Arp de Lévy: CH, Base Note, Color, Out, V/Oct, Bypass quantizer
+        // Arp de Lévy: CH, Base Note, Color, Out, V/Oct, BypassQ, Jack, Range, CV Dest, CV Att
         case "arp_de_levy": {
           const vpoTag = row.vpo === "Buchla" ? "Buchla" : "Standard";
           return [
             ch(c), note(n), appCol, out,
             vpo(vpoTag),
             bool(!!row.bypassQ),
+            enumVal(0),
+            range(cvR === "_Neg5_5V" ? cvR : "_0_10V"),
+            enumVal(0),
+            i32(100),
           ];
         }
         // MIDI Vamp: Out, CH, Root, Scale, Genre, Voicing, Velocity,
-        // Auto style, Start mode, Capture length, Color
+        // Auto style, Start mode, Capture length, Color, CV Dest, CV Att
         case "vamp": {
           const rootN = row.note != null ? rowNoteNum(row) : 48;
           return [
@@ -3160,6 +3188,8 @@
             enumVal(row.vampStartMode != null ? row.vampStartMode : 0),
             enumVal(row.vampCapture != null ? row.vampCapture : 1), // 8 bars
             appCol,
+            enumVal(0),
+            i32(100),
           ];
         }
         case "tb3po": {
@@ -5140,6 +5170,12 @@
           throw new Error(
             t("warn.noMidiOut", { index: presetGlyphFor(sc), id: slot.layoutId, app: appName }),
           );
+        }
+        // Keep MidiChannel in firmware range 1–16 (never 0 / never wrap to 1).
+        for (const p of slot.params) {
+          if (p?.tag !== "MidiChannel") continue;
+          const n = Number(p.value?.[0]);
+          p.value = [Number.isFinite(n) ? Math.max(1, Math.min(16, n)) : 1];
         }
       }
       const g = normalizeGlobal(sc.global);
