@@ -333,9 +333,9 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
                   </div>
                 );
               })}
-              {primaryOut && (
+              {outLanes.length > 0 && (
                 <WaveProfile
-                  ring={primaryOut.ring}
+                  traces={outLanes.map((lane) => ({ ring: lane.ring }))}
                   color={color}
                   dimmed={dimmed || muted}
                   height={64}

@@ -86,50 +86,127 @@ export class SampleRing {
     return bins;
   }
 
-  /** Mean waveform profile: fold samples into `bins` phase buckets via zero-crossings. */
-  profile(bins = 128): Float32Array {
-    const tmp = new Float32Array(this.capacity);
-    const n = this.copyChronological(tmp);
-    const out = new Float32Array(bins);
-    const counts = new Float32Array(bins);
-    if (n < 8) return out;
-
-    const mid = 0.5;
-    const cycles: number[] = [];
-    for (let i = 1; i < n; i++) {
-      if (tmp[i - 1] < mid && tmp[i] >= mid) cycles.push(i);
+  /** Peak in the last `windowMs` (for quiet detection). */
+  recentPeak(windowMs = 8000, now = performance.now()): number {
+    if (this.filled === 0) return 0;
+    const t0 = now - windowMs;
+    const start = (this.write - this.filled + this.capacity) % this.capacity;
+    let peak = 0;
+    for (let i = 0; i < this.filled; i++) {
+      const idx = (start + i) % this.capacity;
+      if (this.times[idx] < t0) continue;
+      if (this.values[idx] > peak) peak = this.values[idx];
     }
-    if (cycles.length < 2) {
-      for (let b = 0; b < bins; b++) {
-        const idx = Math.floor((b / bins) * (n - 1));
-        out[b] = tmp[idx];
-        counts[b] = 1;
-      }
-      return out;
-    }
-
-    for (let c = 0; c < cycles.length - 1; c++) {
-      const a = cycles[c];
-      const b = cycles[c + 1];
-      const len = b - a;
-      if (len < 4) continue;
-      for (let i = 0; i < len; i++) {
-        const bin = Math.min(bins - 1, Math.floor((i / len) * bins));
-        out[bin] += tmp[a + i];
-        counts[bin]++;
-      }
-    }
-    for (let b = 0; b < bins; b++) {
-      if (counts[b] > 0) out[b] /= counts[b];
-    }
-    return out;
+    return peak;
   }
 
   clear() {
     this.write = 0;
     this.filled = 0;
     this.latest = 0;
+    this.lastT = 0;
     this.values.fill(0);
     this.times.fill(0);
   }
+}
+
+const PROFILE_DENSE = 512;
+
+function risingOnsets(tmp: Float32Array, mid: number): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < tmp.length; i++) {
+    if (tmp[i - 1] < mid && tmp[i] >= mid) out.push(i);
+  }
+  return out;
+}
+
+function medianInt(values: number[]): number {
+  if (values.length === 0) return 0;
+  const s = values.slice().sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)] ?? 0;
+}
+
+/**
+ * One avg for every track: time-align outs → optional Σ/Π → mean pulse after each
+ * rising edge (fixed length = median inter-onset). Left = attack, not wall-clock.
+ */
+export function avgOutProfile(
+  rings: SampleRing[],
+  bins = 96,
+  mode: "add" | "mul" = "add",
+  windowMs = 8000,
+): Float32Array {
+  const out = new Float32Array(bins);
+  if (rings.length === 0) return out;
+
+  const dense = new Float32Array(PROFILE_DENSE);
+  const tmp = new Float32Array(PROFILE_DENSE);
+
+  if (rings.length === 1) {
+    rings[0].resampleWindow(dense, windowMs);
+  } else {
+    if (mode === "mul") dense.fill(1);
+    for (const ring of rings) {
+      ring.resampleWindow(tmp, windowMs);
+      if (mode === "add") {
+        for (let i = 0; i < PROFILE_DENSE; i++) {
+          dense[i] = Math.min(1, dense[i] + tmp[i]);
+        }
+      } else {
+        for (let i = 0; i < PROFILE_DENSE; i++) {
+          dense[i] *= tmp[i];
+        }
+      }
+    }
+  }
+
+  let peak = 0;
+  for (let i = 0; i < PROFILE_DENSE; i++) if (dense[i] > peak) peak = dense[i];
+  if (peak < 0.02) return out;
+
+  const mid = Math.max(0.15, peak * 0.4);
+  const onsets = risingOnsets(dense, mid);
+  if (onsets.length === 0) {
+    for (let b = 0; b < bins; b++) {
+      out[b] = dense[Math.floor((b / bins) * (PROFILE_DENSE - 1))];
+    }
+    return out;
+  }
+
+  // Fixed slice after each onset (median IOI). Do NOT stretch each cycle to full
+  // width — that made irregular gates (Golden Gate) look like noise + flat tails.
+  const gaps: number[] = [];
+  for (let i = 0; i < onsets.length - 1; i++) {
+    gaps.push(onsets[i + 1]! - onsets[i]!);
+  }
+  const slice =
+    gaps.length > 0
+      ? Math.max(8, Math.min(PROFILE_DENSE, medianInt(gaps)))
+      : Math.max(8, Math.floor(PROFILE_DENSE / 4));
+
+  const counts = new Float32Array(bins);
+  for (const start of onsets) {
+    if (start + 4 >= PROFILE_DENSE) continue;
+    const len = Math.min(slice, PROFILE_DENSE - start);
+    for (let i = 0; i < len; i++) {
+      const bin = Math.min(bins - 1, Math.floor((i / slice) * bins));
+      out[bin] += dense[start + i]!;
+      counts[bin]++;
+    }
+  }
+
+  for (let b = 0; b < bins; b++) {
+    if (counts[b] > 0) out[b] /= counts[b];
+  }
+  return out;
+}
+
+/** @deprecated use avgOutProfile — kept as alias for call sites. */
+export function combinedOutProfile(
+  rings: SampleRing[],
+  bins = 96,
+  mode: "add" | "mul" = "add",
+  windowMs = 8000,
+): Float32Array {
+  return avgOutProfile(rings, bins, mode, windowMs);
 }

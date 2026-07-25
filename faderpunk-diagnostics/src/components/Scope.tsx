@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
+import { avgOutProfile } from "../audio/sample-ring";
 import type { SampleRing } from "../audio/sample-ring";
 
 const COLOR_MAP: Record<string, string> = {
@@ -192,24 +193,37 @@ export function Scope({
   );
 }
 
-interface ProfileProps {
+interface ProfileTrace {
   ring: SampleRing;
+}
+
+interface ProfileProps {
+  /** Out rings — combined into one avg cycle (sum of time-aligned outs). */
+  traces: ProfileTrace[];
   color: string;
   height?: number;
   dimmed?: boolean;
 }
 
-export function WaveProfile({ ring, color, height = 72, dimmed }: ProfileProps) {
+export function WaveProfile({ traces, color, height = 72, dimmed }: ProfileProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tracesRef = useRef(traces);
+  tracesRef.current = traces;
+  const ringEpoch = String(traces.length);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || tracesRef.current.length === 0) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let raf = 0;
 
     const draw = () => {
+      const active = tracesRef.current;
+      if (active.length === 0) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
@@ -222,10 +236,15 @@ export function WaveProfile({ ring, color, height = 72, dimmed }: ProfileProps) 
       ctx.fillStyle = "#101010";
       ctx.fillRect(0, 0, w, h);
 
-      const profile = ring.profile(96);
+      const rings = active.map((t) => t.ring);
+      const peak = rings.reduce((p, r) => Math.max(p, r.recentPeak(8000)), 0);
+      const quiet = peak < 0.02;
+      const profile = avgOutProfile(rings, 96, "add");
+      const alpha = dimmed ? 0.35 : 1;
+
       ctx.beginPath();
       ctx.strokeStyle = color;
-      ctx.globalAlpha = dimmed ? 0.35 : 1;
+      ctx.globalAlpha = quiet ? alpha * 0.35 : alpha;
       ctx.lineWidth = 2;
       for (let i = 0; i < profile.length; i++) {
         const x = (i / (profile.length - 1)) * w;
@@ -236,16 +255,26 @@ export function WaveProfile({ ring, color, height = 72, dimmed }: ProfileProps) 
       ctx.stroke();
       ctx.globalAlpha = 1;
 
-      ctx.fillStyle = "#9a9a9a";
+      ctx.fillStyle = quiet ? "#6a6a6a" : "#9a9a9a";
       ctx.font = "350 10px 'Martian Mono', ui-monospace, monospace";
-      ctx.fillText("avg cycle", 8, 12);
+      // Left edge = mean attack (onset), not the left of the 8s scope window.
+      const label =
+        rings.length > 1
+          ? quiet
+            ? "avg pulse · Σ · quiet"
+            : "avg pulse · Σ"
+          : quiet
+            ? "avg pulse · quiet"
+            : "avg pulse";
+      ctx.fillText(label, 8, 12);
 
       raf = requestAnimationFrame(draw);
     };
 
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [ring, color, dimmed]);
+  }, [color, dimmed, ringEpoch]);
 
+  if (traces.length === 0) return null;
   return <canvas ref={canvasRef} className="scope profile" style={{ height }} />;
 }
