@@ -1618,9 +1618,9 @@ On load, both registers are restored at the next phrase boundary so the recalled
       "Morph",
       "Skew",
       "Warp",
-      "Character",
+      "PWM",
       "Speed",
-      "CV attenuator",
+      "Rate Mod",
       "Amp",
       "Dest",
       "Reversed",
@@ -1628,14 +1628,15 @@ On load, both registers are restored at the next phrase boundary so the recalled
       "Clocked",
       "Mutes",
     ],
-    text: `Super LFO is a two-channel form LFO: continuous **waveform morph**, **skew / pulse-width asymmetry**, **phase-warp**, rate-linked **character**, and **dual internal oscillators** mixed with Xfade / Min / Max / Sum. Use it when a single shape LFO is too static — morph and warp change the *feel* of the modulation, not just the rate.
+    text: `Super LFO is a two-channel form LFO: continuous **waveform morph**, classic **PWM shape**, soft **skew**, **phase-warp**, internal **rate modulation**, and **dual oscillators** mixed with Xfade / Min / Max / Sum. Use it when a single shape LFO is too static — morph, PWM, and warp change the *feel* of the modulation, not just the rate.
 
 #### Sound / form
 
 - **Morph (Left Fader)** sweeps Sine → Triangle → Saw → Square → Random walk → Sample & hold → Noise. In between nodes you hear blends; chaos nodes (walk / S&H / noise) get more unruly toward the top.
-- **Skew (Button + Left Fader)** leans the waveform’s duty / asymmetry (center ≈ linear; low/high compress one half of the cycle — square-like PW, saw lean, etc.).
+- **Rate Mod (Shift + Left Fader)** sets the depth of an internal slower sine that speeds the LFO up and down (0 = steady rate; full = through-zero wobble around the base speed).
+- **Skew (Button + Left Fader)** soft asymmetry via a power curve (center ≈ linear; low/high compress one half of the cycle).
+- **PWM (Right Fader)** classic pulse-width phase remap (center = 50% duty; low/high lean the pulse). Applies to every morph node, strongest on square-ish shapes.
 - **Phase-Warp (Button + Right Fader)** eases time through the cycle (smoothstep): the wave spends longer near peaks or edges — “rubber” timing without changing the base rate.
-- **Character (Right Fader)** boosts effective skew *and* warp in proportion to the current speed, so faster rates also sound more “bent.” At zero, skew/warp are exactly what you set.
 - **Speed (Shift + Right Fader)** is the LFO rate. Configurator **Speed** (Normal / Slow / Slowest) divides that rate by 1 / 2 / 4 (same idea as stock LFO).
 
 #### Dual oscillators
@@ -1646,23 +1647,23 @@ Configurator **Mix Mode**, **Osc B**, and **Mix balance** set the dual-osc topol
 - **Mix balance** 0–100% (default 50%): 0% = A only, 50% = center, 100% = B only (used by **Xfade**; Min / Max / Sum ignore balance).
 - **Xfade** crossfades A↔B by balance. **Min** / **Max** pick the lower / higher sample (harsher, more gated contours). **Sum** averages A and B (thicker, smoother).
 
-**Amp** is output level — live control only via CV destination Amp (storage default is full).
+**Amp** is output level — live control only via CV destination Amp (storage default is full). CV input attenuation is fixed at full (no live Alt control).
 
 #### Layout
 
 | | Fader | Shift + Fader | Button + Fader |
 | --- | --- | --- | --- |
-| **Left Fader** | Morph | CV attenuator | Skew / PW |
-| **Right Fader** | Character | Speed | Phase-Warp |
+| **Left Fader** | Morph | Rate Mod | Skew |
+| **Right Fader** | PWM | Speed | Phase-Warp |
 
-When you hold Shift and move a fader, the red Shift LED meter follows that fader.
+When you hold Shift and move a fader, the Shift LED meter follows that fader.
 
 #### Faders & LEDs
 
 | Control | Visual feedback |
 | --- | --- |
 | **Left Fader** | **Top** = morph amount; hue sweeps a continuous HSV spectrum (red→…→red) with the Morph fader. **Bottom** = CV in level. **Button** = same morph hue; brightness breathes with the wave (never fully off — mute is still Off; white low when frozen) |
-| **Shift + Left Fader** | **Top** = attenuator in **red**. **Button** = CV-destination color |
+| **Shift + Left Fader** | **Top** = rate-mod depth in **orange**. **Button** = CV-destination color |
 | **Button + Left Fader** | **Top** = skew zone **cyan / pink / violet**. Bottom off |
 | **Right Fader** | **Top / Bottom** = output meter (pos / neg halves) in app color. **Button** = app color, wave brightness |
 | **Shift + Right Fader** | **Top** = speed in **red**. Bottom off |
@@ -1676,7 +1677,7 @@ Gesture flashes (mix mode, clock sync, and similar) temporarily take over Button
 | --- | --- |
 | **Left short press** | Freeze (hold phase + output) |
 | **Left long press** | Mute CV in |
-| **Shift + Left short press** | Cycle CV destination (Speed / Phase / Amp / Reset / Morph / Skew / Warp / Character) |
+| **Shift + Left short press** | Cycle CV destination (Speed / Phase / Amp / Reset / Morph / Skew / Warp / PWM / Rate Mod) |
 | **Shift + Left long press** | Cycle dual-osc mix mode (persists to Mix Mode) |
 | **Right short press** | Phase reset |
 | **Right long press** | Mute CV out |
@@ -1686,7 +1687,7 @@ Gesture flashes (mix mode, clock sync, and similar) temporarily take over Button
 
 #### Patching
 
-There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, another LFO, or this app’s own Out→In) and set destination to Morph, Warp, or another CV destination to sculpt form from CV.`,
+There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, another LFO, or this app’s own Out→In) and set destination to Morph, Warp, PWM, Rate Mod, or another CV destination to sculpt form from CV.`,
     channels: [
       {
         jackTitle: "CV In",
@@ -1694,11 +1695,11 @@ There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, anot
         faderTitle: "Morph",
         faderDescription:
           "Blend Sine → Triangle → Saw → Square → Walk → S&H → Noise.",
-        faderPlusShiftTitle: "CV attenuator",
-        faderPlusShiftDescription: "How much the CV input affects the chosen destination.",
-        faderPlusFnTitle: "Skew / PW",
-        faderPlusFnDescription:
-          "Leans waveform asymmetry / pulse width (center ≈ linear).",
+        faderPlusShiftTitle: "Rate Mod",
+        faderPlusShiftDescription:
+          "Depth of internal rate wobble (0 = steady; full = faster/slower around base speed).",
+        faderPlusFnTitle: "Skew",
+        faderPlusFnDescription: "Soft waveform asymmetry (center ≈ linear).",
         fnTitle: "Freeze / In mute",
         fnDescription:
           "Short press: freeze phase and output. Long press: mute the CV input.",
@@ -1706,7 +1707,7 @@ There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, anot
         fnPlusShiftDescription:
           "Short: cycle CV destination. Long: cycle dual-osc mix mode.",
         ledTop: "Morph amount (HSV hue sweep with Morph fader)",
-        ledTopPlusShift: "Attenuator level (red)",
+        ledTopPlusShift: "Rate-mod depth (orange)",
         ledTopPlusFn: "Skew zone — cyan / pink / violet",
         ledBottom: "CV input level",
         ledBottomPlusShift: "Off",
@@ -1715,9 +1716,9 @@ There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, anot
       {
         jackTitle: "CV Out",
         jackDescription: "LFO output after dual-osc mix and Amp.",
-        faderTitle: "Character",
+        faderTitle: "PWM",
         faderDescription:
-          "Adds skew and warp in proportion to speed — faster rates sound more bent.",
+          "Pulse-width shape (center = 50% duty; low/high lean the pulse).",
         faderPlusShiftTitle: "Speed",
         faderPlusShiftDescription:
           "LFO rate. Also divided by Configurator Speed (Normal / Slow / Slowest).",
@@ -1725,15 +1726,15 @@ There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, anot
         faderPlusFnDescription:
           "Eases time through the cycle (“rubber” timing without changing base rate).",
         fnTitle: "Reset / Mute",
-        fnDescription:
-          "Short press: reset phase. Long press: mute the output.",
+        fnDescription: "Short press: reset phase. Long press: mute the output.",
         fnPlusShiftTitle: "Reverse / Clock",
         fnPlusShiftDescription:
           "Short: reverse phase. Long: toggle clock sync.",
         ledTop: "Positive half of the output (app color)",
         ledTopPlusShift: "Speed amount (red)",
         ledTopPlusFn: "Warp zone — green / yellow / red",
-        ledBottom: "Low / negative half of the output (always, even in 0–10 V range)",
+        ledBottom:
+          "Low / negative half of the output (always, even in 0–10 V range)",
         ledBottomPlusShift: "Off",
         ledBottomPlusFn: "Off",
       },

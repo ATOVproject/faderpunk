@@ -1,7 +1,7 @@
 //! Super LFO — morphing dual-osc LFO with CV destinations for form params.
 //!
-//! UX: Ch0 Main=Morph / Third=Skew; Ch1 Main=Character / Third=Warp;
-//! structure/time on Shift+Fader (Speed). Heat Pump / Golden Gate family.
+//! UX: Ch0 Main=Morph / Alt=Rate Mod / Third=Skew;
+//! Ch1 Main=PWM / Alt=Speed / Third=Warp. Heat Pump / Golden Gate family.
 
 use embassy_futures::{
     join::{join, join5},
@@ -31,7 +31,9 @@ pub const PARAMS: usize = 11;
 const REVERSE_FADE_MS: u16 = 500;
 /// Hold off periodic button LED writes so LedMode::Flash can finish (~3 cycles @ 60fps).
 const BUTTON_FLASH_MS: u16 = 850;
-const DEST_COUNT: usize = 8;
+const DEST_COUNT: usize = 9;
+/// Secondary LFO rate as a fraction of the primary step (rate-mod wobble).
+const RATE_MOD_RATIO: f32 = 0.125;
 
 /// Morph continuum: soft waves → stepped/chaos.
 /// Indices: 0 Sine, 1 Tri, 2 Saw, 3 Square, 4 Walk, 5 S&H, 6 Noise
@@ -193,7 +195,8 @@ pub struct Storage {
     morph: u16,
     skew: u16,
     warp: u16,
-    character: u16,
+    /// Pulse-width shape (center 2048 = 50% duty). Replaces former Character slot.
+    pwm: u16,
     mix_balance: u16,
     in_att: u16,
     in_mute: bool,
@@ -201,6 +204,8 @@ pub struct Storage {
     out_muted: bool,
     reversed: bool,
     frozen: bool,
+    /// Depth of internal rate modulation (0 = off).
+    rate_mod: u16,
 }
 
 impl Default for Storage {
@@ -212,7 +217,7 @@ impl Default for Storage {
             morph: 0,
             skew: 2048,
             warp: 0,
-            character: 0,
+            pwm: 2048,
             mix_balance: 2048,
             in_att: 4095,
             in_mute: false,
@@ -220,6 +225,7 @@ impl Default for Storage {
             out_muted: false,
             reversed: false,
             frozen: false,
+            rate_mod: 0,
         }
     }
 }
@@ -297,6 +303,7 @@ pub async fn run(
 
     let glob_lfo_speed = app.make_global(0.0682);
     let glob_lfo_pos = app.make_global(0.0);
+    let glob_rate_mod_pos = app.make_global(0.0f32);
     let glob_latch_0 = app.make_global(LatchLayer::Main);
     let glob_latch_1 = app.make_global(LatchLayer::Main);
     let glob_tick = app.make_global(false);
@@ -446,7 +453,8 @@ pub async fn run(
                 morph_base,
                 skew_base,
                 warp_base,
-                character,
+                pwm_base,
+                rate_mod_base,
                 attenuation_base,
             ) = storage.query(|s| {
                 (
@@ -456,7 +464,8 @@ pub async fn run(
                     s.morph,
                     s.skew,
                     s.warp,
-                    s.character,
+                    s.pwm,
+                    s.rate_mod,
                     s.layer_attenuation,
                 )
             });
@@ -470,10 +479,8 @@ pub async fn run(
             let morph = cv_mod_u16(morph_base, destination == 4, cv_delta);
             let skew = cv_mod_u16(skew_base, destination == 5, cv_delta);
             let warp = cv_mod_u16(warp_base, destination == 6, cv_delta);
-            let character = cv_mod_u16(character, destination == 7, cv_delta);
-
-            let layer_speed = storage.query(|s| s.layer_speed);
-            let (eff_skew, eff_warp) = apply_character(skew, warp, character, layer_speed);
+            let pwm = cv_mod_u16(pwm_base, destination == 7, cv_delta);
+            let rate_mod = cv_mod_u16(rate_mod_base, destination == 8, cv_delta);
 
             let lfo_speed = glob_lfo_speed.get();
             let quant_speed = glob_quant_speed.get();
@@ -481,11 +488,25 @@ pub async fn run(
             let clock_held = sync && glob_clock_held.get();
             let held = frozen || clock_held;
 
-            let step = if sync {
+            let base_step = if sync {
                 quant_speed / speed_mult as f32
             } else {
                 lfo_speed / speed_mult as f32
             };
+
+            // Internal rate modulator: sine LFO scales primary step (0 = steady).
+            let mod_pos = glob_rate_mod_pos.get();
+            let mod_next = if held {
+                mod_pos
+            } else {
+                (mod_pos + base_step * RATE_MOD_RATIO) % 4096.0
+            };
+            if !held {
+                glob_rate_mod_pos.set(mod_next);
+            }
+            let mod_bipolar = (Waveform::Sine.at(mod_next as usize) as f32 / 2047.5) - 1.0;
+            let depth = rate_mod as f32 / 4095.0;
+            let step = base_step * (1.0 + depth * mod_bipolar);
 
             let next_pos = if held {
                 lfo_pos
@@ -529,13 +550,13 @@ pub async fn run(
 
             let sample_a = {
                 let mut chaos = glob_chaos.get();
-                let s = morph_sample(phase_a, morph, eff_skew, eff_warp, 0, &mut chaos, &die);
+                let s = morph_sample(phase_a, morph, (skew, warp, pwm), 0, &mut chaos, &die);
                 glob_chaos.set(chaos);
                 s
             };
             let sample_b = {
                 let mut chaos = glob_chaos.get();
-                let s = morph_sample(phase_b, morph, eff_skew, eff_warp, 1, &mut chaos, &die);
+                let s = morph_sample(phase_b, morph, (skew, warp, pwm), 1, &mut chaos, &die);
                 glob_chaos.set(chaos);
                 s
             };
@@ -616,7 +637,7 @@ pub async fn run(
                 }
             }
 
-            // Ch0: Main = morph shape + amount; Alt = red att (if focused); Third = skew zones
+            // Ch0: Main = morph shape + amount; Alt = rate-mod depth; Third = skew zones
             match show_0 {
                 LatchLayer::Main => {
                     let morph_bright = (morph / 16) as u8;
@@ -634,8 +655,8 @@ pub async fn run(
                     }
                 }
                 LatchLayer::Alt => {
-                    let att_bright = (storage.query(|s| s.in_att) / 16) as u8;
-                    leds.set(0, Led::Top, Color::Red, Brightness::Custom(att_bright));
+                    let mod_bright = (storage.query(|s| s.rate_mod) / 16) as u8;
+                    leds.set(0, Led::Top, Color::Orange, Brightness::Custom(mod_bright));
                     leds.unset(0, Led::Bottom);
                     if flash_0 == 0 {
                         leds.set(0, Led::Button, dest_color(destination), Brightness::Mid);
@@ -677,7 +698,7 @@ pub async fn run(
                 }
                 let target_value = match latch_layer {
                     LatchLayer::Main => storage.query(|s| s.morph),
-                    LatchLayer::Alt => storage.query(|s| s.in_att),
+                    LatchLayer::Alt => storage.query(|s| s.rate_mod),
                     LatchLayer::Third => storage.query(|s| s.skew),
                 };
                 if let Some(new_value) =
@@ -689,7 +710,7 @@ pub async fn run(
                         }
                         LatchLayer::Alt => {
                             glob_shift_focus.set(0);
-                            storage.modify_and_save(|s| s.in_att = new_value);
+                            storage.modify_and_save(|s| s.rate_mod = new_value);
                         }
                         LatchLayer::Third => {
                             fader_moved_0.set(true);
@@ -706,7 +727,7 @@ pub async fn run(
                     fader_moved_1.set(true);
                 }
                 let target_value = match latch_layer {
-                    LatchLayer::Main => storage.query(|s| s.character),
+                    LatchLayer::Main => storage.query(|s| s.pwm),
                     LatchLayer::Alt => storage.query(|s| s.layer_speed),
                     LatchLayer::Third => storage.query(|s| s.warp),
                 };
@@ -715,7 +736,7 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            storage.modify_and_save(|s| s.character = new_value);
+                            storage.modify_and_save(|s| s.pwm = new_value);
                         }
                         LatchLayer::Alt => {
                             glob_shift_focus.set(1);
@@ -947,12 +968,16 @@ fn display_latch(edit: LatchLayer, chan: u8, shift_focus: u8) -> LatchLayer {
     }
 }
 
-fn apply_character(skew: u16, warp: u16, character: u16, speed: u16) -> (u16, u16) {
-    let boost = (character as u32 * speed as u32) / 4095;
-    (
-        (skew as u32 + boost).min(4095) as u16,
-        (warp as u32 + boost).min(4095) as u16,
-    )
+fn pwm_phase(phase: usize, pwm: u16) -> usize {
+    // Classic pulse-width phase remap: center (2048) = 50% duty; low/high lean PW.
+    let t = (phase % 4096) as f32 / 4096.0;
+    let pw = (pwm as f32 / 4095.0).clamp(0.02, 0.98);
+    let out = if t < pw {
+        t / pw * 0.5
+    } else {
+        0.5 + (t - pw) / (1.0 - pw) * 0.5
+    };
+    (out.clamp(0.0, 1.0) * 4095.0) as usize
 }
 
 fn warp_phase(phase: usize, warp: u16) -> usize {
@@ -968,7 +993,7 @@ fn warp_phase(phase: usize, warp: u16) -> usize {
 }
 
 fn skew_phase(phase: usize, skew: u16) -> usize {
-    // Center (2048) = linear; low/high lean the duty/asymmetry
+    // Center (2048) = linear; low/high lean soft asymmetry (pow curve)
     let t = (phase % 4096) as f32 / 4096.0;
     let s = (skew as f32 / 4095.0 - 0.5) * 2.0; // -1..1
     let warped = if s >= 0.0 {
@@ -1055,13 +1080,13 @@ fn node_sample(node: usize, phase: usize, osc: usize, chaos: &mut MorphChaos, di
 fn morph_sample(
     phase: usize,
     morph: u16,
-    skew: u16,
-    warp: u16,
+    form: (u16, u16, u16),
     osc: usize,
     chaos: &mut MorphChaos,
     die: &Die,
 ) -> u16 {
-    let p = skew_phase(warp_phase(phase, warp), skew);
+    let (skew, warp, pwm) = form;
+    let p = skew_phase(pwm_phase(warp_phase(phase, warp), pwm), skew);
     let segments = MORPH_NODES - 1;
     let seg_size = 4096 / segments;
     let seg = ((morph as usize) / seg_size).min(segments - 1);
@@ -1117,7 +1142,8 @@ fn dest_color(dest: usize) -> Color {
         4 => Color::Orange, // Morph
         5 => Color::Violet, // Skew
         6 => Color::Green,  // Warp
-        7 => Color::Rose,   // Character
+        7 => Color::Rose,   // PWM
+        8 => Color::Blue,   // Rate Mod
         _ => Color::Yellow,
     }
 }
