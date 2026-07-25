@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { waveRateToCcPitchHz } from "../audio/engine";
+import { formatPc } from "../audio/music";
 import { useDiag } from "../store";
 import { colorCss, Scope } from "./Scope";
 import { TrackPanel } from "./TrackPanel";
@@ -15,7 +15,7 @@ export function AppShell() {
   const tracks = useDiag((s) => s.tracks);
   const focusKey = useDiag((s) => s.focusKey);
   const masterGain = useDiag((s) => s.masterGain);
-  const waveRate = useDiag((s) => s.waveRate);
+  const keyPc = useDiag((s) => s.keyPc);
   const transportRunning = useDiag((s) => s.transportRunning);
   const unmappedLog = useDiag((s) => s.unmappedLog);
   const clockCount = useDiag((s) => s.clockCount);
@@ -30,7 +30,7 @@ export function AppShell() {
   const startDemo = useDiag((s) => s.startDemo);
   const setViewMode = useDiag((s) => s.setViewMode);
   const setMasterGain = useDiag((s) => s.setMasterGain);
-  const setWaveRate = useDiag((s) => s.setWaveRate);
+  const setKeyPc = useDiag((s) => s.setKeyPc);
   const allMuted = tracks.length > 0 && tracks.every((tr) => tr.muted);
   const toggleMuteAll = useDiag((s) => s.toggleMuteAll);
   const panic = useDiag((s) => s.panic);
@@ -41,6 +41,8 @@ export function AppShell() {
   const uniqueMidiChannels = useDiag((s) => s.uniqueMidiChannels);
   const collisions = useDiag((s) => s.collisions);
   const loopbackCount = useDiag((s) => s.loopbackCount);
+  const clockSrc = useDiag((s) => s.clockSrc);
+  const clockBpm = useDiag((s) => s.clockBpm);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -63,7 +65,7 @@ export function AppShell() {
       if (!typing && (e.key === "Enter" || e.code === "Enter")) {
         e.preventDefault();
         if (useDiag.getState().transportRunning) transportStop();
-        else transportStart();
+        else void transportStart();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -166,8 +168,8 @@ export function AppShell() {
               <button
                 type="button"
                 className={transportRunning ? "on" : ""}
-                onClick={transportStart}
-                title="MIDI Start — device follows if Clock Src = MIDI USB"
+                onClick={() => void transportStart()}
+                title="Switch Clock Src to MIDI USB if needed, send Start + host clock ticks"
                 disabled={demo}
               >
                 Start
@@ -244,22 +246,25 @@ export function AppShell() {
 
             <label
               className="slider"
-              title="Pitch for all CC monitors — amplitude follows the envelope (ducks). Notes stay MIDI pitch."
+              title="Musical key for CC / hybrid monitor carriers. Each scope picks a scale degree."
             >
-              <span>CC Hz</span>
+              <span>Key</span>
               <input
                 type="range"
-                min={1}
-                max={30}
-                step={0.5}
-                value={waveRate}
-                onChange={(e) => setWaveRate(Number(e.target.value))}
+                min={0}
+                max={11}
+                step={1}
+                value={keyPc}
+                onChange={(e) => setKeyPc(Number(e.target.value))}
               />
-              <em>{Math.round(waveRateToCcPitchHz(waveRate))} Hz</em>
+              <em>{formatPc(keyPc)}</em>
             </label>
 
             <div className="stats">
               <span>usb {usbOn}/{usbCapable}</span>
+              <span title="Device clock source">
+                clk {clockSrc ?? "?"}@{clockBpm}
+              </span>
               <span>{ccCount} cc</span>
               <span>{noteCount} notes</span>
               <span>{clockCount} clocks</span>
@@ -276,10 +281,10 @@ export function AppShell() {
           )}
 
           <p className="legend">
-            <strong>Enter</strong> MIDI Start/Stop · <strong>Space</strong> mute all / unmute all ·{" "}
-            <strong>Esc</strong> panic · Host always echoes USB-Out → USB-In (no on-device USB
-            loop). Transport needs Clock Src = MIDI USB. If the bus scope is flat but clocks tick,
-            apps need <strong>MidiOut→USB</strong>.
+            <strong>Enter</strong> host Start/Stop (MIDI USB clock) · <strong>Space</strong> mute all /
+            unmute all · <strong>Esc</strong> panic · After Editor push: <strong>Reconnect</strong>{" "}
+            (layout) or Refresh (params). Host echoes USB-Out → USB-In. Flat scopes with clocks
+            ticking → enable <strong>MidiOut→USB</strong> on apps.
           </p>
 
           <main className={`grid mode-${viewMode}`}>

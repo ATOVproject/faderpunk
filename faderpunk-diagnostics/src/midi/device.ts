@@ -236,6 +236,31 @@ export function unbindMidiHandlers(device: DeviceBundle): void {
   }
 }
 
+/** Drop handlers and close every port we opened — full release of the device. */
+export async function releaseDevice(device: DeviceBundle): Promise<void> {
+  unbindMidiHandlers(device);
+  const ports: MIDIPort[] = [
+    device.config.input,
+    device.config.output,
+    ...device.performanceInputs,
+    ...device.performanceOutputs,
+  ];
+  const seen = new Set<string>();
+  await Promise.all(
+    ports.map(async (port) => {
+      if (seen.has(port.id)) return;
+      seen.add(port.id);
+      try {
+        if (port.connection === "open" || port.state === "connected") {
+          await port.close();
+        }
+      } catch {
+        /* already closed / browser quirk */
+      }
+    }),
+  );
+}
+
 export async function sendAndReceive(
   config: ConfigPort,
   msg: ConfigMsgIn,

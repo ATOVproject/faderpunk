@@ -625,6 +625,40 @@ button.on.cmp {
   border: 1px solid #191919;
 }
 
+.scope-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scope-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 2px 2px;
+}
+
+.scope-note select {
+  flex: 1;
+  min-width: 0;
+  max-width: 240px;
+  font: inherit;
+  font-size: 11px;
+  color: #e8e6e1;
+  background: #181818;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 3px 6px;
+}
+
+.scope-note em {
+  font-style: normal;
+  color: var(--fp-cyan);
+  min-width: 2.5ch;
+}
+
 .track-meta {
   display: flex;
   flex-wrap: wrap;

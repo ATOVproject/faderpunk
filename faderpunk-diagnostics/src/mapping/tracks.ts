@@ -21,14 +21,22 @@ export interface TrackMidi {
   usbEnabled: boolean;
   /** Primary out channel (wire identity for scopes). */
   channel: number; // 1–16
-  /** All MidiOut channels (Out A, Out Pong, …). */
+  /** All MidiOut channels (Kick/Snare/Hats, Out A/Pong, …). */
   outChannels: number[];
   /** MidiIn channel when the app has MidiIn + a following MidiChannel. */
   inChannel: number | null;
   /** MidiIn → USB enabled (null = no MidiIn param). */
   inUsb: boolean | null;
   cc: number | null; // 0–127 when CC app
-  noteMode: boolean; // true = primarily notes
+  /**
+   * Primary monitor is notes (MIDI pitch). False = CC envelope at Wave-Hz.
+   * Hybrid apps (note + CC without exclusive MidiMode) keep this true and set playCc.
+   */
+  noteMode: boolean;
+  /** Accept CC/NRPN for scope + CC-Hz voice (Heat Pump, or note+CC hybrids). */
+  playCc: boolean;
+  /** Configured MidiNote values (Kick/Snare/… setup) — for labels / sanity. */
+  setupNotes: number[];
   nrpn: boolean;
 }
 
@@ -73,6 +81,11 @@ function midiModeNote(value: Value | undefined): boolean | null {
   return null;
 }
 
+function midiNoteFromValue(value: Value | undefined): number | null {
+  if (value?.tag === "MidiNote") return Math.max(0, Math.min(127, value.value[0] & 0x7f));
+  return null;
+}
+
 function midiNrpn(value: Value | undefined): boolean {
   return value?.tag === "MidiNrpn" ? value.value : false;
 }
@@ -82,8 +95,8 @@ function midiInUsb(value: Value | undefined): boolean {
   return false;
 }
 
-/** Golden Gate / Heat Pump style: Enum "Mode" with Note|CC|Pitch|… */
-function inferNoteModeFromEnum(params: Param[], values: Value[]): boolean | null {
+/** Golden Gate / Heat Pump / MIDI→CV style: Enum "Mode" with Note|CC|Pitch|… */
+function inferExclusiveModeFromEnum(params: Param[], values: Value[]): boolean | null {
   for (let i = 0; i < params.length; i++) {
     const param = params[i];
     if (param.tag !== "Enum") continue;
@@ -99,30 +112,57 @@ function inferNoteModeFromEnum(params: Param[], values: Value[]): boolean | null
   return null;
 }
 
-function inferNoteMode(params: Param[], values: Value[]): boolean {
+/** Sequencer / drum / clock / generative note apps — notes are the musical output. */
+function nameSuggestsNotes(appName: string): boolean {
+  return /seq|euclid|turing|grids|groove|tb3|bernoulli|trigger|note|clk|gate|echo|arp|vamp|l[eé]vy/i.test(
+    appName,
+  );
+}
+
+/**
+ * Decide note vs CC monitor.
+ * Explicit MidiMode / Enum Mode wins over name heuristics.
+ * When an app exposes both MidiNote and MidiCc without an exclusive mode,
+ * prefer notes (pitch from setup) and still accept CC as secondary (hybrid).
+ */
+function inferMonitorFlags(
+  params: Param[],
+  values: Value[],
+  appName: string,
+): { noteMode: boolean; playCc: boolean } {
   const modeIdx = params.findIndex((p) => p.tag === "MidiMode");
   if (modeIdx >= 0) {
     const explicit = midiModeNote(values[modeIdx]);
-    if (explicit !== null) return explicit;
+    if (explicit !== null) {
+      return { noteMode: explicit, playCc: !explicit };
+    }
   }
-  const fromEnum = inferNoteModeFromEnum(params, values);
-  if (fromEnum !== null) return fromEnum;
+  const fromEnum = inferExclusiveModeFromEnum(params, values);
+  if (fromEnum !== null) {
+    return { noteMode: fromEnum, playCc: !fromEnum };
+  }
 
   const hasCc = params.some((p) => p.tag === "MidiCc");
   const hasNote = params.some((p) => p.tag === "MidiNote");
-  // Apps with MidiIn + MidiNote are note-capable for routing (I/O processors)
   const hasMidiIn = params.some((p) => p.tag === "MidiIn");
-  if (hasMidiIn && hasNote) return true;
-  if (hasNote && !hasCc) return true;
-  if (hasCc && !hasNote) return false;
-  return !hasCc;
+
+  if (hasNote && hasCc) {
+    // Dual output (or dual-capable): notes are the musical event; CC is secondary.
+    return { noteMode: true, playCc: true };
+  }
+  if (hasMidiIn && hasNote) return { noteMode: true, playCc: false };
+  if (hasNote) return { noteMode: true, playCc: false };
+  if (hasCc) return { noteMode: false, playCc: true };
+  if (nameSuggestsNotes(appName)) return { noteMode: true, playCc: false };
+  return { noteMode: false, playCc: true };
 }
 
 /**
  * Parse MIDI I/O from CONFIG order:
  * - MidiChannel after MidiIn → input channel
- * - MidiChannel after MidiOut → output channel (first = main out)
- * - lone MidiChannel (no MidiIn) → output channel (LFO/Control style)
+ * - MidiChannel after MidiOut → output channel(s)
+ * - MidiChannel(s) before MidiOut (or lone) → all are output channels
+ *   (Grooves Kick/Snare/Hats, FP Grids, …)
  */
 function extractMidi(params: Param[], values: Value[], appName: string): TrackMidi {
   let outChannel = 1;
@@ -133,8 +173,8 @@ function extractMidi(params: Param[], values: Value[], appName: string): TrackMi
   let usbEnabled = false;
   let nrpn = false;
   let sawMidiIn = false;
-  let sawMidiOut = false;
   let outChannelSet = false;
+  const setupNotes: number[] = [];
 
   params.forEach((param, i) => {
     const value = values[i];
@@ -144,31 +184,31 @@ function extractMidi(params: Param[], values: Value[], appName: string): TrackMi
         inUsb = midiInUsb(value);
         break;
       case "MidiOut":
-        sawMidiOut = true;
         usbEnabled = midiOutUsb(value);
         break;
       case "MidiChannel": {
         const ch = midiChannelFromValue(value);
-        // Channel between MidiIn and MidiOut = input
-        if (sawMidiIn && inChannel === null && !sawMidiOut) {
+        // Channel between MidiIn and first outs = input (before any out channel seen)
+        if (sawMidiIn && inChannel === null && !outChannelSet) {
           inChannel = ch;
-        } else if (sawMidiOut) {
+        } else {
+          // All other MidiChannels are outs (may appear before or after MidiOut)
           outChannels.push(ch);
           if (!outChannelSet) {
             outChannel = ch;
             outChannelSet = true;
           }
-        } else if (!outChannelSet) {
-          // Classic apps: MidiChannel appears before MidiOut
-          outChannel = ch;
-          outChannelSet = true;
-          outChannels.push(ch);
         }
         break;
       }
       case "MidiCc":
         cc = midiCcFromValue(value);
         break;
+      case "MidiNote": {
+        const n = midiNoteFromValue(value);
+        if (n !== null) setupNotes.push(n);
+        break;
+      }
       case "MidiNrpn":
         nrpn = midiNrpn(value);
         break;
@@ -183,10 +223,10 @@ function extractMidi(params: Param[], values: Value[], appName: string): TrackMi
     inUsb = null;
   }
   if (outChannels.length === 0) outChannels = [outChannel];
+  // Dedupe while preserving order (same channel on Kick/Snare defaults)
+  outChannels = [...new Set(outChannels)];
 
-  const noteMode =
-    /seq|euclid|turing|grids|tb3|bernoulli|trigger|note|clk|gate|echo/i.test(appName) ||
-    inferNoteMode(params, values);
+  const { noteMode, playCc } = inferMonitorFlags(params, values, appName);
 
   return {
     usbEnabled,
@@ -196,6 +236,8 @@ function extractMidi(params: Param[], values: Value[], appName: string): TrackMi
     inUsb,
     cc,
     noteMode,
+    playCc,
+    setupNotes,
     nrpn,
   };
 }
@@ -328,30 +370,72 @@ export async function enableUsbMidiOnAll(snapshot: Snapshot): Promise<number> {
   return changed;
 }
 
-/** Ensure USB MIDI port mode is Local (not None/Thru) so app mirrors can leave the device. */
+/** Ensure USB MIDI port mode is Local so app mirrors can leave the device. */
 export async function ensureUsbOutputLocal(snapshot: Snapshot): Promise<string | null> {
   const { config } = snapshot.device;
   const response = await sendAndReceive(config, { tag: "GetGlobalConfig" });
   if (response.tag !== "GlobalConfig") return null;
   const gc = response.value;
   const usb = gc.midi.outs[0];
-  if (usb.mode.tag === "Local") {
-    if (usb.send_clock) return null;
-    // Keep Local, just ensure clock if user already sees clocks — no change needed
-    return null;
-  }
+  const needsMode = usb.mode.tag !== "Local";
+  const needsClock = !usb.send_clock || !usb.send_transport;
+  if (!needsMode && !needsClock) return null;
 
   const outs = [gc.midi.outs[0], gc.midi.outs[1], gc.midi.outs[2]] as unknown as typeof gc.midi.outs;
   outs[0] = {
     send_clock: true,
-    send_transport: usb.send_transport,
+    send_transport: true,
     mode: { tag: "Local" },
   };
   await sendAndReceive(config, {
     tag: "SetGlobalConfig",
     value: { ...gc, midi: { outs } },
   });
-  return `USB MIDI mode was ${usb.mode.tag} → set to Local`;
+  const parts: string[] = [];
+  if (needsMode) parts.push(`USB MIDI mode ${usb.mode.tag} → Local`);
+  if (needsClock) parts.push("USB send clock/transport on");
+  return parts.join("; ");
+}
+
+export type ClockSrcTag = string;
+
+export async function readClockConfig(
+  snapshot: Snapshot,
+): Promise<{ src: ClockSrcTag; bpm: number } | null> {
+  const response = await sendAndReceive(snapshot.device.config, { tag: "GetGlobalConfig" });
+  if (response.tag !== "GlobalConfig") return null;
+  const clock = response.value.clock;
+  return {
+    src: clock.clock_src.tag,
+    bpm: Math.max(20, Math.min(300, Number(clock.internal_bpm) || 120)),
+  };
+}
+
+/**
+ * Point the device at MIDI USB clock so the diagnostics host can Start/Stop + tick.
+ * Keeps the configured internal BPM as the host tempo reference.
+ */
+export async function ensureMidiUsbClockSource(
+  snapshot: Snapshot,
+): Promise<{ src: ClockSrcTag; bpm: number; changed: boolean } | null> {
+  const response = await sendAndReceive(snapshot.device.config, { tag: "GetGlobalConfig" });
+  if (response.tag !== "GlobalConfig") return null;
+  const gc = response.value;
+  const bpm = Math.max(20, Math.min(300, Number(gc.clock.internal_bpm) || 120));
+  if (gc.clock.clock_src.tag === "MidiUsb") {
+    return { src: "MidiUsb", bpm, changed: false };
+  }
+  await sendAndReceive(snapshot.device.config, {
+    tag: "SetGlobalConfig",
+    value: {
+      ...gc,
+      clock: {
+        ...gc.clock,
+        clock_src: { tag: "MidiUsb" },
+      },
+    },
+  });
+  return { src: "MidiUsb", bpm, changed: true };
 }
 
 export function countUsbEnabled(tracks: AppTrack[]): { on: number; capable: number } {
@@ -367,7 +451,11 @@ export function countUsbEnabled(tracks: AppTrack[]): { on: number; capable: numb
 
 /** Identity used for MIDI attribution (no app id on the wire). */
 export function midiIdentityKey(track: AppTrack): string {
-  if (track.midi.noteMode) return `ch${track.midi.channel}:notes`;
+  // Note-primary apps collide on channel notes (even if they also emit CC)
+  if (track.midi.noteMode) {
+    const chs = track.midi.outChannels.slice().sort((a, b) => a - b).join(",");
+    return `ch${chs}:notes`;
+  }
   if (track.midi.cc !== null) {
     return `ch${track.midi.channel}:cc${track.midi.cc}${track.midi.nrpn ? ":nrpn" : ""}`;
   }

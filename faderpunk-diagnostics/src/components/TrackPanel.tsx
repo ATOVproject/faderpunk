@@ -1,4 +1,10 @@
 import { colorCss, Scope, WaveProfile } from "./Scope";
+import {
+  formatMonitorNote,
+  keyNoteOptions,
+  monitorNoteValue,
+  parseMonitorNoteValue,
+} from "../audio/music";
 import type { TrackRuntime } from "../store";
 import { useDiag } from "../store";
 
@@ -27,6 +33,8 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
   const toggleCompare = useDiag((s) => s.toggleCompare);
   const setFocus = useDiag((s) => s.setFocus);
   const uniqueMidiChannels = useDiag((s) => s.uniqueMidiChannels);
+  const setLaneMonitorNote = useDiag((s) => s.setLaneMonitorNote);
+  const keyPc = useDiag((s) => s.keyPc);
   const demo = useDiag((s) => s.demo);
   const {
     track,
@@ -53,6 +61,8 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
   const hasMidiIn = track.midi.inChannel !== null;
   const outLanes = lanes.filter((l) => l.role === "out");
   const primaryOut = outLanes[0];
+  const showMonitorNote = track.midi.playCc || !track.midi.noteMode;
+  const noteOptions = keyNoteOptions(keyPc);
 
   return (
     <article
@@ -134,27 +144,66 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
           {lanes.map((lane) => {
             const outIndex = lane.role === "out" ? outLanes.indexOf(lane) : 0;
             return (
-              <Scope
-                key={lane.key}
-                ring={lane.ring}
-                color={color}
-                dimmed={dimmed || muted}
-                label={
-                  collision && lane.role === "out"
-                    ? `shared · ${laneLabel(lane.role, lane.channel, outIndex, outLanes.length)}`
-                    : laneLabel(lane.role, lane.channel, outIndex, outLanes.length)
-                }
-                height={
-                  lane.role === "in"
-                    ? 56
-                    : solo || selected
-                      ? Math.max(88, Math.floor(140 / Math.max(1, outLanes.length)))
-                      : Math.max(72, Math.floor(100 / Math.max(1, outLanes.length)))
-                }
-              />
+              <div key={lane.key} className="scope-block">
+                <Scope
+                  ring={lane.ring}
+                  color={color}
+                  dimmed={dimmed || muted}
+                  label={
+                    collision && lane.role === "out"
+                      ? `shared · ${laneLabel(lane.role, lane.channel, outIndex, outLanes.length)}`
+                      : laneLabel(lane.role, lane.channel, outIndex, outLanes.length)
+                  }
+                  height={
+                    lane.role === "in"
+                      ? 56
+                      : solo || selected
+                        ? Math.max(88, Math.floor(140 / Math.max(1, outLanes.length)))
+                        : Math.max(72, Math.floor(100 / Math.max(1, outLanes.length)))
+                  }
+                />
+                {showMonitorNote && lane.role === "out" && lane.monitorNote && (
+                  <label
+                    className="scope-note"
+                    title="CC carrier for this MIDI out — scale degree in the global Key"
+                  >
+                    <span>Note</span>
+                    <select
+                      value={monitorNoteValue(lane.monitorNote)}
+                      onChange={(e) =>
+                        setLaneMonitorNote(
+                          track.key,
+                          lane.key,
+                          parseMonitorNoteValue(e.target.value),
+                        )
+                      }
+                    >
+                      {noteOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <em>{formatMonitorNote(keyPc, lane.monitorNote)}</em>
+                  </label>
+                )}
+                {!showMonitorNote && lane.role === "out" && (
+                  <div
+                    className="scope-note"
+                    title="This app sends MIDI notes — pitch comes from the wire (no CC carrier)"
+                  >
+                    <span>Pitch</span>
+                    <em>
+                      {track.midi.setupNotes.length > 0
+                        ? `n${track.midi.setupNotes.join("/")} · wire`
+                        : "from wire notes"}
+                    </em>
+                  </div>
+                )}
+              </div>
             );
           })}
-          {primaryOut && !track.midi.noteMode && (
+          {primaryOut && (
             <WaveProfile
               ring={primaryOut.ring}
               color={color}
@@ -166,7 +215,13 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
       )}
 
       <footer className="track-meta">
-        <span className="pill">{track.midi.noteMode ? "note" : "cc"}</span>
+        <span className="pill">
+          {track.midi.noteMode && track.midi.playCc
+            ? "note+cc"
+            : track.midi.noteMode
+              ? "note"
+              : "cc"}
+        </span>
         <span className="pill">{track.midi.usbEnabled ? "usb out" : "usb out off"}</span>
         {hasMidiIn && (
           <span className={`pill ${track.midi.inUsb ? "" : "warn"}`}>

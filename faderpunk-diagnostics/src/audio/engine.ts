@@ -1,5 +1,6 @@
 import type { MidiEvent } from "../midi/performance";
 import { SampleRing } from "./sample-ring";
+import { midiToHz } from "./music";
 
 export interface TrackAudioState {
   muted: boolean;
@@ -7,21 +8,32 @@ export interface TrackAudioState {
   gain: number;
 }
 
-type TrackNodes = {
-  bus: GainNode;
-  /** CC monitor: shared Wave-Hz pitch, amplitude follows envelope motion. */
+export type CcLaneSpec = {
+  key: string;
+  ring: SampleRing;
+  ccMidi: number;
+};
+
+type CcLaneNodes = {
   liveGain: GainNode;
   liveOsc: OscillatorNode;
   liveFilter: BiquadFilterNode;
-  voices: Map<number, NoteVoice>;
   ring: SampleRing;
-  kind: "note" | "cc";
-  muted: boolean;
-  solo: boolean;
-  userGain: number;
+  ccMidi: number;
   ccEma: number;
   ccEmaInited: boolean;
   lastCcAt: number;
+};
+
+type TrackNodes = {
+  bus: GainNode;
+  /** One CC carrier per MIDI out lane (separate pitches when multi-out). */
+  ccLanes: Map<string, CcLaneNodes>;
+  voices: Map<number, NoteVoice>;
+  kind: "note" | "cc" | "hybrid";
+  muted: boolean;
+  solo: boolean;
+  userGain: number;
 };
 
 type NoteVoice = {
@@ -31,12 +43,19 @@ type NoteVoice = {
   startedAt: number;
 };
 
-const MAX_NOTE_VOICES = 8;
-const NOTE_ATTACK = 0.008;
-const NOTE_RELEASE = 0.1;
-const NOTE_AMP = 0.22;
+const MAX_NOTE_VOICES = 12;
+/** Melodic / chord apps (Vamp, Arp, sequencers). */
+const NOTE_ATTACK = 0.012;
+const NOTE_RELEASE = 0.14;
+/** Short gate for drum-like low hits (Grooves / Grids / hybrid). */
+const NOTE_ATTACK_PERC = 0.003;
+const NOTE_RELEASE_PERC = 0.045;
+const NOTE_AMP = 0.18;
+const NOTE_AMP_PERC = 0.26;
 /** CC amp from motion — idle / device-mute hold stays silent. */
 const LIVE_CC_AMP = 0.14;
+/** Quieter CC voice when notes are also playing (hybrid). */
+const LIVE_CC_AMP_HYBRID = 0.06;
 const LIVE_CC_SLEW = 0.03;
 const LIVE_CC_EMA = 0.12;
 const LIVE_MOTION_DEADBAND = 0.02;
@@ -45,17 +64,11 @@ const CC_FLAT_MIN = 0.06;
 const CC_STALE_MS = 180;
 const CC_WATCH_MS = 50;
 
-/** Map Wave Hz slider (1…30) → audible carrier pitch. */
-export function waveRateToCcPitchHz(waveRate: number): number {
-  const t = Math.max(1, Math.min(30, waveRate));
-  // ~82 Hz … ~1.05 kHz — clear, not piercing
-  return 82 * 2 ** ((t - 1) / 8);
-}
-
 /**
  * Web Audio monitor:
- * - Notes → poly voices
- * - CC → sine at Wave-Hz pitch; amplitude tracks CC motion (Heat Pump ducks etc.)
+ * - Notes → poly voices at MIDI pitch (setup notes on the wire)
+ * - CC → sine per out-lane key-note; amplitude tracks CC motion
+ * - Hybrid → both (notes primary; quiet CC envelope under them)
  */
 export class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -65,7 +78,6 @@ export class AudioEngine {
   private anySolo = false;
   private masterUserGain = 0.55;
   private playing = true;
-  private waveRate = 8;
   private ccWatchTimer: ReturnType<typeof setInterval> | null = null;
 
   async ensure(): Promise<AudioContext> {
@@ -93,12 +105,14 @@ export class AudioEngine {
     const nowMs = performance.now();
     const now = this.ctx.currentTime;
     for (const t of this.tracks.values()) {
-      if (t.kind !== "cc" || t.muted) continue;
-      const stale = t.lastCcAt > 0 && nowMs - t.lastCcAt > CC_STALE_MS;
-      const flat = this.recentMotion(t.ring, CC_FLAT_MS) < CC_FLAT_MIN;
-      if (stale || flat) {
-        t.liveGain.gain.setTargetAtTime(0, now, 0.03);
-        if (stale && t.ccEmaInited) t.ccEma = t.ring.latest;
+      if ((t.kind !== "cc" && t.kind !== "hybrid") || t.muted) continue;
+      for (const lane of t.ccLanes.values()) {
+        const stale = lane.lastCcAt > 0 && nowMs - lane.lastCcAt > CC_STALE_MS;
+        const flat = this.recentMotion(lane.ring, CC_FLAT_MS) < CC_FLAT_MIN;
+        if (stale || flat) {
+          lane.liveGain.gain.setTargetAtTime(0, now, 0.03);
+          if (stale && lane.ccEmaInited) lane.ccEma = lane.ring.latest;
+        }
       }
     }
   }
@@ -125,12 +139,16 @@ export class AudioEngine {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     for (const t of this.tracks.values()) {
+      t.muted = true;
       for (const [note, voice] of [...t.voices.entries()]) {
         this.killVoice(t, note, voice, now);
       }
-      t.liveGain.gain.cancelScheduledValues(now);
-      t.liveGain.gain.setValueAtTime(0, now);
+      for (const lane of t.ccLanes.values()) {
+        lane.liveGain.gain.cancelScheduledValues(now);
+        lane.liveGain.gain.setValueAtTime(0, now);
+      }
     }
+    this.applyGains();
     if (this.gate) {
       this.gate.gain.cancelScheduledValues(now);
       this.gate.gain.setValueAtTime(0, now);
@@ -143,31 +161,89 @@ export class AudioEngine {
     if (this.master) this.master.gain.value = this.masterUserGain;
   }
 
-  setWaveRate(hz: number) {
-    this.waveRate = Math.max(1, Math.min(30, hz));
-    this.applyCcPitch();
+  /** Set one out-lane CC carrier to a MIDI note. */
+  setLaneCcMidi(trackId: string, laneKey: string, midi: number) {
+    const t = this.tracks.get(trackId);
+    const lane = t?.ccLanes.get(laneKey);
+    if (!t || !lane || !this.ctx) return;
+    if (t.kind !== "cc" && t.kind !== "hybrid") return;
+    lane.ccMidi = Math.max(0, Math.min(127, Math.round(midi)));
+    lane.liveOsc.frequency.setTargetAtTime(midiToHz(lane.ccMidi), this.ctx.currentTime, 0.02);
   }
 
-  private ccPitchHz(): number {
-    return waveRateToCcPitchHz(this.waveRate);
+  private makeCcLane(bus: GainNode, spec: CcLaneSpec): CcLaneNodes {
+    const liveGain = this.ctx!.createGain();
+    liveGain.gain.value = 0;
+    const liveFilter = this.ctx!.createBiquadFilter();
+    liveFilter.type = "lowpass";
+    liveFilter.frequency.value = 2400;
+    liveFilter.Q.value = 0.4;
+    const liveOsc = this.ctx!.createOscillator();
+    liveOsc.type = "sine";
+    liveOsc.frequency.value = midiToHz(spec.ccMidi);
+    liveOsc.connect(liveFilter);
+    liveFilter.connect(liveGain);
+    liveGain.connect(bus);
+    liveOsc.start();
+    return {
+      liveGain,
+      liveOsc,
+      liveFilter,
+      ring: spec.ring,
+      ccMidi: Math.max(0, Math.min(127, Math.round(spec.ccMidi))),
+      ccEma: 0,
+      ccEmaInited: false,
+      lastCcAt: 0,
+    };
   }
 
-  private applyCcPitch() {
-    if (!this.ctx) return;
-    const f = this.ccPitchHz();
-    const now = this.ctx.currentTime;
-    for (const t of this.tracks.values()) {
-      if (t.kind !== "cc") continue;
-      t.liveOsc.frequency.setTargetAtTime(f, now, 0.02);
+  private stopCcLane(lane: CcLaneNodes) {
+    try {
+      lane.liveOsc.stop();
+      lane.liveGain.disconnect();
+    } catch {
+      /* already stopped */
     }
   }
 
-  registerTrack(id: string, kind: "note" | "cc", ring: SampleRing) {
+  /** Sync CC out-lanes (create/update/remove carriers). */
+  registerTrack(
+    id: string,
+    kind: "note" | "cc" | "hybrid",
+    outs: CcLaneSpec[],
+  ) {
     if (!this.ctx || !this.gate) return;
+    const wantCc = kind === "cc" || kind === "hybrid";
     const existing = this.tracks.get(id);
+
     if (existing) {
       existing.kind = kind;
-      existing.ring = ring;
+      if (!wantCc) {
+        for (const lane of existing.ccLanes.values()) this.stopCcLane(lane);
+        existing.ccLanes.clear();
+        return;
+      }
+      const keep = new Set(outs.map((o) => o.key));
+      for (const [key, lane] of [...existing.ccLanes.entries()]) {
+        if (!keep.has(key)) {
+          this.stopCcLane(lane);
+          existing.ccLanes.delete(key);
+        }
+      }
+      for (const spec of outs) {
+        const cur = existing.ccLanes.get(spec.key);
+        if (cur) {
+          cur.ring = spec.ring;
+          cur.ccMidi = Math.max(0, Math.min(127, Math.round(spec.ccMidi)));
+          cur.liveOsc.frequency.setTargetAtTime(
+            midiToHz(cur.ccMidi),
+            this.ctx.currentTime,
+            0.02,
+          );
+        } else {
+          existing.ccLanes.set(spec.key, this.makeCcLane(existing.bus, spec));
+        }
+      }
       return;
     }
 
@@ -175,34 +251,21 @@ export class AudioEngine {
     bus.gain.value = 1;
     bus.connect(this.gate);
 
-    const liveGain = this.ctx.createGain();
-    liveGain.gain.value = 0;
-    const liveFilter = this.ctx.createBiquadFilter();
-    liveFilter.type = "lowpass";
-    liveFilter.frequency.value = 2400;
-    liveFilter.Q.value = 0.4;
-    const liveOsc = this.ctx.createOscillator();
-    liveOsc.type = "sine";
-    liveOsc.frequency.value = this.ccPitchHz();
-    liveOsc.connect(liveFilter);
-    liveFilter.connect(liveGain);
-    liveGain.connect(bus);
-    liveOsc.start();
+    const ccLanes = new Map<string, CcLaneNodes>();
+    if (wantCc) {
+      for (const spec of outs) {
+        ccLanes.set(spec.key, this.makeCcLane(bus, spec));
+      }
+    }
 
     this.tracks.set(id, {
       bus,
-      liveGain,
-      liveOsc,
-      liveFilter,
+      ccLanes,
       voices: new Map(),
-      ring,
       kind,
       muted: false,
       solo: false,
       userGain: 0.8,
-      ccEma: 0,
-      ccEmaInited: false,
-      lastCcAt: 0,
     });
     this.applyGains();
   }
@@ -214,7 +277,7 @@ export class AudioEngine {
     }
     for (const track of this.tracks.values()) {
       try {
-        track.liveOsc.stop();
+        for (const lane of track.ccLanes.values()) this.stopCcLane(lane);
         for (const v of track.voices.values()) {
           v.osc.stop();
           v.g.disconnect();
@@ -236,8 +299,10 @@ export class AudioEngine {
     this.applyGains();
     if (t.muted && this.ctx) {
       const now = this.ctx.currentTime;
-      t.liveGain.gain.cancelScheduledValues(now);
-      t.liveGain.gain.setValueAtTime(0, now);
+      for (const lane of t.ccLanes.values()) {
+        lane.liveGain.gain.cancelScheduledValues(now);
+        lane.liveGain.gain.setValueAtTime(0, now);
+      }
       for (const [note, voice] of [...t.voices.entries()]) {
         this.killVoice(t, note, voice, now);
       }
@@ -246,13 +311,39 @@ export class AudioEngine {
 
   private applyGains() {
     this.anySolo = [...this.tracks.values()].some((x) => x.solo);
+    if (!this.ctx) {
+      for (const t of this.tracks.values()) {
+        const audible = !t.muted && (!this.anySolo || t.solo);
+        t.bus.gain.value = audible ? t.userGain : 0;
+      }
+      return;
+    }
+    const now = this.ctx.currentTime;
     for (const t of this.tracks.values()) {
       const audible = !t.muted && (!this.anySolo || t.solo);
-      t.bus.gain.value = audible ? t.userGain : 0;
+      t.bus.gain.cancelScheduledValues(now);
+      t.bus.gain.setValueAtTime(audible ? t.userGain : 0, now);
     }
   }
 
-  handle(id: string, ev: MidiEvent, recordToRing = true) {
+  /** Hard silence every track and mark muted in the engine. */
+  muteAll() {
+    for (const t of this.tracks.values()) t.muted = true;
+    this.applyGains();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    for (const t of this.tracks.values()) {
+      for (const lane of t.ccLanes.values()) {
+        lane.liveGain.gain.cancelScheduledValues(now);
+        lane.liveGain.gain.setValueAtTime(0, now);
+      }
+      for (const [note, voice] of [...t.voices.entries()]) {
+        this.killVoice(t, note, voice, now);
+      }
+    }
+  }
+
+  handle(id: string, ev: MidiEvent, recordToRing = true, laneKey?: string) {
     if (!this.ctx || !this.gate) return;
     if (this.ctx.state === "suspended") void this.ctx.resume();
 
@@ -260,35 +351,48 @@ export class AudioEngine {
     if (!t) return;
 
     if (ev.kind === "cc" || ev.kind === "nrpn") {
+      const lane =
+        (laneKey ? t.ccLanes.get(laneKey) : undefined) ??
+        t.ccLanes.values().next().value;
+      if (!lane) return;
       const v = ev.value ?? 0;
-      if (recordToRing) t.ring.push(v, ev.t);
-      t.lastCcAt = performance.now();
+      if (recordToRing) lane.ring.push(v, ev.t);
+      lane.lastCcAt = performance.now();
       if (!this.playing || t.muted) return;
+      if (t.kind !== "cc" && t.kind !== "hybrid") return;
       const now = this.ctx.currentTime;
-      if (!t.ccEmaInited) {
-        t.ccEma = v;
-        t.ccEmaInited = true;
+      if (!lane.ccEmaInited) {
+        lane.ccEma = v;
+        lane.ccEmaInited = true;
       } else {
-        t.ccEma = t.ccEma + (v - t.ccEma) * LIVE_CC_EMA;
+        lane.ccEma = lane.ccEma + (v - lane.ccEma) * LIVE_CC_EMA;
       }
-      const rawMotion = Math.abs(v - t.ccEma);
+      const rawMotion = Math.abs(v - lane.ccEma);
+      const ampScale = t.kind === "hybrid" ? LIVE_CC_AMP_HYBRID : LIVE_CC_AMP;
       if (rawMotion < LIVE_MOTION_DEADBAND) {
-        t.liveGain.gain.cancelScheduledValues(now);
-        t.liveGain.gain.setTargetAtTime(0, now, 0.02);
+        lane.liveGain.gain.cancelScheduledValues(now);
+        lane.liveGain.gain.setTargetAtTime(0, now, 0.02);
       } else {
         const motion = Math.min(1, (rawMotion - LIVE_MOTION_DEADBAND) * 5);
-        t.liveGain.gain.setTargetAtTime(motion * LIVE_CC_AMP, now, LIVE_CC_SLEW);
+        lane.liveGain.gain.setTargetAtTime(motion * ampScale, now, LIVE_CC_SLEW);
       }
       return;
     }
 
     if (ev.kind === "noteOn" && ev.note !== undefined) {
-      if (recordToRing) t.ring.push(ev.value ?? 0.8, ev.t);
+      const ring =
+        (laneKey ? t.ccLanes.get(laneKey)?.ring : undefined) ??
+        t.ccLanes.values().next().value?.ring;
+      if (recordToRing && ring) ring.push(ev.value ?? 0.8, ev.t);
+      // Always voice notes when routed here — attribution is the filter.
       if (this.playing && !t.muted) this.noteOn(t, ev.note, ev.velocity ?? 100);
       return;
     }
     if (ev.kind === "noteOff" && ev.note !== undefined) {
-      if (recordToRing) t.ring.push(0, ev.t);
+      const ring =
+        (laneKey ? t.ccLanes.get(laneKey)?.ring : undefined) ??
+        t.ccLanes.values().next().value?.ring;
+      if (recordToRing && ring) ring.push(0, ev.t);
       if (this.playing) this.noteOff(t, ev.note);
     }
   }
@@ -309,14 +413,27 @@ export class AudioEngine {
       this.noteOff(t, oldestNote, 0.03);
     }
 
+    // Pure note apps (Vamp/Arp/seq): sine + soft env — chords stay clean.
+    // Hybrid / CC tracks: punchier low hits for drums.
+    const melodic = t.kind === "note";
+    const perc = !melodic && note < 48;
+
     const osc = this.ctx.createOscillator();
-    osc.type = "triangle";
-    osc.frequency.value = 440 * 2 ** ((note - 69) / 12);
+    osc.type = melodic ? "sine" : perc ? "square" : "triangle";
+    osc.frequency.value = midiToHz(note);
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.value = 2200 + (velocity / 127) * 1200;
-    filter.Q.value = 0.3;
+    if (melodic) {
+      filter.frequency.value = 1800 + (velocity / 127) * 1400;
+      filter.Q.value = 0.2;
+    } else if (perc) {
+      filter.frequency.value = 800 + (velocity / 127) * 1800;
+      filter.Q.value = 0.8;
+    } else {
+      filter.frequency.value = 2200 + (velocity / 127) * 1200;
+      filter.Q.value = 0.3;
+    }
 
     const g = this.ctx.createGain();
     g.gain.value = 0;
@@ -325,24 +442,32 @@ export class AudioEngine {
     g.connect(t.bus);
 
     const now = this.ctx.currentTime;
-    const amp = Math.max(0.02, (velocity / 127) * NOTE_AMP);
+    const attack = melodic ? NOTE_ATTACK : perc ? NOTE_ATTACK_PERC : NOTE_ATTACK;
+    // 1/√n headroom so triad/7th/9th stacks don't clip into grit
+    const poly = 1 / Math.sqrt(t.voices.size + 1);
+    const baseAmp = melodic || !perc ? NOTE_AMP : NOTE_AMP_PERC;
+    const amp = Math.max(0.02, (velocity / 127) * baseAmp * poly);
     g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(amp, now + NOTE_ATTACK);
+    g.gain.linearRampToValueAtTime(amp, now + attack);
     osc.start(now);
     t.voices.set(note, { osc, filter, g, startedAt: now });
   }
 
-  private noteOff(t: TrackNodes, note: number, release = NOTE_RELEASE) {
+  private noteOff(t: TrackNodes, note: number, release?: number) {
     if (!this.ctx) return;
     const voice = t.voices.get(note);
     if (!voice) return;
     const now = this.ctx.currentTime;
+    const melodic = t.kind === "note";
+    const rel =
+      release ??
+      (melodic ? NOTE_RELEASE : note < 48 ? NOTE_RELEASE_PERC : NOTE_RELEASE);
     voice.g.gain.cancelScheduledValues(now);
     const cur = Math.max(0, voice.g.gain.value);
     voice.g.gain.setValueAtTime(cur, now);
-    voice.g.gain.linearRampToValueAtTime(0, now + release);
+    voice.g.gain.linearRampToValueAtTime(0, now + rel);
     try {
-      voice.osc.stop(now + release + 0.02);
+      voice.osc.stop(now + rel + 0.03);
     } catch {
       /* already stopped */
     }
