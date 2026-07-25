@@ -10,5 +10,6 @@ target = "thumbv8m.main-none-eabihf"
 DEFMT_LOG = "debug"
 
 [unstable]
-build-std = ["core"]
-build-std-features = ["panic_immediate_abort"]
+# core+alloc required with panic = "immediate-abort" so deps do not pull a
+# second sysroot core (duplicate lang item).
+build-std = ["core", "alloc"]

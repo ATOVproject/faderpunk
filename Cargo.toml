@@ -1,3 +1,5 @@
+cargo-features = ["panic-immediate-abort"]
+
 [workspace]
 members = ["faderpunk", "libfp"]
 
@@ -10,7 +12,9 @@ lto = true
 incremental = false
 codegen-units = 1
 debug = 2
+panic = "immediate-abort"
 
 [profile.dev]
 lto = true
 opt-level = "z"
+panic = "immediate-abort"
