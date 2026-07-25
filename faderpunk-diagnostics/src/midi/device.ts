@@ -23,6 +23,8 @@ interface RxState {
   waiter: Waiter | null;
 }
 
+export type PerfHandler = (data: Uint8Array, t: number) => void;
+
 export interface ConfigPort {
   input: MIDIInput;
   output: MIDIOutput;
@@ -30,7 +32,7 @@ export interface ConfigPort {
   rx: RxState;
 }
 
-function attachConfigInput(input: MIDIInput): RxState {
+function attachConfigInput(input: MIDIInput, onPerf?: PerfHandler): RxState {
   const rx: RxState = {
     sysexBuffer: [],
     collecting: false,
@@ -39,8 +41,23 @@ function attachConfigInput(input: MIDIInput): RxState {
   };
 
   input.onmidimessage = (event: MIDIMessageEvent) => {
-    if (!event.data) return;
-    for (const byte of event.data) {
+    if (!event.data || event.data.length === 0) return;
+    const data = event.data;
+    const t = performance.now();
+    const first = data[0];
+
+    // Complete non-SysEx messages (notes/CC/clock) — forward as performance MIDI.
+    // Web MIDI usually delivers one message per event.
+    if (first !== SYSEX_START) {
+      // While collecting a fragmented SysEx, ignore interleaved noise
+      if (!rx.collecting) onPerf?.(new Uint8Array(data), t);
+      // Fall through only if somehow mixed (rare); still try sysex scan below
+      if (first < 0xf0 || first === 0xf8 || first === 0xfa || first === 0xfb || first === 0xfc || first === 0xff) {
+        return;
+      }
+    }
+
+    for (const byte of data) {
       if (byte === SYSEX_START) {
         rx.sysexBuffer = [byte];
         rx.collecting = true;
@@ -129,7 +146,13 @@ function portCandidates<T extends MIDIPort>(ports: Iterable<T>): T[] {
 export interface DeviceBundle {
   access: MIDIAccess;
   config: ConfigPort;
-  performanceInput: MIDIInput | null;
+  /** All Faderpunk inputs that may carry performance MIDI (including config port). */
+  performanceInputs: MIDIInput[];
+  /** Non-config outputs — used for MIDI panic (All Notes/Sound Off). */
+  performanceOutputs: MIDIOutput[];
+  /** True when a distinct non-config MIDI out exists (USB cable 0). */
+  hasDedicatedPerfOut: boolean;
+  portSummary: string;
 }
 
 export async function connectDevice(): Promise<DeviceBundle> {
@@ -145,6 +168,7 @@ export async function connectDevice(): Promise<DeviceBundle> {
     for (const input of inputs) {
       const version = await probePair(input, output);
       if (version === null) continue;
+      // Handler attached later once we have onPerf from the app layer
       const rx = attachConfigInput(input);
       config = { input, output, version, rx };
       break;
@@ -156,11 +180,60 @@ export async function connectDevice(): Promise<DeviceBundle> {
     throw new Error("No Faderpunk config MIDI port found");
   }
 
-  const performanceInput =
-    inputs.find((input) => input.id !== config!.input.id) ?? null;
-  if (performanceInput) await performanceInput.open();
+  const performanceInputs: MIDIInput[] = [];
+  for (const input of inputs) {
+    await input.open();
+    performanceInputs.push(input);
+  }
 
-  return { access, config, performanceInput };
+  const performanceOutputs: MIDIOutput[] = [];
+  for (const output of outputs) {
+    if (output.id === config.output.id) continue;
+    await output.open();
+    performanceOutputs.push(output);
+  }
+  const hasDedicatedPerfOut = performanceOutputs.length > 0;
+  // If the host only exposes one out, still allow panic on it (channel msgs are fine)
+  if (performanceOutputs.length === 0) {
+    performanceOutputs.push(config.output);
+  }
+
+  const inNames = inputs.map((i) => i.name ?? i.id).join(", ");
+  const outNames = outputs.map((o) => o.name ?? o.id).join(", ");
+  const portSummary = `in[${inNames}] · out[${outNames}]${hasDedicatedPerfOut ? "" : " · ⚠ single out (=config cable)"}`;
+
+  return {
+    access,
+    config,
+    performanceInputs,
+    performanceOutputs,
+    hasDedicatedPerfOut,
+    portSummary,
+  };
+}
+
+/** Attach performance + config handlers. Call after connect once you have onPerf. */
+export function bindMidiHandlers(
+  device: DeviceBundle,
+  onPerf: PerfHandler,
+): void {
+  // Config port: SysEx + performance
+  device.config.rx = attachConfigInput(device.config.input, onPerf);
+
+  for (const input of device.performanceInputs) {
+    if (input.id === device.config.input.id) continue;
+    input.onmidimessage = (event: MIDIMessageEvent) => {
+      if (!event.data) return;
+      onPerf(new Uint8Array(event.data), performance.now());
+    };
+  }
+}
+
+export function unbindMidiHandlers(device: DeviceBundle): void {
+  device.config.input.onmidimessage = null;
+  for (const input of device.performanceInputs) {
+    input.onmidimessage = null;
+  }
 }
 
 export async function sendAndReceive(

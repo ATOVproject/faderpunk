@@ -3,23 +3,23 @@ import { useEffect, useRef } from "react";
 import type { SampleRing } from "../audio/sample-ring";
 
 const COLOR_MAP: Record<string, string> = {
-  White: "#e8e6e1",
-  Yellow: "#e8c84a",
-  Orange: "#e8913a",
+  White: "#ececec",
+  Yellow: "#fdc42f",
+  Orange: "#c45c26",
   Red: "#e85a4a",
-  Lime: "#a8d44a",
-  Green: "#4ad47a",
-  Cyan: "#3ad4c8",
-  SkyBlue: "#4aa8e8",
-  Blue: "#4a6ae8",
-  Violet: "#9a4ae8",
-  Pink: "#e84aa8",
-  PaleGreen: "#a8d4b8",
-  Sand: "#d4c4a0",
-  Rose: "#e8a0b0",
-  Salmon: "#e8a888",
-  LightBlue: "#88c4e8",
-  Custom: "#c8c4bc",
+  Lime: "#8bc34a",
+  Green: "#3d8b6e",
+  Cyan: "#4cafb1",
+  SkyBlue: "#5eb8c8",
+  Blue: "#4a7ec8",
+  Violet: "#ae348b",
+  Pink: "#d46aa8",
+  PaleGreen: "#8bb89a",
+  Sand: "#c4b090",
+  Rose: "#d498a8",
+  Salmon: "#d4a080",
+  LightBlue: "#88b8d0",
+  Custom: "#9a9a9a",
 };
 
 export function colorCss(tag: string): string {
@@ -32,11 +32,20 @@ interface ScopeProps {
   height?: number;
   label?: string;
   dimmed?: boolean;
+  /** Visible history in ms (linear time). Default 8s. */
+  windowMs?: number;
 }
 
-export function Scope({ ring, color, height = 120, label, dimmed }: ScopeProps) {
+export function Scope({
+  ring,
+  color,
+  height = 120,
+  label,
+  dimmed,
+  windowMs = 8000,
+}: ScopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const tmpRef = useRef(new Float32Array(2048));
+  const tmpRef = useRef(new Float32Array(512));
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -56,11 +65,11 @@ export function Scope({ ring, color, height = 120, label, dimmed }: ScopeProps) 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      ctx.fillStyle = "rgba(12, 14, 16, 0.9)";
+      ctx.fillStyle = "#101010";
       ctx.fillRect(0, 0, w, h);
 
       // grid
-      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.strokeStyle = "rgba(76, 175, 177, 0.12)";
       ctx.lineWidth = 1;
       for (let i = 1; i < 4; i++) {
         const y = (h / 4) * i;
@@ -69,23 +78,38 @@ export function Scope({ ring, color, height = 120, label, dimmed }: ScopeProps) 
         ctx.lineTo(w, y);
         ctx.stroke();
       }
+      // time ticks (1s)
+      const secs = Math.max(1, Math.round(windowMs / 1000));
+      ctx.strokeStyle = "rgba(76, 175, 177, 0.08)";
+      for (let s = 1; s < secs; s++) {
+        const x = (s / secs) * w;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
 
-      const n = ring.copyChronological(tmpRef.current);
-      if (n > 1) {
+      const bins = Math.min(tmpRef.current.length, Math.max(64, Math.floor(w)));
+      const view = tmpRef.current.subarray(0, bins);
+      const n = ring.resampleWindow(view, windowMs);
+      let peak = 0;
+      for (let i = 0; i < n; i++) peak = Math.max(peak, view[i] ?? 0);
+      const quiet = n > 1 && peak < 0.02;
+
+      if (n > 1 && !quiet) {
         ctx.beginPath();
         ctx.strokeStyle = color;
         ctx.globalAlpha = dimmed ? 0.35 : 1;
         ctx.lineWidth = 1.5;
         for (let i = 0; i < n; i++) {
           const x = (i / (n - 1)) * w;
-          const y = (1 - tmpRef.current[i]) * (h - 4) + 2;
+          const y = (1 - view[i]) * (h - 4) + 2;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
         ctx.stroke();
         ctx.globalAlpha = 1;
 
-        // fill under curve
         ctx.lineTo(w, h);
         ctx.lineTo(0, h);
         ctx.closePath();
@@ -96,9 +120,9 @@ export function Scope({ ring, color, height = 120, label, dimmed }: ScopeProps) 
       }
 
       if (label) {
-        ctx.fillStyle = "rgba(255,255,255,0.45)";
-        ctx.font = "11px 'IBM Plex Mono', monospace";
-        ctx.fillText(label, 8, 14);
+        ctx.fillStyle = quiet ? "#6a6a6a" : "#9a9a9a";
+        ctx.font = "350 11px 'Martian Mono', ui-monospace, monospace";
+        ctx.fillText(quiet ? `${label} · ${secs}s · quiet` : `${label} · ${secs}s`, 8, 14);
       }
 
       raf = requestAnimationFrame(draw);
@@ -106,7 +130,7 @@ export function Scope({ ring, color, height = 120, label, dimmed }: ScopeProps) 
 
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [ring, color, dimmed, label]);
+  }, [ring, color, dimmed, label, windowMs]);
 
   return (
     <canvas
@@ -145,7 +169,7 @@ export function WaveProfile({ ring, color, height = 72, dimmed }: ProfileProps) 
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = "rgba(8, 10, 12, 0.95)";
+      ctx.fillStyle = "#101010";
       ctx.fillRect(0, 0, w, h);
 
       const profile = ring.profile(96);
@@ -162,9 +186,9 @@ export function WaveProfile({ ring, color, height = 72, dimmed }: ProfileProps) 
       ctx.stroke();
       ctx.globalAlpha = 1;
 
-      ctx.fillStyle = "rgba(255,255,255,0.4)";
-      ctx.font = "10px 'IBM Plex Mono', monospace";
-      ctx.fillText("profile", 8, 12);
+      ctx.fillStyle = "#9a9a9a";
+      ctx.font = "350 10px 'Martian Mono', ui-monospace, monospace";
+        ctx.fillText("avg cycle", 8, 12);
 
       raf = requestAnimationFrame(draw);
     };

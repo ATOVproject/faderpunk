@@ -1,7 +1,8 @@
-/** Ring buffer of normalized samples for scope + profile. */
+/** Ring buffer of timed samples for scope + profile. */
 export class SampleRing {
   readonly capacity: number;
-  private buf: Float32Array;
+  private values: Float32Array;
+  private times: Float64Array;
   private write = 0;
   private filled = 0;
   latest = 0;
@@ -9,26 +10,69 @@ export class SampleRing {
 
   constructor(capacity = 2048) {
     this.capacity = capacity;
-    this.buf = new Float32Array(capacity);
+    this.values = new Float32Array(capacity);
+    this.times = new Float64Array(capacity);
   }
 
   push(value: number, t = performance.now()) {
     const v = Math.max(0, Math.min(1, value));
-    this.buf[this.write] = v;
+    this.values[this.write] = v;
+    this.times[this.write] = t;
     this.write = (this.write + 1) % this.capacity;
     if (this.filled < this.capacity) this.filled++;
     this.latest = v;
     this.lastT = t;
   }
 
-  /** Oldest → newest copy into `out` (length = filled). */
-  copyChronological(out: Float32Array): number {
-    const n = Math.min(out.length, this.filled);
+  get length() {
+    return this.filled;
+  }
+
+  /** Oldest → newest into parallel buffers. Returns count. */
+  copyChronological(outValues: Float32Array, outTimes?: Float64Array): number {
+    const n = Math.min(outValues.length, this.filled);
     const start = (this.write - n + this.capacity) % this.capacity;
     for (let i = 0; i < n; i++) {
-      out[i] = this.buf[(start + i) % this.capacity];
+      const idx = (start + i) % this.capacity;
+      outValues[i] = this.values[idx];
+      if (outTimes) outTimes[i] = this.times[idx];
     }
     return n;
+  }
+
+  /**
+   * Resample to a fixed window ending at `now` (ms), sample-and-hold between events.
+   * X axis = linear wall-clock time. Gaps stay gaps.
+   */
+  resampleWindow(out: Float32Array, windowMs: number, now = performance.now()): number {
+    const bins = out.length;
+    out.fill(0);
+    if (this.filled === 0 || bins < 2) return 0;
+
+    const t0 = now - windowMs;
+    const start = (this.write - this.filled + this.capacity) % this.capacity;
+
+    // Value held at start of window (last sample before t0, else 0)
+    let held = 0;
+    let i = 0;
+    for (; i < this.filled; i++) {
+      const idx = (start + i) % this.capacity;
+      if (this.times[idx] >= t0) break;
+      held = this.values[idx];
+    }
+
+    let ev = i;
+    for (let b = 0; b < bins; b++) {
+      const t = t0 + (b / (bins - 1)) * windowMs;
+      while (ev < this.filled) {
+        const idx = (start + ev) % this.capacity;
+        if (this.times[idx] > t) break;
+        held = this.values[idx];
+        ev++;
+      }
+      out[b] = held;
+    }
+    return bins;
   }
 
   /** Mean waveform profile: fold samples into `bins` phase buckets via zero-crossings. */
@@ -39,14 +83,12 @@ export class SampleRing {
     const counts = new Float32Array(bins);
     if (n < 8) return out;
 
-    // Detect rising edges around mid as cycle starts
     const mid = 0.5;
     const cycles: number[] = [];
     for (let i = 1; i < n; i++) {
       if (tmp[i - 1] < mid && tmp[i] >= mid) cycles.push(i);
     }
     if (cycles.length < 2) {
-      // Fallback: linear stretch of whole buffer
       for (let b = 0; b < bins; b++) {
         const idx = Math.floor((b / bins) * (n - 1));
         out[b] = tmp[idx];
@@ -76,6 +118,7 @@ export class SampleRing {
     this.write = 0;
     this.filled = 0;
     this.latest = 0;
-    this.buf.fill(0);
+    this.values.fill(0);
+    this.times.fill(0);
   }
 }
