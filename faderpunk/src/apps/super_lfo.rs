@@ -33,7 +33,14 @@ const REVERSE_FADE_MS: u16 = 500;
 const BUTTON_FLASH_MS: u16 = 850;
 const DEST_COUNT: usize = 9;
 /// Secondary LFO rate as a fraction of the primary step (rate-mod wobble).
-const RATE_MOD_RATIO: f32 = 0.125;
+/// Higher = more audible tempo breathing relative to the main cycle.
+const RATE_MOD_RATIO: f32 = 0.3;
+/// Full Alt0 depth scales speed by ±this (1.0 → 0..2×; 2.0 → ~0..3×).
+const RATE_MOD_DEPTH_GAIN: f32 = 2.0;
+/// Mid-fader emphasis for rate-mod amount (< 1 = stronger sooner).
+const RATE_MOD_DEPTH_CURVE: f32 = 0.65;
+/// How hard PWM leans away from 50% for a given fader offset (< 1 = more extreme).
+const PWM_LEAN_CURVE: f32 = 0.45;
 
 /// Morph continuum: soft waves → stepped/chaos.
 /// Indices: 0 Sine, 1 Tri, 2 Saw, 3 Square, 4 Walk, 5 S&H, 6 Noise
@@ -505,8 +512,10 @@ pub async fn run(
                 glob_rate_mod_pos.set(mod_next);
             }
             let mod_bipolar = (Waveform::Sine.at(mod_next as usize) as f32 / 2047.5) - 1.0;
-            let depth = rate_mod as f32 / 4095.0;
-            let step = base_step * (1.0 + depth * mod_bipolar);
+            let depth = libm::powf((rate_mod as f32 / 4095.0).clamp(0.0, 1.0), RATE_MOD_DEPTH_CURVE);
+            // Floor keeps the LFO crawling instead of freezing at full depth troughs.
+            let step =
+                (base_step * (1.0 + depth * RATE_MOD_DEPTH_GAIN * mod_bipolar)).max(base_step * 0.04);
 
             let next_pos = if held {
                 lfo_pos
@@ -969,9 +978,12 @@ fn display_latch(edit: LatchLayer, chan: u8, shift_focus: u8) -> LatchLayer {
 }
 
 fn pwm_phase(phase: usize, pwm: u16) -> usize {
-    // Classic pulse-width phase remap: center (2048) = 50% duty; low/high lean PW.
+    // Classic pulse-width phase remap: center (2048) = 50% duty.
+    // Lean curve pulls toward extremes faster so shape changes read clearly live.
     let t = (phase % 4096) as f32 / 4096.0;
-    let pw = (pwm as f32 / 4095.0).clamp(0.02, 0.98);
+    let centered = (pwm as f32 / 4095.0 - 0.5) * 2.0; // -1..1
+    let lean = libm::copysignf(libm::powf(centered.abs(), PWM_LEAN_CURVE), centered);
+    let pw = (0.5 + lean * 0.49).clamp(0.01, 0.99);
     let out = if t < pw {
         t / pw * 0.5
     } else {
