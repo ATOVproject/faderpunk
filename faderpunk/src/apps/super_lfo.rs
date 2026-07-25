@@ -1,7 +1,7 @@
 //! Super LFO — morphing dual-osc LFO with CV destinations for form params.
 //!
 //! UX: Ch0 Main=Morph / Alt=Rate Mod / Third=Skew;
-//! Ch1 Main=PWM / Alt=Speed / Third=Warp. Heat Pump / Golden Gate family.
+//! Ch1 Main=Symmetry / Alt=Speed / Third=Warp. Heat Pump / Golden Gate family.
 
 use embassy_futures::{
     join::{join, join5},
@@ -39,8 +39,8 @@ const RATE_MOD_RATIO: f32 = 0.3;
 const RATE_MOD_DEPTH_GAIN: f32 = 2.0;
 /// Mid-fader emphasis for rate-mod amount (< 1 = stronger sooner).
 const RATE_MOD_DEPTH_CURVE: f32 = 0.65;
-/// How hard PWM leans away from 50% for a given fader offset (< 1 = more extreme).
-const PWM_LEAN_CURVE: f32 = 0.45;
+/// How hard Symmetry leans away from 50% for a given fader offset (< 1 = more extreme).
+const SYMMETRY_LEAN_CURVE: f32 = 0.45;
 
 /// Morph continuum: soft waves → stepped/chaos.
 /// Indices: 0 Sine, 1 Tri, 2 Saw, 3 Square, 4 Walk, 5 S&H, 6 Noise
@@ -202,8 +202,8 @@ pub struct Storage {
     morph: u16,
     skew: u16,
     warp: u16,
-    /// Pulse-width shape (center 2048 = 50% duty). Replaces former Character slot.
-    pwm: u16,
+    /// Wave symmetry / duty lean (center 2048 = balanced). Replaces former Character slot.
+    symmetry: u16,
     mix_balance: u16,
     in_att: u16,
     in_mute: bool,
@@ -224,7 +224,7 @@ impl Default for Storage {
             morph: 0,
             skew: 2048,
             warp: 0,
-            pwm: 2048,
+            symmetry: 2048,
             mix_balance: 2048,
             in_att: 4095,
             in_mute: false,
@@ -460,7 +460,7 @@ pub async fn run(
                 morph_base,
                 skew_base,
                 warp_base,
-                pwm_base,
+                symmetry_base,
                 rate_mod_base,
                 attenuation_base,
             ) = storage.query(|s| {
@@ -471,7 +471,7 @@ pub async fn run(
                     s.morph,
                     s.skew,
                     s.warp,
-                    s.pwm,
+                    s.symmetry,
                     s.rate_mod,
                     s.layer_attenuation,
                 )
@@ -486,7 +486,7 @@ pub async fn run(
             let morph = cv_mod_u16(morph_base, destination == 4, cv_delta);
             let skew = cv_mod_u16(skew_base, destination == 5, cv_delta);
             let warp = cv_mod_u16(warp_base, destination == 6, cv_delta);
-            let pwm = cv_mod_u16(pwm_base, destination == 7, cv_delta);
+            let symmetry = cv_mod_u16(symmetry_base, destination == 7, cv_delta);
             let rate_mod = cv_mod_u16(rate_mod_base, destination == 8, cv_delta);
 
             let lfo_speed = glob_lfo_speed.get();
@@ -559,13 +559,13 @@ pub async fn run(
 
             let sample_a = {
                 let mut chaos = glob_chaos.get();
-                let s = morph_sample(phase_a, morph, (skew, warp, pwm), 0, &mut chaos, &die);
+                let s = morph_sample(phase_a, morph, (skew, warp, symmetry), 0, &mut chaos, &die);
                 glob_chaos.set(chaos);
                 s
             };
             let sample_b = {
                 let mut chaos = glob_chaos.get();
-                let s = morph_sample(phase_b, morph, (skew, warp, pwm), 1, &mut chaos, &die);
+                let s = morph_sample(phase_b, morph, (skew, warp, symmetry), 1, &mut chaos, &die);
                 glob_chaos.set(chaos);
                 s
             };
@@ -736,7 +736,7 @@ pub async fn run(
                     fader_moved_1.set(true);
                 }
                 let target_value = match latch_layer {
-                    LatchLayer::Main => storage.query(|s| s.pwm),
+                    LatchLayer::Main => storage.query(|s| s.symmetry),
                     LatchLayer::Alt => storage.query(|s| s.layer_speed),
                     LatchLayer::Third => storage.query(|s| s.warp),
                 };
@@ -745,7 +745,7 @@ pub async fn run(
                 {
                     match latch_layer {
                         LatchLayer::Main => {
-                            storage.modify_and_save(|s| s.pwm = new_value);
+                            storage.modify_and_save(|s| s.symmetry = new_value);
                         }
                         LatchLayer::Alt => {
                             glob_shift_focus.set(1);
@@ -977,12 +977,12 @@ fn display_latch(edit: LatchLayer, chan: u8, shift_focus: u8) -> LatchLayer {
     }
 }
 
-fn pwm_phase(phase: usize, pwm: u16) -> usize {
-    // Classic pulse-width phase remap: center (2048) = 50% duty.
+fn symmetry_phase(phase: usize, symmetry: u16) -> usize {
+    // Piecewise phase remap: center (2048) = balanced halves.
     // Lean curve pulls toward extremes faster so shape changes read clearly live.
     let t = (phase % 4096) as f32 / 4096.0;
-    let centered = (pwm as f32 / 4095.0 - 0.5) * 2.0; // -1..1
-    let lean = libm::copysignf(libm::powf(centered.abs(), PWM_LEAN_CURVE), centered);
+    let centered = (symmetry as f32 / 4095.0 - 0.5) * 2.0; // -1..1
+    let lean = libm::copysignf(libm::powf(centered.abs(), SYMMETRY_LEAN_CURVE), centered);
     let pw = (0.5 + lean * 0.49).clamp(0.01, 0.99);
     let out = if t < pw {
         t / pw * 0.5
@@ -1097,8 +1097,8 @@ fn morph_sample(
     chaos: &mut MorphChaos,
     die: &Die,
 ) -> u16 {
-    let (skew, warp, pwm) = form;
-    let p = skew_phase(pwm_phase(warp_phase(phase, warp), pwm), skew);
+    let (skew, warp, symmetry) = form;
+    let p = skew_phase(symmetry_phase(warp_phase(phase, warp), symmetry), skew);
     let segments = MORPH_NODES - 1;
     let seg_size = 4096 / segments;
     let seg = ((morph as usize) / seg_size).min(segments - 1);
@@ -1154,7 +1154,7 @@ fn dest_color(dest: usize) -> Color {
         4 => Color::Orange, // Morph
         5 => Color::Violet, // Skew
         6 => Color::Green,  // Warp
-        7 => Color::Rose,   // PWM
+        7 => Color::Rose,   // Symmetry
         8 => Color::Blue,   // Rate Mod
         _ => Color::Yellow,
     }

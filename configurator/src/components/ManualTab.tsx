@@ -1618,7 +1618,7 @@ On load, both registers are restored at the next phrase boundary so the recalled
       "Morph",
       "Skew",
       "Warp",
-      "PWM",
+      "Symmetry",
       "Speed",
       "Rate Mod",
       "Amp",
@@ -1628,14 +1628,14 @@ On load, both registers are restored at the next phrase boundary so the recalled
       "Clocked",
       "Mutes",
     ],
-    text: `Super LFO is a two-channel form LFO: continuous **waveform morph**, classic **PWM shape**, soft **skew**, **phase-warp**, internal **rate modulation**, and **dual oscillators** mixed with Xfade / Min / Max / Sum. Use it when a single shape LFO is too static — morph, PWM, and warp change the *feel* of the modulation, not just the rate.
+    text: `Super LFO is a two-channel form LFO: continuous **waveform morph**, **symmetry**, soft **skew**, **phase-warp**, internal **rate modulation**, and **dual oscillators** mixed with Xfade / Min / Max / Sum. Use it when a single shape LFO is too static — morph, symmetry, and warp change the *feel* of the modulation, not just the rate.
 
 #### Sound / form
 
 - **Morph (Left Fader)** sweeps Sine → Triangle → Saw → Square → Random walk → Sample & hold → Noise. In between nodes you hear blends; chaos nodes (walk / S&H / noise) get more unruly toward the top.
 - **Rate Mod (Shift + Left Fader)** sets the depth of an internal slower sine that speeds the LFO up and down (0 = steady rate; full = through-zero wobble around the base speed).
 - **Skew (Button + Left Fader)** soft asymmetry via a power curve (center ≈ linear; low/high compress one half of the cycle).
-- **PWM (Right Fader)** classic pulse-width phase remap (center = 50% duty; low/high lean the pulse). Applies to every morph node, strongest on square-ish shapes.
+- **Symmetry (Right Fader)** leans cycle halves via phase remap (center = balanced; low/high stretch one half). Reads pulse-like on square, as lean/asymmetry on other morph shapes.
 - **Phase-Warp (Button + Right Fader)** eases time through the cycle (smoothstep): the wave spends longer near peaks or edges — “rubber” timing without changing the base rate.
 - **Speed (Shift + Right Fader)** is the LFO rate. Configurator **Speed** (Normal / Slow / Slowest) divides that rate by 1 / 2 / 4 (same idea as stock LFO).
 
@@ -1654,7 +1654,7 @@ Configurator **Mix Mode**, **Osc B**, and **Mix balance** set the dual-osc topol
 | | Fader | Shift + Fader | Button + Fader |
 | --- | --- | --- | --- |
 | **Left Fader** | Morph | Rate Mod | Skew |
-| **Right Fader** | PWM | Speed | Phase-Warp |
+| **Right Fader** | Symmetry | Speed | Phase-Warp |
 
 When you hold Shift and move a fader, the Shift LED meter follows that fader.
 
@@ -1677,7 +1677,7 @@ Gesture flashes (mix mode, clock sync, and similar) temporarily take over Button
 | --- | --- |
 | **Left short press** | Freeze (hold phase + output) |
 | **Left long press** | Mute CV in |
-| **Shift + Left short press** | Cycle CV destination (Speed / Phase / Amp / Reset / Morph / Skew / Warp / PWM / Rate Mod) |
+| **Shift + Left short press** | Cycle CV destination (Speed / Phase / Amp / Reset / Morph / Skew / Warp / Symmetry / Rate Mod) |
 | **Shift + Left long press** | Cycle dual-osc mix mode (persists to Mix Mode) |
 | **Right short press** | Phase reset |
 | **Right long press** | Mute CV out |
@@ -1687,7 +1687,7 @@ Gesture flashes (mix mode, clock sync, and similar) temporarily take over Button
 
 #### Patching
 
-There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, another LFO, or this app’s own Out→In) and set destination to Morph, Warp, PWM, Rate Mod, or another CV destination to sculpt form from CV.`,
+There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, another LFO, or this app’s own Out→In) and set destination to Morph, Warp, Symmetry, Rate Mod, or another CV destination to sculpt form from CV.`,
     channels: [
       {
         jackTitle: "CV In",
@@ -1716,9 +1716,9 @@ There is no soft-patch between apps. Patch **CV Out → CV In** (Automator, anot
       {
         jackTitle: "CV Out",
         jackDescription: "LFO output after dual-osc mix and Amp.",
-        faderTitle: "PWM",
+        faderTitle: "Symmetry",
         faderDescription:
-          "Pulse-width shape (center = 50% duty; low/high lean the pulse).",
+          "Lean cycle halves (center = balanced; low/high stretch one half).",
         faderPlusShiftTitle: "Speed",
         faderPlusShiftDescription:
           "LFO rate. Also divided by Configurator Speed (Normal / Slow / Slowest).",
