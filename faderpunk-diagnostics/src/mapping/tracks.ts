@@ -550,6 +550,39 @@ function inferExclusiveModeFromEnum(params: Param[], values: Value[]): boolean |
   return null;
 }
 
+/** Read a named Enum param's selected variant label (normalizes →/->). */
+function enumVariantLabel(
+  params: Param[],
+  values: Value[],
+  nameRe: RegExp,
+): string | null {
+  for (let i = 0; i < params.length; i++) {
+    const param = params[i];
+    if (param.tag !== "Enum") continue;
+    if (!nameRe.test(param.value.name)) continue;
+    const raw = values[i];
+    if (raw?.tag !== "Enum") continue;
+    const idx = Number(raw.value);
+    const label = param.value.variants[idx];
+    return label ? label.replace(/→/g, "->") : null;
+  }
+  return null;
+}
+
+/** Echolot-style Signal enum: CV→CC is CC-only; Gate→Note is notes. */
+function inferSignalMonitorFlags(
+  params: Param[],
+  values: Value[],
+): { noteMode: boolean; playCc: boolean } | null {
+  const signal = enumVariantLabel(params, values, /^signal$/i);
+  if (!signal) return null;
+  if (/cv\s*->\s*cc/i.test(signal)) return { noteMode: false, playCc: true };
+  if (/gate\s*->\s*note/i.test(signal)) return { noteMode: true, playCc: false };
+  if (/^pitch$/i.test(signal)) return { noteMode: true, playCc: false };
+  if (/^gate$/i.test(signal)) return { noteMode: true, playCc: false };
+  return null;
+}
+
 /** Sequencer / drum / clock / generative note apps — notes are the musical output. */
 function nameSuggestsNotes(appName: string): boolean {
   return /seq|euclid|turing|grids|groove|tb3|bernoulli|trigger|note|clk|gate|echo|arp|vamp|l[eé]vy/i.test(
@@ -559,7 +592,7 @@ function nameSuggestsNotes(appName: string): boolean {
 
 /**
  * Decide note vs CC monitor.
- * Explicit MidiMode / Enum Mode wins over name heuristics.
+ * Explicit MidiMode / Enum Mode / Signal wins over name heuristics.
  * When an app exposes both MidiNote and MidiCc without an exclusive mode,
  * prefer notes (pitch from setup) and still accept CC as secondary (hybrid).
  */
@@ -575,6 +608,8 @@ function inferMonitorFlags(
       return { noteMode: explicit, playCc: !explicit };
     }
   }
+  const fromSignal = inferSignalMonitorFlags(params, values);
+  if (fromSignal !== null) return fromSignal;
   const fromEnum = inferExclusiveModeFromEnum(params, values);
   if (fromEnum !== null) {
     return { noteMode: fromEnum, playCc: !fromEnum };
@@ -697,7 +732,28 @@ function extractMidi(params: Param[], values: Value[], appName: string): TrackMi
   outChannels = dedupCh;
   outChannelNames = dedupNames;
 
-  const { noteMode, playCc } = inferMonitorFlags(params, values, appName);
+  let { noteMode, playCc } = inferMonitorFlags(params, values, appName);
+
+  // Echolot-style I/O + Routing: MidiIn / Pong params stay in CONFIG even when
+  // the live mode does not use them (firmware gates Ping-Pong to MIDI→MIDI).
+  const io = enumVariantLabel(params, values, /^i\/?o$/i);
+  const routing = enumVariantLabel(params, values, /^routing$/i);
+  const midiToMidi = io !== null && /midi\s*->\s*midi/i.test(io);
+  const cvToMidi = io !== null && /cv\s*->\s*midi/i.test(io);
+  // Firmware: Ping-Pong on MIDI→MIDI and CV→MIDI (not MIDI→CV — single jack).
+  const pingPongActive =
+    (midiToMidi || cvToMidi) && routing !== null && /ping/i.test(routing);
+
+  if (cvToMidi) {
+    inChannel = null;
+    inUsb = null;
+    inDin = null;
+  }
+  if (!pingPongActive && outChannels.length > 1) {
+    outChannels = outChannels.slice(0, 1);
+    outChannelNames = outChannelNames.slice(0, 1);
+    outChannel = outChannels[0] ?? outChannel;
+  }
 
   return {
     usbEnabled,
