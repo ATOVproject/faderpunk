@@ -10,6 +10,7 @@ import {
 import { SampleRing } from "./audio/sample-ring";
 import type { AppTrack, MidiCollision, Snapshot } from "./mapping/tracks";
 import {
+  applyAppStateToTrack,
   assignUniqueMidiChannels,
   countUsbEnabled,
   enableUsbMidiOnAll,
@@ -18,12 +19,21 @@ import {
   findMidiCollisions,
   loadSnapshot,
   readClockConfig,
-  refreshTrackParams,
+  refreshAppParamsOnly,
+  reloadTracks,
+  writeDeviceBpm,
+  clampBpm,
 } from "./mapping/tracks";
-import { bindMidiHandlers, releaseDevice, unbindMidiHandlers } from "./midi/device";
+import {
+  bindMidiHandlers,
+  releaseDevice,
+  unbindMidiHandlers,
+  type ConfigPushHandler,
+} from "./midi/device";
+import type { ConfigMsgOut } from "@atov/fp-config";
 import { hostClock } from "./midi/host-clock";
 import { echoMidiToDevice } from "./midi/loopback";
-import { sendMidiPanic } from "./midi/panic";
+import { sendMidiPanic, sendMidiPanicChannels } from "./midi/panic";
 import { PerformanceParser, type MidiEvent } from "./midi/performance";
 import { sendMidiTransport } from "./midi/transport";
 
@@ -91,6 +101,8 @@ interface DiagState {
   usbOn: number;
   usbCapable: number;
   collisions: MidiCollision[];
+  /** User dismissed the shared-MIDI conflict banner (per session / until reconnect). */
+  collisionsBannerDismissed: boolean;
   /** Host always echoes USB-Out → USB-In (no on-device USB loop). */
   loopbackCount: number;
   busRing: SampleRing;
@@ -106,22 +118,74 @@ interface DiagState {
   toggleCompare: (key: string) => void;
   setMasterGain: (v: number) => void;
   setKeyPc: (pc: number) => void;
+  /** Host MIDI clock tempo (also written to device internal_bpm). */
+  setClockBpm: (bpm: number) => void;
   setLaneMonitorNote: (trackKey: string, laneKey: string, note: MonitorNote) => void;
   setPlaying: (on: boolean) => void;
   togglePlaying: () => void;
   panic: () => void;
+  /** All Notes/Sound Off on this track’s MIDI out channels + kill its monitor voices. */
+  panicTrack: (key: string) => void;
   transportStart: () => Promise<void>;
   transportStop: () => void;
   refreshParams: () => Promise<void>;
   enableUsbMidi: () => Promise<void>;
   uniqueMidiChannels: () => Promise<void>;
+  dismissCollisionsBanner: () => void;
   ingest: (ev: MidiEvent) => void;
 }
 
 let snapshot: Snapshot | null = null;
 const parser = new PerformanceParser();
 let demoTimer: ReturnType<typeof setInterval> | null = null;
-const sharedBusRing = new SampleRing(2048);
+let bpmWriteTimer: ReturnType<typeof setTimeout> | null = null;
+let paramsPollTimer: ReturnType<typeof setInterval> | null = null;
+let paramsPollBusy = false;
+/** Serialize config SysEx so soft-poll can't steal Unique MIDI / GetAppParams replies. */
+let configLock: Promise<void> = Promise.resolve();
+/** Dense CC (e.g. Heat Pump / Super LFO) can exceed 1k events/s — keep ≥8s headroom. */
+const SCOPE_RING_CAPACITY = 16384;
+const sharedBusRing = new SampleRing(SCOPE_RING_CAPACITY);
+const PARAMS_POLL_MS = 2800;
+
+function withConfigLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = configLock.then(fn, fn);
+  configLock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+function stopParamsPoll() {
+  if (paramsPollTimer) {
+    clearInterval(paramsPollTimer);
+    paramsPollTimer = null;
+  }
+  paramsPollBusy = false;
+}
+
+function paramRowsEqual(a: AppTrack, b: AppTrack): boolean {
+  if (a.layoutId !== b.layoutId || a.key !== b.key) return false;
+  if (a.midi.channel !== b.midi.channel) return false;
+  if (a.midi.noteMode !== b.midi.noteMode || a.midi.playCc !== b.midi.playCc) {
+    return false;
+  }
+  if (a.app.color !== b.app.color) return false;
+  if (a.paramRows.length !== b.paramRows.length) return false;
+  return a.paramRows.every(
+    (row, i) =>
+      row.name === b.paramRows[i]?.name && row.text === b.paramRows[i]?.text,
+  );
+}
+
+function tracksVisiblyEqual(prev: AppTrack[], next: AppTrack[]): boolean {
+  if (prev.length !== next.length) return false;
+  return prev.every((t, i) => {
+    const n = next[i];
+    return n !== undefined && paramRowsEqual(t, n);
+  });
+}
 
 function routeEvent(tracks: TrackRuntime[], ev: MidiEvent): {
   matches: TrackRuntime[];
@@ -177,6 +241,11 @@ function stopDemo() {
 
 async function releaseSnapshot(): Promise<void> {
   stopDemo();
+  stopParamsPoll();
+  if (bpmWriteTimer) {
+    clearTimeout(bpmWriteTimer);
+    bpmWriteTimer = null;
+  }
   hostClock.halt();
   const snap = snapshot;
   snapshot = null;
@@ -192,12 +261,10 @@ async function releaseSnapshot(): Promise<void> {
 }
 
 function hintFor(track: AppTrack, colliding: boolean): string | null {
-  if (colliding) return null; // shown via dedicated shared-MIDI banner on the card
+  if (colliding) return null; // share-banner
+  if (!track.hasMidiMirror) return null; // cv-banner
   if (track.midi.usbEnabled) return null;
-  if (track.hasMidiMirror) {
-    return "USB MIDI out off — click “Enable USB MIDI” above";
-  }
-  return "No MIDI mirror (CV-only app)";
+  return "This app isn’t sending MIDI over USB — click Enable USB MIDI above";
 }
 
 function wireLabelFor(track: AppTrack): string {
@@ -212,26 +279,34 @@ function wireLabelFor(track: AppTrack): string {
       : " notes";
   const ccHint =
     midi.cc !== null ? ` CC${midi.cc}${midi.nrpn ? " NRPN" : ""}` : " CC";
+  const outPorts: string[] = [];
+  if (midi.usbEnabled) outPorts.push("USB");
+  if (midi.out1) outPorts.push("1");
+  if (midi.out2) outPorts.push("2");
+  const portHint = outPorts.length ? ` →${outPorts.join("+")}` : "";
   let out: string;
   if (midi.noteMode && midi.playCc) {
-    out = `Out ${outs}${noteHint}+${ccHint.trim()}`;
+    out = `Out ${outs}${noteHint}+${ccHint.trim()}${portHint}`;
   } else if (midi.noteMode) {
-    out = `Out ${outs}${noteHint}`;
+    out = `Out ${outs}${noteHint}${portHint}`;
   } else {
-    out = `Out ${outs}${ccHint}`;
+    out = `Out ${outs}${ccHint}${portHint}`;
   }
   if (midi.inChannel !== null) {
-    const inUsb = midi.inUsb ? "USB" : "—";
-    return `In ${midi.inChannel}(${inUsb}) · ${out}`;
+    const inPorts: string[] = [];
+    if (midi.inUsb) inPorts.push("USB");
+    if (midi.inDin) inPorts.push("DIN");
+    const inHint = inPorts.length ? inPorts.join("+") : "—";
+    return `In ${midi.inChannel}(${inHint}) · ${out}`;
   }
   if (midi.noteMode && midi.playCc) {
-    return `MIDI ${outs} · notes+CC`;
+    return `MIDI ${outs} · notes+CC${portHint}`;
   }
-  if (midi.noteMode) return `MIDI ${outs} · notes`;
+  if (midi.noteMode) return `MIDI ${outs} · notes${portHint}`;
   if (midi.cc !== null) {
-    return `MIDI ${outs} · CC${midi.cc}${midi.nrpn ? " NRPN" : ""}`;
+    return `MIDI ${outs} · CC${midi.cc}${midi.nrpn ? " NRPN" : ""}${portHint}`;
   }
-  return `MIDI ${outs}`;
+  return `MIDI ${outs}${portHint}`;
 }
 
 function audioKindFor(midi: AppTrack["midi"]): "note" | "cc" | "hybrid" {
@@ -284,6 +359,11 @@ function pushVoiceToRing(
   else if (ev.kind === "noteOff") ring.push(0, ev.t);
 }
 
+function scopeRing(prior?: SampleRing): SampleRing {
+  if (prior && prior.capacity >= SCOPE_RING_CAPACITY) return prior;
+  return new SampleRing(SCOPE_RING_CAPACITY);
+}
+
 function buildLanes(
   track: AppTrack,
   prev?: MidiLane[],
@@ -298,7 +378,7 @@ function buildLanes(
       key,
       role: "in",
       channel: track.midi.inChannel,
-      ring: prior?.ring ?? new SampleRing(2048),
+      ring: scopeRing(prior?.ring),
     });
   }
   let outIdx = 0;
@@ -309,7 +389,7 @@ function buildLanes(
       key,
       role: "out",
       channel: ch,
-      ring: prior?.ring ?? new SampleRing(2048),
+      ring: scopeRing(prior?.ring),
       monitorNote:
         prior?.monitorNote ?? defaultMonitorNote(trackIndex * 3 + outIdx),
     });
@@ -322,7 +402,7 @@ function buildLanes(
       key,
       role: "out",
       channel: track.midi.channel,
-      ring: prior?.ring ?? new SampleRing(2048),
+      ring: scopeRing(prior?.ring),
       monitorNote: prior?.monitorNote ?? defaultMonitorNote(trackIndex),
     });
   }
@@ -358,36 +438,6 @@ function collisionMeta(tracks: AppTrack[]): {
     }
   });
   return { collisions, byKey };
-}
-
-function applyTrackUpdates(
-  current: TrackRuntime[],
-  updated: AppTrack[],
-  keyPc: number,
-): { tracks: TrackRuntime[]; collisions: MidiCollision[] } {
-  const { collisions, byKey } = collisionMeta(updated);
-  return {
-    collisions,
-    tracks: current.map((tr, i) => {
-      const next = updated.find((u) => u.key === tr.key);
-      if (!next) return tr;
-      const meta = byKey.get(tr.key);
-      const collision = Boolean(meta);
-      const lanes = buildLanes(next, tr.lanes, i);
-      const runtime = {
-        ...tr,
-        track: next,
-        lanes,
-        collision,
-        wireLabel: wireLabelFor(next),
-        collisionPeers: meta?.peers ?? [],
-        collisionGroup: meta?.group ?? -1,
-        unmatchedHint: hintFor(next, collision),
-      };
-      registerAudio(runtime, keyPc);
-      return runtime;
-    }),
-  };
 }
 
 function buildTrackRuntimes(
@@ -432,6 +482,103 @@ function collisionNotice(collisions: MidiCollision[]): string | null {
   return `${collisions.length} MIDI collision(s): ${collisions.map((c) => c.label).join("; ")}. Unique MIDI channels to split.`;
 }
 
+function commitTracks(
+  updated: AppTrack[],
+  get: () => DiagState,
+  set: (
+    partial:
+      | Partial<DiagState>
+      | ((s: DiagState) => Partial<DiagState>),
+  ) => void,
+): void {
+  if (!snapshot) return;
+  snapshot = { ...snapshot, tracks: updated };
+  const usb = countUsbEnabled(updated);
+  const { runtimes, collisions } = buildTrackRuntimes(
+    updated,
+    get().keyPc,
+    get().tracks,
+  );
+  set({
+    tracks: runtimes,
+    collisions,
+    usbOn: usb.on,
+    usbCapable: usb.capable,
+  });
+}
+
+function handleConfigPush(
+  msg: ConfigMsgOut,
+  get: () => DiagState,
+  set: (
+    partial:
+      | Partial<DiagState>
+      | ((s: DiagState) => Partial<DiagState>),
+  ) => void,
+): void {
+  if (!snapshot || get().demo || get().status !== "ready") return;
+  if (msg.tag === "AppState") {
+    const layoutId = Number(
+      typeof msg.value[0] === "bigint" ? Number(msg.value[0]) : msg.value[0],
+    );
+    const values = msg.value[1];
+    const updated = snapshot.tracks.map((t) =>
+      t.layoutId === layoutId
+        ? applyAppStateToTrack(t, values, snapshot!.apps)
+        : t,
+    );
+    if (tracksVisiblyEqual(snapshot.tracks, updated)) return;
+    commitTracks(updated, get, set);
+    return;
+  }
+  if (msg.tag === "Layout") {
+    // Slot map changed — full refresh (async).
+    void get().refreshParams();
+  }
+}
+
+async function softPollParams(
+  get: () => DiagState,
+  set: (
+    partial:
+      | Partial<DiagState>
+      | ((s: DiagState) => Partial<DiagState>),
+  ) => void,
+): Promise<void> {
+  if (!snapshot || get().demo || get().status !== "ready" || paramsPollBusy) {
+    return;
+  }
+  if (snapshot.device.config.rx.waiter) return;
+  paramsPollBusy = true;
+  try {
+    await withConfigLock(async () => {
+      if (!snapshot || get().status !== "ready") return;
+      const updated = await refreshAppParamsOnly(snapshot);
+      if (!snapshot) return;
+      if (tracksVisiblyEqual(snapshot.tracks, updated)) return;
+      commitTracks(updated, get, set);
+    });
+  } catch (err) {
+    console.warn("param soft-poll:", err);
+  } finally {
+    paramsPollBusy = false;
+  }
+}
+
+function startParamsPoll(
+  get: () => DiagState,
+  set: (
+    partial:
+      | Partial<DiagState>
+      | ((s: DiagState) => Partial<DiagState>),
+  ) => void,
+): void {
+  stopParamsPoll();
+  paramsPollTimer = setInterval(() => {
+    void softPollParams(get, set);
+  }, PARAMS_POLL_MS);
+}
+
 export const useDiag = create<DiagState>((set, get) => ({
   status: "idle",
   error: null,
@@ -455,6 +602,7 @@ export const useDiag = create<DiagState>((set, get) => ({
   usbOn: 0,
   usbCapable: 0,
   collisions: [],
+  collisionsBannerDismissed: false,
   loopbackCount: 0,
   busRing: sharedBusRing,
 
@@ -479,24 +627,30 @@ export const useDiag = create<DiagState>((set, get) => ({
         get().keyPc,
       );
 
-      bindMidiHandlers(snap.device, (data, t) => {
-        // Always host-echo performance MIDI → device USB-In (cable 0),
-        // unless the monitor is fully muted (panic / mute-all).
-        const allMuted =
-          get().tracks.length > 0 && get().tracks.every((tr) => tr.muted);
-        if (!allMuted) {
-          const outs = [
-            ...snap.device.performanceOutputs,
-            snap.device.config.output,
-          ];
-          echoMidiToDevice(outs, data);
-          if (data.length > 0 && data[0] < 0xf0) {
-            set((s) => ({ loopbackCount: s.loopbackCount + 1 }));
+      bindMidiHandlers(
+        snap.device,
+        (data, t) => {
+          // Always host-echo performance MIDI → device USB-In (cable 0),
+          // unless the monitor is fully muted (panic / mute-all).
+          const allMuted =
+            get().tracks.length > 0 && get().tracks.every((tr) => tr.muted);
+          if (!allMuted) {
+            const outs = [
+              ...snap.device.performanceOutputs,
+              snap.device.config.output,
+            ];
+            echoMidiToDevice(outs, data);
+            if (data.length > 0 && data[0] < 0xf0) {
+              set((s) => ({ loopbackCount: s.loopbackCount + 1 }));
+            }
           }
-        }
-        const events = parser.parse(data, t);
-        for (const ev of events) get().ingest(ev);
-      });
+          const events = parser.parse(data, t);
+          for (const ev of events) get().ingest(ev);
+        },
+        ((msg) => handleConfigPush(msg, get, set)) satisfies ConfigPushHandler,
+      );
+
+      startParamsPoll(get, set);
 
       const usb = countUsbEnabled(snap.tracks);
       const noticeParts: string[] = [];
@@ -514,6 +668,11 @@ export const useDiag = create<DiagState>((set, get) => ({
       if (usb.capable > 0 && usb.on === 0) {
         noticeParts.push(
           "No app has MidiOut→USB enabled — scopes stay flat until you enable it.",
+        );
+      }
+      if (snap.tracks.length === 0) {
+        noticeParts.push(
+          "Layout is empty — no app slots to scope. Push a setup from the Editor, then Reconnect.",
         );
       }
       if (clock && clock.src !== "MidiUsb") {
@@ -539,6 +698,7 @@ export const useDiag = create<DiagState>((set, get) => ({
         version: snap.version,
         tracks,
         collisions,
+        collisionsBannerDismissed: false,
         focusKey: tracks[0]?.key ?? null,
         unmappedLog: [],
         clockCount: 0,
@@ -550,7 +710,7 @@ export const useDiag = create<DiagState>((set, get) => ({
         usbCapable: usb.capable,
         loopbackCount: 0,
         clockSrc: clock?.src ?? null,
-        clockBpm: clock?.bpm ?? 120,
+        clockBpm: clampBpm(clock?.bpm ?? 120),
         notice: noticeParts.length ? noticeParts.join(" ") : null,
       });
     } catch (err) {
@@ -574,6 +734,7 @@ export const useDiag = create<DiagState>((set, get) => ({
         usbOn: 0,
         usbCapable: 0,
         collisions: [],
+        collisionsBannerDismissed: false,
         loopbackCount: 0,
         transportRunning: false,
         clockSrc: null,
@@ -598,20 +759,30 @@ export const useDiag = create<DiagState>((set, get) => ({
             name: "LFO (demo)",
             description: "Synthetic CC stream",
             color: "Cyan",
+            icon: "Sine",
             params: [],
           },
           midi: {
             usbEnabled: true,
+            out1: true,
+            out2: false,
             channel: 1,
             outChannels: [1],
+            outChannelNames: ["MIDI Out"],
             inChannel: null,
             inUsb: null,
+            inDin: null,
             cc: 1,
             noteMode: false,
             playCc: true,
             setupNotes: [],
             nrpn: false,
           },
+          paramRows: [
+            { name: "MidiOut", kind: "MidiOut", text: "USB+Out1" },
+            { name: "MIDI Channel", kind: "MidiChannel", text: "1" },
+            { name: "CC number", kind: "MidiCc", text: "1" },
+          ],
           hasMidiMirror: true,
         },
         {
@@ -625,20 +796,30 @@ export const useDiag = create<DiagState>((set, get) => ({
             name: "Seq (demo)",
             description: "Synthetic notes",
             color: "Orange",
+            icon: "Sequence",
             params: [],
           },
           midi: {
             usbEnabled: true,
+            out1: true,
+            out2: true,
             channel: 2,
             outChannels: [2],
+            outChannelNames: ["MIDI Out"],
             inChannel: null,
             inUsb: null,
+            inDin: null,
             cc: null,
             noteMode: true,
             playCc: false,
             setupNotes: [48],
             nrpn: false,
           },
+          paramRows: [
+            { name: "MidiOut", kind: "MidiOut", text: "USB+Out1+Out2" },
+            { name: "MIDI Channel", kind: "MidiChannel", text: "2" },
+            { name: "Base note", kind: "MidiNote", text: "48" },
+          ],
           hasMidiMirror: true,
         },
         {
@@ -652,20 +833,30 @@ export const useDiag = create<DiagState>((set, get) => ({
             name: "RND (demo)",
             description: "Synthetic random CC",
             color: "Violet",
+            icon: "Random",
             params: [],
           },
           midi: {
             usbEnabled: true,
+            out1: false,
+            out2: false,
             channel: 3,
             outChannels: [3],
+            outChannelNames: ["MIDI Out"],
             inChannel: null,
             inUsb: null,
+            inDin: null,
             cc: 16,
             noteMode: false,
             playCc: true,
             setupNotes: [],
             nrpn: false,
           },
+          paramRows: [
+            { name: "MidiOut", kind: "MidiOut", text: "USB" },
+            { name: "MIDI Channel", kind: "MidiChannel", text: "3" },
+            { name: "MIDI CC", kind: "MidiCc", text: "16" },
+          ],
           hasMidiMirror: true,
         },
       ];
@@ -820,6 +1011,21 @@ export const useDiag = create<DiagState>((set, get) => ({
     for (const tr of get().tracks) syncTrackCcPitch(tr, keyPc);
   },
 
+  setClockBpm: (raw) => {
+    const clockBpm = clampBpm(raw);
+    hostClock.setBpm(clockBpm);
+    set({ clockBpm });
+    if (get().demo || !snapshot) return;
+    if (bpmWriteTimer) clearTimeout(bpmWriteTimer);
+    bpmWriteTimer = setTimeout(() => {
+      bpmWriteTimer = null;
+      if (!snapshot || get().demo) return;
+      void writeDeviceBpm(snapshot, clockBpm).catch((err) => {
+        console.warn("Failed to write device BPM:", err);
+      });
+    }, 350);
+  },
+
   setLaneMonitorNote: (trackKey, laneKey, note) => {
     const keyPc = get().keyPc;
     set((s) => {
@@ -874,6 +1080,30 @@ export const useDiag = create<DiagState>((set, get) => ({
     });
   },
 
+  panicTrack: (key) => {
+    const tr = get().tracks.find((t) => t.key === key);
+    if (!tr) return;
+    const channels = [
+      ...tr.track.midi.outChannels,
+      tr.track.midi.channel,
+    ];
+    audioEngine.panicTrack(key);
+    for (const lane of tr.lanes) {
+      if (lane.role === "out") lane.ring.clear();
+    }
+    if (snapshot && !get().demo) {
+      sendMidiPanicChannels(snapshot.device.performanceOutputs, channels);
+    }
+    set((s) => ({
+      tracks: s.tracks.map((t) =>
+        t.key === key
+          ? { ...t, activity: 0, lastEvent: null, lanes: [...t.lanes] }
+          : t,
+      ),
+      notice: `${tr.track.app.name} — All Notes Off on CH ${[...new Set(channels)].join("/")}`,
+    }));
+  },
+
   transportStart: async () => {
     if (get().demo || !snapshot) {
       set({
@@ -884,7 +1114,7 @@ export const useDiag = create<DiagState>((set, get) => ({
     }
     try {
       const ensured = await ensureMidiUsbClockSource(snapshot);
-      const bpm = ensured?.bpm ?? get().clockBpm;
+      const bpm = clampBpm(ensured?.bpm ?? get().clockBpm);
       hostClock.setOutputs(snapshot.device.performanceOutputs);
       hostClock.setBpm(bpm);
       hostClock.start();
@@ -931,51 +1161,65 @@ export const useDiag = create<DiagState>((set, get) => ({
 
   refreshParams: async () => {
     if (!snapshot || get().demo) return;
-    const updated = await refreshTrackParams(snapshot);
-    snapshot = { ...snapshot, tracks: updated };
-    const usb = countUsbEnabled(updated);
-    set((s) => {
-      const { tracks, collisions } = applyTrackUpdates(s.tracks, updated, s.keyPc);
-      return {
-        tracks,
+    try {
+      const updated = await withConfigLock(() => reloadTracks(snapshot!));
+      snapshot = { ...snapshot, tracks: updated };
+      const usb = countUsbEnabled(updated);
+      const { runtimes, collisions } = buildTrackRuntimes(
+        updated,
+        get().keyPc,
+        get().tracks,
+      );
+      set({
+        tracks: runtimes,
         collisions,
+        collisionsBannerDismissed: false,
         usbOn: usb.on,
         usbCapable: usb.capable,
         notice:
           collisionNotice(collisions) ??
           (usb.capable > 0 && usb.on === 0
             ? "No app has MidiOut→USB enabled — scopes stay flat until you enable it."
-            : null),
-      };
-    });
+            : "Layout + params refreshed"),
+      });
+    } catch (err) {
+      set({
+        notice: err instanceof Error ? err.message : String(err),
+      });
+    }
   },
 
   enableUsbMidi: async () => {
     if (!snapshot || get().demo) return;
     set({ notice: "Enabling MidiOut→USB on apps…" });
     try {
-      const usbFix = await ensureUsbOutputLocal(snapshot);
-      const changed = await enableUsbMidiOnAll(snapshot);
-      const updated = await refreshTrackParams(snapshot);
-      snapshot = { ...snapshot, tracks: updated };
+      const { usbFix, changed, updated } = await withConfigLock(async () => {
+        const usbFix = await ensureUsbOutputLocal(snapshot!);
+        const changed = await enableUsbMidiOnAll(snapshot!);
+        const updated = await reloadTracks(snapshot!);
+        snapshot = { ...snapshot!, tracks: updated };
+        return { usbFix, changed, updated };
+      });
       const usb = countUsbEnabled(updated);
-      set((s) => {
-        const { tracks, collisions } = applyTrackUpdates(s.tracks, updated, s.keyPc);
-        return {
-          tracks,
-          collisions,
-          usbOn: usb.on,
-          usbCapable: usb.capable,
-          notice: [
-            usbFix,
-            changed > 0
-              ? `Enabled USB MIDI on ${changed} app(s). Waves should appear if those apps are running.`
-              : "All capable apps already had USB MIDI on.",
-            collisionNotice(collisions),
-          ]
-            .filter(Boolean)
-            .join(" "),
-        };
+      const { runtimes, collisions } = buildTrackRuntimes(
+        updated,
+        get().keyPc,
+        get().tracks,
+      );
+      set({
+        tracks: runtimes,
+        collisions,
+        usbOn: usb.on,
+        usbCapable: usb.capable,
+        notice: [
+          usbFix,
+          changed > 0
+            ? `Enabled USB MIDI on ${changed} app(s). Waves should appear if those apps are running.`
+            : "All capable apps already had USB MIDI on.",
+          collisionNotice(collisions),
+        ]
+          .filter(Boolean)
+          .join(" "),
       });
     } catch (err) {
       set({
@@ -992,25 +1236,33 @@ export const useDiag = create<DiagState>((set, get) => ({
         "Assigning unique MIDI channels on colliding apps only… (close the Configurator first — shared SysEx cable)",
     });
     try {
-      const changed = await assignUniqueMidiChannels(snapshot);
-      const updated = await refreshTrackParams(snapshot);
-      snapshot = { ...snapshot, tracks: updated };
-      set((s) => {
-        const { tracks, collisions } = applyTrackUpdates(s.tracks, updated, s.keyPc);
-        return {
-          tracks,
-          collisions,
-          notice: [
-            changed > 0
-              ? `Split ${changed} colliding app(s) onto unique MIDI channels.`
-              : "No colliding apps to split (or no free channels).",
-            collisionNotice(collisions),
-            "If the Configurator was open, reconnect it — it shares the config MIDI cable.",
-          ]
-            .filter(Boolean)
-            .join(" "),
-        };
+      const changed = await withConfigLock(async () => {
+        const n = await assignUniqueMidiChannels(snapshot!);
+        const updated = await reloadTracks(snapshot!);
+        snapshot = { ...snapshot!, tracks: updated };
+        return n;
       });
+      const updated = snapshot!.tracks;
+      const { runtimes, collisions } = buildTrackRuntimes(
+        updated,
+        get().keyPc,
+        get().tracks,
+      );
+      set((s) => ({
+        tracks: runtimes,
+        collisions,
+        collisionsBannerDismissed:
+          collisions.length === 0 ? false : s.collisionsBannerDismissed,
+        notice: [
+          changed > 0
+            ? `Split ${changed} colliding app(s) onto unique MIDI channels.`
+            : "No colliding apps to split (or no free channels / AppState read failed).",
+          collisionNotice(collisions),
+          "If the Configurator was open, reconnect it — it shares the config MIDI cable.",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      }));
     } catch (err) {
       set({
         notice: null,
@@ -1018,6 +1270,8 @@ export const useDiag = create<DiagState>((set, get) => ({
       });
     }
   },
+
+  dismissCollisionsBanner: () => set({ collisionsBannerDismissed: true }),
 
   ingest: (ev) => {
     if (ev.kind === "transport") {

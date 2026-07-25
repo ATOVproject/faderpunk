@@ -19,7 +19,7 @@ export class HostClock {
   }
 
   setBpm(bpm: number) {
-    this.bpm = Math.max(20, Math.min(300, Math.round(bpm)));
+    this.bpm = Math.max(20, Math.min(300, Math.round(Number(bpm) || 120)));
     if (this.running) this.restartTicks();
   }
 

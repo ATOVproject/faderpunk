@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import type { SampleRing } from "../audio/sample-ring";
 
@@ -23,6 +23,7 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 export function colorCss(tag: string): string {
+  if (tag.startsWith("#") || tag.startsWith("rgb")) return tag;
   return COLOR_MAP[tag] ?? "#c8c4bc";
 }
 
@@ -31,9 +32,13 @@ interface ScopeProps {
   color: string;
   height?: number;
   label?: string;
+  /** Inline control at the start of the HUD text row (e.g. monitor note). */
+  labelStart?: ReactNode;
   dimmed?: boolean;
   /** Visible history in ms (linear time). Default 8s. */
   windowMs?: number;
+  /** Hide the canvas (and let parents collapse) when the window is quiet. */
+  collapseWhenQuiet?: boolean;
 }
 
 export function Scope({
@@ -41,23 +46,64 @@ export function Scope({
   color,
   height = 120,
   label,
+  labelStart,
   dimmed,
   windowMs = 8000,
+  collapseWhenQuiet = false,
 }: ScopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const hudTextRef = useRef<HTMLSpanElement>(null);
   const tmpRef = useRef(new Float32Array(512));
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    const frame = frameRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let raf = 0;
+    /** Symmetric hold before toggling collapsed — avoids one-frame flicker both ways. */
+    const HOLD_MS = 280;
+    let quietSince = 0;
+    let activeSince = 0;
+    let collapsed = false;
 
     const draw = () => {
+      const bins = Math.min(tmpRef.current.length, Math.max(64, Math.floor(canvas.clientWidth || 64)));
+      const view = tmpRef.current.subarray(0, bins);
+      const n = ring.resampleWindow(view, windowMs);
+      let peak = 0;
+      for (let i = 0; i < n; i++) peak = Math.max(peak, view[i] ?? 0);
+      const quiet = n < 2 || peak < 0.02;
+      const secs = Math.max(1, Math.round(windowMs / 1000));
+
+      if (collapseWhenQuiet) {
+        const now = performance.now();
+        if (quiet) {
+          activeSince = 0;
+          if (quietSince === 0) quietSince = now;
+          if (!collapsed && now - quietSince >= HOLD_MS) collapsed = true;
+        } else {
+          quietSince = 0;
+          if (activeSince === 0) activeSince = now;
+          if (collapsed && now - activeSince >= HOLD_MS) collapsed = false;
+        }
+        canvas.classList.toggle("is-collapsed", collapsed);
+        frame?.classList.toggle("is-collapsed", collapsed);
+        if (collapsed) {
+          raf = requestAnimationFrame(draw);
+          return;
+        }
+      }
+
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
+      if (w < 1 || h < 1) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
         canvas.width = Math.floor(w * dpr);
         canvas.height = Math.floor(h * dpr);
@@ -79,7 +125,6 @@ export function Scope({
         ctx.stroke();
       }
       // time ticks (1s)
-      const secs = Math.max(1, Math.round(windowMs / 1000));
       ctx.strokeStyle = "rgba(76, 175, 177, 0.08)";
       for (let s = 1; s < secs; s++) {
         const x = (s / secs) * w;
@@ -88,13 +133,6 @@ export function Scope({
         ctx.lineTo(x, h);
         ctx.stroke();
       }
-
-      const bins = Math.min(tmpRef.current.length, Math.max(64, Math.floor(w)));
-      const view = tmpRef.current.subarray(0, bins);
-      const n = ring.resampleWindow(view, windowMs);
-      let peak = 0;
-      for (let i = 0; i < n; i++) peak = Math.max(peak, view[i] ?? 0);
-      const quiet = n > 1 && peak < 0.02;
 
       if (n > 1 && !quiet) {
         ctx.beginPath();
@@ -119,10 +157,11 @@ export function Scope({
         ctx.globalAlpha = 1;
       }
 
-      if (label) {
-        ctx.fillStyle = quiet ? "#6a6a6a" : "#9a9a9a";
-        ctx.font = "350 11px 'Martian Mono', ui-monospace, monospace";
-        ctx.fillText(quiet ? `${label} · ${secs}s · quiet` : `${label} · ${secs}s`, 8, 14);
+      if (hudTextRef.current && label) {
+        hudTextRef.current.textContent = quiet
+          ? `${label} · ${secs}s · quiet`
+          : `${label} · ${secs}s`;
+        hudTextRef.current.classList.toggle("is-quiet", quiet);
       }
 
       raf = requestAnimationFrame(draw);
@@ -130,15 +169,26 @@ export function Scope({
 
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [ring, color, dimmed, label, windowMs]);
+  }, [ring, color, dimmed, label, windowMs, collapseWhenQuiet]);
+
+  const aria = [labelStart ? "monitor note" : null, label, "oscilloscope"]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="scope"
+    <div
+      ref={frameRef}
+      className={`scope-frame${collapseWhenQuiet ? " can-collapse" : ""}`}
       style={{ height }}
-      aria-label={label ?? "oscilloscope"}
-    />
+    >
+      {(label || labelStart) && (
+        <div className="scope-hud">
+          {labelStart}
+          {label && <span ref={hudTextRef} className="scope-hud-text" />}
+        </div>
+      )}
+      <canvas ref={canvasRef} className="scope" aria-label={aria} />
+    </div>
   );
 }
 
@@ -188,7 +238,7 @@ export function WaveProfile({ ring, color, height = 72, dimmed }: ProfileProps) 
 
       ctx.fillStyle = "#9a9a9a";
       ctx.font = "350 10px 'Martian Mono', ui-monospace, monospace";
-        ctx.fillText("avg cycle", 8, 12);
+      ctx.fillText("avg cycle", 8, 12);
 
       raf = requestAnimationFrame(draw);
     };

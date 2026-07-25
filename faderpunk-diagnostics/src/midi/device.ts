@@ -16,7 +16,7 @@ interface Waiter {
   timer: ReturnType<typeof setTimeout>;
 }
 
-interface RxState {
+export interface RxState {
   sysexBuffer: number[];
   collecting: boolean;
   queue: ConfigMsgOut[];
@@ -24,6 +24,8 @@ interface RxState {
 }
 
 export type PerfHandler = (data: Uint8Array, t: number) => void;
+/** Unsolicited config pushes (AppState after device param edits, Layout, …). */
+export type ConfigPushHandler = (msg: ConfigMsgOut) => void;
 
 export interface ConfigPort {
   input: MIDIInput;
@@ -32,7 +34,11 @@ export interface ConfigPort {
   rx: RxState;
 }
 
-function attachConfigInput(input: MIDIInput, onPerf?: PerfHandler): RxState {
+function attachConfigInput(
+  input: MIDIInput,
+  onPerf?: PerfHandler,
+  onPush?: ConfigPushHandler,
+): RxState {
   const rx: RxState = {
     sysexBuffer: [],
     collecting: false,
@@ -82,6 +88,11 @@ function attachConfigInput(input: MIDIInput, onPerf?: PerfHandler): RxState {
           clearTimeout(timer);
           rx.waiter = null;
           resolve(msg);
+        } else if (
+          onPush &&
+          (msg.tag === "AppState" || msg.tag === "Layout")
+        ) {
+          onPush(msg);
         } else {
           rx.queue.push(msg);
         }
@@ -216,9 +227,10 @@ export async function connectDevice(): Promise<DeviceBundle> {
 export function bindMidiHandlers(
   device: DeviceBundle,
   onPerf: PerfHandler,
+  onPush?: ConfigPushHandler,
 ): void {
   // Config port: SysEx + performance
-  device.config.rx = attachConfigInput(device.config.input, onPerf);
+  device.config.rx = attachConfigInput(device.config.input, onPerf, onPush);
 
   for (const input of device.performanceInputs) {
     if (input.id === device.config.input.id) continue;
@@ -259,6 +271,11 @@ export async function releaseDevice(device: DeviceBundle): Promise<void> {
       }
     }),
   );
+}
+
+/** Drop unmatched config replies so the next request/response pair stays aligned. */
+export function drainConfigQueue(rx: RxState): void {
+  rx.queue.length = 0;
 }
 
 export async function sendAndReceive(

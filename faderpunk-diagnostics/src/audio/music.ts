@@ -17,8 +17,6 @@ export const PC_NAMES = [
 /** Major-scale semitone offsets from tonic. */
 export const MAJOR_DEGREES = [0, 2, 4, 5, 7, 9, 11] as const;
 
-export const DEGREE_LABELS = ["1", "2", "3", "4", "5", "6", "7"] as const;
-
 export type MonitorNote = {
   /** Scale degree 0…6 within the global key (major). */
   degree: number;
@@ -71,10 +69,9 @@ export function keyNoteOptions(
   for (const octave of [...octaves].sort((a, b) => b - a)) {
     for (let degree = 6; degree >= 0; degree--) {
       const note = { degree, octave };
-      const name = formatMonitorNote(keyPc, note);
       out.push({
         value: `${degree}:${octave}`,
-        label: `${name} · deg ${DEGREE_LABELS[degree]}`,
+        label: formatMonitorNote(keyPc, note),
       });
     }
   }

@@ -42,7 +42,12 @@ export class SampleRing {
 
   /**
    * Resample to a fixed window ending at `now` (ms), sample-and-hold between events.
-   * X axis = linear wall-clock time. Gaps stay gaps.
+   * X axis = linear wall-clock time.
+   *
+   * If the ring overflowed and the oldest kept sample is still inside the
+   * window, hold that value across the truncated left edge (do not drop to 0 —
+   * that looked like the wave was "disappearing").
+   * A true quiet stretch before the first event still stays at 0 (ring not full).
    */
   resampleWindow(out: Float32Array, windowMs: number, now = performance.now()): number {
     const bins = out.length;
@@ -51,14 +56,20 @@ export class SampleRing {
 
     const t0 = now - windowMs;
     const start = (this.write - this.filled + this.capacity) % this.capacity;
+    const ringFull = this.filled >= this.capacity;
 
-    // Value held at start of window (last sample before t0, else 0)
+    // Value held at start of window (last sample before t0).
     let held = 0;
     let i = 0;
     for (; i < this.filled; i++) {
       const idx = (start + i) % this.capacity;
       if (this.times[idx] >= t0) break;
       held = this.values[idx];
+    }
+    // Truncated history: oldest sample is newer than t0, but we wrapped —
+    // keep holding the oldest value instead of a fake zero cliff.
+    if (i === 0 && ringFull) {
+      held = this.values[start];
     }
 
     let ev = i;
