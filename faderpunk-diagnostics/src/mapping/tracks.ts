@@ -749,7 +749,9 @@ function extractMidi(params: Param[], values: Value[], appName: string): TrackMi
     inUsb = null;
     inDin = null;
   }
-  if (!pingPongActive && outChannels.length > 1) {
+  // Only drop unused Pong when the app has a Routing param (Echolot).
+  // Multi-out apps without Routing (Grooves Kick/Snare/Hats, FP Grids) keep all.
+  if (routing !== null && !pingPongActive && outChannels.length > 1) {
     outChannels = outChannels.slice(0, 1);
     outChannelNames = outChannelNames.slice(0, 1);
     outChannel = outChannels[0] ?? outChannel;
