@@ -481,7 +481,6 @@ export function AppShell() {
 
       {status === "ready" && (
         <aside className="side" aria-label="Layout slots">
-          <h2>Layout</h2>
           <ul className="track-list">
             {tracks.map((tr) => (
               <li key={tr.key}>
