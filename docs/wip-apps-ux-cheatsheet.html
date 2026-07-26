@@ -420,10 +420,11 @@
       <div>
         <h3>Faders</h3>
         <ul>
-          <li><strong>Main (Perform)</strong> — Scrub vamp slots</li>
-          <li><strong>Main (Auto)</strong> — Tension</li>
+          <li><strong>Main (Perform)</strong> — Scrub genre degrees × 3 octaves (pitch map)</li>
+          <li><strong>Main (Auto)</strong> — Tension (Meander only)</li>
           <li><strong>Alt</strong> — Genre (+ Capture clip slot if clip exists)</li>
-          <li><strong>Third</strong> — Autoplay clock division</li>
+          <li><strong>Third (Auto)</strong> — Feel (laid back ↔ advanced hit length)</li>
+          <li><strong>Third (Perform)</strong> — Feel still stored; LEDs = blue / chord pitch</li>
         </ul>
         <h3>Jack params</h3>
         <ul>
@@ -435,11 +436,11 @@
       <div>
         <h3>Buttons</h3>
         <ul>
-          <li><strong>Perform hold</strong> — Chord on; release = off</li>
+          <li><strong>Perform hold</strong> — Chord on; release = off (blue LEDs track pitch)</li>
           <li><strong>Auto short</strong> — Play / pause</li>
           <li><strong>Shift+Short (Perform)</strong> — Capture last N bars → Auto+Play</li>
           <li><strong>Shift+Short (Auto)</strong> — Return to Perform</li>
-          <li><strong>Auto Long</strong> — Clear clip, reload genre preset</li>
+          <li><strong>Auto Long</strong> — Clear clip, reseed genre phrase</li>
           <li><strong>Shift+Long (Auto)</strong> — Panic</li>
         </ul>
       </div>
@@ -450,12 +451,18 @@
           <li>Auto style: Repeat / Meander</li>
           <li>Start mode: Perform / Auto</li>
           <li>Capture: 16 / 8 / 4 / 2 / 1 bars</li>
-          <li>LED: Perform = app color; Auto = orange (bright=play)</li>
+          <li>LED: Perform = app color; Auto = orange; Hold Auto = rose (phrase pos)</li>
+        </ul>
+        <h3>Scene storage</h3>
+        <ul>
+          <li>8-slot vamp + Capture clip</li>
+          <li><strong>Swing</strong> 0–100 — genre-seeded; odd-16th delay (no Configurator param)</li>
+          <li>Feel, scrub, tension, mode, play/pause</li>
         </ul>
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. Perform: scrub + hold to play; Shift+Short captures recent harmony (starts quantized to 16th grid; hold lengths free) into a timed clip and arms Auto playback. Auto: short play/pause; Long clears clip; Shift+Short returns to Perform. Alt picks genre (and Capture slot when a clip exists). CV Dest Macro modulates scrub/tension; Panic can fire from CV.</p>
+      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> captures recent harmony (starts quantized to 16ths, lead-in cropped to first hit; hold lengths free) into a timed clip and arms Auto. <strong>Auto</strong>: genre rhythm phrase (weighted hits + multi-bar rests) loops; harmony Repeat or Meander; Feel sets hit length (rests fixed); Swing (scene, genre-seeded) delays odd 16ths on Auto + Capture. Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform. Alt = genre (+ Capture slot). CV Macro = scrub/tension; Panic from CV optional.</p>
     </div>
   </div>
 </section>
