@@ -7,6 +7,14 @@
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" type="image/png" href="/favicon.png" />
   <script src="/i18n.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "@atov/fp-config": "/vendor/fp-config/index.js"
+    }
+  }
+  </script>
+  <script type="module" src="/lib/fp-midi.js"></script>
   <script>
     /* Apply stored/nav lang before first paint of chrome text. */
     try {
@@ -783,6 +791,7 @@
     td select[data-k="groove"],
     td select[data-k="mixMode"],
     td select[data-k="oscB"],
+    td select[data-k="cvDest"],
     td select[data-k="gateSpeed"],
     td select[data-k="gateMode"],
     td select[data-k="vpo"],
@@ -913,7 +922,7 @@
     .multi-midi select, .multi-midi input {
       width: 4.75rem; min-width: 0;
     }
-    .multi-midi select[data-note] { width: 7rem; }
+    .multi-midi select[data-note] { width: 5.25rem; }
     .multi-midi select:not([data-note])[data-k="cc"] {
       width: auto;
       min-width: 6.5rem;
@@ -1851,7 +1860,7 @@
       color: var(--muted);
     }
     .cc-cell select { min-width: 0; width: min(180px, 100%); }
-    .cc-cell select[data-note] { width: 7rem; }
+    .cc-cell select[data-note] { width: 5.25rem; }
     .maker {
       display: block;
       width: fit-content;
@@ -2618,9 +2627,22 @@
     const STORAGE_KEY_LEGACY = [];
     const ACTIVE_KEY = "fp-preset-active-v20";
     const INST_KEY = "fp-instruments-v6";
-    /** Push/pull always target the hosted beta configurator. */
-    function getConfigPrefer() {
-      return "beta";
+    /** Wait until Web MIDI SysEx helpers are loaded (`lib/fp-midi.js`). */
+    function ensureFpMidi() {
+      if (window.FpMidi?.ready) return Promise.resolve(window.FpMidi);
+      return new Promise((resolve, reject) => {
+        const t = setTimeout(() => {
+          reject(new Error("MIDI module failed to load (FpMidi)"));
+        }, 8000);
+        window.addEventListener(
+          "fp-midi-ready",
+          () => {
+            clearTimeout(t);
+            resolve(window.FpMidi);
+          },
+          { once: true },
+        );
+      });
     }
     const RECENT_CSV_KEY = "fp-recent-csv-v1";
 
@@ -2684,7 +2706,7 @@
           if (p.tag === "MidiNote" && ni < 3) p.value = [notes[ni++]];
           if (p.tag === "Enum") p.value = Math.max(0, Math.min(7, groove));
           if (p.tag === "i32") {
-            if (i32i === 0) p.value = [Math.max(10, Math.min(100, swingMax))];
+            if (i32i === 0) p.value = Math.max(10, Math.min(100, swingMax));
             i32i++;
           }
           if (p.tag === "MidiOut") p.value = [flagsFromPort(wantPort)];
@@ -2701,7 +2723,7 @@
           Number(row.echoRouting != null ? row.echoRouting : 0),
           Number(row.echoSignal != null ? row.echoSignal : 0),
         ];
-        const maxMs = Math.max(10, Math.min(2000, Number(row.echoMaxMs) || 500));
+        const maxMs = Math.max(10, Math.min(8000, Number(row.echoMaxMs) || 500));
         let ci = 0;
         let ei = 0;
         for (const p of out) {
@@ -2710,7 +2732,7 @@
           if (p.tag === "Enum" && ei < enums.length) {
             p.value = Math.max(0, enums[ei++]);
           }
-          if (p.tag === "i32") p.value = [maxMs];
+          if (p.tag === "i32") p.value = maxMs;
           if (p.tag === "MidiCc") p.value = [rowCcNum(row)];
           if (p.tag === "MidiNote") p.value = [rowNoteNum(row)];
           if (p.tag === "MidiOut") p.value = [flagsFromPort(wantPort)];
@@ -2754,6 +2776,7 @@
             if (enumIdx === 0 && row.lfoSpeed != null) p.value = Number(row.lfoSpeed);
             else if (enumIdx === 1 && row.mixMode != null) p.value = Number(row.mixMode);
             else if (enumIdx === 2 && row.oscB != null) p.value = Number(row.oscB);
+            else if (enumIdx === 3 && row.cvDest != null) p.value = Number(row.cvDest);
             enumIdx++;
           } else if (
             APPS_WITH_SPEED.has(row.app) &&
@@ -2996,7 +3019,7 @@
       grooves: 15,
       ad: 3, seq8: 14, follower_att: 2, slew: 2, follower: 2, quantizer: 4,
       house_pump: 9, heat_pump: 9, sift: 11,
-      super_lfo: 11,
+      super_lfo: 12,
       echolot: 15,
       arp_de_levy: 10,
       vamp: 16,
@@ -3131,7 +3154,7 @@
           ];
         case "super_lfo": {
           // Speed, Range, MIDI CH, CC, Color, NRPN, MIDI Out, Grid Lock,
-          // Mix Mode, Osc B, Mix balance (0…100%, default 50%)
+          // Mix Mode, Osc B, Mix balance (0…100%, default 50%), CV Dest
           const mixBal = Number.isFinite(Number(row.mixBalance))
             ? Math.max(0, Math.min(100, Number(row.mixBalance)))
             : 50;
@@ -3141,6 +3164,7 @@
             enumVal(row.mixMode != null ? row.mixMode : 0),
             enumVal(row.oscB != null ? row.oscB : 0),
             i32(mixBal),
+            enumVal(row.cvDest != null ? row.cvDest : 0),
           ];
         }
         case "rnd":
@@ -3289,7 +3313,7 @@
           return [
             enumVal(row.echoIo != null ? row.echoIo : 0),
             enumVal(row.echoDelayMode != null ? row.echoDelayMode : 0),
-            i32(Math.max(10, Math.min(2000, Number(row.echoMaxMs) || 500))),
+            i32(Math.max(10, Math.min(8000, Number(row.echoMaxMs) || 500))),
             enumVal(row.echoInterval != null ? row.echoInterval : 0),
             enumVal(row.echoRouting != null ? row.echoRouting : 0),
             enumVal(row.echoSignal != null ? row.echoSignal : 0),
@@ -3396,7 +3420,7 @@
       return enforceRowMidi(params, row);
     }
 
-    /** Always win: editor CH / mode / note-or-cc over stale rawParams (avoids firmware CH1 default). */
+    /** Always win: editor CH / mode / note-or-cc / Color over stale rawParams. */
     function enforceRowMidi(params, row) {
       if (!Array.isArray(params) || !params.length) return params;
       if (row.app === "fp_grids") {
@@ -3425,8 +3449,11 @@
           if (p.tag === "MidiNote" && ni < 3) p.value = [notes[ni++]];
           if (p.tag === "Enum") p.value = Math.max(0, Math.min(7, groove));
           if (p.tag === "i32") {
-            if (i32i === 0) p.value = [Math.max(10, Math.min(100, swingMax))];
+            if (i32i === 0) p.value = Math.max(10, Math.min(100, swingMax));
             i32i++;
+          }
+          if (p.tag === "Color") {
+            p.value = colorForApp(row.instrumentId || row.app, resolveColor(row, 0)).value;
           }
         }
         return params;
@@ -3439,6 +3466,9 @@
           if (p.tag === "MidiChannel" && ci < 3) p.value = [chs[ci++]];
           if (p.tag === "MidiCc") p.value = [rowCcNum(row)];
           if (p.tag === "MidiNote") p.value = [rowNoteNum(row)];
+          if (p.tag === "Color") {
+            p.value = colorForApp(row.instrumentId || row.app, resolveColor(row, 0)).value;
+          }
         }
         return params;
       }
@@ -3447,8 +3477,13 @@
       let firstCh = false;
       let firstCc = false;
       let firstNote = false;
+      const wantColor = colorForApp(
+        row.instrumentId || row.app,
+        resolveColor(row, 0),
+      ).value;
       for (const p of params) {
         if (!p || typeof p !== "object") continue;
+        if (p.tag === "Color") p.value = wantColor;
         if (p.tag === "MidiChannel" && !firstCh) {
           p.value = [chNum];
           firstCh = true;
@@ -3752,36 +3787,15 @@
       };
     }
 
-    function octaveToSuper(oct) {
-      const map = {
-        "-": "⁻",
-        0: "⁰",
-        1: "¹",
-        2: "²",
-        3: "³",
-        4: "⁴",
-        5: "⁵",
-        6: "⁶",
-        7: "⁷",
-        8: "⁸",
-        9: "⁹",
-      };
-      return String(oct)
-        .split("")
-        .map((ch) => map[ch] ?? ch)
-        .join("");
-    }
-
-    /** Plain scientific pitch: C1, C♯2 — for cheatsheet / compact text */
+    /** Scientific pitch: C1, C♯3 — same size for name + octave (readable in selects). */
     function midiNoteName(n) {
       const { name, octave } = midiNoteParts(n);
       return `${name}${octave}`;
     }
 
-    /** Select label: ♪ C¹ — note glyph + TET name + superscript octave */
+    /** Select / option label — plain pitch, no glyph or superscript. */
     function midiNoteLabel(n) {
-      const { name, octave } = midiNoteParts(n);
-      return `♪ ${name}${octaveToSuper(octave)}`;
+      return midiNoteName(n);
     }
 
     function noteOptionsHtml(selected) {
@@ -4274,7 +4288,10 @@
         const v = row.schemaValues[i];
         if (!v || !p) return;
         if (p.tag === "MidiOut") v.value = [flagsFromPort(wantPort)];
-        if (p.tag === "Color" && APP_PARAM_COLORS.has(col)) v.value = { tag: col };
+        if (p.tag === "Color") {
+          // Always write the row’s chosen color (remap to app-allowed subset).
+          v.value = colorForApp(row.instrumentId || row.app, col).value;
+        }
         if (p.tag === "Range" && row.cvRange) v.value = { tag: row.cvRange };
         if (p.tag === "MidiMode") v.value = { tag: rowMidiMode(row) };
         if (p.tag === "MidiChannel") {
@@ -4333,7 +4350,7 @@
         else signal = -1;
 
         if (delayMode !== 0) hide.add(2); // Max delay (ms)
-        if (io !== 0) hide.add(4); // Routing (MIDI→MIDI only)
+        if (io === 1) hide.add(4); // Routing: MIDI→MIDI + CV→MIDI (not MIDI→CV)
         if (io === 0) hide.add(5); // Signal unused
         else if (io === 1) enumAllow.set(5, [0, 1]); // Pitch | Gate
         else enumAllow.set(5, [2, 3]); // CV→CC | Gate→Note
@@ -4347,20 +4364,20 @@
         }
         if (io === 1) {
           hide.add(11); // Out A
-          hide.add(12); // Out B
+          hide.add(12); // Out B / Pong
           hide.add(13); // CC
           hide.add(14); // Note
         }
-        if (io === 0) {
-          hide.add(13);
-          hide.add(14);
+        if (io === 0 || io === 2) {
+          if (io === 0) {
+            hide.add(13);
+            hide.add(14);
+          }
+          if (io === 2) {
+            if (signal === 2) hide.add(14);
+            if (signal === 3) hide.add(13);
+          }
           if (routing !== 1) hide.add(12); // Out Pong only when Routing = Ping-Pong
-        }
-        if (io === 2) {
-          // Firmware CV→MIDI only sends on Out.
-          hide.add(12);
-          if (signal === 2) hide.add(14);
-          if (signal === 3) hide.add(13);
         }
 
         // Interval option 2: Bounce (was Pong) — distinct from Routing Ping-Pong / Out Pong.
@@ -4369,7 +4386,7 @@
         const slots = [];
         if (io === 0 || io === 1) slots.push(0); // In
         if (io === 0 || io === 2) slots.push(1); // Out / Out Ping
-        if (io === 0 && routing === 1) slots.push(2); // Out Pong
+        if ((io === 0 || io === 2) && routing === 1) slots.push(2); // Out Pong
         out.echolotChSlots = slots;
         out.echolotCcMode =
           io === 2 && signal === 2 ? "cc" : io === 2 && signal === 3 ? "note" : "none";
@@ -4790,6 +4807,7 @@
         const mixMode = s.mixMode != null ? Number(s.mixMode) : 0;
         const oscB = s.oscB != null ? Number(s.oscB) : 0;
         const mixBal = Number.isFinite(Number(s.mixBalance)) ? Number(s.mixBalance) : 50;
+        const cvDest = s.cvDest != null ? Number(s.cvDest) : 0;
         bits.push(`<select data-i="${idx}" data-k="mixMode" title="${escapeAttr(t("param.mixMode"))}">
           <option value="0" ${mixMode === 0 ? "selected" : ""}>Xfade</option>
           <option value="1" ${mixMode === 1 ? "selected" : ""}>Min</option>
@@ -4809,12 +4827,23 @@
           label: t("param.mixBalance"),
           title: t("param.mixBalanceHint"),
         }));
+        bits.push(`<select data-i="${idx}" data-k="cvDest" title="${escapeAttr(t("param.cvDest"))}">
+          <option value="0" ${cvDest === 0 ? "selected" : ""}>Speed</option>
+          <option value="1" ${cvDest === 1 ? "selected" : ""}>Phase</option>
+          <option value="2" ${cvDest === 2 ? "selected" : ""}>Amp</option>
+          <option value="3" ${cvDest === 3 ? "selected" : ""}>Reset</option>
+          <option value="4" ${cvDest === 4 ? "selected" : ""}>Morph</option>
+          <option value="5" ${cvDest === 5 ? "selected" : ""}>Skew</option>
+          <option value="6" ${cvDest === 6 ? "selected" : ""}>Warp</option>
+          <option value="7" ${cvDest === 7 ? "selected" : ""}>Symmetry</option>
+          <option value="8" ${cvDest === 8 ? "selected" : ""}>Rate Mod</option>
+        </select>`);
       }
       if (s.app === "echolot") {
         const echoIo = s.echoIo != null ? Number(s.echoIo) : 0;
         const echoDelayMode = s.echoDelayMode != null ? Number(s.echoDelayMode) : 0;
         const echoMaxMs = Number.isFinite(Number(s.echoMaxMs))
-          ? Math.max(10, Math.min(2000, Number(s.echoMaxMs)))
+          ? Math.max(10, Math.min(8000, Number(s.echoMaxMs)))
           : 500;
         const echoInterval = s.echoInterval != null ? Number(s.echoInterval) : 0;
         const echoRouting = s.echoRouting != null ? Number(s.echoRouting) : 0;
@@ -4843,7 +4872,7 @@
             key: "echoMaxMs",
             value: echoMaxMs,
             min: 10,
-            max: 2000,
+            max: 8000,
             label: t("param.echoMaxMs"),
             title: t("param.echoMaxMsHint"),
           }));
@@ -5547,6 +5576,7 @@
             if (Number.isFinite(enums[0])) row.lfoSpeed = enums[0];
             if (Number.isFinite(enums[1])) row.mixMode = enums[1];
             if (Number.isFinite(enums[2])) row.oscB = enums[2];
+            if (Number.isFinite(enums[3])) row.cvDest = Math.max(0, Math.min(8, enums[3]));
             const i32s = params
               .filter((v) => v?.tag === "i32")
               .map((v) => {
@@ -5581,7 +5611,7 @@
                 return Number(Array.isArray(raw) ? raw[0] : raw);
               });
             if (Number.isFinite(i32s[0])) {
-              row.echoMaxMs = Math.max(10, Math.min(2000, i32s[0]));
+              row.echoMaxMs = Math.max(10, Math.min(8000, i32s[0]));
             }
             const baseCh = Number(channel) || 1;
             row.chs = [0, 1, 2].map((i) =>
@@ -6394,6 +6424,11 @@
         }
       } else if (k === "color") {
         rowRef.color = el.value;
+        delete rowRef.rawParams;
+        if (catalogApp(rowRef.app)) {
+          ensureSchemaValues(rowRef);
+          applyColumnOverlaysToSchema(rowRef, sc.port);
+        }
       } else if (k === "portDefault") {
         if (el.checked) delete rowRef.port;
         else rowRef.port = normalizePortKey(sc.port);
@@ -6416,6 +6451,9 @@
         delete rowRef.rawParams;
       } else if (k === "oscB") {
         rowRef.oscB = Math.max(0, Math.min(1, Number(el.value) || 0));
+        delete rowRef.rawParams;
+      } else if (k === "cvDest") {
+        rowRef.cvDest = Math.max(0, Math.min(8, Number(el.value) || 0));
         delete rowRef.rawParams;
       } else if (k === "mixBalance") {
         rowRef.mixBalance = Math.max(0, Math.min(100, Number(el.value) || 50));
@@ -6461,7 +6499,7 @@
         rowRef.echoDelayMode = Math.max(0, Math.min(1, Number(el.value) || 0));
         delete rowRef.rawParams;
       } else if (k === "echoMaxMs") {
-        rowRef.echoMaxMs = Math.max(10, Math.min(2000, Number(el.value) || 500));
+        rowRef.echoMaxMs = Math.max(10, Math.min(8000, Number(el.value) || 500));
         delete rowRef.rawParams;
       } else if (k === "echoInterval") {
         rowRef.echoInterval = Math.max(0, Math.min(2, Number(el.value) || 0));
@@ -6700,72 +6738,11 @@
     };
 
     async function pushSetup(setup) {
-      const res = await fetch("/api/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ setup, configPrefer: getConfigPrefer() }),
+      const midi = await ensureFpMidi();
+      const result = await midi.pushSetupToDevice(setup, {
+        onLog: (line) => appendPushLog(line, { toStatus: true }),
       });
-      if (!res.ok && !res.body) {
-        const data = await res.json().catch(() => ({}));
-        const err = new Error(data.error || t("push.failHttp", { status: res.status }));
-        err.log = data.log || "";
-        throw err;
-      }
-      // NDJSON stream: {type:"log",line}… then {type:"done",ok,…}
-      const reader = res.body?.getReader();
-      if (!reader) {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) {
-          const err = new Error(data.error || t("push.failHttp", { status: res.status }));
-          err.log = data.log || "";
-          throw err;
-        }
-        return data;
-      }
-      const dec = new TextDecoder();
-      let buf = "";
-      let doneMsg = null;
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const parts = buf.split("\n");
-        buf = parts.pop() || "";
-        for (const part of parts) {
-          if (!part.trim()) continue;
-          let msg;
-          try {
-            msg = JSON.parse(part);
-          } catch {
-            appendPushLog(part, { toStatus: true });
-            continue;
-          }
-          if (msg.type === "log" && msg.line) {
-            appendPushLog(msg.line, { toStatus: true });
-          } else if (msg.type === "done") {
-            doneMsg = msg;
-          }
-        }
-      }
-      if (buf.trim()) {
-        try {
-          const msg = JSON.parse(buf);
-          if (msg.type === "done") doneMsg = msg;
-          else if (msg.type === "log" && msg.line) appendPushLog(msg.line, { toStatus: true });
-        } catch {
-          appendPushLog(buf.trim(), { toStatus: true });
-        }
-      }
-      if (!doneMsg) {
-        throw new Error(t("push.failNoResponse"));
-      }
-      if (!doneMsg.ok) {
-        const err = new Error(doneMsg.error || t("push.failTitle"));
-        err.log = doneMsg.log || "";
-        err.ms = doneMsg.ms;
-        throw err;
-      }
-      return doneMsg;
+      return { ok: true, ms: result.ms, log: "" };
     }
 
     function syncDockPad() {
@@ -6833,8 +6810,6 @@
       }
       const pull = document.getElementById("btnPull");
       if (pull) pull.disabled = busy;
-      const dbg = document.getElementById("btnDebugChrome");
-      if (dbg) dbg.disabled = busy;
     }
 
     function fabSpinBack(btn) {
@@ -6844,43 +6819,6 @@
       void btn.offsetWidth;
       btn.classList.add("is-spinning-back");
     }
-
-    // Button removed from header; keep handler guarded in case it returns
-    const btnDebugChromeEl = document.getElementById("btnDebugChrome");
-    if (btnDebugChromeEl) btnDebugChromeEl.onclick = async () => {
-      setPushBusy(true);
-      appendPushLog(t("push.openLocal"));
-      setPushMeta(t("push.metaChrome"));
-      try {
-        const res = await fetch("/api/debug-chrome", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ configPrefer: getConfigPrefer() }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (data.log) {
-          for (const line of String(data.log).split("\n")) {
-            if (line.trim()) appendPushLog(line);
-          }
-        }
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || `HTTP ${res.status}`);
-        }
-        setPushMeta(t("push.metaChromeOk"));
-        setStatus(
-          "ok",
-          t("status.chromeOk"),
-        );
-        await uiAlert(t("push.openLocalOk"), { title: t("push.openLocalTitle") });
-      } catch (e) {
-        appendPushLog(`✗ ${e.message || e}`);
-        setPushMeta(t("push.metaChromeErr"));
-        setStatus("warn", String(e.message || e));
-        await uiAlert(String(e.message || e), { title: t("push.openLocalFail") });
-      } finally {
-        setPushBusy(false);
-      }
-    };
 
     /** Sticky Weiter/Stop bar in the push panel (visible, not a modal) */
     function waitForPushNext(message, { nextLabel = t("dock.next"), isLast = false } = {}) {
@@ -7016,19 +6954,12 @@
         setPushMeta(`pull · ${((Date.now() - t0) / 1000).toFixed(0)}s`);
       }, 500);
       try {
-        const res = await fetch("/api/pull", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ configPrefer: getConfigPrefer() }),
+        const midi = await ensureFpMidi();
+        const data = await midi.pullSetupFromDevice({
+          onLog: (line) => appendPushLog(line),
         });
-        const data = await res.json().catch(() => ({}));
-        if (data.log) {
-          for (const line of String(data.log).split("\n")) {
-            if (line.trim()) appendPushLog(line);
-          }
-        }
-        if (!res.ok || !data.ok || !data.setup) {
-          throw new Error(data.error || t("pull.failHttp", { status: res.status }));
+        if (!data?.setup) {
+          throw new Error(t("pull.failHttp", { status: "no-setup" }));
         }
         syncPresetFromFields();
         let sc;

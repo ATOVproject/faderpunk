@@ -13,30 +13,26 @@ The editor ships empty. Use **Pull from Punk** to read the connected device, or
 build a preset manually. Presets are persisted both in browser storage and in
 `out/preset-bank.json` by the local server.
 
-Works with the **beta** configurator (`https://faderpunk.io/beta`). Override with
-`FP_CONFIG_URL` or `FP_CONFIG_PREFER=local|beta|official`.
+Pull and push talk to the device **directly over Web MIDI SysEx** (config cable) —
+no Configurator tab and no debug Chrome / CDP.
 
 ## Start
 
 ```bash
 cd faderpunk-preset-editor
-npm install
 npm start
 ```
 
-Open http://127.0.0.1:3847/.
+Open http://127.0.0.1:3847/ in a Chromium browser (SysEx permission required).
+
+Close other tabs that hold the Faderpunk MIDI ports (Configurator, Diagnostics,
+etc.) — Web MIDI is exclusive on macOS.
 
 ## Pull and push
 
-- **Pull from Punk** reads the current layout, parameters and global
-  configuration through the Configurator.
-- **Push to Punk** loads the active editor preset into the Configurator.
-
-The device must be connected in the dedicated Chrome window. Launch it with:
-
-```bash
-npm run chrome
-```
+- **Pull from Punk** reads layout, app parameters and global config via SysEx.
+- **Push to Punk** writes the active editor preset with the same sequence as the
+  Configurator Recall flow (`SetLayout` → settle → `SetAppParams` → `SetGlobalConfig`).
 
 ## Instruments and MIDI CC data
 
@@ -64,3 +60,6 @@ npm run check
   Configurator (GPL-3.0), icon design by papernoise.
 - The Martian Mono font in `fonts/` is licensed under the
   [SIL Open Font License](fonts/OFL.txt).
+- `vendor/fp-config/` is the generated `@atov/fp-config` postcard binding from
+  this repo’s `gen-bindings` output (regenerate with `./gen-bindings.sh` and
+  re-copy if protocol types change).

@@ -2673,6 +2673,23 @@
             "min": 0,
             "max": 100
           }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "CV Dest",
+            "variants": [
+              "Speed",
+              "Phase",
+              "Amp",
+              "Reset",
+              "Morph",
+              "Skew",
+              "Warp",
+              "Symmetry",
+              "Rate Mod"
+            ]
+          }
         }
       ]
     },

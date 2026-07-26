@@ -230,10 +230,9 @@
       "push.doneSec": "✓ done in {sec}s",
       "push.liveOverflow":
         'Preset "{name}" live · {n} overflow editor-only',
-      "push.liveOk":
-        'Preset "{name}" live — device scenes store values only, not apps/CCs',
+      "push.liveOk": 'Preset "{name}" live',
       "push.failTips":
-        "{msg}\n\nTips:\n• Server running? (npm start)\n• Chrome window “127.0.0.1:5173” → Connect Device\n• Check push log below",
+        "{msg}\n\nTips:\n• Allow MIDI/SysEx in this browser tab\n• Close other tabs using the Faderpunk (Configurator, Diagnostics)\n• Check the push log below",
       "pull.confirm":
         "Read current layout + params + global config from the Faderpunk?\n\nNew preset = keep the active one.\nReplace = overwrite the active preset.\n\nDevice must be connected in the Configurator.",
       "pull.asNew": "New preset",
@@ -255,7 +254,7 @@
       "pull.failTips":
         "{msg}\n\nTips:\n• Configurator open, device connected\n• Layout with at least one app\n• Check push log",
       "tour.confirm":
-        "Load all {n} presets into the Configurator one by one?\n\nImportant: This overwrites the global layout every time.\nHardware scenes do not store CC/app assignments — only values.\n\nUseful for auditioning; for a gig, push the matching preset when you switch.",
+        "Load all {n} presets one by one?\n\nThis overwrites the device layout each time.\nUseful for auditioning.",
       "tour.title": "Presets one by one",
       "tour.logStart": "=== Preset tour start ===",
       "tour.skip": "skip preset {index}: {msg}",
@@ -265,8 +264,7 @@
       "tour.waitLog": "waiting for Continue (preset {index} active)",
       "tour.stoppedKeep": 'stopped — layout "{name}" stays active',
       "tour.logDone": "=== Tour done ===",
-      "tour.doneAlert":
-        "Done. Reminder: for the gig, push the matching preset when you switch — don’t expect device scenes with different assignments.",
+      "tour.doneAlert": "Done.",
       "tour.doneTitle": "Preset tour",
       "tour.failTitle": "Push error",
       "tour.failAlert":
@@ -290,6 +288,7 @@
       "param.oscB": "Osc B",
       "param.mixBalance": "Mix %",
       "param.mixBalanceHint": "Mix balance 0% (A) … 50% (center) … 100% (B)",
+      "param.cvDest": "CV Dest",
       "param.gateSpeed": "Gate Speed",
       "param.gateMode": "Output Mode",
       "param.vpo": "V/Oct",
@@ -299,7 +298,7 @@
       "param.echoIo": "I/O",
       "param.echoDelayMode": "Delay mode",
       "param.echoMaxMs": "ms max",
-      "param.echoMaxMsHint": "Max delay when Delay mode = ms (10–2000)",
+      "param.echoMaxMsHint": "Max delay when Delay mode = ms (10–8000)",
       "param.echoInterval": "Interval",
       "param.echoRouting": "Routing",
       "param.echoSignal": "Signal",
@@ -559,7 +558,7 @@
       "pull.failAlert":
         "{msg}\n\n• Server läuft? (npm start)\n• Push-Log prüfen",
       "tour.confirm":
-        "Alle {n} Presets nacheinander in den Configurator laden?\n\nWichtig: Das überschreibt jedes Mal das globale Layout.\nHardware-Scenes speichern keine CC/App-Zuweisungen — nur Werte.\n\nSinnvoll zum Durchprobieren; für den Gig das passende Preset pushen, wenn du wechselst.",
+        "Alle {n} Presets nacheinander laden?\n\nÜberschreibt jedes Mal das Geräte-Layout.\nSinnvoll zum Durchprobieren.",
       "tour.title": "Presets nacheinander",
       "tour.logStart": "=== Preset-Rundgang starten ===",
       "tour.skip": "skip Preset {index}: {msg}",
@@ -572,8 +571,7 @@
       "tour.stoppedKeep":
         'gestoppt — Layout „{name}“ bleibt aktiv',
       "tour.logDone": "=== Rundgang fertig ===",
-      "tour.doneAlert":
-        "Fertig. Merke: Für den Gig das passende Preset pushen, wenn du wechselst — nicht Device-Scenes mit verschiedenen Assignments erwarten.",
+      "tour.doneAlert": "Fertig.",
       "tour.doneTitle": "Preset-Rundgang",
       "tour.failTitle": "Push-Fehler",
       "tour.failAlert":
@@ -600,6 +598,7 @@
       "param.oscB": "Osc B",
       "param.mixBalance": "Mix %",
       "param.mixBalanceHint": "Mix-Balance 0 % (A) … 50 % (Mitte) … 100 % (B)",
+      "param.cvDest": "CV-Ziel",
       "param.gateSpeed": "Gate-Speed",
       "param.gateMode": "Output-Modus",
       "param.vpo": "V/Oct",
@@ -609,17 +608,16 @@
       "param.echoIo": "I/O",
       "param.echoDelayMode": "Delay-Modus",
       "param.echoMaxMs": "ms max",
-      "param.echoMaxMsHint": "Max. Delay wenn Delay-Modus = ms (10–2000)",
+      "param.echoMaxMsHint": "Max. Delay wenn Delay-Modus = ms (10–8000)",
       "param.echoInterval": "Intervall",
       "param.echoRouting": "Routing",
       "param.echoSignal": "Signal",
       "desc.portOverrides": " — {n} Zeilen-Port-Override(s)",
       "push.liveOverflow":
         'Preset „{name}“ live · {n} Overflow nur im Editor',
-      "push.liveOk":
-        'Preset „{name}“ live — Device-Scenes speichern nur Werte, nicht Apps/CCs',
+      "push.liveOk": 'Preset „{name}“ live',
       "push.failTips":
-        "{msg}\n\nTipps:\n• Server läuft? (npm start)\n• Chrome-Fenster „127.0.0.1:5173“ → Connect Device\n• Push-Log unten prüfen",
+        "{msg}\n\nTipps:\n• MIDI/SysEx in diesem Tab erlauben\n• Andere Tabs mit dem Faderpunk schließen (Configurator, Diagnostics)\n• Push-Log unten prüfen",
       "pull.failTips":
         "{msg}\n\nTipps:\n• Configurator offen, Device verbunden\n• Layout mit mind. einer App\n• Push-Log prüfen",
       "dock.done": "Fertig",
@@ -879,7 +877,7 @@
       "pull.failAlert":
         "{msg}\n\n• Serveur lancé ? (npm start)\n• Vérifier le journal",
       "tour.confirm":
-        "Charger les {n} presets dans le Configurator l’un après l’autre ?\n\nImportant : cela écrase le layout global à chaque fois.\nLes scènes hardware ne stockent pas les assignations CC/app — seulement les valeurs.\n\nUtile pour auditionner ; pour le live, poussez le preset correspondant quand vous changez.",
+        "Charger les {n} presets l’un après l’autre ?\n\nCela écrase le layout appareil à chaque fois.\nUtile pour auditionner.",
       "tour.title": "Presets l’un après l’autre",
       "tour.logStart": "=== Début du tour de presets ===",
       "tour.skip": "ignore preset {index}: {msg}",
@@ -892,8 +890,7 @@
       "tour.stoppedKeep":
         'arrêté — layout « {name} » reste actif',
       "tour.logDone": "=== Tour terminé ===",
-      "tour.doneAlert":
-        "Terminé. Rappel : pour le live, poussez le preset correspondant quand vous changez — ne comptez pas sur des scènes appareil avec des assignations différentes.",
+      "tour.doneAlert": "Terminé.",
       "tour.doneTitle": "Tour de presets",
       "tour.failTitle": "Erreur de push",
       "tour.failAlert":
@@ -920,6 +917,7 @@
       "param.oscB": "Osc B",
       "param.mixBalance": "Mix %",
       "param.mixBalanceHint": "Mix balance 0% (A) … 50% (centre) … 100% (B)",
+      "param.cvDest": "Dest. CV",
       "param.gateSpeed": "Vitesse Gate",
       "param.gateMode": "Mode de sortie",
       "param.vpo": "V/Oct",
@@ -929,17 +927,16 @@
       "param.echoIo": "I/O",
       "param.echoDelayMode": "Mode délai",
       "param.echoMaxMs": "ms max",
-      "param.echoMaxMsHint": "Délai max si mode = ms (10–2000)",
+      "param.echoMaxMsHint": "Délai max si mode = ms (10–8000)",
       "param.echoInterval": "Intervalle",
       "param.echoRouting": "Routage",
       "param.echoSignal": "Signal",
       "desc.portOverrides": " — {n} override(s) de port de ligne",
       "push.liveOverflow":
         'Preset « {name} » actif · {n} overflow éditeur seulement',
-      "push.liveOk":
-        'Preset « {name} » actif — les scènes appareil stockent seulement les valeurs, pas apps/CCs',
+      "push.liveOk": 'Preset « {name} » actif',
       "push.failTips":
-        "{msg}\n\nConseils :\n• Serveur lancé ? (npm start)\n• Fenêtre Chrome « 127.0.0.1:5173 » → Connect Device\n• Vérifier le journal push",
+        "{msg}\n\nConseils :\n• Autoriser MIDI/SysEx dans cet onglet\n• Fermer les autres onglets qui utilisent le Faderpunk (Configurator, Diagnostics)\n• Vérifier le journal push",
       "pull.failTips":
         "{msg}\n\nConseils :\n• Configurator ouvert, appareil connecté\n• Layout avec au moins une app\n• Vérifier le journal",
       "dock.done": "Terminé",

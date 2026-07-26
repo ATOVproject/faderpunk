@@ -2406,7 +2406,7 @@
       "module": "fibonacci_gate",
       "channels": 1,
       "name": "Golden Gate",
-      "description": "Fibonacci-spaced gates — successive ratios approach φ",
+      "description": "Fibonacci-spaced gates \u2014 successive ratios approach \u03c6",
       "color": "Violet",
       "icon": "SequenceSquare",
       "params": [
@@ -2666,6 +2666,23 @@
             "min": 0,
             "max": 100
           }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "CV Dest",
+            "variants": [
+              "Speed",
+              "Phase",
+              "Amp",
+              "Reset",
+              "Morph",
+              "Skew",
+              "Warp",
+              "Symmetry",
+              "Rate Mod"
+            ]
+          }
         }
       ]
     },
@@ -2684,9 +2701,9 @@
           "value": {
             "name": "I/O",
             "variants": [
-              "MIDI→MIDI",
-              "MIDI→CV",
-              "CV→MIDI"
+              "MIDI\u2192MIDI",
+              "MIDI\u2192CV",
+              "CV\u2192MIDI"
             ]
           }
         },
@@ -2705,7 +2722,7 @@
           "value": {
             "name": "Max delay (ms)",
             "min": 10,
-            "max": 2000
+            "max": 8000
           }
         },
         {
@@ -2736,8 +2753,8 @@
             "variants": [
               "Pitch",
               "Gate",
-              "CV→CC",
-              "Gate→Note"
+              "CV\u2192CC",
+              "Gate\u2192Note"
             ]
           }
         },
@@ -2830,8 +2847,8 @@
       "slug": "arp_de_levy",
       "module": "arp_de_levy",
       "channels": 1,
-      "name": "Arp de Lévy",
-      "description": "Lévy-flight generative arpeggiator — evolve, texture, and flight character",
+      "name": "Arp de L\u00e9vy",
+      "description": "L\u00e9vy-flight generative arpeggiator \u2014 evolve, texture, and flight character",
       "color": "Rose",
       "icon": "SoftRandom",
       "params": [
@@ -2942,7 +2959,7 @@
       "module": "vamp",
       "channels": 1,
       "name": "MIDI Vamp",
-      "description": "Chord progressions — perform, capture, or auto vamp",
+      "description": "Chord progressions \u2014 perform, capture, or auto vamp",
       "color": "Violet",
       "icon": "NoteGrid",
       "params": [

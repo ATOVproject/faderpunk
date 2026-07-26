@@ -354,9 +354,11 @@ Local preset-bank UI lives in **`faderpunk-preset-editor/`** (not the Configurat
 
 ```bash
 cd faderpunk-preset-editor
-npm install && npm start   # http://127.0.0.1:3847/
-npm run chrome             # dedicated Chrome profile
+npm start                  # http://127.0.0.1:3847/
 ```
+
+Pull/Push use Web MIDI SysEx in the browser (no Configurator, no debug Chrome).
+Close other tabs that hold the device MIDI ports before connecting.
 
 ## File Structure Summary
 
