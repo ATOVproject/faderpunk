@@ -1596,7 +1596,7 @@ On load, both registers are restored at the next phrase boundary so the recalled
     ],
   },
   {
-    appId: 31,
+    appId: 32,
     title: "Super LFO",
     description: "Morphing dual-osc LFO with CV form control",
     color: "Cyan",
@@ -1613,6 +1613,7 @@ On load, both registers are restored at the next phrase boundary so the recalled
       "Mix Mode",
       "Osc B",
       "Mix balance",
+      "CV Dest",
     ],
     storage: [
       "Morph",
@@ -1641,11 +1642,12 @@ On load, both registers are restored at the next phrase boundary so the recalled
 
 #### Dual oscillators
 
-Configurator **Mix Mode**, **Osc B**, and **Mix balance** set the dual-osc topology:
+Configurator **Mix Mode**, **Osc B**, **Mix balance**, and **CV Dest** set the dual-osc topology and CV routing:
 - **Osc B = Quad** — B is +90° (¼ cycle) from A → quadrature / circular modulation when mixed.
 - **Osc B = Octave** — B runs at 2× phase → octave-up companion.
 - **Mix balance** 0–100% (default 50%): 0% = A only, 50% = center, 100% = B only (used by **Xfade**; Min / Max / Sum ignore balance).
 - **Xfade** crossfades A↔B by balance. **Min** / **Max** pick the lower / higher sample (harsher, more gated contours). **Sum** averages A and B (thicker, smoother).
+- **CV Dest** chooses what CV In modulates (Speed / Phase / Amp / Reset / Morph / Skew / Warp / Symmetry / Rate Mod). Shift + Left short press cycles the same list on-device.
 
 **Amp** is output level — live control only via CV destination Amp (storage default is full). CV input attenuation is fixed at full (no live Alt control).
 

@@ -26,12 +26,21 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 11;
+pub const PARAMS: usize = 12;
 
 const REVERSE_FADE_MS: u16 = 500;
 /// Hold off periodic button LED writes so LedMode::Flash can finish (~3 cycles @ 60fps).
 const BUTTON_FLASH_MS: u16 = 850;
 const DEST_COUNT: usize = 9;
+const DEST_SPEED: usize = 0;
+const DEST_PHASE: usize = 1;
+const DEST_AMP: usize = 2;
+const DEST_RESET: usize = 3;
+const DEST_MORPH: usize = 4;
+const DEST_SKEW: usize = 5;
+const DEST_WARP: usize = 6;
+const DEST_SYMMETRY: usize = 7;
+const DEST_RATE_MOD: usize = 8;
 /// Secondary LFO rate as a fraction of the primary step (rate-mod wobble).
 /// Higher = more audible tempo breathing relative to the main cycle.
 const RATE_MOD_RATIO: f32 = 0.3;
@@ -92,6 +101,20 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Mix balance",
     min: 0,
     max: 100,
+})
+.add_param(Param::Enum {
+    name: "CV Dest",
+    variants: &[
+        "Speed",
+        "Phase",
+        "Amp",
+        "Reset",
+        "Morph",
+        "Skew",
+        "Warp",
+        "Symmetry",
+        "Rate Mod",
+    ],
 });
 
 pub struct Params {
@@ -107,11 +130,12 @@ pub struct Params {
     osc_b: usize,
     /// 0% = Osc A only, 50% = center, 100% = Osc B only (Xfade).
     mix_balance: i32,
+    dest: usize,
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        // Legacy layouts omitted Mix balance (10 params) or used signed −100…+100.
+        // Legacy: 10 params (no Mix balance), 11 params (no CV Dest), or signed Mix balance.
         let (
             speed_mult,
             range,
@@ -124,6 +148,7 @@ impl AppParams for Params {
             mix_mode,
             osc_b,
             mix_balance,
+            dest,
         ) = if values.len() >= PARAMS {
             let raw = i32::from_value(values[10]);
             let mix_balance = if raw < 0 {
@@ -144,6 +169,28 @@ impl AppParams for Params {
                 usize::from_value(values[8]),
                 usize::from_value(values[9]),
                 mix_balance,
+                usize::from_value(values[11]),
+            )
+        } else if values.len() >= 11 {
+            let raw = i32::from_value(values[10]);
+            let mix_balance = if raw < 0 {
+                ((raw + 100) / 2).clamp(0, 100)
+            } else {
+                raw.clamp(0, 100)
+            };
+            (
+                usize::from_value(values[0]),
+                Range::from_value(values[1]),
+                MidiChannel::from_value(values[2]),
+                MidiCc::from_value(values[3]),
+                Color::from_value(values[4]),
+                bool::from_value(values[5]),
+                MidiOut::from_value(values[6]),
+                bool::from_value(values[7]),
+                usize::from_value(values[8]),
+                usize::from_value(values[9]),
+                mix_balance,
+                DEST_SPEED,
             )
         } else if values.len() >= 10 {
             (
@@ -158,6 +205,7 @@ impl AppParams for Params {
                 usize::from_value(values[8]),
                 usize::from_value(values[9]),
                 50,
+                DEST_SPEED,
             )
         } else {
             return None;
@@ -174,6 +222,7 @@ impl AppParams for Params {
             mix_mode,
             osc_b,
             mix_balance,
+            dest: dest.min(DEST_COUNT - 1),
         })
     }
 
@@ -190,6 +239,7 @@ impl AppParams for Params {
         vec.push(self.mix_mode.into()).unwrap();
         vec.push(self.osc_b.into()).unwrap();
         vec.push(self.mix_balance.into()).unwrap();
+        vec.push(self.dest.into()).unwrap();
         vec
     }
 }
@@ -228,7 +278,7 @@ impl Default for Storage {
             mix_balance: 2048,
             in_att: 4095,
             in_mute: false,
-            dest: 0,
+            dest: DEST_SPEED,
             out_muted: false,
             reversed: false,
             frozen: false,
@@ -256,6 +306,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             mix_mode: 0,
             osc_b: 0,
             mix_balance: 50,
+            dest: DEST_SPEED,
         },
     );
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
@@ -282,7 +333,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (range, midi_out, midi_chan, midi_cc, led_color, nrpn, mix_mode, osc_b) =
+    let (range, midi_out, midi_chan, midi_cc, led_color, nrpn, mix_mode, osc_b, p_dest) =
         params.query(|p| {
             (
                 p.range,
@@ -293,8 +344,14 @@ pub async fn run(
                 p.nrpn,
                 p.mix_mode.min(3),
                 p.osc_b.min(1),
+                p.dest.min(DEST_COUNT - 1),
             )
         });
+
+    // Configurator CV Dest is the start value; apply on each run() (param edits restart run).
+    storage.modify_and_save(|s| {
+        s.dest = p_dest;
+    });
 
     let speed_mult = 2u32.pow(params.query(|p| p.speed_mult).min(31) as u32);
     let phase_lock = params.query(|p| p.phase_lock);
@@ -435,10 +492,14 @@ pub async fn run(
             };
             let destination = storage.query(|s| s.dest).min(DEST_COUNT - 1);
 
-            let speed_offset = if destination == 0 { in_val } else { 2047 };
+            let speed_offset = if destination == DEST_SPEED {
+                in_val
+            } else {
+                2047
+            };
             time_calc(speed_offset);
 
-            if destination == 3 {
+            if destination == DEST_RESET {
                 if in_val >= 2458 && oldinputval < 2458 {
                     glob_phase_origin.set(ticker());
                     glob_lfo_pos.set(0.0);
@@ -483,11 +544,11 @@ pub async fn run(
             };
 
             let cv_delta = in_val as i32 - 2047;
-            let morph = cv_mod_u16(morph_base, destination == 4, cv_delta);
-            let skew = cv_mod_u16(skew_base, destination == 5, cv_delta);
-            let warp = cv_mod_u16(warp_base, destination == 6, cv_delta);
-            let symmetry = cv_mod_u16(symmetry_base, destination == 7, cv_delta);
-            let rate_mod = cv_mod_u16(rate_mod_base, destination == 8, cv_delta);
+            let morph = cv_mod_u16(morph_base, destination == DEST_MORPH, cv_delta);
+            let skew = cv_mod_u16(skew_base, destination == DEST_SKEW, cv_delta);
+            let warp = cv_mod_u16(warp_base, destination == DEST_WARP, cv_delta);
+            let symmetry = cv_mod_u16(symmetry_base, destination == DEST_SYMMETRY, cv_delta);
+            let rate_mod = cv_mod_u16(rate_mod_base, destination == DEST_RATE_MOD, cv_delta);
 
             let lfo_speed = glob_lfo_speed.get();
             let quant_speed = glob_quant_speed.get();
@@ -530,14 +591,14 @@ pub async fn run(
             };
 
             let attenuation = (attenuation_base as i16
-                + if destination == 2 {
+                + if destination == DEST_AMP {
                     (in_val as i16 - 2047) * 2
                 } else {
                     0
                 })
             .clamp(0, 4095) as u16;
 
-            let phase_offset: i16 = if destination == 1 {
+            let phase_offset: i16 = if destination == DEST_PHASE {
                 (in_val as i16 - 2047) * 2
             } else {
                 0
@@ -1147,15 +1208,15 @@ fn hsv_to_rgb(hue: u16) -> (u8, u8, u8) {
 
 fn dest_color(dest: usize) -> Color {
     match dest {
-        0 => Color::Yellow, // Speed
-        1 => Color::Pink,   // Phase
-        2 => Color::Cyan,   // Amp
-        3 => Color::Red,    // Reset
-        4 => Color::Orange, // Morph
-        5 => Color::Violet, // Skew
-        6 => Color::Green,  // Warp
-        7 => Color::Rose,   // Symmetry
-        8 => Color::Blue,   // Rate Mod
+        DEST_SPEED => Color::Yellow,
+        DEST_PHASE => Color::Pink,
+        DEST_AMP => Color::Cyan,
+        DEST_RESET => Color::Red,
+        DEST_MORPH => Color::Orange,
+        DEST_SKEW => Color::Violet,
+        DEST_WARP => Color::Green,
+        DEST_SYMMETRY => Color::Rose,
+        DEST_RATE_MOD => Color::Blue,
         _ => Color::Yellow,
     }
 }
