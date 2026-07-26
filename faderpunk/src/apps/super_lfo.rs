@@ -26,7 +26,7 @@ use crate::{
 };
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 12;
+pub const PARAMS: usize = 13;
 
 const REVERSE_FADE_MS: u16 = 500;
 /// Hold off periodic button LED writes so LedMode::Flash can finish (~3 cycles @ 60fps).
@@ -103,6 +103,11 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     min: 0,
     max: 100,
 })
+.add_param(Param::i32 {
+    name: "Rate-mod depth",
+    min: 0,
+    max: 100,
+})
 .add_param(Param::Enum {
     name: "CV Dest",
     variants: &[
@@ -131,12 +136,14 @@ pub struct Params {
     osc_b: usize,
     /// 0% = Osc A only, 50% = center, 100% = Osc B only (Xfade).
     mix_balance: i32,
+    /// Depth of internal rate wobble (0 = steady, 100 = full).
+    rate_mod: i32,
     dest: usize,
 }
 
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        // Legacy: 10 params (no Mix balance), 11 params (no CV Dest), or signed Mix balance.
+        // Legacy: 10 (no mix), 11 (no dest), 12 (no rate-mod param), 13 = current.
         let (
             speed_mult,
             range,
@@ -149,11 +156,11 @@ impl AppParams for Params {
             mix_mode,
             osc_b,
             mix_balance,
+            rate_mod,
             dest,
-        ) = if values.len() >= PARAMS {
+        ) = if values.len() >= 13 {
             let raw = i32::from_value(values[10]);
             let mix_balance = if raw < 0 {
-                // Old signed −100…+100 → 0…100%
                 ((raw + 100) / 2).clamp(0, 100)
             } else {
                 raw.clamp(0, 100)
@@ -170,6 +177,29 @@ impl AppParams for Params {
                 usize::from_value(values[8]),
                 usize::from_value(values[9]),
                 mix_balance,
+                i32::from_value(values[11]).clamp(0, 100),
+                usize::from_value(values[12]),
+            )
+        } else if values.len() >= 12 {
+            let raw = i32::from_value(values[10]);
+            let mix_balance = if raw < 0 {
+                ((raw + 100) / 2).clamp(0, 100)
+            } else {
+                raw.clamp(0, 100)
+            };
+            (
+                usize::from_value(values[0]),
+                Range::from_value(values[1]),
+                MidiChannel::from_value(values[2]),
+                MidiCc::from_value(values[3]),
+                Color::from_value(values[4]),
+                bool::from_value(values[5]),
+                MidiOut::from_value(values[6]),
+                bool::from_value(values[7]),
+                usize::from_value(values[8]),
+                usize::from_value(values[9]),
+                mix_balance,
+                0,
                 usize::from_value(values[11]),
             )
         } else if values.len() >= 11 {
@@ -191,6 +221,7 @@ impl AppParams for Params {
                 usize::from_value(values[8]),
                 usize::from_value(values[9]),
                 mix_balance,
+                0,
                 DEST_RATE_MOD,
             )
         } else if values.len() >= 10 {
@@ -206,6 +237,7 @@ impl AppParams for Params {
                 usize::from_value(values[8]),
                 usize::from_value(values[9]),
                 50,
+                0,
                 DEST_RATE_MOD,
             )
         } else {
@@ -223,6 +255,7 @@ impl AppParams for Params {
             mix_mode,
             osc_b,
             mix_balance,
+            rate_mod,
             dest: dest.min(DEST_COUNT - 1),
         })
     }
@@ -240,6 +273,7 @@ impl AppParams for Params {
         vec.push(self.mix_mode.into()).unwrap();
         vec.push(self.osc_b.into()).unwrap();
         vec.push(self.mix_balance.into()).unwrap();
+        vec.push(self.rate_mod.into()).unwrap();
         vec.push(self.dest.into()).unwrap();
         vec
     }
@@ -307,6 +341,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             mix_mode: 0,
             osc_b: 0,
             mix_balance: 50,
+            rate_mod: 0,
             dest: DEST_RATE_MOD,
         },
     );
@@ -334,7 +369,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (range, midi_out, midi_chan, midi_cc, led_color, nrpn, mix_mode, osc_b, p_dest) =
+    let (range, midi_out, midi_chan, midi_cc, led_color, nrpn, mix_mode, osc_b, p_dest, p_rate_mod) =
         params.query(|p| {
             (
                 p.range,
@@ -346,12 +381,15 @@ pub async fn run(
                 p.mix_mode.min(3),
                 p.osc_b.min(1),
                 p.dest.min(DEST_COUNT - 1),
+                p.rate_mod.clamp(0, 100),
             )
         });
 
-    // Configurator CV Dest is the start value; apply on each run() (param edits restart run).
+    // Configurator CV Dest / Rate Mod are start values; apply on each run()
+    // (param edits restart run). Scene load can still override storage later.
     storage.modify_and_save(|s| {
         s.dest = p_dest;
+        s.rate_mod = ((p_rate_mod as u32 * 4095) / 100) as u16;
     });
 
     let speed_mult = 2u32.pow(params.query(|p| p.speed_mult).min(31) as u32);
