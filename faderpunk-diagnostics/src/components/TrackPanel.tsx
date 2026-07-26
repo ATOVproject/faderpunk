@@ -176,7 +176,7 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
       )}
 
       {!compact && cvOnly && (
-        <div className="cv-banner" title="This app has no MidiOut USB mirror — diagnostics can’t scope CV">
+        <div className="cv-banner" title="This app has no MidiOut USB mirror — Scopepunk can’t scope CV">
           <div className="cv-copy">
             <strong>CV-only · no MIDI mirror</strong>
             <span>Jack/fader I/O only — nothing to scope over USB.</span>

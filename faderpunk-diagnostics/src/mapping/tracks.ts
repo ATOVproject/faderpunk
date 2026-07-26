@@ -5,6 +5,7 @@ import {
   drainConfigQueue,
   receiveBatchMessages,
   sendAndReceive,
+  sendMessage,
   type ConfigPort,
   type DeviceBundle,
 } from "../midi/device";
@@ -952,10 +953,12 @@ export async function ensureUsbOutputLocal(snapshot: Snapshot): Promise<string |
     send_transport: true,
     mode: { tag: "Local" },
   };
-  await sendAndReceive(config, {
+  // Firmware does not ack SetGlobalConfig — never wait for a reply.
+  sendMessage(config, {
     tag: "SetGlobalConfig",
     value: { ...gc, midi: { outs } },
   });
+  await new Promise((r) => setTimeout(r, 80));
   const parts: string[] = [];
   if (needsMode) parts.push(`USB MIDI mode ${usb.mode.tag} → Local`);
   if (needsClock) parts.push("USB send clock/transport on");
@@ -994,7 +997,8 @@ export async function ensureMidiUsbClockSource(
   if (gc.clock.clock_src.tag === "MidiUsb") {
     return { src: "MidiUsb", bpm, changed: false };
   }
-  await sendAndReceive(snapshot.device.config, {
+  // Firmware does not ack SetGlobalConfig — never wait for a reply.
+  sendMessage(snapshot.device.config, {
     tag: "SetGlobalConfig",
     value: {
       ...gc,
@@ -1004,6 +1008,7 @@ export async function ensureMidiUsbClockSource(
       },
     },
   });
+  await new Promise((r) => setTimeout(r, 80));
   return { src: "MidiUsb", bpm, changed: true };
 }
 
@@ -1017,7 +1022,8 @@ export async function writeDeviceBpm(
   if (response.tag !== "GlobalConfig") return null;
   const gc = response.value;
   if (clampBpm(gc.clock.internal_bpm) === clamped) return clamped;
-  await sendAndReceive(snapshot.device.config, {
+  // Firmware does not ack SetGlobalConfig — never wait for a reply.
+  sendMessage(snapshot.device.config, {
     tag: "SetGlobalConfig",
     value: {
       ...gc,

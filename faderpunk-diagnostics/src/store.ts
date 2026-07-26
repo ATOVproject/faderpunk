@@ -1112,38 +1112,48 @@ export const useDiag = create<DiagState>((set, get) => ({
       });
       return;
     }
+    const snap = snapshot;
+    const bpmHint = clampBpm(get().clockBpm);
+    // Optimistic: start host clock immediately so the click always feels live.
+    // Config SysEx (switch to MidiUsb) may be locked behind the params poll.
+    hostClock.setOutputs(snap.device.performanceOutputs);
+    hostClock.setBpm(bpmHint);
+    hostClock.start();
+    sendMidiTransport(snap.device.performanceOutputs, "start");
+    set({
+      transportRunning: true,
+      playing: true,
+      notice: `Host clock + Start @ ${bpmHint} BPM…`,
+    });
+    audioEngine.setPlaying(true);
+    const tracks = get().tracks;
+    if (tracks.length > 0 && tracks.every((tr) => tr.muted)) {
+      const next = tracks.map((tr) => ({ ...tr, muted: false }));
+      for (const tr of next) {
+        audioEngine.setTrackState(tr.key, { muted: false, solo: tr.solo });
+      }
+      set({ tracks: next });
+    }
+
     try {
-      const ensured = await ensureMidiUsbClockSource(snapshot);
+      const ensured = await withConfigLock(() => ensureMidiUsbClockSource(snap));
       const bpm = clampBpm(ensured?.bpm ?? get().clockBpm);
-      hostClock.setOutputs(snapshot.device.performanceOutputs);
-      hostClock.setBpm(bpm);
-      hostClock.start();
-      // Also poke Start on outputs (hostClock already sends 0xFA)
-      sendMidiTransport(snapshot.device.performanceOutputs, "start");
-      const switched = ensured?.changed
-        ? `Clock Src → MIDI USB. `
-        : "";
+      if (bpm !== bpmHint) {
+        hostClock.setBpm(bpm);
+      }
+      const switched = ensured?.changed ? `Clock Src → MIDI USB. ` : "";
       set({
-        transportRunning: true,
         clockSrc: "MidiUsb",
         clockBpm: bpm,
-        playing: true,
         notice: `${switched}Host clock + Start @ ${bpm} BPM. Apps need MidiOut→USB for scopes.`,
       });
-      audioEngine.setPlaying(true);
-      // Unmute if everything was muted after panic — otherwise user hears nothing
-      const tracks = get().tracks;
-      if (tracks.length > 0 && tracks.every((tr) => tr.muted)) {
-        const next = tracks.map((tr) => ({ ...tr, muted: false }));
-        for (const tr of next) {
-          audioEngine.setTrackState(tr.key, { muted: false, solo: tr.solo });
-        }
-        set({ tracks: next });
-      }
     } catch (err) {
+      // Clock is already running on the host — surface the config hiccup without undoing Start.
       set({
-        notice: null,
-        error: err instanceof Error ? err.message : String(err),
+        notice:
+          err instanceof Error
+            ? `Started host clock; device config: ${err.message}`
+            : `Started host clock; device config: ${String(err)}`,
       });
     }
   },

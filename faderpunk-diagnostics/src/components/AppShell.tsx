@@ -51,21 +51,30 @@ export function AppShell() {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
-      const typing =
-        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable;
+      // Let focused buttons/links handle their own activation (avoids Start→Stop race).
+      if (
+        tag === "BUTTON" ||
+        tag === "A" ||
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
       if (useDiag.getState().status !== "ready") return;
 
-      if (!typing && (e.code === "Space" || e.key === " ")) {
+      if (e.code === "Space" || e.key === " ") {
         e.preventDefault();
         toggleMuteAll();
         return;
       }
-      if (!typing && (e.key === "Escape" || e.key === "p" || e.key === "P")) {
+      if (e.key === "Escape" || e.key === "p" || e.key === "P") {
         e.preventDefault();
         panic();
         return;
       }
-      if (!typing && (e.key === "Enter" || e.code === "Enter")) {
+      if (e.key === "Enter" || e.code === "Enter") {
         e.preventDefault();
         if (useDiag.getState().transportRunning) transportStop();
         else void transportStart();
@@ -91,7 +100,7 @@ export function AppShell() {
         <div className="brand">
           <img className="brand-logo" src="/img/fp-logo.svg" width="55" height="72" alt="Faderpunk" />
           <div className="brand-text">
-            <h1>Diagnostics</h1>
+            <h1>Scopepunk</h1>
             <p className="compat-note">
               {version ? <span className="app-ver">fw {version}</span> : null}
               Live MIDI scope · waveform profile · audible monitor

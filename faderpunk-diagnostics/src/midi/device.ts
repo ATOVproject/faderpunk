@@ -278,6 +278,11 @@ export function drainConfigQueue(rx: RxState): void {
   rx.queue.length = 0;
 }
 
+/** Fire-and-forget — firmware does not ack SetGlobalConfig / similar writes. */
+export function sendMessage(config: ConfigPort, msg: ConfigMsgIn): void {
+  sendFrame(config.output, msg);
+}
+
 export async function sendAndReceive(
   config: ConfigPort,
   msg: ConfigMsgIn,
