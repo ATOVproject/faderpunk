@@ -169,12 +169,13 @@
         <h3>Faders</h3>
         <ul>
           <li><strong>Main</strong> — Density (extra hits)</li>
-          <li><strong>Alt</strong> — Swing</li>
-          <li><strong>Third</strong> — CV-jack activity mode: low=Any, high=Stacked</li>
+          <li><strong>Alt</strong> — Genre scrub (same colors as Chord Vamp)</li>
+          <li><strong>Third</strong> — Swing (capped by Swing max %)</li>
         </ul>
         <h3>Genres</h3>
         <ul>
           <li>Dub → Disco → Hip-Hop → House → Techno → Trip-Hop → UK Garage → Dubstep</li>
+          <li>Colors (shared): Orange · Yellow · Red · Pink · Cyan · Violet · Green · Blue</li>
         </ul>
       </div>
       <div>
@@ -183,7 +184,7 @@
           <li><strong>Short</strong> — Reset to downbeat</li>
           <li><strong>Long</strong> — Mute (notes off)</li>
           <li><strong>Shift+Short</strong> — Reverse swing</li>
-          <li><strong>Shift+Long</strong> — Cycle genre (flash)</li>
+          <li><strong>Shift+Long</strong> — Toggle jack Any ↔ Stacked (yellow/violet flash)</li>
         </ul>
         <h3>Jack params</h3>
         <ul>
@@ -201,7 +202,7 @@
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> Genre MIDI drums on the global clock. Density reveals hits; Swing max % caps the Alt fader. Third picks how the CV Out jack reflects simultaneous hits (Any vs Stacked). Jack=CV In modulates Density/Swing or triggers Reset — set CV Dest in the Configurator only. CV Att scales input.</p>
+      <p><strong>Manual.</strong> Genre MIDI drums on the global clock. Density reveals hits; Shift+Fader scrubs genre (Vamp-aligned); Button+Fader = Swing (capped by Swing max %). Shift+Long toggles CV Out Any↔Stacked. Jack=CV In modulates Density/Swing or triggers Reset — set CV Dest in the Configurator only. CV Att scales input.</p>
     </div>
   </div>
 </section>
@@ -299,6 +300,7 @@
           <li>Speed, Range, MIDI, Grid Lock</li>
           <li>Mix Mode: Xfade / Min / Max / Sum</li>
           <li>Osc B: Quad / Octave · Mix balance 0–100%</li>
+          <li>Rate-mod depth 0–100% (Configurator) · CV Dest can modulate it</li>
           <li>Ch0 jack = CV In · Ch1 jack = CV Out</li>
         </ul>
       </div>
@@ -423,7 +425,7 @@
           <li><strong>Main (Perform)</strong> — Scrub genre degrees × 3 octaves (pitch map)</li>
           <li><strong>Main (Auto)</strong> — Tension (Meander only)</li>
           <li><strong>Alt</strong> — Genre (+ Capture clip slot if clip exists)</li>
-          <li><strong>Third (Auto)</strong> — Feel (laid back ↔ advanced hit length)</li>
+          <li><strong>Third (Auto)</strong> — Feel (laid ↔ advanced stab length)</li>
           <li><strong>Third (Perform)</strong> — Feel still stored; LEDs = blue / chord pitch</li>
         </ul>
         <h3>Jack params</h3>
@@ -462,7 +464,7 @@
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> captures recent harmony (starts quantized to 16ths, lead-in cropped to first hit; hold lengths free) into a timed clip and arms Auto. <strong>Auto</strong>: genre rhythm phrase (weighted hits + multi-bar rests) loops; harmony Repeat or Meander; Feel sets hit length (rests fixed); Swing (scene, genre-seeded) delays odd 16ths on Auto + Capture. Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform. Alt = genre (+ Capture slot). CV Macro = scrub/tension; Panic from CV optional.</p>
+      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> captures recent harmony (starts quantized to 16ths, lead-in cropped to first hit; hold lengths free) into a timed clip and arms Auto. <strong>Auto</strong>: genre rhythm phrase (weighted stabs + multi-bar rests) loops; harmony Repeat or Meander; Feel sets short stab gate (rests fixed); Swing (scene, genre-seeded) delays odd 16ths on Auto + Capture. Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform. Alt = genre (+ Capture slot). CV Macro = scrub/tension; Panic from CV optional.</p>
     </div>
   </div>
 </section>
