@@ -18,11 +18,12 @@ import {
   ensureUsbOutputLocal,
   findMidiCollisions,
   loadSnapshot,
-  readClockConfig,
+  readDeviceInfo,
   refreshAppParamsOnly,
   reloadTracks,
   writeDeviceBpm,
   clampBpm,
+  type DeviceInfo,
 } from "./mapping/tracks";
 import {
   bindMidiHandlers,
@@ -33,6 +34,7 @@ import {
 import type { ConfigMsgOut } from "@atov/fp-config";
 import { hostClock } from "./midi/host-clock";
 import { echoMidiToDevice } from "./midi/loopback";
+import { liveStats, resetLiveStats } from "./midi/live-stats";
 import { sendMidiPanic, sendMidiPanicChannels } from "./midi/panic";
 import { PerformanceParser, type MidiEvent } from "./midi/performance";
 import { sendMidiTransport } from "./midi/transport";
@@ -79,6 +81,8 @@ interface DiagState {
   error: string | null;
   notice: string | null;
   version: string | null;
+  /** Live GlobalConfig summary for the device rail (null until first fetch). */
+  deviceInfo: DeviceInfo | null;
   demo: boolean;
   viewMode: ViewMode;
   focusKey: string | null;
@@ -94,17 +98,12 @@ interface DiagState {
   transportRunning: boolean;
   tracks: TrackRuntime[];
   unmappedLog: MidiEvent[];
-  clockCount: number;
-  ccCount: number;
-  noteCount: number;
   portSummary: string | null;
   usbOn: number;
   usbCapable: number;
   collisions: MidiCollision[];
   /** User dismissed the shared-MIDI conflict banner (per session / until reconnect). */
   collisionsBannerDismissed: boolean;
-  /** Host always echoes USB-Out → USB-In (no on-device USB loop). */
-  loopbackCount: number;
   busRing: SampleRing;
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -147,6 +146,97 @@ let configLock: Promise<void> = Promise.resolve();
 const SCOPE_RING_CAPACITY = 16384;
 const sharedBusRing = new SampleRing(SCOPE_RING_CAPACITY);
 const PARAMS_POLL_MS = 2800;
+
+type DiagGet = () => DiagState;
+type DiagSet = (
+  partial: Partial<DiagState> | ((s: DiagState) => Partial<DiagState>),
+) => void;
+
+/**
+ * Coalesce high-rate MIDI → React: rings/audio update immediately; track chrome
+ * (activity / lastEvent / unmapped) flushes at most once per animation frame.
+ * Counters live in `liveStats` and are polled by DevicePanel — no Zustand churn.
+ */
+let pendingTrackRows: TrackRuntime[] | null = null;
+let pendingUnmapped: MidiEvent[] | null = null;
+let uiFlushRaf = 0;
+let visibilityBound = false;
+let flushGet: DiagGet | null = null;
+let flushSet: DiagSet | null = null;
+
+function cancelUiFlush() {
+  if (uiFlushRaf) {
+    cancelAnimationFrame(uiFlushRaf);
+    uiFlushRaf = 0;
+  }
+}
+
+function flushUiNow() {
+  uiFlushRaf = 0;
+  const set = flushSet;
+  const get = flushGet;
+  if (!set || !get) return;
+  if (document.hidden) return;
+  const pending = pendingTrackRows;
+  const unmappedLog = pendingUnmapped;
+  pendingTrackRows = null;
+  pendingUnmapped = null;
+  if (!pending && !unmappedLog) return;
+
+  // Merge activity chrome onto current rows so mute/solo/compare aren't clobbered.
+  if (pending) {
+    const byKey = new Map(pending.map((tr) => [tr.key, tr]));
+    set((s) => ({
+      tracks: s.tracks.map((tr) => {
+        const p = byKey.get(tr.key);
+        if (!p) return tr;
+        return {
+          ...tr,
+          activity: p.activity,
+          lastEvent: p.lastEvent,
+          ambiguousHit: p.ambiguousHit,
+          inputLevel: p.inputLevel,
+        };
+      }),
+      ...(unmappedLog ? { unmappedLog } : {}),
+    }));
+    return;
+  }
+  set({ unmappedLog: unmappedLog! });
+}
+
+function scheduleUiFlush() {
+  if (uiFlushRaf || document.hidden) return;
+  uiFlushRaf = requestAnimationFrame(flushUiNow);
+}
+
+/** Drop coalesced activity patches (layout reload or interactive track edits). */
+function dropPendingTrackUi() {
+  pendingTrackRows = null;
+}
+
+function onDocumentVisibility() {
+  if (document.hidden) {
+    cancelUiFlush();
+    // Keep host MIDI clock running — pausing it stops clocked apps on the device.
+    // Chrome still suspends this tab's AudioContext; that only mutes the in-browser monitor.
+    stopParamsPoll();
+    return;
+  }
+  void audioEngine.ensure().catch(() => undefined);
+  if (flushGet && flushSet && snapshot && !flushGet().demo && flushGet().status === "ready") {
+    startParamsPoll(flushGet, flushSet);
+  }
+  if (pendingTrackRows || pendingUnmapped) scheduleUiFlush();
+}
+
+function ensureVisibilityBinding(get: DiagGet, set: DiagSet) {
+  flushGet = get;
+  flushSet = set;
+  if (visibilityBound || typeof document === "undefined") return;
+  visibilityBound = true;
+  document.addEventListener("visibilitychange", onDocumentVisibility);
+}
 
 function withConfigLock<T>(fn: () => Promise<T>): Promise<T> {
   const run = configLock.then(fn, fn);
@@ -242,6 +332,9 @@ function stopDemo() {
 async function releaseSnapshot(): Promise<void> {
   stopDemo();
   stopParamsPoll();
+  cancelUiFlush();
+  pendingTrackRows = null;
+  pendingUnmapped = null;
   if (bpmWriteTimer) {
     clearTimeout(bpmWriteTimer);
     bpmWriteTimer = null;
@@ -258,6 +351,7 @@ async function releaseSnapshot(): Promise<void> {
   }
   audioEngine.unregisterAll();
   sharedBusRing.clear();
+  resetLiveStats();
 }
 
 function hintFor(track: AppTrack, colliding: boolean): string | null {
@@ -477,11 +571,6 @@ function buildTrackRuntimes(
   return { runtimes, collisions };
 }
 
-function collisionNotice(collisions: MidiCollision[]): string | null {
-  if (collisions.length === 0) return null;
-  return `${collisions.length} MIDI collision(s): ${collisions.map((c) => c.label).join("; ")}. Unique MIDI channels to split.`;
-}
-
 function commitTracks(
   updated: AppTrack[],
   get: () => DiagState,
@@ -499,6 +588,8 @@ function commitTracks(
     get().keyPc,
     get().tracks,
   );
+  // Drop coalesced activity patches — they reference pre-reload track rows.
+  dropPendingTrackUi();
   set({
     tracks: runtimes,
     collisions,
@@ -545,14 +636,20 @@ async function softPollParams(
       | ((s: DiagState) => Partial<DiagState>),
   ) => void,
 ): Promise<void> {
-  if (!snapshot || get().demo || get().status !== "ready" || paramsPollBusy) {
+  if (
+    !snapshot ||
+    get().demo ||
+    get().status !== "ready" ||
+    paramsPollBusy ||
+    document.hidden
+  ) {
     return;
   }
   if (snapshot.device.config.rx.waiter) return;
   paramsPollBusy = true;
   try {
     await withConfigLock(async () => {
-      if (!snapshot || get().status !== "ready") return;
+      if (!snapshot || get().status !== "ready" || document.hidden) return;
       const updated = await refreshAppParamsOnly(snapshot);
       if (!snapshot) return;
       if (tracksVisiblyEqual(snapshot.tracks, updated)) return;
@@ -584,6 +681,7 @@ export const useDiag = create<DiagState>((set, get) => ({
   error: null,
   notice: null,
   version: null,
+  deviceInfo: null,
   demo: false,
   viewMode: "all",
   focusKey: null,
@@ -595,15 +693,11 @@ export const useDiag = create<DiagState>((set, get) => ({
   transportRunning: false,
   tracks: [],
   unmappedLog: [],
-  clockCount: 0,
-  ccCount: 0,
-  noteCount: 0,
   portSummary: null,
   usbOn: 0,
   usbCapable: 0,
   collisions: [],
   collisionsBannerDismissed: false,
-  loopbackCount: 0,
   busRing: sharedBusRing,
 
   connect: async () => {
@@ -612,9 +706,13 @@ export const useDiag = create<DiagState>((set, get) => ({
     try {
       const snap = await loadSnapshot();
       snapshot = snap;
+      ensureVisibilityBinding(get, set);
 
       const usbFix = await ensureUsbOutputLocal(snap);
-      const clock = await readClockConfig(snap);
+      const deviceInfo = await readDeviceInfo(snap);
+      const clock = deviceInfo
+        ? { src: deviceInfo.clockSrc, bpm: deviceInfo.bpm }
+        : null;
       await audioEngine.ensure();
       audioEngine.setMasterGain(get().masterGain);
       audioEngine.setPlaying(true);
@@ -641,7 +739,7 @@ export const useDiag = create<DiagState>((set, get) => ({
             ];
             echoMidiToDevice(outs, data);
             if (data.length > 0 && data[0] < 0xf0) {
-              set((s) => ({ loopbackCount: s.loopbackCount + 1 }));
+              liveStats.loopbackCount += 1;
             }
           }
           const events = parser.parse(data, t);
@@ -687,28 +785,21 @@ export const useDiag = create<DiagState>((set, get) => ({
           "Only config MIDI port visible — host clock/Start may not reach the device. Check OS MIDI ports (need cable 0).",
         );
       }
-      if (collisions.length > 0) {
-        noticeParts.push(
-          `${collisions.length} MIDI collision(s): same ch/CC can’t be told apart. Use Unique MIDI channels.`,
-        );
-      }
 
+      resetLiveStats();
       set({
         status: "ready",
         version: snap.version,
+        deviceInfo,
         tracks,
         collisions,
         collisionsBannerDismissed: false,
         focusKey: tracks[0]?.key ?? null,
         unmappedLog: [],
-        clockCount: 0,
-        ccCount: 0,
-        noteCount: 0,
         playing: true,
         portSummary: snap.device.portSummary,
         usbOn: usb.on,
         usbCapable: usb.capable,
-        loopbackCount: 0,
         clockSrc: clock?.src ?? null,
         clockBpm: clampBpm(clock?.bpm ?? 120),
         notice: noticeParts.length ? noticeParts.join(" ") : null,
@@ -726,6 +817,7 @@ export const useDiag = create<DiagState>((set, get) => ({
       set({
         status: "idle",
         version: null,
+        deviceInfo: null,
         tracks: [],
         demo: false,
         unmappedLog: [],
@@ -735,7 +827,6 @@ export const useDiag = create<DiagState>((set, get) => ({
         usbCapable: 0,
         collisions: [],
         collisionsBannerDismissed: false,
-        loopbackCount: 0,
         transportRunning: false,
         clockSrc: null,
       });
@@ -745,6 +836,7 @@ export const useDiag = create<DiagState>((set, get) => ({
   startDemo: () => {
     void releaseSnapshot().then(() => {
     void audioEngine.ensure().then(() => {
+      ensureVisibilityBinding(get, set);
       audioEngine.setMasterGain(get().masterGain);
       audioEngine.setPlaying(true);
       const fakeTracks: AppTrack[] = [
@@ -911,10 +1003,29 @@ export const useDiag = create<DiagState>((set, get) => ({
         step++;
       }, 30);
 
+      resetLiveStats();
       set({
         status: "ready",
         demo: true,
         version: "demo",
+        deviceInfo: {
+          version: "demo",
+          clockSrc: "Internal",
+          bpm: 120,
+          swing: 0,
+          extPpqn: 24,
+          resetSrc: "None",
+          i2c: "Leader",
+          ledBrightness: 150,
+          takeover: "Pickup",
+          quantizer: "C Chromatic",
+          aux: { atom: "Clk ÷1", meteor: "—", cube: "—" },
+          midiOuts: [
+            { label: "USB", mode: "Local", sendClock: true, sendTransport: true },
+            { label: "Out 1", mode: "Local", sendClock: true, sendTransport: true },
+            { label: "Out 2", mode: "None", sendClock: false, sendTransport: false },
+          ],
+        },
         tracks: selected,
         focusKey: selected[0]?.key ?? null,
         viewMode: "all",
@@ -925,9 +1036,8 @@ export const useDiag = create<DiagState>((set, get) => ({
         usbCapable: 3,
         collisions: [],
         portSummary: "demo",
-        clockCount: 0,
-        ccCount: 0,
-        noteCount: 0,
+        clockSrc: "Internal",
+        clockBpm: 120,
       });
     });
     });
@@ -937,12 +1047,42 @@ export const useDiag = create<DiagState>((set, get) => ({
   setFocus: (focusKey) => set({ focusKey, viewMode: focusKey ? "solo" : get().viewMode }),
 
   toggleMute: (key) => {
+    dropPendingTrackUi();
     set((s) => {
-      const tracks = s.tracks.map((tr) =>
-        tr.key === key ? { ...tr, muted: !tr.muted } : tr,
-      );
+      const target = s.tracks.find((t) => t.key === key);
+      if (!target) return s;
+      const willMute = !target.muted;
+      const hadSolo = s.tracks.some((t) => t.solo);
+
+      let tracks = s.tracks.map((tr) => {
+        if (tr.key !== key) return tr;
+        // Mute clears solo on this track (mutual exclusion).
+        return {
+          ...tr,
+          muted: willMute,
+          solo: willMute ? false : tr.solo,
+        };
+      });
+
+      const anySolo = tracks.some((tr) => tr.solo);
+      if (anySolo) {
+        // Keep solo group audible; mute everyone outside it.
+        tracks = tracks.map((tr) =>
+          tr.solo ? { ...tr, muted: false } : { ...tr, muted: true },
+        );
+      } else if (hadSolo) {
+        // Last solo cleared via mute — restore the others.
+        tracks = tracks.map((tr) =>
+          tr.key === key
+            ? { ...tr, muted: willMute, solo: false }
+            : { ...tr, muted: false, solo: false },
+        );
+      }
+
+      for (const tr of tracks) {
+        audioEngine.setTrackState(tr.key, { muted: tr.muted, solo: tr.solo });
+      }
       const tr = tracks.find((x) => x.key === key);
-      if (tr) audioEngine.setTrackState(key, { muted: tr.muted, solo: tr.solo });
       if (tr && !tr.muted) audioEngine.setPlaying(true);
       return {
         tracks,
@@ -955,9 +1095,15 @@ export const useDiag = create<DiagState>((set, get) => ({
   toggleMuteAll: () => {
     const tracks = get().tracks;
     if (tracks.length === 0) return;
+    dropPendingTrackUi();
     const allMuted = tracks.every((tr) => tr.muted);
     const muted = !allMuted;
-    const next = tracks.map((tr) => ({ ...tr, muted }));
+    // Mute-all clears solos; unmute-all restores audio without re-soloing.
+    const next = tracks.map((tr) => ({
+      ...tr,
+      muted,
+      solo: muted ? false : tr.solo,
+    }));
     if (muted) {
       audioEngine.muteAll();
     } else {
@@ -970,24 +1116,55 @@ export const useDiag = create<DiagState>((set, get) => ({
       tracks: next,
       playing: muted ? false : true,
       notice: muted
-        ? "All muted — host MIDI echo paused. Space = unmute."
+        ? "All muted — host MIDI echo paused. M = unmute."
         : "All unmuted — host MIDI echo on.",
     });
   },
 
   toggleSolo: (key) => {
+    dropPendingTrackUi();
     set((s) => {
-      const tracks = s.tracks.map((tr) =>
-        tr.key === key ? { ...tr, solo: !tr.solo } : tr,
-      );
+      const current = s.tracks.find((t) => t.key === key);
+      if (!current) return s;
+      const arming = !current.solo;
+
+      // Multi-solo: soloed tracks stay unmuted; everyone else is muted.
+      // If every track would be solo, clear all solos (same as none solo).
+      let tracks = s.tracks.map((tr) => {
+        if (tr.key === key) {
+          return arming
+            ? { ...tr, solo: true, muted: false }
+            : { ...tr, solo: false };
+        }
+        return tr;
+      });
+
+      if (arming && tracks.length > 1 && tracks.every((tr) => tr.solo)) {
+        tracks = tracks.map((tr) => ({ ...tr, solo: false, muted: false }));
+      } else {
+        const anySolo = tracks.some((tr) => tr.solo);
+        tracks = tracks.map((tr) => {
+          if (tr.solo) return { ...tr, muted: false };
+          if (anySolo) return { ...tr, muted: true };
+          return { ...tr, muted: false };
+        });
+      }
+
       for (const tr of tracks) {
         audioEngine.setTrackState(tr.key, { muted: tr.muted, solo: tr.solo });
       }
-      return { tracks, focusKey: key, viewMode: "solo" as ViewMode };
+      const anySolo = tracks.some((tr) => tr.solo);
+      if (arming && anySolo) audioEngine.setPlaying(true);
+      return {
+        tracks,
+        focusKey: key,
+        playing: anySolo || arming ? true : s.playing,
+      };
     });
   },
 
   toggleCompare: (key) => {
+    dropPendingTrackUi();
     set((s) => {
       const tracks = s.tracks.map((tr) =>
         tr.key === key ? { ...tr, selected: !tr.selected } : tr,
@@ -1014,7 +1191,10 @@ export const useDiag = create<DiagState>((set, get) => ({
   setClockBpm: (raw) => {
     const clockBpm = clampBpm(raw);
     hostClock.setBpm(clockBpm);
-    set({ clockBpm });
+    set((s) => ({
+      clockBpm,
+      deviceInfo: s.deviceInfo ? { ...s.deviceInfo, bpm: clockBpm } : null,
+    }));
     if (get().demo || !snapshot) return;
     if (bpmWriteTimer) clearTimeout(bpmWriteTimer);
     bpmWriteTimer = setTimeout(() => {
@@ -1028,6 +1208,7 @@ export const useDiag = create<DiagState>((set, get) => ({
 
   setLaneMonitorNote: (trackKey, laneKey, note) => {
     const keyPc = get().keyPc;
+    dropPendingTrackUi();
     set((s) => {
       const tracks = s.tracks.map((tr) => {
         if (tr.key !== trackKey) return tr;
@@ -1059,6 +1240,7 @@ export const useDiag = create<DiagState>((set, get) => ({
   panic: () => {
     hostClock.stop();
     audioEngine.panic();
+    dropPendingTrackUi();
     set((s) => {
       sharedBusRing.clear();
       if (snapshot && !get().demo) {
@@ -1075,7 +1257,7 @@ export const useDiag = create<DiagState>((set, get) => ({
         transportRunning: false,
         tracks,
         notice:
-          "Panic — monitor muted, MIDI Stop + All Notes Off. Host echo paused. Space = unmute.",
+          "Panic — monitor muted, MIDI Stop + All Notes Off. Host echo paused. M = unmute.",
       };
     });
   },
@@ -1094,6 +1276,7 @@ export const useDiag = create<DiagState>((set, get) => ({
     if (snapshot && !get().demo) {
       sendMidiPanicChannels(snapshot.device.performanceOutputs, channels);
     }
+    dropPendingTrackUi();
     set((s) => ({
       tracks: s.tracks.map((t) =>
         t.key === key
@@ -1119,15 +1302,16 @@ export const useDiag = create<DiagState>((set, get) => ({
     hostClock.setOutputs(snap.device.performanceOutputs);
     hostClock.setBpm(bpmHint);
     hostClock.start();
-    sendMidiTransport(snap.device.performanceOutputs, "start");
+    // hostClock.start already sent 0xFA — no second Start (avoids echo races).
     set({
       transportRunning: true,
       playing: true,
-      notice: `Host clock + Start @ ${bpmHint} BPM…`,
+      notice: `Host clock + Start @ ${bpmHint} BPM`,
     });
     audioEngine.setPlaying(true);
     const tracks = get().tracks;
     if (tracks.length > 0 && tracks.every((tr) => tr.muted)) {
+      dropPendingTrackUi();
       const next = tracks.map((tr) => ({ ...tr, muted: false }));
       for (const tr of next) {
         audioEngine.setTrackState(tr.key, { muted: false, solo: tr.solo });
@@ -1141,38 +1325,51 @@ export const useDiag = create<DiagState>((set, get) => ({
       if (bpm !== bpmHint) {
         hostClock.setBpm(bpm);
       }
+      // Re-assert Start after Clock Src switch — device may have dropped transport.
+      if (ensured?.changed && get().transportRunning) {
+        hostClock.start();
+      }
       const switched = ensured?.changed ? `Clock Src → MIDI USB. ` : "";
-      set({
+      set((s) => ({
         clockSrc: "MidiUsb",
         clockBpm: bpm,
-        notice: `${switched}Host clock + Start @ ${bpm} BPM. Apps need MidiOut→USB for scopes.`,
-      });
+        deviceInfo: s.deviceInfo
+          ? { ...s.deviceInfo, clockSrc: "MidiUsb", bpm }
+          : null,
+        // Keep notice length stable — avoid layout jump from rewriting the banner.
+        notice: s.transportRunning
+          ? `${switched}Host clock + Start @ ${bpm} BPM`
+          : s.notice,
+      }));
     } catch (err) {
       // Clock is already running on the host — surface the config hiccup without undoing Start.
-      set({
-        notice:
-          err instanceof Error
-            ? `Started host clock; device config: ${err.message}`
-            : `Started host clock; device config: ${String(err)}`,
-      });
+      set((s) => ({
+        notice: s.transportRunning
+          ? err instanceof Error
+            ? `Host clock running; device config: ${err.message}`
+            : `Host clock running; device config: ${String(err)}`
+          : s.notice,
+      }));
     }
   },
 
   transportStop: () => {
+    // hostClock.stop already sent 0xFC — no second Stop.
     hostClock.stop();
-    if (snapshot && !get().demo) {
-      sendMidiTransport(snapshot.device.performanceOutputs, "stop");
-    }
     set({
       transportRunning: false,
-      notice: get().demo ? "Demo has no device transport" : "Host clock + MIDI Stop sent",
+      notice: get().demo ? "Demo has no device transport" : "Host clock + MIDI Stop",
     });
   },
 
   refreshParams: async () => {
     if (!snapshot || get().demo) return;
     try {
-      const updated = await withConfigLock(() => reloadTracks(snapshot!));
+      const { updated, deviceInfo } = await withConfigLock(async () => {
+        const updated = await reloadTracks(snapshot!);
+        const deviceInfo = await readDeviceInfo({ ...snapshot!, tracks: updated });
+        return { updated, deviceInfo };
+      });
       snapshot = { ...snapshot, tracks: updated };
       const usb = countUsbEnabled(updated);
       const { runtimes, collisions } = buildTrackRuntimes(
@@ -1180,17 +1377,20 @@ export const useDiag = create<DiagState>((set, get) => ({
         get().keyPc,
         get().tracks,
       );
+      dropPendingTrackUi();
       set({
         tracks: runtimes,
         collisions,
         collisionsBannerDismissed: false,
         usbOn: usb.on,
         usbCapable: usb.capable,
+        deviceInfo: deviceInfo ?? get().deviceInfo,
+        clockSrc: deviceInfo?.clockSrc ?? get().clockSrc,
+        clockBpm: deviceInfo?.bpm ?? get().clockBpm,
         notice:
-          collisionNotice(collisions) ??
-          (usb.capable > 0 && usb.on === 0
+          usb.capable > 0 && usb.on === 0
             ? "No app has MidiOut→USB enabled — scopes stay flat until you enable it."
-            : "Layout + params refreshed"),
+            : "Layout + params refreshed",
       });
     } catch (err) {
       set({
@@ -1216,6 +1416,7 @@ export const useDiag = create<DiagState>((set, get) => ({
         get().keyPc,
         get().tracks,
       );
+      dropPendingTrackUi();
       set({
         tracks: runtimes,
         collisions,
@@ -1226,7 +1427,6 @@ export const useDiag = create<DiagState>((set, get) => ({
           changed > 0
             ? `Enabled USB MIDI on ${changed} app(s). Waves should appear if those apps are running.`
             : "All capable apps already had USB MIDI on.",
-          collisionNotice(collisions),
         ]
           .filter(Boolean)
           .join(" "),
@@ -1258,20 +1458,16 @@ export const useDiag = create<DiagState>((set, get) => ({
         get().keyPc,
         get().tracks,
       );
+      dropPendingTrackUi();
       set((s) => ({
         tracks: runtimes,
         collisions,
         collisionsBannerDismissed:
           collisions.length === 0 ? false : s.collisionsBannerDismissed,
-        notice: [
+        notice:
           changed > 0
-            ? `Split ${changed} colliding app(s) onto unique MIDI channels.`
+            ? `Split ${changed} colliding app(s) onto unique MIDI channels. If the Configurator was open, reconnect it — it shares the config MIDI cable.`
             : "No colliding apps to split (or no free channels / AppState read failed).",
-          collisionNotice(collisions),
-          "If the Configurator was open, reconnect it — it shares the config MIDI cable.",
-        ]
-          .filter(Boolean)
-          .join(" "),
       }));
     } catch (err) {
       set({
@@ -1285,32 +1481,43 @@ export const useDiag = create<DiagState>((set, get) => ({
 
   ingest: (ev) => {
     if (ev.kind === "transport") {
-      // 0xFA start, 0xFB continue, 0xFC stop
-      if (ev.rawValue === 0xfa || ev.rawValue === 0xfb) {
-        set({ transportRunning: true });
-      } else if (ev.rawValue === 0xfc) {
-        set({ transportRunning: false });
-      }
+      // Host Start/Stop owns UI state. Wire echoes (and Stop glitches while
+      // switching Clock Src → MIDI USB) must not flip the button / notice.
       return;
     }
 
     if (ev.kind === "clock") {
-      set((s) => ({ clockCount: s.clockCount + 1 }));
+      liveStats.clockCount += 1;
       return;
     }
 
     if (ev.kind === "cc" || ev.kind === "nrpn") {
       sharedBusRing.push(ev.value ?? 0, ev.t);
-      set((s) => ({ ccCount: s.ccCount + 1 }));
+      liveStats.ccCount += 1;
     } else if (ev.kind === "noteOn") {
       sharedBusRing.push(ev.value ?? 0.8, ev.t);
-      set((s) => ({ noteCount: s.noteCount + 1 }));
+      liveStats.noteCount += 1;
     } else if (ev.kind === "noteOff") {
       sharedBusRing.push(0, ev.t);
     }
 
     const state = get();
-    const { matches, ambiguous } = routeEvent(state.tracks, ev);
+    const pending = pendingTrackRows;
+    const pendingByKey = pending ? new Map(pending.map((tr) => [tr.key, tr])) : null;
+    const baseTracks = pendingByKey
+      ? state.tracks.map((tr) => {
+          const p = pendingByKey.get(tr.key);
+          if (!p) return tr;
+          return {
+            ...tr,
+            activity: p.activity,
+            lastEvent: p.lastEvent,
+            ambiguousHit: p.ambiguousHit,
+            inputLevel: p.inputLevel,
+          };
+        })
+      : state.tracks;
+    const { matches, ambiguous } = routeEvent(baseTracks, ev);
 
     const inAmp =
       ev.kind === "noteOff"
@@ -1321,7 +1528,7 @@ export const useDiag = create<DiagState>((set, get) => ({
 
     // In lanes: bus traffic on MidiIn CH (host always echoes → device MidiIn)
     if (isVoice) {
-      for (const tr of state.tracks) {
+      for (const tr of baseTracks) {
         const inn = inLane(tr.lanes);
         if (inn && inn.channel === ev.channel) pushVoiceToRing(inn.ring, ev);
       }
@@ -1329,24 +1536,23 @@ export const useDiag = create<DiagState>((set, get) => ({
 
     if (matches.length === 0) {
       if (isVoice) {
-        set((s) => ({
-          unmappedLog:
-            ev.kind === "cc" || ev.kind === "noteOn" || ev.kind === "nrpn"
-              ? [...s.unmappedLog.slice(-40), ev]
-              : s.unmappedLog,
-          tracks: s.tracks.map((tr) => {
-            const inHit =
-              tr.track.midi.inChannel !== null && tr.track.midi.inChannel === ev.channel;
-            return {
-              ...tr,
-              activity: inHit ? Math.max(tr.activity, 0.5) : tr.activity * 0.92,
-              ambiguousHit: false,
-              inputLevel: inHit
-                ? Math.max(tr.inputLevel * 0.5, inAmp)
-                : tr.inputLevel * 0.88,
-            };
-          }),
-        }));
+        const prevLog = pendingUnmapped ?? state.unmappedLog;
+        if (ev.kind === "cc" || ev.kind === "noteOn" || ev.kind === "nrpn") {
+          pendingUnmapped = [...prevLog.slice(-40), ev];
+        }
+        pendingTrackRows = baseTracks.map((tr) => {
+          const inHit =
+            tr.track.midi.inChannel !== null && tr.track.midi.inChannel === ev.channel;
+          return {
+            ...tr,
+            activity: inHit ? Math.max(tr.activity, 0.5) : tr.activity * 0.92,
+            ambiguousHit: false,
+            inputLevel: inHit
+              ? Math.max(tr.inputLevel * 0.5, inAmp)
+              : tr.inputLevel * 0.88,
+          };
+        });
+        scheduleUiFlush();
       }
       return;
     }
@@ -1367,32 +1573,32 @@ export const useDiag = create<DiagState>((set, get) => ({
       }
     }
 
-    set((s) => ({
-      tracks: s.tracks.map((tr) => {
-        const inHit =
-          isVoice &&
-          tr.track.midi.inChannel !== null &&
-          tr.track.midi.inChannel === ev.channel;
-        const inputLevel = inHit
-          ? Math.max(tr.inputLevel * 0.5, inAmp)
-          : tr.inputLevel * 0.88;
+    const matchKeys = new Set(matches.map((m) => m.key));
+    pendingTrackRows = baseTracks.map((tr) => {
+      const inHit =
+        isVoice &&
+        tr.track.midi.inChannel !== null &&
+        tr.track.midi.inChannel === ev.channel;
+      const inputLevel = inHit
+        ? Math.max(tr.inputLevel * 0.5, inAmp)
+        : tr.inputLevel * 0.88;
 
-        if (!matches.some((m) => m.key === tr.key)) {
-          return {
-            ...tr,
-            activity: inHit ? Math.max(tr.activity, 0.45) : tr.activity * 0.92,
-            ambiguousHit: false,
-            inputLevel,
-          };
-        }
+      if (!matchKeys.has(tr.key)) {
         return {
           ...tr,
-          activity: 1,
-          lastEvent: ev,
-          ambiguousHit: ambiguous,
+          activity: inHit ? Math.max(tr.activity, 0.45) : tr.activity * 0.92,
+          ambiguousHit: false,
           inputLevel,
         };
-      }),
-    }));
+      }
+      return {
+        ...tr,
+        activity: 1,
+        lastEvent: ev,
+        ambiguousHit: ambiguous,
+        inputLevel,
+      };
+    });
+    scheduleUiFlush();
   },
 }));

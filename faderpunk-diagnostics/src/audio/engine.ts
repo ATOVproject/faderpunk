@@ -362,7 +362,10 @@ export class AudioEngine {
 
   /** Hard silence every track and mark muted in the engine. */
   muteAll() {
-    for (const t of this.tracks.values()) t.muted = true;
+    for (const t of this.tracks.values()) {
+      t.muted = true;
+      t.solo = false;
+    }
     this.applyGains();
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
@@ -392,7 +395,7 @@ export class AudioEngine {
       const v = ev.value ?? 0;
       if (recordToRing) lane.ring.push(v, ev.t);
       lane.lastCcAt = performance.now();
-      if (!this.playing || t.muted) return;
+      if (!this.playing || t.muted || (this.anySolo && !t.solo)) return;
       if (t.kind !== "cc" && t.kind !== "hybrid") return;
       const now = this.ctx.currentTime;
       if (!lane.ccEmaInited) {
@@ -418,7 +421,7 @@ export class AudioEngine {
       const ring = ccLane?.ring ?? t.ccLanes.values().next().value?.ring;
       if (recordToRing && ring) ring.push(ev.value ?? 0.8, ev.t);
       // Always voice notes when routed here — attribution is the filter.
-      if (this.playing && !t.muted) {
+      if (this.playing && !t.muted && (!this.anySolo || t.solo)) {
         // Hybrid: each out lane’s selected note is the audible pitch.
         // Pure note apps: keep wire pitch (Grooves Kick/Snare, Arp, …).
         const playMidi =

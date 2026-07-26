@@ -97,6 +97,7 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
   const uniqueMidiChannels = useDiag((s) => s.uniqueMidiChannels);
   const setLaneMonitorNote = useDiag((s) => s.setLaneMonitorNote);
   const keyPc = useDiag((s) => s.keyPc);
+  const clockBpm = useDiag((s) => s.clockBpm);
   const demo = useDiag((s) => s.demo);
   const faderChRef = useRef<HTMLSpanElement>(null);
   const {
@@ -140,13 +141,31 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
       return;
     }
     let raf = 0;
-    const tick = () => {
-      const level = muted || dimmed ? 0 : outFlashLevel(ring.lastT, ring.latest, performance.now());
-      el.style.setProperty("--out-flash", level.toFixed(3));
+    const schedule = () => {
+      if (raf || document.hidden) return;
       raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const tick = () => {
+      raf = 0;
+      if (document.hidden) return;
+      const level = muted || dimmed ? 0 : outFlashLevel(ring.lastT, ring.latest, performance.now());
+      el.style.setProperty("--out-flash", level.toFixed(3));
+      schedule();
+    };
+    const onVis = () => {
+      if (document.hidden) {
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+      } else {
+        schedule();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    schedule();
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [primaryOut?.key, primaryOut?.ring, muted, dimmed, cvOnly]);
 
   return (
@@ -228,9 +247,10 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
             type="button"
             className={solo ? "on solo" : ""}
             onClick={() => toggleSolo(track.key)}
-            title="Focus — solo audio + this track only"
+            title="Solo — hear this with other solos; mute the rest"
+            aria-pressed={solo}
           >
-            F
+            S
           </button>
           <button
             type="button"
@@ -265,6 +285,7 @@ export function TrackPanel({ runtime, dimmed, compact }: Props) {
             height={28}
             windowMs={4000}
             collapseWhenQuiet
+            bpm={clockBpm}
           />
         </div>
       )}

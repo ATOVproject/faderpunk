@@ -967,20 +967,100 @@ export async function ensureUsbOutputLocal(snapshot: Snapshot): Promise<string |
 
 export type ClockSrcTag = string;
 
+export type DeviceMidiOutInfo = {
+  label: string;
+  mode: string;
+  sendClock: boolean;
+  sendTransport: boolean;
+};
+
+/** Compact GlobalConfig + firmware version for the Scopepunk device rail. */
+export type DeviceInfo = {
+  version: string;
+  clockSrc: string;
+  bpm: number;
+  swing: number;
+  extPpqn: number;
+  resetSrc: string;
+  i2c: string;
+  ledBrightness: number;
+  takeover: string;
+  quantizer: string;
+  aux: { atom: string; meteor: string; cube: string };
+  midiOuts: DeviceMidiOutInfo[];
+};
+
+const MIDI_OUT_LABELS = ["USB", "Out 1", "Out 2"] as const;
+
+function auxLabel(mode: { tag: string; value?: { tag: string } }): string {
+  if (mode.tag === "None") return "—";
+  if (mode.tag === "ResetOut") return "Reset";
+  if (mode.tag === "ClockOut" && mode.value?.tag) {
+    const div = mode.value.tag.replace(/^_/, "÷");
+    return `Clk ${div}`;
+  }
+  return mode.tag;
+}
+
+function midiModeLabel(mode: { tag: string }): string {
+  if (mode.tag === "MidiThru") return "Thru";
+  if (mode.tag === "MidiMerge") return "Merge";
+  return mode.tag;
+}
+
+export function summarizeGlobalConfig(
+  version: string,
+  gc: import("@atov/fp-config").GlobalConfig,
+): DeviceInfo {
+  const q = gc.quantizer;
+  const quantizer =
+    q.key.tag === "Off"
+      ? "Off"
+      : `${noteLabel(q.tonic.tag)} ${q.key.tag}`;
+  return {
+    version,
+    clockSrc: gc.clock.clock_src.tag,
+    bpm: clampBpm(gc.clock.internal_bpm),
+    swing: Number(gc.clock.swing_amount) || 0,
+    extPpqn: Number(gc.clock.ext_ppqn) || 24,
+    resetSrc: gc.clock.reset_src.tag,
+    i2c: gc.i2c_mode.tag,
+    ledBrightness: Number(gc.led_brightness) || 0,
+    takeover: gc.takeover_mode.tag,
+    quantizer,
+    aux: {
+      atom: auxLabel(gc.aux[0]),
+      meteor: auxLabel(gc.aux[1]),
+      cube: auxLabel(gc.aux[2]),
+    },
+    midiOuts: [0, 1, 2].map((i) => {
+      const out = gc.midi.outs[i];
+      return {
+        label: MIDI_OUT_LABELS[i] ?? `Out ${i}`,
+        mode: midiModeLabel(out.mode),
+        sendClock: Boolean(out.send_clock),
+        sendTransport: Boolean(out.send_transport),
+      };
+    }),
+  };
+}
+
 export function clampBpm(bpm: number): number {
   return Math.max(20, Math.min(300, Math.round(Number(bpm) || 120)));
+}
+
+export async function readDeviceInfo(snapshot: Snapshot): Promise<DeviceInfo | null> {
+  const response = await sendAndReceive(snapshot.device.config, { tag: "GetGlobalConfig" });
+  if (response.tag !== "GlobalConfig") return null;
+  return summarizeGlobalConfig(snapshot.version, response.value);
 }
 
 export async function readClockConfig(
   snapshot: Snapshot,
 ): Promise<{ src: ClockSrcTag; bpm: number } | null> {
-  const response = await sendAndReceive(snapshot.device.config, { tag: "GetGlobalConfig" });
-  if (response.tag !== "GlobalConfig") return null;
-  const clock = response.value.clock;
-  return {
-    src: clock.clock_src.tag,
-    bpm: clampBpm(clock.internal_bpm),
-  };
+  const info = await readDeviceInfo(snapshot);
+  if (!info) return null;
+  return { src: info.clockSrc, bpm: info.bpm };
 }
 
 /**

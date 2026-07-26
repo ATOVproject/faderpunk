@@ -28,6 +28,17 @@ export function colorCss(tag: string): string {
   return COLOR_MAP[tag] ?? "#c8c4bc";
 }
 
+/** 4/4 bar length in ms at the given tempo. */
+export function barsToMs(bars: number, bpm: number): number {
+  const tempo = Math.max(20, Math.min(300, Math.round(Number(bpm) || 120)));
+  return (bars * 4 * 60_000) / tempo;
+}
+
+/** Bars of silence before a collapsible miniscope closes. */
+export const SCOPE_QUIET_BARS = 16;
+/** Open quickly once activity returns (anti-flicker only). */
+const SCOPE_EXPAND_HOLD_MS = 280;
+
 interface ScopeProps {
   ring: SampleRing;
   color: string;
@@ -38,8 +49,13 @@ interface ScopeProps {
   dimmed?: boolean;
   /** Visible history in ms (linear time). Default 8s. */
   windowMs?: number;
-  /** Hide the canvas (and let parents collapse) when the window is quiet. */
+  /**
+   * Hide the canvas (and let parents collapse) when quiet for {@link SCOPE_QUIET_BARS}.
+   * Quiet = near-zero peak (notes) OR no new MIDI events (CC hold / mute).
+   */
   collapseWhenQuiet?: boolean;
+  /** Host/device tempo for bar-length quiet timeout. Default 120. */
+  bpm?: number;
 }
 
 export function Scope({
@@ -51,6 +67,7 @@ export function Scope({
   dimmed,
   windowMs = 8000,
   collapseWhenQuiet = false,
+  bpm = 120,
 }: ScopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -61,48 +78,66 @@ export function Scope({
     const canvas = canvasRef.current;
     const frame = frameRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
     let raf = 0;
-    /** Symmetric hold before toggling collapsed — avoids one-frame flicker both ways. */
-    const HOLD_MS = 280;
     let quietSince = 0;
     let activeSince = 0;
     let collapsed = false;
 
+    const schedule = () => {
+      if (raf || document.hidden) return;
+      raf = requestAnimationFrame(draw);
+    };
+
     const draw = () => {
+      raf = 0;
+      if (document.hidden) return;
+
       const bins = Math.min(tmpRef.current.length, Math.max(64, Math.floor(canvas.clientWidth || 64)));
       const view = tmpRef.current.subarray(0, bins);
       const n = ring.resampleWindow(view, windowMs);
       let peak = 0;
       for (let i = 0; i < n; i++) peak = Math.max(peak, view[i] ?? 0);
-      const quiet = n < 2 || peak < 0.02;
+      const peakQuiet = n < 2 || peak < 0.02;
+      // Sample-and-hold keeps the last CC forever — treat “no new events” as quiet
+      // so dense CC apps (Super LFO, Heat Pump) can still close the miniscope.
+      const quietAfterMs = barsToMs(SCOPE_QUIET_BARS, bpm);
+      const now = performance.now();
+      const stale =
+        collapseWhenQuiet && (ring.lastT <= 0 || now - ring.lastT >= quietAfterMs);
+      const quiet = peakQuiet || stale;
       const secs = Math.max(1, Math.round(windowMs / 1000));
 
       if (collapseWhenQuiet) {
-        const now = performance.now();
         if (quiet) {
           activeSince = 0;
-          if (quietSince === 0) quietSince = now;
-          if (!collapsed && now - quietSince >= HOLD_MS) collapsed = true;
+          if (stale) {
+            // Already silent for ≥16 bars (or never had events).
+            collapsed = true;
+          } else {
+            if (quietSince === 0) quietSince = now;
+            if (!collapsed && now - quietSince >= quietAfterMs) collapsed = true;
+          }
         } else {
           quietSince = 0;
           if (activeSince === 0) activeSince = now;
-          if (collapsed && now - activeSince >= HOLD_MS) collapsed = false;
+          if (collapsed && now - activeSince >= SCOPE_EXPAND_HOLD_MS) collapsed = false;
         }
         canvas.classList.toggle("is-collapsed", collapsed);
         frame?.classList.toggle("is-collapsed", collapsed);
         if (collapsed) {
-          raf = requestAnimationFrame(draw);
+          schedule();
           return;
         }
       }
 
-      const dpr = window.devicePixelRatio || 1;
+      // Cap DPR on Retina — full 2×/3× canvas cost dominates Mac Chrome.
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
       if (w < 1 || h < 1) {
-        raf = requestAnimationFrame(draw);
+        schedule();
         return;
       }
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
@@ -165,12 +200,25 @@ export function Scope({
         hudTextRef.current.classList.toggle("is-quiet", quiet);
       }
 
-      raf = requestAnimationFrame(draw);
+      schedule();
     };
 
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, [ring, color, dimmed, label, windowMs, collapseWhenQuiet]);
+    const onVis = () => {
+      if (document.hidden) {
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+      } else {
+        schedule();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVis);
+    schedule();
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [ring, color, dimmed, label, windowMs, collapseWhenQuiet, bpm]);
 
   const aria = [labelStart ? "monitor note" : null, label, "oscilloscope"]
     .filter(Boolean)
@@ -214,17 +262,24 @@ export function WaveProfile({ traces, color, height = 72, dimmed }: ProfileProps
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || tracesRef.current.length === 0) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
     let raf = 0;
 
+    const schedule = () => {
+      if (raf || document.hidden) return;
+      raf = requestAnimationFrame(draw);
+    };
+
     const draw = () => {
+      raf = 0;
+      if (document.hidden) return;
       const active = tracesRef.current;
       if (active.length === 0) {
-        raf = requestAnimationFrame(draw);
+        schedule();
         return;
       }
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
@@ -268,11 +323,24 @@ export function WaveProfile({ traces, color, height = 72, dimmed }: ProfileProps
             : "avg pulse";
       ctx.fillText(label, 8, 12);
 
-      raf = requestAnimationFrame(draw);
+      schedule();
     };
 
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    const onVis = () => {
+      if (document.hidden) {
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+      } else {
+        schedule();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVis);
+    schedule();
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [color, dimmed, ringEpoch]);
 
   if (traces.length === 0) return null;

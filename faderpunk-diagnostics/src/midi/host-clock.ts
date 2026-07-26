@@ -50,6 +50,19 @@ export class HostClock {
     this.running = false;
   }
 
+  /**
+   * Pause ticks while keeping `running` true (hidden browser tab).
+   * Chrome clamps background timers — better to stop than send sparse clocks.
+   */
+  pauseTicks() {
+    this.clearTicks();
+  }
+
+  /** Resume ticks after `pauseTicks` if still marked running. */
+  resumeTicks() {
+    if (this.running && !this.timer) this.restartTicks();
+  }
+
   private restartTicks() {
     this.clearTicks();
     const ms = 60_000 / (this.bpm * 24);
