@@ -115,6 +115,8 @@ const APPS: App[] = [
     midiCc("Button CC"),
     MIDI_NRPN,
     MIDI_OUT,
+    i32("CC Send Value", 0, 127),
+    i32("CC Default Value", -1, 127),
   ]),
   makeApp(2, 1, "Yellow", "Sine", "LFO", "Multi shape LFO", [
     enumParam("Speed", ["Normal", "Slow", "Slowest"]),
