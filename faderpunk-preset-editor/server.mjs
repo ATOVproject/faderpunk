@@ -191,6 +191,10 @@ const server = createServer(async (req, res) => {
       const data = await readFile(path);
       res.writeHead(200, {
         "Content-Type": MIME[extname(path)] || "application/octet-stream",
+        "Cache-Control":
+          extname(path) === ".js" || extname(path) === ".html"
+            ? "no-store"
+            : "public, max-age=60",
       });
       res.end(req.method === "HEAD" ? undefined : data);
     } catch (e) {

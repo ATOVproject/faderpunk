@@ -130,6 +130,42 @@
       color: var(--text);
       padding-bottom: var(--dock-pad, 88px);
     }
+    .fab-live {
+      position: fixed;
+      top: 162px;
+      right: max(8px, calc((100vi - var(--layout-max)) / 2 + 12px));
+      z-index: 900;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.55rem;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--bg) 82%, #000);
+      border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+      color: var(--text);
+      font: 600 11px/1.2 var(--font);
+      font-stretch: condensed;
+      font-variation-settings: "wdth" 80;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      user-select: none;
+    }
+    .fab-live input {
+      accent-color: var(--accent);
+      width: 0.95rem;
+      height: 0.95rem;
+      margin: 0;
+      cursor: pointer;
+    }
+    .fab-live.is-on {
+      border-color: var(--accent);
+      color: #fff;
+      background: color-mix(in srgb, var(--accent) 28%, var(--bg));
+    }
+    @media (max-width: 720px) {
+      .fab-live { display: none !important; }
+    }
     .fab-push {
       position: fixed;
       top: 2px;
@@ -1027,6 +1063,103 @@
       text-align: right;
       white-space: nowrap;
     }
+    .row-meteor {
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+      box-sizing: border-box;
+      width: 1.85rem;
+      height: 1.85rem;
+      margin: 6px 4px 0 0;
+      padding: 0;
+      border: 0;
+      vertical-align: top;
+      background: transparent;
+      transform-style: preserve-3d;
+      transform-origin: center center;
+      will-change: transform;
+      -webkit-mask: url("/icons/meteor-fill.svg") center / contain no-repeat;
+      mask: url("/icons/meteor-fill.svg") center / contain no-repeat;
+      opacity: 0.32;
+      pointer-events: none;
+    }
+    .row-meteor .row-meteor-face {
+      position: absolute;
+      inset: 0;
+      background: var(--accent);
+      transition: background-color 0.9s ease;
+    }
+    .row-meteor.is-pending {
+      opacity: 0.85;
+      animation: row-meteor-pulse 0.75s ease-in-out infinite;
+    }
+    .row-meteor.is-spinning,
+    .row-meteor.is-spun,
+    .row-meteor.is-spinning-back {
+      opacity: 1;
+    }
+    .row-meteor.is-spinning .row-meteor-face,
+    .row-meteor.is-spun .row-meteor-face {
+      background: #6e6e6e;
+    }
+    /* Loop for the whole live transport — one-shot is invisible at this size. */
+    .row-meteor.is-spinning {
+      animation: row-meteor-spin-3d 1.4s cubic-bezier(0.12, 0.7, 0.08, 1) infinite;
+    }
+    .row-meteor.is-spun {
+      transform: perspective(220px) rotate3d(-0.8192, -0.5736, 0, 1080deg) scale(1);
+    }
+    .row-meteor.is-spinning-back {
+      animation: row-meteor-spin-3d-back 1.1s cubic-bezier(0.12, 0.7, 0.08, 1) forwards;
+    }
+    .row-meteor.is-spinning-back .row-meteor-face {
+      background: var(--accent);
+      transition: background-color 1.1s ease;
+    }
+    .row-meteor.is-ok .row-meteor-face {
+      background: color-mix(in srgb, #6d8 55%, var(--accent));
+    }
+    .row-meteor.is-err .row-meteor-face {
+      background: #c66;
+    }
+    /* Same axis as fab-spin-3d, tighter perspective so the tumble reads at ~30px. */
+    @keyframes row-meteor-spin-3d {
+      0% {
+        transform: perspective(220px) rotate3d(-0.8192, -0.5736, 0, 0deg) scale(1);
+      }
+      20% {
+        transform: perspective(220px) rotate3d(-0.8192, -0.5736, 0, 420deg) scale(1.12);
+      }
+      100% {
+        transform: perspective(220px) rotate3d(-0.8192, -0.5736, 0, 1080deg) scale(1);
+      }
+    }
+    @keyframes row-meteor-spin-3d-back {
+      0% {
+        transform: perspective(220px) rotate3d(-0.8192, -0.5736, 0, 1080deg) scale(1);
+      }
+      22% {
+        transform: perspective(220px) rotate3d(-0.8192, -0.5736, 0, 720deg) scale(1.08);
+      }
+      100% {
+        transform: perspective(220px) rotate3d(-0.8192, -0.5736, 0, 0deg) scale(1);
+      }
+    }
+    @keyframes row-meteor-pulse {
+      0%, 100% { opacity: 0.4; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.08); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .row-meteor.is-spinning,
+      .row-meteor.is-spinning-back,
+      .row-meteor.is-pending { animation: none; }
+      .row-meteor.is-spun { transform: none; }
+      .row-meteor.is-spinning { opacity: 1; }
+      .row-meteor.is-spinning .row-meteor-face { background: #6e6e6e; }
+    }
+    @media print {
+      .row-meteor { display: none !important; }
+    }
     td.fader-cell {
       padding: 5px 6px 5px 5px;
       vertical-align: top;
@@ -1216,6 +1349,7 @@
     #cheatsheetPrint { display: none; }
     @media print {
       .fab-push { display: none !important; }
+      .fab-live { display: none !important; }
       .status-dock { display: none !important; }
       body { padding-bottom: 0 !important; }
       @page { size: A4 landscape; margin: 5mm 5mm 0 5mm; }
@@ -1886,6 +2020,10 @@
     <span class="fab-face" aria-hidden="true"></span>
     <span class="fab-lines"><span data-i18n="push.fabLine1">Push</span><span data-i18n="push.fabLine2">to Punk</span></span>
   </button>
+  <label class="fab-live" id="fabLiveWrap" data-i18n-title="push.liveTitle" title="Live: param edits → SetAppParams; app swap / row changes → SetLayout + params">
+    <input type="checkbox" id="chkLivePush" />
+    <span data-i18n="push.liveToggle">Live sync</span>
+  </label>
   <header>
     <div class="brand">
       <img class="brand-logo" src="/img/fp-logo.svg" width="55" height="72" alt="Faderpunk">
@@ -2378,7 +2516,7 @@
       bernoulli: { id: 27, channels: 2, label: "Bernoulli Gate" },
       // 28: Sift predates our own app plans (external contrib, May 2026)
       sift: { id: 28, channels: 2, label: "Sift" },
-      house_pump: { id: 29, channels: 1, label: "Heat Pump" },
+      heat_pump: { id: 29, channels: 1, label: "Heat Pump" },
       grooves: { id: 30, channels: 1, label: "Grooves" },
       fibonacci_gate: { id: 31, channels: 1, label: "Golden Gate" },
       super_lfo: { id: 32, channels: 2, label: "Super LFO" },
@@ -2386,6 +2524,63 @@
       arp_de_levy: { id: 34, channels: 1, label: "Arp de Lévy" },
       vamp: { id: 35, channels: 1, label: "Chord Vamp" },
     };
+
+    /** Old bank slugs → current register_apps! module names. */
+    const APP_ALIASES = {
+      house_pump: "heat_pump",
+    };
+
+    /**
+     * Embassy `pool_size` for apps that were capped below 16/CHANNELS
+     * (memory / USB spawn stress). Pushing more instances than this leaves
+     * empty layoutIds and can kill the config cable while waiting.
+     * Unlisted apps use the usual 16/channels ceiling.
+     */
+    const APP_POOL_MAX = {
+      lfo: 4,
+      bernoulli: 4,
+      heat_pump: 4,
+      grooves: 4,
+      fibonacci_gate: 4,
+      super_lfo: 4,
+      echolot: 4,
+      arp_de_levy: 4,
+      vamp: 4,
+    };
+
+    function canonicalizeAppSlug(slug) {
+      return APP_ALIASES[slug] || slug;
+    }
+
+    function poolMaxForApp(slug) {
+      const app = canonicalizeAppSlug(slug);
+      if (APP_POOL_MAX[app] != null) return APP_POOL_MAX[app];
+      const ch = APPS[app]?.channels || 1;
+      return Math.floor(16 / ch);
+    }
+
+    /** Throw if any app appears more times than its Embassy task pool allows. */
+    function assertPoolLimits(rows, label = "preset") {
+      const counts = Object.create(null);
+      for (const row of rows || []) {
+        const app = canonicalizeAppSlug(row.app);
+        counts[app] = (counts[app] || 0) + 1;
+      }
+      const offenders = [];
+      for (const [app, n] of Object.entries(counts)) {
+        const max = poolMaxForApp(app);
+        if (n > max) {
+          offenders.push(
+            `${APPS[app]?.label || app}: ${n}/${max}`,
+          );
+        }
+      }
+      if (offenders.length) {
+        throw new Error(
+          `${label}: app pool exhausted — ${offenders.join("; ")} (firmware pool_size)`,
+        );
+      }
+    }
 
     const APP_ORDER = Object.keys(APPS).sort((a, b) =>
       APPS[a].label.localeCompare(APPS[b].label),
@@ -2421,7 +2616,7 @@
       genseq: "sequence",
       bernoulli: "die",
       sift: "sequence-square",
-      house_pump: "ad-env",
+      heat_pump: "ad-env",
       grooves: "die",
       fibonacci_gate: "sequence-square",
       super_lfo: "sine",
@@ -2675,6 +2870,7 @@
       const cvR = row.cvRange || "_0_10V";
       let firstEnumPatched = false;
       let enumIdx = 0;
+      let i32i = 0;
       let firstNotePatched = false;
       let firstCcPatched = false;
       let firstChPatched = false;
@@ -2794,8 +2990,13 @@
             enumIdx++;
           }
         }
-        if (p.tag === "i32" && row.app === "super_lfo" && row.mixBalance != null) {
-          p.value = Math.max(0, Math.min(100, Number(row.mixBalance) || 50));
+        if (p.tag === "i32" && row.app === "super_lfo") {
+          if (i32i === 0 && row.mixBalance != null) {
+            p.value = Math.max(0, Math.min(100, Number(row.mixBalance) || 50));
+          } else if (i32i === 1 && row.rateModDepth != null) {
+            p.value = Math.max(0, Math.min(100, Number(row.rateModDepth) || 50));
+          }
+          i32i++;
         }
         if (p.tag === "VoltPerOct" && row.app === "arp_de_levy" && row.vpo) {
           p.value = { tag: row.vpo === "Buchla" ? "Buchla" : "Standard" };
@@ -2934,7 +3135,7 @@
       clk_div: "Sand",
       tb3po: "Lime",
       fp_grids: "Red",
-      house_pump: "Pink",
+      heat_pump: "Pink",
       grooves: "Orange",
       super_lfo: "Cyan",
       echolot: "Cyan",
@@ -2949,7 +3150,7 @@
       "probatrigger", "bernoulli", "fibonacci_gate", "notefader", "rnd_plus", "fp_grids",
       "clk_div", "clk_div_plus", "genseq", "tb3po", "panner", "cv2midi",
       "cv2midinote", "midi2cv", "follower", "offset_att", "slew", "quantizer",
-      "house_pump", "sift", "grooves", "super_lfo", "echolot", "arp_de_levy", "vamp",
+      "heat_pump", "sift", "grooves", "super_lfo", "echolot", "arp_de_levy", "vamp",
     ]);
     // Apps without MidiOut in CONFIG (CV-only / MIDI-in)
     const APPS_NO_MIDIOUT = new Set([
@@ -2962,7 +3163,7 @@
     const APPS_WITH_RANGE = new Set([
       "lfo", "lfo_plus", "rnd", "control", "turing", "clkturing", "automator",
       "panner", "cv2midi", "cv2midinote", "follower", "offset_att", "slew", "quantizer",
-      "house_pump", "sift", "super_lfo", "echolot",
+      "heat_pump", "sift", "super_lfo", "echolot",
     ]);
     const NOTE_APPS = new Set([
       "turing", "clkturing", "euclid", "probatrigger", "bernoulli", "notefader",
@@ -3018,10 +3219,10 @@
       fibonacci_gate: 12,
       grooves: 15,
       ad: 3, seq8: 14, follower_att: 2, slew: 2, follower: 2, quantizer: 4,
-      house_pump: 9, heat_pump: 9, sift: 11,
-      super_lfo: 12,
+      heat_pump: 9, sift: 11,
+      super_lfo: 13,
       echolot: 15,
-      arp_de_levy: 10,
+      arp_de_levy: 11,
       vamp: 16,
     };
 
@@ -3154,9 +3355,12 @@
           ];
         case "super_lfo": {
           // Speed, Range, MIDI CH, CC, Color, NRPN, MIDI Out, Grid Lock,
-          // Mix Mode, Osc B, Mix balance (0…100%, default 50%), CV Dest
+          // Mix Mode, Osc B, Mix balance, Rate-mod depth, CV Dest
           const mixBal = Number.isFinite(Number(row.mixBalance))
             ? Math.max(0, Math.min(100, Number(row.mixBalance)))
+            : 50;
+          const rateMod = Number.isFinite(Number(row.rateModDepth))
+            ? Math.max(0, Math.min(100, Number(row.rateModDepth)))
             : 50;
           return [
             enumVal(speed), range(cvR), ch(c), cc(n),
@@ -3164,6 +3368,7 @@
             enumVal(row.mixMode != null ? row.mixMode : 0),
             enumVal(row.oscB != null ? row.oscB : 0),
             i32(mixBal),
+            i32(rateMod),
             enumVal(row.cvDest != null ? row.cvDest : 0),
           ];
         }
@@ -4084,7 +4289,7 @@
     let APPS_CATALOG_BY_SLUG = {};
 
     function catalogApp(slug) {
-      return APPS_CATALOG_BY_SLUG[slug] || null;
+      return APPS_CATALOG_BY_SLUG[canonicalizeAppSlug(slug)] || null;
     }
 
     async function loadAppsCatalog() {
@@ -4397,8 +4602,8 @@
       // Jack=Out → Range (+ V/Oct when present) for the DAC; Dest/Att unused.
       // Jack=In → Dest/Att; Range/V/Oct unused (In is ±5V).
       if (
-        row.app === "house_pump" ||
         row.app === "heat_pump" ||
+        row.app === "house_pump" ||
         row.app === "grooves" ||
         row.app === "fibonacci_gate" ||
         row.app === "arp_de_levy" ||
@@ -4722,8 +4927,8 @@
       let order = cat.params.map((_, pi) => pi);
       // Jack (CV Out/In) first — drives Dest/Att visibility.
       if (
-        s.app === "house_pump" ||
         s.app === "heat_pump" ||
+        s.app === "house_pump" ||
         s.app === "arp_de_levy" ||
         s.app === "vamp" ||
         s.app === "fibonacci_gate"
@@ -4807,6 +5012,7 @@
         const mixMode = s.mixMode != null ? Number(s.mixMode) : 0;
         const oscB = s.oscB != null ? Number(s.oscB) : 0;
         const mixBal = Number.isFinite(Number(s.mixBalance)) ? Number(s.mixBalance) : 50;
+        const rateMod = Number.isFinite(Number(s.rateModDepth)) ? Number(s.rateModDepth) : 50;
         const cvDest = s.cvDest != null ? Number(s.cvDest) : 0;
         bits.push(`<select data-i="${idx}" data-k="mixMode" title="${escapeAttr(t("param.mixMode"))}">
           <option value="0" ${mixMode === 0 ? "selected" : ""}>Xfade</option>
@@ -4827,16 +5033,25 @@
           label: t("param.mixBalance"),
           title: t("param.mixBalanceHint"),
         }));
+        bits.push(rangeFieldHtml({
+          idx,
+          key: "rateModDepth",
+          value: rateMod,
+          min: 0,
+          max: 100,
+          label: t("param.rateModDepth"),
+          title: t("param.rateModDepthHint"),
+        }));
         bits.push(`<select data-i="${idx}" data-k="cvDest" title="${escapeAttr(t("param.cvDest"))}">
-          <option value="0" ${cvDest === 0 ? "selected" : ""}>Speed</option>
+          <option value="0" ${cvDest === 0 ? "selected" : ""}>Rate Mod</option>
           <option value="1" ${cvDest === 1 ? "selected" : ""}>Phase</option>
-          <option value="2" ${cvDest === 2 ? "selected" : ""}>Amp</option>
-          <option value="3" ${cvDest === 3 ? "selected" : ""}>Reset</option>
-          <option value="4" ${cvDest === 4 ? "selected" : ""}>Morph</option>
-          <option value="5" ${cvDest === 5 ? "selected" : ""}>Skew</option>
-          <option value="6" ${cvDest === 6 ? "selected" : ""}>Warp</option>
-          <option value="7" ${cvDest === 7 ? "selected" : ""}>Symmetry</option>
-          <option value="8" ${cvDest === 8 ? "selected" : ""}>Rate Mod</option>
+          <option value="2" ${cvDest === 2 ? "selected" : ""}>Reset</option>
+          <option value="3" ${cvDest === 3 ? "selected" : ""}>Amp</option>
+          <option value="4" ${cvDest === 4 ? "selected" : ""}>Speed</option>
+          <option value="5" ${cvDest === 5 ? "selected" : ""}>Morph</option>
+          <option value="6" ${cvDest === 6 ? "selected" : ""}>Skew</option>
+          <option value="7" ${cvDest === 7 ? "selected" : ""}>Warp</option>
+          <option value="8" ${cvDest === 8 ? "selected" : ""}>Symmetry</option>
         </select>`);
       }
       if (s.app === "echolot") {
@@ -5128,7 +5343,10 @@
           index: L + 1,
           name: looksLikeDefaultPresetName(sc.name) ? presetNameFor(L) : sc.name,
           port: normalizePortKey(sc.port),
-          rows: Array.isArray(sc.rows) ? sc.rows : [],
+          rows: (Array.isArray(sc.rows) ? sc.rows : []).map((row) => ({
+            ...row,
+            app: canonicalizeAppSlug(row.app),
+          })),
           global: normalizeGlobal(sc.global),
         };
       });
@@ -5368,7 +5586,9 @@
       let f = 1;
       let parking = false;
       rows.forEach((row, index) => {
-        const n = APPS[row.app]?.channels;
+        const app = canonicalizeAppSlug(row.app);
+        if (app !== row.app) row.app = app;
+        const n = APPS[app]?.channels;
         if (!n) throw new Error(`Unbekannte App: ${row.app}`);
         if (parking || f > 16) {
           overflow.push({ ...row, index, channels: n, overflow: true });
@@ -5456,6 +5676,7 @@
       if (sc.rows.length <= 1) return;
       sc.rows.splice(i, 1);
       saveBank();
+      scheduleLiveStructurePush({ allParams: true });
       render();
     }
 
@@ -5594,6 +5815,9 @@
               }
               row.mixBalance = Math.max(0, Math.min(100, bal));
             }
+            if (Number.isFinite(i32s[1])) {
+              row.rateModDepth = Math.max(0, Math.min(100, i32s[1]));
+            }
           }
           if (appKey === "echolot") {
             const enums = params
@@ -5678,6 +5902,10 @@
 
     function buildSetup(sc) {
       const { spans, overflow, padded } = spansForPush(sc);
+      assertPoolLimits(
+        spans,
+        `Preset ${presetGlyphFor(sc)} ${sc.name || ""}`.trim(),
+      );
       const layout = spans.map((s, idx) => ({
         layoutId: idx,
         appId: APPS[s.app].id,
@@ -6056,7 +6284,12 @@
         <td>${ccCellHtml(s, i)}</td>
         <td class="port-cell">${portBitsHtml(s, i, sc.port)}</td>
         <td class="flags-cell">${flagsColHtml(s, i)}</td>
-        <td class="row-x-cell"><button type="button" class="row-x" data-remove-row="${i}" title="${escapeAttr(t("row.remove"))}" aria-label="${escapeAttr(t("row.remove"))}"></button></td>
+        <td class="row-x-cell">
+          <span class="row-meteor" data-row-meteor="${i}" aria-hidden="true" title="${escapeAttr(t("row.meteorTitle"))}">
+            <span class="row-meteor-face"></span>
+          </span>
+          <button type="button" class="row-x" data-remove-row="${i}" title="${escapeAttr(t("row.remove"))}" aria-label="${escapeAttr(t("row.remove"))}"></button>
+        </td>
       `;
       return tr;
     }
@@ -6145,7 +6378,9 @@
       let used = 0;
       try {
         ({ spans, overflow, used } = faderLayout(sc.rows));
-        if (!overflow.length && used < 16) {
+        // Keep intentionally blank presets empty (clear-only / smoke). Only
+        // auto-pad when the preset already has at least one app row.
+        if (sc.rows.length > 0 && !overflow.length && used < 16) {
           fitRowsToSixteen(sc);
           saveBank();
           ({ spans, overflow, used } = faderLayout(sc.rows));
@@ -6180,6 +6415,7 @@
         status.className = used === 16 ? "ok" : "warn";
         status.textContent = t("status.normal", { index: presetGlyphFor(sc), name: sc.name, used, apps: sc.rows.length, portNote, ch16Note });
       }
+      applyLiveStatusHold();
       if (hint) {
         hint.textContent = overflow.length
           ? t("status.hintOverflow")
@@ -6210,6 +6446,7 @@
       document.querySelectorAll("[data-remove-row]").forEach((btn) => {
         btn.addEventListener("click", () => removeRowAt(Number(btn.dataset.removeRow)));
       });
+      restoreRowMeteorVisuals();
 
       try {
         const prev = document.getElementById("preview");
@@ -6251,6 +6488,7 @@
       const [moved] = rows.splice(from, 1);
       rows.splice(to, 0, moved);
       saveBank();
+      scheduleLiveStructurePush({ allParams: true });
       render();
     }
 
@@ -6458,6 +6696,9 @@
       } else if (k === "mixBalance") {
         rowRef.mixBalance = Math.max(0, Math.min(100, Number(el.value) || 50));
         delete rowRef.rawParams;
+      } else if (k === "rateModDepth") {
+        rowRef.rateModDepth = Math.max(0, Math.min(100, Number(el.value) || 50));
+        delete rowRef.rawParams;
       } else if (k === "gateSpeed") {
         rowRef.gateSpeed = Math.max(0, Math.min(9, Number(el.value) || 0));
         delete rowRef.rawParams;
@@ -6546,11 +6787,20 @@
       // Don't rebuild the table on every keystroke — that resets caret (comment / CH / CC).
       const typing =
         ev.type === "input" &&
-        (k === "target" || k === "cc" || k === "swingMax" || k === "mixBalance" || k === "echoMaxMs" || k === "sv") &&
+        (k === "target" || k === "cc" || k === "swingMax" || k === "mixBalance" || k === "rateModDepth" || k === "echoMaxMs" || k === "sv") &&
         el.tagName === "INPUT";
       if (!typing) {
         const depChanged = beforeDeps !== depsSignature(rowRef);
         render({ focusHint: focusHintFrom(el), vt: depChanged });
+      }
+      if (k === "app") {
+        scheduleLiveStructurePush({ rowIndexes: [i] });
+      } else if (
+        k !== "target" &&
+        k !== "instrumentId" &&
+        livePushEnabled()
+      ) {
+        scheduleLiveParamPush(i);
       }
     }
 
@@ -6772,6 +7022,345 @@
 
     let pushLive = false;
     let lastPushStep = "";
+    /** Device layout matches editor (after successful full Push / Pull / live structure). */
+    let liveLayoutSynced = false;
+    let liveDebounceTimer = null;
+    let livePendingRows = new Set();
+    let liveStructureTimer = null;
+    let liveStructureOpts = null;
+    let livePushInFlight = false;
+    /** Row indexes currently in live transport (meteor spin). */
+    const liveSpinningRows = new Set();
+    /** Keep live status visible across render() rebuilds. */
+    let liveStatusHold = null;
+
+    function rowMeteorEl(rowIndex) {
+      return document.querySelector(
+        `[data-row-meteor="${CSS.escape(String(rowIndex))}"]`,
+      );
+    }
+
+    function clearRowMeteorClasses(el) {
+      if (!el) return;
+      el.classList.remove(
+        "is-pending",
+        "is-spinning",
+        "is-spun",
+        "is-spinning-back",
+        "is-ok",
+        "is-err",
+      );
+      delete el.dataset.spinBack;
+      delete el.dataset.spun;
+    }
+
+    function markRowMeteorPending(rowIndexes) {
+      for (const i of rowIndexes) {
+        const el = rowMeteorEl(i);
+        if (!el || liveSpinningRows.has(i)) continue;
+        el.classList.remove("is-ok", "is-err", "is-spinning-back");
+        if (!el.classList.contains("is-spinning") && !el.classList.contains("is-spun")) {
+          el.classList.add("is-pending");
+        }
+      }
+    }
+
+    function startRowMeteorSpin(rowIndexes) {
+      for (const i of rowIndexes) {
+        liveSpinningRows.add(i);
+        const el = rowMeteorEl(i);
+        if (!el) continue;
+        clearRowMeteorClasses(el);
+        void el.offsetWidth;
+        el.classList.add("is-spinning");
+      }
+    }
+
+    function finishRowMeteorSpin(rowIndexes, { ok = true } = {}) {
+      for (const i of rowIndexes) {
+        liveSpinningRows.delete(i);
+        const el = rowMeteorEl(i);
+        if (!el) continue;
+        el.classList.remove("is-pending", "is-err", "is-ok", "is-spinning");
+        el.classList.add(ok ? "is-ok" : "is-err");
+        el.classList.add("is-spun");
+        el.dataset.spun = "1";
+        // Next frame so the spun pose sticks, then unwind like the FAB.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!liveSpinningRows.has(i)) rowMeteorSpinBack(el);
+          });
+        });
+      }
+    }
+
+    function rowMeteorSpinBack(el) {
+      el.dataset.spun = "0";
+      el.dataset.spinBack = "0";
+      el.classList.remove("is-spinning", "is-spun", "is-pending");
+      void el.offsetWidth;
+      el.classList.add("is-spinning-back");
+    }
+
+    function restoreRowMeteorVisuals() {
+      for (const i of liveSpinningRows) {
+        const el = rowMeteorEl(i);
+        if (!el) continue;
+        if (!el.classList.contains("is-spinning") && !el.classList.contains("is-spun")) {
+          clearRowMeteorClasses(el);
+          void el.offsetWidth;
+          el.classList.add("is-spinning");
+        }
+      }
+      for (const i of livePendingRows) {
+        if (!liveSpinningRows.has(i)) markRowMeteorPending([i]);
+      }
+    }
+
+    function livePushEnabled() {
+      const el = document.getElementById("chkLivePush");
+      return !!(el && el.checked);
+    }
+
+    function syncFabLiveClass() {
+      const wrap = document.getElementById("fabLiveWrap");
+      if (wrap) wrap.classList.toggle("is-on", livePushEnabled());
+    }
+
+    function markLiveLayoutDirty() {
+      liveLayoutSynced = false;
+      if (livePushEnabled()) {
+        liveNote("warn", t("push.liveNeedFull"), { expand: false });
+      }
+    }
+
+    function markLiveLayoutSynced() {
+      liveLayoutSynced = true;
+    }
+
+    /** Visible live feedback: status + push log (+ optional open dock). */
+    function liveNote(kind, text, { expand = false, log = true } = {}) {
+      liveStatusHold = { kind, text, until: Date.now() + 12000 };
+      setStatus(kind, text);
+      if (log) appendPushLog(text, { toStatus: false });
+      if (expand) setStatusDockExpanded(true);
+    }
+
+    function applyLiveStatusHold() {
+      if (
+        liveStatusHold &&
+        Date.now() < liveStatusHold.until &&
+        (livePushEnabled() || livePushInFlight || livePendingRows.size)
+      ) {
+        setStatus(liveStatusHold.kind, liveStatusHold.text);
+      }
+    }
+
+    /** layoutId in push JSON for this editor row index, or null if overflow. */
+    function layoutIdForRowIndex(sc, rowIndex) {
+      const { spans } = spansForPush(sc);
+      const i = spans.findIndex((s) => !s._pad && s.index === rowIndex);
+      return i >= 0 ? i : null;
+    }
+
+    /**
+     * App swap / add / remove / reorder → SetLayout + SetAppParams.
+     * @param {{ rowIndexes?: number[], allParams?: boolean }} opts
+     */
+    function scheduleLiveStructurePush(opts = {}) {
+      if (!livePushEnabled()) {
+        markLiveLayoutDirty();
+        return;
+      }
+      if (pushLive) {
+        liveNote("warn", t("push.liveBusyFull"), { expand: true });
+        return;
+      }
+      // Merge pending structure work
+      if (!liveStructureOpts) liveStructureOpts = { rowIndexes: [], allParams: false };
+      if (opts.allParams) liveStructureOpts.allParams = true;
+      for (const ri of opts.rowIndexes || []) liveStructureOpts.rowIndexes.push(ri);
+      if (liveStructureOpts.allParams) {
+        markRowMeteorPending(preset().rows.map((_, i) => i));
+      } else {
+        markRowMeteorPending(liveStructureOpts.rowIndexes);
+      }
+      if (livePushInFlight) {
+        liveNote("busy", t("push.liveQueued"), { expand: false });
+        return;
+      }
+      if (liveStructureTimer) clearTimeout(liveStructureTimer);
+      liveStructureTimer = setTimeout(() => {
+        liveStructureTimer = null;
+        flushLiveStructurePush();
+      }, 700);
+    }
+
+    async function flushLiveStructurePush() {
+      if (!livePushEnabled() || pushLive || livePushInFlight) return;
+      const opts = liveStructureOpts;
+      liveStructureOpts = null;
+      if (!opts) return;
+      livePushInFlight = true;
+      const spinRows = opts.allParams
+        ? preset().rows.map((_, i) => i)
+        : [...new Set(opts.rowIndexes || [])];
+      startRowMeteorSpin(spinRows.length ? spinRows : preset().rows.map((_, i) => i));
+      liveNote("busy", t("push.liveStructureBusy"));
+      try {
+        const midi = await ensureFpMidi();
+        const sc = preset();
+        let setup;
+        try {
+          setup = buildSetup(sc);
+        } catch (e) {
+          liveNote("warn", String(e.message || e), { expand: true });
+          liveLayoutSynced = false;
+          finishRowMeteorSpin(spinRows, { ok: false });
+          return;
+        }
+        let paramLayoutIds = null;
+        if (!opts.allParams) {
+          paramLayoutIds = [];
+          for (const rowIndex of opts.rowIndexes || []) {
+            const lid = layoutIdForRowIndex(sc, rowIndex);
+            if (lid != null) paramLayoutIds.push(lid);
+          }
+          if (paramLayoutIds.length !== 1) paramLayoutIds = null;
+        }
+        appendPushLog(
+          paramLayoutIds
+            ? `→ Live structure · SetLayout + params [${paramLayoutIds.join(",")}]`
+            : "→ Live structure · SetLayout + all params",
+        );
+        await midi.pushLiveStructureToDevice(setup, {
+          paramLayoutIds,
+          onLog: (line) => appendPushLog(line),
+        });
+        markLiveLayoutSynced();
+        liveNote("ok", t("push.liveStructureOk"));
+        finishRowMeteorSpin(spinRows, { ok: true });
+      } catch (e) {
+        liveNote("warn", t("push.liveErr", { msg: e.message || e }), { expand: true });
+        liveLayoutSynced = false;
+        finishRowMeteorSpin(spinRows, { ok: false });
+      } finally {
+        livePushInFlight = false;
+        if (liveStructureOpts) scheduleLiveStructurePush(liveStructureOpts);
+        else if (livePendingRows.size) scheduleLiveParamPush([...livePendingRows][0]);
+      }
+    }
+
+    function scheduleLiveParamPush(rowIndex) {
+      if (!livePushEnabled()) return;
+      if (pushLive) {
+        liveNote("warn", t("push.liveBusyFull"), { expand: true });
+        finishRowMeteorSpin([rowIndex], { ok: false });
+        return;
+      }
+      // Param-only live push is allowed even when layout is dirty — SetAppParams
+      // targets layoutId. Wrong/missing slots fail per-row; structure still needs Push.
+      livePendingRows.add(rowIndex);
+      markRowMeteorPending([rowIndex]);
+      // Busy (MIDI in flight or structure debounce): keep queued, run in finally.
+      if (livePushInFlight || liveStructureTimer || liveStructureOpts) {
+        liveNote("busy", t("push.liveQueuedRow", { row: rowIndex + 1 }));
+        return;
+      }
+      if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
+      liveDebounceTimer = setTimeout(() => {
+        liveDebounceTimer = null;
+        flushLiveParamPushes();
+      }, 550);
+    }
+
+    async function flushLiveParamPushes() {
+      if (!livePushEnabled() || pushLive || livePushInFlight) return;
+      if (liveStructureTimer || liveStructureOpts) return;
+      const ids = [...livePendingRows];
+      livePendingRows.clear();
+      if (!ids.length) return;
+      livePushInFlight = true;
+      startRowMeteorSpin(ids);
+      liveNote(
+        "busy",
+        liveLayoutSynced
+          ? t("push.liveParamBusy", { n: ids.length })
+          : t("push.liveParamBusyUnsynced", { n: ids.length }),
+      );
+      try {
+        const midi = await ensureFpMidi();
+        const sc = preset();
+        let setup;
+        try {
+          setup = buildSetup(sc);
+        } catch (e) {
+          liveNote("warn", String(e.message || e), { expand: true });
+          finishRowMeteorSpin(ids, { ok: false });
+          return;
+        }
+        const byLayout = new Map();
+        const layoutToRows = new Map();
+        for (const rowIndex of ids) {
+          const lid = layoutIdForRowIndex(sc, rowIndex);
+          if (lid == null) {
+            liveNote(
+              "warn",
+              t("push.liveOverflowRow", { row: rowIndex + 1 }),
+              { expand: true },
+            );
+            finishRowMeteorSpin([rowIndex], { ok: false });
+            continue;
+          }
+          const slot = setup.layout.find((x) => Number(x.layoutId) === lid);
+          if (!slot?.params) {
+            liveNote(
+              "warn",
+              t("push.liveNoParams", { id: lid }),
+              { expand: true },
+            );
+            finishRowMeteorSpin([rowIndex], { ok: false });
+            continue;
+          }
+          byLayout.set(lid, slot.params);
+          if (!layoutToRows.has(lid)) layoutToRows.set(lid, []);
+          layoutToRows.get(lid).push(rowIndex);
+        }
+        if (!byLayout.size) {
+          liveNote("warn", t("push.liveNothing"), { expand: true });
+          finishRowMeteorSpin(ids, { ok: false });
+          return;
+        }
+        for (const [layoutId, values] of byLayout) {
+          const rowsFor = layoutToRows.get(layoutId) || ids;
+          try {
+            appendPushLog(`→ Live · layoutId=${layoutId}`);
+            await midi.pushAppParamsToDevice(layoutId, values, {
+              onLog: (line) => appendPushLog(line),
+            });
+            liveNote("ok", t("push.liveOkSlot", { id: layoutId }));
+            finishRowMeteorSpin(rowsFor, { ok: true });
+          } catch (e) {
+            liveNote("warn", t("push.liveErr", { msg: e.message || e }), {
+              expand: true,
+            });
+            liveLayoutSynced = false;
+            finishRowMeteorSpin(rowsFor, { ok: false });
+            break;
+          }
+        }
+      } catch (e) {
+        liveNote("warn", t("push.liveErr", { msg: e.message || e }), {
+          expand: true,
+        });
+        finishRowMeteorSpin(ids, { ok: false });
+        liveLayoutSynced = false;
+      } finally {
+        livePushInFlight = false;
+        if (liveStructureOpts) scheduleLiveStructurePush(liveStructureOpts);
+        else if (livePendingRows.size) scheduleLiveParamPush([...livePendingRows][0]);
+      }
+    }
 
     function appendPushLog(line, { toStatus = false } = {}) {
       const el = document.getElementById("pushLog");
@@ -6857,7 +7446,7 @@
 
       const tick = setInterval(() => {
         const s = Math.round((Date.now() - t0) / 1000);
-        setPushMeta(`${s}s…`);
+        setPushMeta(`${s}s …`);
         // keep latest step in status; only fall back to timer text if empty
         if (!lastPushStep) {
           setStatus("busy", `${label} — ${s}s`);
@@ -6871,13 +7460,13 @@
         const sec = (ms / 1000).toFixed(1);
         // log lines already streamed into status during push
         appendPushLog(t("push.doneSec", { sec }), { toStatus: true });
-        setPushMeta(`ok · ${sec}s`);
+        setPushMeta(t("push.metaOk", { sec }));
         return data;
       } catch (e) {
         clearInterval(tick);
         const sec = ((Date.now() - t0) / 1000).toFixed(1);
         appendPushLog(`✗ ${e.message || e}`, { toStatus: true });
-        setPushMeta(`fehler · ${sec}s`);
+        setPushMeta(t("push.metaErr", { sec }));
         throw e;
       } finally {
         clearInterval(tick);
@@ -6889,6 +7478,7 @@
       syncPresetFromFields();
       active = i;
       syncFieldsFromPreset();
+      markLiveLayoutDirty();
       render();
     }
 
@@ -6904,6 +7494,7 @@
         const sc = preset();
         const setup = buildSetup(sc);
         await runPushWithFeedback(`Preset ${presetGlyphFor(sc)} „${sc.name}“`, setup);
+        markLiveLayoutSynced();
         const { overflow } = faderLayout(sc.rows);
         setStatus(
           "ok",
@@ -6927,6 +7518,26 @@
         if (btn.dataset.spinBack === "1" || !pushLive) fabSpinBack(btn);
       } else if (ev.animationName === "fab-spin-3d-back") {
         btn.classList.remove("is-spinning-back", "is-spun");
+      }
+    });
+
+    document.getElementById("rows").addEventListener("animationend", (ev) => {
+      const el = ev.target.closest?.(".row-meteor");
+      if (!el || !document.getElementById("rows").contains(el)) return;
+      // Infinite transport spin must NOT stop on iteration end.
+      if (ev.animationName === "row-meteor-spin-3d-back") {
+        el.classList.remove("is-spinning-back", "is-spun", "is-ok", "is-err");
+        delete el.dataset.spun;
+        delete el.dataset.spinBack;
+      }
+    });
+    document.getElementById("rowsOverflow")?.addEventListener("animationend", (ev) => {
+      const el = ev.target.closest?.(".row-meteor");
+      if (!el) return;
+      if (ev.animationName === "row-meteor-spin-3d-back") {
+        el.classList.remove("is-spinning-back", "is-spun", "is-ok", "is-err");
+        delete el.dataset.spun;
+        delete el.dataset.spinBack;
       }
     });
 
@@ -6975,7 +7586,7 @@
         render();
         saveBank();
         const sec = ((Date.now() - t0) / 1000).toFixed(1);
-        setPushMeta(`pull ok · ${sec}s`);
+        setPushMeta(t("pull.metaOk", { sec }));
         setStatus(
           "ok",
           action === "new"
@@ -6987,10 +7598,11 @@
             ? t("pull.okLogNew", { n, index: presetGlyphFor(sc) })
             : t("pull.okLog", { n, index: presetGlyphFor(sc) }),
         );
+        markLiveLayoutSynced();
         return true;
       } catch (e) {
         const sec = ((Date.now() - t0) / 1000).toFixed(1);
-        setPushMeta(`pull fail · ${sec}s`);
+        setPushMeta(t("pull.metaErr", { sec }));
         appendPushLog(`✗ ${e.message || e}`);
         setStatus("warn", String(e.message || e));
         if (failAlert) {
@@ -7053,6 +7665,7 @@
         row("control", "", 1, Math.min(127, 20 + (n % 100)), "cc", ""),
       );
       saveBank();
+      scheduleLiveStructurePush({ allParams: false, rowIndexes: [sc.rows.length - 1] });
       render();
     };
 
@@ -7061,6 +7674,7 @@
       const before = sc.rows.length;
       fitRowsToSixteen(sc);
       saveBank();
+      scheduleLiveStructurePush({ allParams: true });
       render();
       const dropped = before - sc.rows.length;
       setStatus(
@@ -7138,7 +7752,7 @@
       if (!file) return;
       const btn = document.getElementById("btnCsvUpload");
       if (btn) btn.disabled = true;
-      setStatus("busy", t("inst.csvUpload") + "…");
+      setStatus("busy", t("inst.csvUpload") + " …");
       try {
         const res = await fetch(
           `/api/midi/upload?name=${encodeURIComponent(file.name)}`,
@@ -7181,7 +7795,7 @@
     document.getElementById("btnMidiSync").onclick = async () => {
       const btn = document.getElementById("btnMidiSync");
       btn.disabled = true;
-      setStatus("busy", t("inst.midiSync") + "…");
+      setStatus("busy", t("inst.midiSync") + " …");
       try {
         const res = await fetch("/api/midi/sync", { method: "POST" });
         const data = await res.json().catch(() => ({}));
@@ -7249,6 +7863,34 @@
         render();
       };
       applyI18n();
+
+      const chkLive = document.getElementById("chkLivePush");
+      if (chkLive) {
+        try {
+          chkLive.checked = localStorage.getItem("fp-live-push") === "1";
+        } catch {
+          /* ignore */
+        }
+        syncFabLiveClass();
+        chkLive.onchange = () => {
+          try {
+            localStorage.setItem("fp-live-push", chkLive.checked ? "1" : "0");
+          } catch {
+            /* ignore */
+          }
+          syncFabLiveClass();
+          if (chkLive.checked) {
+            if (liveLayoutSynced) {
+              liveNote("ok", t("push.liveOnSynced"));
+            } else {
+              liveNote("ok", t("push.liveOnUnsynced"), { expand: true });
+            }
+          } else {
+            liveStatusHold = null;
+            liveNote("ok", t("push.liveOff"), { log: true });
+          }
+        };
+      }
 
       if (isBlankBank(bank)) {
         setStatus("ok", t("status.emptyBank"));

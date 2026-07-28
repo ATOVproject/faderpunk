@@ -106,6 +106,15 @@ function portCandidates(ports) {
   });
 }
 
+/** True if Web MIDI still lists any Faderpunk ports (config or perf). */
+export function faderpunkPortsListed(access) {
+  if (!access) return false;
+  return (
+    portCandidates(access.inputs.values()).length > 0 &&
+    portCandidates(access.outputs.values()).length > 0
+  );
+}
+
 /** Connect to Faderpunk config SysEx port (Web MIDI). */
 export async function connectDevice() {
   if (!navigator.requestMIDIAccess) {
@@ -116,6 +125,7 @@ export async function connectDevice() {
   const outputs = portCandidates(access.outputs.values());
 
   let config = null;
+  const sawPorts = inputs.length > 0 && outputs.length > 0;
   for (const output of outputs) {
     for (const input of inputs) {
       const version = await probePair(input, output);
@@ -131,7 +141,9 @@ export async function connectDevice() {
 
   if (!config) {
     throw new Error(
-      "No Faderpunk config MIDI port found. Plug in USB, allow MIDI/SysEx, close other tabs using the device.",
+      sawPorts
+        ? "Faderpunk MIDI ports present but GetVersion failed (device busy or USB wedged). Wait / replug; close other tabs using the device."
+        : "No Faderpunk config MIDI port found. Plug in USB, allow MIDI/SysEx, close other tabs using the device.",
     );
   }
 
@@ -166,11 +178,15 @@ export async function sendAndReceive(config, msg) {
 /**
  * Like sendAndReceive, but keep reading until `expectedTag` (or timeout).
  * Skips stray Layout/AppState from Diagnostics soft-poll or late acks.
+ * When `matchLayoutId` is set and expecting AppState, also skip AppStates
+ * for other layout slots (stale reply from previous Set/Get).
  */
 export async function sendAndReceiveExpect(config, msg, expectedTag, opts = {}) {
   const log = opts.onLog || (() => {});
   const attempts = opts.attempts ?? 8;
   const timeoutMs = opts.timeoutMs ?? RECEIVE_TIMEOUT_MS;
+  const matchLayoutId =
+    opts.matchLayoutId == null ? null : Number(opts.matchLayoutId);
   drainConfigQueue(config.rx);
   sendFrame(config.output, msg);
   const deadline = Date.now() + timeoutMs * Math.max(2, Math.ceil(attempts / 2));
@@ -188,7 +204,19 @@ export async function sendAndReceiveExpect(config, msg, expectedTag, opts = {}) 
       }
       throw e;
     }
-    if (response.tag === expectedTag) return response;
+    if (response.tag === expectedTag) {
+      if (
+        matchLayoutId != null &&
+        expectedTag === "AppState" &&
+        Number(response.value?.[0]) !== matchLayoutId
+      ) {
+        log(
+          `  ↷ skip AppState layoutId=${response.value?.[0]} (want ${matchLayoutId})`,
+        );
+        continue;
+      }
+      return response;
+    }
     lastTag = response.tag;
     log(`  ↷ skip stray ${response.tag} (want ${expectedTag})`);
   }

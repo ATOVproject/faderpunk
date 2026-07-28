@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "source": "faderpunk/src/apps/*.rs CONFIG (tools/gen-apps-catalog.py)",
+  "source": "/Users/kosmar/Projects/faderpunk-playground/faderpunk/src/apps CONFIG (tools/gen-apps-catalog.py)",
   "apps": [
     {
       "id": 1,
@@ -2139,7 +2139,7 @@
     },
     {
       "id": 29,
-      "slug": "house_pump",
+      "slug": "heat_pump",
       "module": "heat_pump",
       "channels": 1,
       "name": "Heat Pump",
@@ -2248,7 +2248,7 @@
       "module": "grooves",
       "channels": 1,
       "name": "Grooves",
-      "description": "Multi-genre MIDI drum grooves with swing",
+      "description": "Multi-genre MIDI drum grooves with feel",
       "color": "Orange",
       "icon": "Die",
       "params": [
@@ -2385,7 +2385,7 @@
             "name": "CV Dest",
             "variants": [
               "Density",
-              "Swing",
+              "Feel",
               "Reset"
             ]
           }
@@ -2668,19 +2668,27 @@
           }
         },
         {
+          "tag": "i32",
+          "value": {
+            "name": "Rate-mod depth",
+            "min": 0,
+            "max": 100
+          }
+        },
+        {
           "tag": "Enum",
           "value": {
             "name": "CV Dest",
             "variants": [
-              "Speed",
+              "Rate Mod",
               "Phase",
-              "Amp",
               "Reset",
+              "Amp",
+              "Speed",
               "Morph",
               "Skew",
               "Warp",
-              "Symmetry",
-              "Rate Mod"
+              "Symmetry"
             ]
           }
         }
@@ -2935,6 +2943,17 @@
         {
           "tag": "Enum",
           "value": {
+            "name": "CV Out",
+            "variants": [
+              "Pitch",
+              "Gate",
+              "Velocity"
+            ]
+          }
+        },
+        {
+          "tag": "Enum",
+          "value": {
             "name": "CV Dest",
             "variants": [
               "Evolve",
@@ -2958,8 +2977,8 @@
       "slug": "vamp",
       "module": "vamp",
       "channels": 1,
-      "name": "MIDI Vamp",
-      "description": "Chord progressions \u2014 perform, capture, or auto vamp",
+      "name": "Chord Vamp",
+      "description": "Chord progressions \u2014 perform, shift+tap capture, or auto vamp",
       "color": "Violet",
       "icon": "NoteGrid",
       "params": [
@@ -3059,7 +3078,8 @@
               "16 bars",
               "8 bars",
               "4 bars",
-              "2 bars"
+              "2 bars",
+              "1 bar"
             ]
           }
         },
@@ -3094,6 +3114,33 @@
               }
             ]
           }
+        },
+        {
+          "tag": "Enum",
+          "value": {
+            "name": "Jack",
+            "variants": [
+              "CV Out",
+              "CV In"
+            ]
+          }
+        },
+        {
+          "tag": "Range",
+          "value": {
+            "name": "Range",
+            "variants": [
+              {
+                "tag": "_0_10V"
+              },
+              {
+                "tag": "_Neg5_5V"
+              }
+            ]
+          }
+        },
+        {
+          "tag": "VoltPerOct"
         },
         {
           "tag": "Enum",

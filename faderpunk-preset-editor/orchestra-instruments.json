@@ -1,0 +1,1859 @@
+[
+  {
+    "id": "drum-3p",
+    "name": "Drum 3P",
+    "midiCh": 1,
+    "csv": "",
+    "ccs": []
+  },
+  {
+    "id": "lxr-02",
+    "name": "LXR-02",
+    "midiCh": 7,
+    "csv": "Erica Synths/LXR-02.csv",
+    "ccs": [
+      {
+        "cc": 2,
+        "name": "V1 OSC1 WF",
+        "section": ""
+      },
+      {
+        "cc": 9,
+        "name": "V1 OSC1 CT",
+        "section": ""
+      },
+      {
+        "cc": 10,
+        "name": "V1 OSC1 FT",
+        "section": ""
+      },
+      {
+        "cc": 21,
+        "name": "V1 WF MOD OSC",
+        "section": ""
+      },
+      {
+        "cc": 38,
+        "name": "V1 FLT FRQ",
+        "section": ""
+      },
+      {
+        "cc": 44,
+        "name": "V1 FLT RES",
+        "section": ""
+      },
+      {
+        "cc": 50,
+        "name": "V1 VOL ENV ATK",
+        "section": ""
+      },
+      {
+        "cc": 51,
+        "name": "V1 VOL ENV DEC",
+        "section": ""
+      },
+      {
+        "cc": 63,
+        "name": "V1 VOL ENV SLP",
+        "section": ""
+      },
+      {
+        "cc": 71,
+        "name": "V1 MOD ENV DEC",
+        "section": ""
+      },
+      {
+        "cc": 75,
+        "name": "V1 ENV MOD AMT",
+        "section": ""
+      },
+      {
+        "cc": 79,
+        "name": "V1 MOD ENV SLP",
+        "section": ""
+      },
+      {
+        "cc": 83,
+        "name": "V1 FM AMT",
+        "section": ""
+      },
+      {
+        "cc": 84,
+        "name": "V1 FM FRQ",
+        "section": ""
+      },
+      {
+        "cc": 89,
+        "name": "V1 VOL",
+        "section": ""
+      },
+      {
+        "cc": 95,
+        "name": "V1 PAN",
+        "section": ""
+      },
+      {
+        "cc": 103,
+        "name": "V1 Dist",
+        "section": ""
+      },
+      {
+        "cc": 109,
+        "name": "V1 DCM",
+        "section": ""
+      },
+      {
+        "cc": 116,
+        "name": "V1 LFO FRQ",
+        "section": ""
+      },
+      {
+        "cc": 122,
+        "name": "V1 LFO AMT",
+        "section": ""
+      },
+      {
+        "cc": 3,
+        "name": "V2 OSC1 WF",
+        "section": ""
+      },
+      {
+        "cc": 11,
+        "name": "V2 OSC1 CT",
+        "section": ""
+      },
+      {
+        "cc": 12,
+        "name": "V2 OSC1 FT",
+        "section": ""
+      },
+      {
+        "cc": 22,
+        "name": "V2 WF MOD OSC",
+        "section": ""
+      },
+      {
+        "cc": 39,
+        "name": "V2 FLT FRQ",
+        "section": ""
+      },
+      {
+        "cc": 45,
+        "name": "V2 FLT RES",
+        "section": ""
+      },
+      {
+        "cc": 52,
+        "name": "V2 VOL ENV ATK",
+        "section": ""
+      },
+      {
+        "cc": 53,
+        "name": "V2 VOL ENV DEC",
+        "section": ""
+      },
+      {
+        "cc": 64,
+        "name": "V2 VOL ENV SLP",
+        "section": ""
+      },
+      {
+        "cc": 72,
+        "name": "V2 MOD ENV DEC",
+        "section": ""
+      },
+      {
+        "cc": 76,
+        "name": "V2 ENV MOD AMT",
+        "section": ""
+      },
+      {
+        "cc": 80,
+        "name": "V2 MOD ENV SLP",
+        "section": ""
+      },
+      {
+        "cc": 85,
+        "name": "V2 FM AMT",
+        "section": ""
+      },
+      {
+        "cc": 86,
+        "name": "V2 FM FRQ",
+        "section": ""
+      },
+      {
+        "cc": 90,
+        "name": "V2 VOL",
+        "section": ""
+      },
+      {
+        "cc": 96,
+        "name": "V2 PAN",
+        "section": ""
+      },
+      {
+        "cc": 104,
+        "name": "V2 Dist",
+        "section": ""
+      },
+      {
+        "cc": 110,
+        "name": "V2 DCM",
+        "section": ""
+      },
+      {
+        "cc": 117,
+        "name": "V2 LFO FRQ",
+        "section": ""
+      },
+      {
+        "cc": 123,
+        "name": "V2 LFO AMT",
+        "section": ""
+      },
+      {
+        "cc": 4,
+        "name": "V3 OSC1 WF",
+        "section": ""
+      },
+      {
+        "cc": 13,
+        "name": "V3 OSC1 CT",
+        "section": ""
+      },
+      {
+        "cc": 14,
+        "name": "V3 OSC1 FT",
+        "section": ""
+      },
+      {
+        "cc": 23,
+        "name": "V3 WF MOD OSC",
+        "section": ""
+      },
+      {
+        "cc": 40,
+        "name": "V3 FLT FRQ",
+        "section": ""
+      },
+      {
+        "cc": 46,
+        "name": "V3 FLT RES",
+        "section": ""
+      },
+      {
+        "cc": 54,
+        "name": "V3 VOL ENV ATK",
+        "section": ""
+      },
+      {
+        "cc": 73,
+        "name": "V3 VOL ENV DEC",
+        "section": ""
+      },
+      {
+        "cc": 65,
+        "name": "V3 VOL ENV SLP",
+        "section": ""
+      },
+      {
+        "cc": 77,
+        "name": "V3 ENV MOD AMT",
+        "section": ""
+      },
+      {
+        "cc": 81,
+        "name": "V3 MOD ENV SLP",
+        "section": ""
+      },
+      {
+        "cc": 87,
+        "name": "V3 FM AMT",
+        "section": ""
+      },
+      {
+        "cc": 88,
+        "name": "V3 FM FRQ",
+        "section": ""
+      },
+      {
+        "cc": 91,
+        "name": "V3 VOL",
+        "section": ""
+      },
+      {
+        "cc": 97,
+        "name": "V3 PAN",
+        "section": ""
+      },
+      {
+        "cc": 105,
+        "name": "V3 Dist",
+        "section": ""
+      },
+      {
+        "cc": 111,
+        "name": "V3 DCM",
+        "section": ""
+      },
+      {
+        "cc": 118,
+        "name": "V3 LFO FRQ",
+        "section": ""
+      },
+      {
+        "cc": 124,
+        "name": "V3 LFO AMT",
+        "section": ""
+      },
+      {
+        "cc": 5,
+        "name": "SN OSC1 WF",
+        "section": ""
+      },
+      {
+        "cc": 15,
+        "name": "SN OSC1 CT",
+        "section": ""
+      },
+      {
+        "cc": 16,
+        "name": "SN OSC1 FT",
+        "section": ""
+      },
+      {
+        "cc": 28,
+        "name": "SN NSE FRQ",
+        "section": ""
+      },
+      {
+        "cc": 29,
+        "name": "SN MIX OSC NSE",
+        "section": ""
+      },
+      {
+        "cc": 41,
+        "name": "SN FLT FRQ",
+        "section": ""
+      },
+      {
+        "cc": 47,
+        "name": "SN FLT RES",
+        "section": ""
+      },
+      {
+        "cc": 56,
+        "name": "SN VOL ENV ATK",
+        "section": ""
+      },
+      {
+        "cc": 74,
+        "name": "SN VOL ENV DEC",
+        "section": ""
+      },
+      {
+        "cc": 66,
+        "name": "SN VOL EG SLP",
+        "section": ""
+      },
+      {
+        "cc": 69,
+        "name": "SN VOL EG RPT",
+        "section": ""
+      },
+      {
+        "cc": 78,
+        "name": "SN ENV MOD AMT",
+        "section": ""
+      },
+      {
+        "cc": 82,
+        "name": "SN MOD ENV SLP",
+        "section": ""
+      },
+      {
+        "cc": 92,
+        "name": "SN VOL",
+        "section": ""
+      },
+      {
+        "cc": 100,
+        "name": "SN PAN",
+        "section": ""
+      },
+      {
+        "cc": 106,
+        "name": "SN Dist",
+        "section": ""
+      },
+      {
+        "cc": 112,
+        "name": "SN DCM",
+        "section": ""
+      },
+      {
+        "cc": 119,
+        "name": "SN LFO FRQ",
+        "section": ""
+      },
+      {
+        "cc": 125,
+        "name": "SN LFO AMT",
+        "section": ""
+      },
+      {
+        "cc": 7,
+        "name": "CP OSC1 WF",
+        "section": ""
+      },
+      {
+        "cc": 17,
+        "name": "CP OSC1 CT",
+        "section": ""
+      },
+      {
+        "cc": 18,
+        "name": "CP OSC1 FT",
+        "section": ""
+      },
+      {
+        "cc": 24,
+        "name": "CP WF MOD OSC1",
+        "section": ""
+      },
+      {
+        "cc": 25,
+        "name": "CP WF MOD OSC2",
+        "section": ""
+      },
+      {
+        "cc": 30,
+        "name": "CP CT MOD OSC1",
+        "section": ""
+      },
+      {
+        "cc": 31,
+        "name": "CP CT MOD OSC2",
+        "section": ""
+      },
+      {
+        "cc": 32,
+        "name": "CP Gain MOD OSC1",
+        "section": ""
+      },
+      {
+        "cc": 33,
+        "name": "CP Gain MOD OSC2",
+        "section": ""
+      },
+      {
+        "cc": 42,
+        "name": "CP FLT FRQ",
+        "section": ""
+      },
+      {
+        "cc": 48,
+        "name": "CP FLT RES",
+        "section": ""
+      },
+      {
+        "cc": 58,
+        "name": "CP VOL ENV ATK",
+        "section": ""
+      },
+      {
+        "cc": 59,
+        "name": "CP VOL ENV DEC",
+        "section": ""
+      },
+      {
+        "cc": 67,
+        "name": "CP VOL EG SLP",
+        "section": ""
+      },
+      {
+        "cc": 70,
+        "name": "CP VOL EG RPT",
+        "section": ""
+      },
+      {
+        "cc": 93,
+        "name": "CP VOL",
+        "section": ""
+      },
+      {
+        "cc": 101,
+        "name": "CP PAN",
+        "section": ""
+      },
+      {
+        "cc": 107,
+        "name": "CP Dist",
+        "section": ""
+      },
+      {
+        "cc": 113,
+        "name": "CP DCM",
+        "section": ""
+      },
+      {
+        "cc": 120,
+        "name": "CP LFO FRQ",
+        "section": ""
+      },
+      {
+        "cc": 126,
+        "name": "CP LFO AMT",
+        "section": ""
+      },
+      {
+        "cc": 8,
+        "name": "HH OSC1 WF",
+        "section": ""
+      },
+      {
+        "cc": 19,
+        "name": "HH OSC1 CT",
+        "section": ""
+      },
+      {
+        "cc": 20,
+        "name": "HH OSC1 FT",
+        "section": ""
+      },
+      {
+        "cc": 26,
+        "name": "HH WF MOD OSC1",
+        "section": ""
+      },
+      {
+        "cc": 27,
+        "name": "HH WF MOD OSC2",
+        "section": ""
+      },
+      {
+        "cc": 34,
+        "name": "HH CT MOD OSC1",
+        "section": ""
+      },
+      {
+        "cc": 35,
+        "name": "HH CT MOD OSC2",
+        "section": ""
+      },
+      {
+        "cc": 36,
+        "name": "HH Gain MOD OSC1",
+        "section": ""
+      },
+      {
+        "cc": 37,
+        "name": "HH Gain MOD OSC2",
+        "section": ""
+      },
+      {
+        "cc": 43,
+        "name": "HH FLT FRQ",
+        "section": ""
+      },
+      {
+        "cc": 49,
+        "name": "HH FLT RES",
+        "section": ""
+      },
+      {
+        "cc": 60,
+        "name": "HH VOL ENV ATK",
+        "section": ""
+      },
+      {
+        "cc": 61,
+        "name": "CH VOL ENV DEC",
+        "section": ""
+      },
+      {
+        "cc": 62,
+        "name": "OH VOL ENV DEC",
+        "section": ""
+      },
+      {
+        "cc": 68,
+        "name": "HH VOL EG SLP",
+        "section": ""
+      },
+      {
+        "cc": 94,
+        "name": "HH VOL",
+        "section": ""
+      },
+      {
+        "cc": 102,
+        "name": "HH PAN",
+        "section": ""
+      },
+      {
+        "cc": 108,
+        "name": "HH Dist",
+        "section": ""
+      },
+      {
+        "cc": 114,
+        "name": "HH DCM",
+        "section": ""
+      },
+      {
+        "cc": 121,
+        "name": "HH LFO FRQ",
+        "section": ""
+      },
+      {
+        "cc": 127,
+        "name": "HH LFO AMT",
+        "section": ""
+      },
+      {
+        "cc": 115,
+        "name": "ALL DCM",
+        "section": ""
+      }
+    ]
+  },
+  {
+    "id": "minitaur",
+    "name": "Minitaur",
+    "midiCh": 13,
+    "csv": "Moog/Minitaur.csv",
+    "ccs": [
+      {
+        "cc": 70,
+        "name": "VCO 1: Wave",
+        "section": "Oscillators"
+      },
+      {
+        "cc": 71,
+        "name": "VCO 2: Wave",
+        "section": "Oscillators"
+      },
+      {
+        "cc": 17,
+        "name": "VCO 2: Frequency",
+        "section": "Oscillators"
+      },
+      {
+        "cc": 18,
+        "name": "VCO 2: Beat",
+        "section": "Oscillators"
+      },
+      {
+        "cc": 80,
+        "name": "Hard Sync",
+        "section": "Oscillators"
+      },
+      {
+        "cc": 81,
+        "name": "Note Sync",
+        "section": "Oscillators"
+      },
+      {
+        "cc": 3,
+        "name": "LFO: Rate",
+        "section": "Modulation"
+      },
+      {
+        "cc": 85,
+        "name": "LFO: Shape",
+        "section": "Modulation"
+      },
+      {
+        "cc": 13,
+        "name": "LFO: VCO Amount",
+        "section": "Modulation"
+      },
+      {
+        "cc": 12,
+        "name": "LFO: VCF Amount",
+        "section": "Modulation"
+      },
+      {
+        "cc": 112,
+        "name": "LFO: VCO 2 Only",
+        "section": "Modulation"
+      },
+      {
+        "cc": 82,
+        "name": "LFO: Key Trigger",
+        "section": "Modulation"
+      },
+      {
+        "cc": 87,
+        "name": "LFO: MIDI Sync",
+        "section": "Modulation"
+      },
+      {
+        "cc": 86,
+        "name": "LFO: Clock Divide",
+        "section": "Modulation"
+      },
+      {
+        "cc": 1,
+        "name": "Mod wheel",
+        "section": "Modulation"
+      },
+      {
+        "cc": 15,
+        "name": "VCO 1: Level",
+        "section": "Mixer"
+      },
+      {
+        "cc": 16,
+        "name": "VCO 2: Level",
+        "section": "Mixer"
+      },
+      {
+        "cc": 27,
+        "name": "Ext Input: Level",
+        "section": "Mixer"
+      },
+      {
+        "cc": 19,
+        "name": "Filter: Cutoff",
+        "section": "Filter"
+      },
+      {
+        "cc": 21,
+        "name": "Filter: Resonance",
+        "section": "Filter"
+      },
+      {
+        "cc": 22,
+        "name": "Filter: EG Amount",
+        "section": "Filter"
+      },
+      {
+        "cc": 20,
+        "name": "Filter: KB Tracking",
+        "section": "Filter"
+      },
+      {
+        "cc": 89,
+        "name": "Filter: Vel Sens",
+        "section": "Filter"
+      },
+      {
+        "cc": 23,
+        "name": "VCF: Attack",
+        "section": "Envelopes"
+      },
+      {
+        "cc": 24,
+        "name": "VCF: Decay / Release",
+        "section": "Envelopes"
+      },
+      {
+        "cc": 25,
+        "name": "VCF: Sustain",
+        "section": "Envelopes"
+      },
+      {
+        "cc": 28,
+        "name": "VCA: Attack",
+        "section": "Envelopes"
+      },
+      {
+        "cc": 29,
+        "name": "VCA: Decay / Release",
+        "section": "Envelopes"
+      },
+      {
+        "cc": 30,
+        "name": "VCA: Sustain",
+        "section": "Envelopes"
+      },
+      {
+        "cc": 72,
+        "name": "Release Switch",
+        "section": "Envelopes"
+      },
+      {
+        "cc": 73,
+        "name": "EG Trigger Mode",
+        "section": "Envelopes"
+      },
+      {
+        "cc": 65,
+        "name": "Glide: Switch",
+        "section": "Glide"
+      },
+      {
+        "cc": 5,
+        "name": "Glide: Rate",
+        "section": "Glide"
+      },
+      {
+        "cc": 92,
+        "name": "Glide: Type",
+        "section": "Glide"
+      },
+      {
+        "cc": 83,
+        "name": "Glide: Legato",
+        "section": "Glide"
+      },
+      {
+        "cc": 108,
+        "name": "PB: Down Range",
+        "section": "Pitch Bend"
+      },
+      {
+        "cc": 107,
+        "name": "PB: Up Range",
+        "section": "Pitch Bend"
+      },
+      {
+        "cc": 91,
+        "name": "Key Priority",
+        "section": "KB Response"
+      },
+      {
+        "cc": 7,
+        "name": "VCA: Volume",
+        "section": "VCA"
+      },
+      {
+        "cc": 90,
+        "name": "VCA: Vel Sens",
+        "section": "VCA"
+      },
+      {
+        "cc": 122,
+        "name": "Local Control",
+        "section": "Control"
+      },
+      {
+        "cc": 120,
+        "name": "All sounds off",
+        "section": "Control"
+      },
+      {
+        "cc": 123,
+        "name": "All notes off",
+        "section": "Control"
+      }
+    ]
+  },
+  {
+    "id": "vector",
+    "name": "Vector",
+    "midiCh": 14,
+    "csv": "Beetlecrab.audio/Vector.csv",
+    "ccs": [
+      {
+        "cc": 3,
+        "name": "Orbiter center position X",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 4,
+        "name": "Orbiter center position Y",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 5,
+        "name": "Orbiter width",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 48,
+        "name": "Orbiter height",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 7,
+        "name": "Lissajous warp X",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 8,
+        "name": "Lissajous warp Y",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 2,
+        "name": "Suborbit size",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 47,
+        "name": "Suborbit speed",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 43,
+        "name": "Orbit attack",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 44,
+        "name": "Orbit decay",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 45,
+        "name": "Orbit release",
+        "section": "Orbiter"
+      },
+      {
+        "cc": 13,
+        "name": "Envelope attack",
+        "section": "Envelope"
+      },
+      {
+        "cc": 14,
+        "name": "Envelope decay",
+        "section": "Envelope"
+      },
+      {
+        "cc": 15,
+        "name": "Envelope sustain",
+        "section": "Envelope"
+      },
+      {
+        "cc": 50,
+        "name": "Envelope release",
+        "section": "Envelope"
+      },
+      {
+        "cc": 25,
+        "name": "Global resonance",
+        "section": "Filter"
+      },
+      {
+        "cc": 21,
+        "name": "Drive amount",
+        "section": "Drive"
+      },
+      {
+        "cc": 22,
+        "name": "Drive colour",
+        "section": "Drive"
+      },
+      {
+        "cc": 10,
+        "name": "Reverb amount",
+        "section": "Reverb"
+      },
+      {
+        "cc": 23,
+        "name": "Reverb size",
+        "section": "Reverb"
+      },
+      {
+        "cc": 24,
+        "name": "Reverb colour",
+        "section": "Reverb"
+      },
+      {
+        "cc": 11,
+        "name": "Chorus mix",
+        "section": "Chorus"
+      },
+      {
+        "cc": 28,
+        "name": "Chorus speed",
+        "section": "Chorus"
+      },
+      {
+        "cc": 29,
+        "name": "Chorus depth",
+        "section": "Chorus"
+      },
+      {
+        "cc": 30,
+        "name": "Chorus colour",
+        "section": "Chorus"
+      },
+      {
+        "cc": 12,
+        "name": "Delay mix",
+        "section": "Delay"
+      },
+      {
+        "cc": 26,
+        "name": "Delay time",
+        "section": "Delay"
+      },
+      {
+        "cc": 27,
+        "name": "Delay feedback",
+        "section": "Delay"
+      },
+      {
+        "cc": 18,
+        "name": "Vibrato depth",
+        "section": "Modulation"
+      },
+      {
+        "cc": 51,
+        "name": "Vibrato speed",
+        "section": "Modulation"
+      },
+      {
+        "cc": 19,
+        "name": "Tremolo speed",
+        "section": "Modulation"
+      },
+      {
+        "cc": 20,
+        "name": "Tremolo depth",
+        "section": "Modulation"
+      },
+      {
+        "cc": 31,
+        "name": "Arpeggiator note length",
+        "section": "Arpeggiator"
+      },
+      {
+        "cc": 46,
+        "name": "Arpeggiator humanize",
+        "section": "Arpeggiator"
+      },
+      {
+        "cc": 33,
+        "name": "Stack volume",
+        "section": "Mono"
+      },
+      {
+        "cc": 34,
+        "name": "Detune stack",
+        "section": "Mono"
+      },
+      {
+        "cc": 35,
+        "name": "Glide",
+        "section": "Mono"
+      },
+      {
+        "cc": 36,
+        "name": "Voices",
+        "section": "Mono"
+      },
+      {
+        "cc": 37,
+        "name": "Follower volume",
+        "section": "Dual"
+      },
+      {
+        "cc": 39,
+        "name": "Suborbit offset",
+        "section": "Dual"
+      },
+      {
+        "cc": 40,
+        "name": "Stereo bias",
+        "section": "Dual"
+      },
+      {
+        "cc": 52,
+        "name": "Detune follower",
+        "section": "Dual"
+      },
+      {
+        "cc": 41,
+        "name": "Detune drift",
+        "section": "Poly"
+      },
+      {
+        "cc": 42,
+        "name": "Stereo scatter",
+        "section": "Poly"
+      },
+      {
+        "cc": 1,
+        "name": "Routable parameter",
+        "section": "Routing"
+      },
+      {
+        "cc": 9,
+        "name": "Routable parameter",
+        "section": "Routing"
+      },
+      {
+        "cc": 16,
+        "name": "Routable parameter",
+        "section": "Routing"
+      },
+      {
+        "cc": 17,
+        "name": "Routable parameter",
+        "section": "Routing"
+      },
+      {
+        "cc": 89,
+        "name": "Routable parameter",
+        "section": "Routing"
+      },
+      {
+        "cc": 114,
+        "name": "Routable parameter",
+        "section": "Routing"
+      },
+      {
+        "cc": 115,
+        "name": "Routable parameter",
+        "section": "Routing"
+      },
+      {
+        "cc": 0,
+        "name": "Bank select MSB",
+        "section": "System"
+      },
+      {
+        "cc": 32,
+        "name": "Bank select LSB",
+        "section": "System"
+      },
+      {
+        "cc": 6,
+        "name": "Data entry MSB",
+        "section": "System"
+      },
+      {
+        "cc": 38,
+        "name": "Data entry LSB",
+        "section": "System"
+      },
+      {
+        "cc": 49,
+        "name": "Volume",
+        "section": "System"
+      },
+      {
+        "cc": 64,
+        "name": "Damper/sustain pedal",
+        "section": "System"
+      },
+      {
+        "cc": 66,
+        "name": "Sostenuto pedal",
+        "section": "System"
+      },
+      {
+        "cc": 100,
+        "name": "Registered parameter number LSB",
+        "section": "System"
+      },
+      {
+        "cc": 101,
+        "name": "Registered parameter number MSB",
+        "section": "System"
+      }
+    ]
+  },
+  {
+    "id": "streichfett",
+    "name": "Streichfett",
+    "midiCh": 15,
+    "csv": "Waldorf/Streichfett.csv",
+    "ccs": [
+      {
+        "cc": 1,
+        "name": "MOD Wheel",
+        "section": ""
+      },
+      {
+        "cc": 64,
+        "name": "Sustain",
+        "section": ""
+      },
+      {
+        "cc": 70,
+        "name": "STR Registration",
+        "section": ""
+      },
+      {
+        "cc": 71,
+        "name": "STR Octaves",
+        "section": ""
+      },
+      {
+        "cc": 72,
+        "name": "STR Release",
+        "section": ""
+      },
+      {
+        "cc": 73,
+        "name": "STR Crescendo",
+        "section": ""
+      },
+      {
+        "cc": 74,
+        "name": "STR ENS Type",
+        "section": ""
+      },
+      {
+        "cc": 75,
+        "name": "STR Ensemble",
+        "section": ""
+      },
+      {
+        "cc": 76,
+        "name": "Solo Tone",
+        "section": ""
+      },
+      {
+        "cc": 77,
+        "name": "Solo Tremolo",
+        "section": ""
+      },
+      {
+        "cc": 78,
+        "name": "Solo Split",
+        "section": ""
+      },
+      {
+        "cc": 79,
+        "name": "Solo Sustain",
+        "section": ""
+      },
+      {
+        "cc": 80,
+        "name": "Solo Attack",
+        "section": ""
+      },
+      {
+        "cc": 81,
+        "name": "Solo Decay",
+        "section": ""
+      },
+      {
+        "cc": 82,
+        "name": "Balance",
+        "section": ""
+      },
+      {
+        "cc": 91,
+        "name": "FX Type",
+        "section": ""
+      },
+      {
+        "cc": 92,
+        "name": "FX Animate Amount",
+        "section": ""
+      },
+      {
+        "cc": 93,
+        "name": "FX Phaser Amount",
+        "section": ""
+      },
+      {
+        "cc": 94,
+        "name": "FX Reverb Amount",
+        "section": ""
+      },
+      {
+        "cc": 120,
+        "name": "Sound OFF",
+        "section": ""
+      },
+      {
+        "cc": 121,
+        "name": "Reset",
+        "section": ""
+      },
+      {
+        "cc": 122,
+        "name": "Local Control",
+        "section": ""
+      },
+      {
+        "cc": 123,
+        "name": "Panic",
+        "section": ""
+      }
+    ]
+  },
+  {
+    "id": "hydrasynth",
+    "name": "Hydrasynth",
+    "midiCh": 16,
+    "csv": "ASM/Hydrasynth.csv",
+    "ccs": [
+      {
+        "cc": 62,
+        "name": "AMP Lfo2amt",
+        "section": "Amp"
+      },
+      {
+        "cc": 106,
+        "name": "ARP Division",
+        "section": "Arp"
+      },
+      {
+        "cc": 107,
+        "name": "ARP Gate",
+        "section": "Arp"
+      },
+      {
+        "cc": 108,
+        "name": "ARP Mode",
+        "section": "Arp"
+      },
+      {
+        "cc": 109,
+        "name": "ARP Ratchet",
+        "section": "Arp"
+      },
+      {
+        "cc": 110,
+        "name": "ARP Chance",
+        "section": "Arp"
+      },
+      {
+        "cc": 120,
+        "name": "ARP Octave",
+        "section": "Arp"
+      },
+      {
+        "cc": 122,
+        "name": "ARP Length",
+        "section": "Arp"
+      },
+      {
+        "cc": 14,
+        "name": "Delay Feedback",
+        "section": "Effects"
+      },
+      {
+        "cc": 15,
+        "name": "Delay Time",
+        "section": "Effects"
+      },
+      {
+        "cc": 63,
+        "name": "Delay WET Tone",
+        "section": "Effects"
+      },
+      {
+        "cc": 92,
+        "name": "Delay DRY WET",
+        "section": "Effects"
+      },
+      {
+        "cc": 81,
+        "name": "ENV1 Attack",
+        "section": "Envelope"
+      },
+      {
+        "cc": 82,
+        "name": "ENV1 Decay",
+        "section": "Envelope"
+      },
+      {
+        "cc": 83,
+        "name": "ENV1 Sustain",
+        "section": "Envelope"
+      },
+      {
+        "cc": 84,
+        "name": "ENV1 Release",
+        "section": "Envelope"
+      },
+      {
+        "cc": 85,
+        "name": "ENV2 Attack",
+        "section": "Envelope"
+      },
+      {
+        "cc": 86,
+        "name": "ENV2 Decay",
+        "section": "Envelope"
+      },
+      {
+        "cc": 87,
+        "name": "ENV2 Sustain",
+        "section": "Envelope"
+      },
+      {
+        "cc": 88,
+        "name": "ENV2 Release",
+        "section": "Envelope"
+      },
+      {
+        "cc": 89,
+        "name": "ENV3 Attack",
+        "section": "Envelope"
+      },
+      {
+        "cc": 90,
+        "name": "ENV3 Decay",
+        "section": "Envelope"
+      },
+      {
+        "cc": 96,
+        "name": "ENV3 Sustain",
+        "section": "Envelope"
+      },
+      {
+        "cc": 97,
+        "name": "ENV3 Release",
+        "section": "Envelope"
+      },
+      {
+        "cc": 25,
+        "name": "ENV4 Attack",
+        "section": "Envelope"
+      },
+      {
+        "cc": 27,
+        "name": "ENV4 Decay",
+        "section": "Envelope"
+      },
+      {
+        "cc": 124,
+        "name": "ENV4 Release",
+        "section": "Envelope"
+      },
+      {
+        "cc": 125,
+        "name": "ENV4 Sustain",
+        "section": "Envelope"
+      },
+      {
+        "cc": 102,
+        "name": "ENV5 Attack",
+        "section": "Envelope"
+      },
+      {
+        "cc": 103,
+        "name": "ENV5 Decay",
+        "section": "Envelope"
+      },
+      {
+        "cc": 104,
+        "name": "ENV5 Sustain",
+        "section": "Envelope"
+      },
+      {
+        "cc": 105,
+        "name": "ENV5 Release",
+        "section": "Envelope"
+      },
+      {
+        "cc": 50,
+        "name": "F1 Drive",
+        "section": "Filter"
+      },
+      {
+        "cc": 51,
+        "name": "F1 Keytrack",
+        "section": "Filter"
+      },
+      {
+        "cc": 52,
+        "name": "F1 Lfo1amt",
+        "section": "Filter"
+      },
+      {
+        "cc": 53,
+        "name": "F1 VEL ENV",
+        "section": "Filter"
+      },
+      {
+        "cc": 54,
+        "name": "F1 Env1amt",
+        "section": "Filter"
+      },
+      {
+        "cc": 71,
+        "name": "F1 RES",
+        "section": "Filter"
+      },
+      {
+        "cc": 74,
+        "name": "F1 Cutoff",
+        "section": "Filter"
+      },
+      {
+        "cc": 55,
+        "name": "F2 Cutoff",
+        "section": "Filter"
+      },
+      {
+        "cc": 56,
+        "name": "F2 RES",
+        "section": "Filter"
+      },
+      {
+        "cc": 57,
+        "name": "F2 Type",
+        "section": "Filter"
+      },
+      {
+        "cc": 58,
+        "name": "F2 Keytrack",
+        "section": "Filter"
+      },
+      {
+        "cc": 59,
+        "name": "F2 Lfo1amt",
+        "section": "Filter"
+      },
+      {
+        "cc": 60,
+        "name": "F2 VEL ENV",
+        "section": "Filter"
+      },
+      {
+        "cc": 61,
+        "name": "F2 Env1amt",
+        "section": "Filter"
+      },
+      {
+        "cc": 70,
+        "name": "LFO1 Gain",
+        "section": "LFO"
+      },
+      {
+        "cc": 72,
+        "name": "LFO1 Rate",
+        "section": "LFO"
+      },
+      {
+        "cc": 28,
+        "name": "LFO2 Gain",
+        "section": "LFO"
+      },
+      {
+        "cc": 73,
+        "name": "LFO2 Rate",
+        "section": "LFO"
+      },
+      {
+        "cc": 75,
+        "name": "LFO3 Gain",
+        "section": "LFO"
+      },
+      {
+        "cc": 76,
+        "name": "LFO3 Rate",
+        "section": "LFO"
+      },
+      {
+        "cc": 77,
+        "name": "LFO4 Gain",
+        "section": "LFO"
+      },
+      {
+        "cc": 78,
+        "name": "LFO4 Rate",
+        "section": "LFO"
+      },
+      {
+        "cc": 79,
+        "name": "LFO5 Gain",
+        "section": "LFO"
+      },
+      {
+        "cc": 80,
+        "name": "LFO5 Rate",
+        "section": "LFO"
+      },
+      {
+        "cc": 16,
+        "name": "Macro1",
+        "section": "Macro"
+      },
+      {
+        "cc": 17,
+        "name": "Macro2",
+        "section": "Macro"
+      },
+      {
+        "cc": 18,
+        "name": "Macro3",
+        "section": "Macro"
+      },
+      {
+        "cc": 19,
+        "name": "Macro4",
+        "section": "Macro"
+      },
+      {
+        "cc": 20,
+        "name": "Macro5",
+        "section": "Macro"
+      },
+      {
+        "cc": 21,
+        "name": "Macro6",
+        "section": "Macro"
+      },
+      {
+        "cc": 22,
+        "name": "Macro7",
+        "section": "Macro"
+      },
+      {
+        "cc": 23,
+        "name": "Macro8",
+        "section": "Macro"
+      },
+      {
+        "cc": 3,
+        "name": "Noise VOL",
+        "section": "Noise"
+      },
+      {
+        "cc": 8,
+        "name": "Noise PAN",
+        "section": "Noise"
+      },
+      {
+        "cc": 9,
+        "name": "Ring MOD VOL",
+        "section": "Ring mod"
+      },
+      {
+        "cc": 10,
+        "name": "Ring MOD PAN",
+        "section": "Ring mod"
+      },
+      {
+        "cc": 43,
+        "name": "RM12 Depth",
+        "section": "Ring mod"
+      },
+      {
+        "cc": 44,
+        "name": "OSC1 VOL",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 45,
+        "name": "OSC1 PAN",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 46,
+        "name": "OSC2 VOL",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 47,
+        "name": "OSC2 PAN",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 48,
+        "name": "OSC3 VOL",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 49,
+        "name": "OSC3 PAN",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 114,
+        "name": "OSC3 F Rate",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 115,
+        "name": "Noise F Rate",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 116,
+        "name": "Ring MOD F Rate",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 118,
+        "name": "OSC1 F Rate",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 119,
+        "name": "OSC2 F Rate",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 29,
+        "name": "MUT1 Ratio",
+        "section": "Mutator"
+      },
+      {
+        "cc": 30,
+        "name": "MUT1 Depth",
+        "section": "Mutator"
+      },
+      {
+        "cc": 31,
+        "name": "MUT1 DRY WET",
+        "section": "Mutator"
+      },
+      {
+        "cc": 33,
+        "name": "MUT2 Ratio",
+        "section": "Mutator"
+      },
+      {
+        "cc": 34,
+        "name": "MUT2 Depth",
+        "section": "Mutator"
+      },
+      {
+        "cc": 35,
+        "name": "MUT2 DRY WET",
+        "section": "Mutator"
+      },
+      {
+        "cc": 36,
+        "name": "MUT3 Ratio",
+        "section": "Mutator"
+      },
+      {
+        "cc": 37,
+        "name": "MUT3 Depth",
+        "section": "Mutator"
+      },
+      {
+        "cc": 39,
+        "name": "MUT3 DRY WET",
+        "section": "Mutator"
+      },
+      {
+        "cc": 40,
+        "name": "MUT4 Ratio",
+        "section": "Mutator"
+      },
+      {
+        "cc": 41,
+        "name": "MUT4 Depth",
+        "section": "Mutator"
+      },
+      {
+        "cc": 42,
+        "name": "MUT4 DRY WET",
+        "section": "Mutator"
+      },
+      {
+        "cc": 24,
+        "name": "OSC1 Wavscan",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 111,
+        "name": "OSC1 Cent",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 26,
+        "name": "OSC2 WAV Scan",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 112,
+        "name": "OSC2 Cent",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 113,
+        "name": "OSC3 Cent",
+        "section": "Oscillator"
+      },
+      {
+        "cc": 68,
+        "name": "Post Param1",
+        "section": "Pre/post"
+      },
+      {
+        "cc": 69,
+        "name": "Post Param2",
+        "section": "Pre/post"
+      },
+      {
+        "cc": 94,
+        "name": "Post MIX",
+        "section": "Pre/post"
+      },
+      {
+        "cc": 12,
+        "name": "PRE Param1",
+        "section": "Pre/post"
+      },
+      {
+        "cc": 13,
+        "name": "PRE Param2",
+        "section": "Pre/post"
+      },
+      {
+        "cc": 93,
+        "name": "PRE MIX",
+        "section": "Pre/post"
+      },
+      {
+        "cc": 65,
+        "name": "Reverb Time",
+        "section": "Effects"
+      },
+      {
+        "cc": 67,
+        "name": "Reverb Tone",
+        "section": "Effects"
+      },
+      {
+        "cc": 91,
+        "name": "Reverb DRY WET",
+        "section": "Effects"
+      },
+      {
+        "cc": 1,
+        "name": "Mod wheel",
+        "section": "General"
+      },
+      {
+        "cc": 7,
+        "name": "Volume",
+        "section": "General"
+      },
+      {
+        "cc": 11,
+        "name": "EXP Pedal",
+        "section": "General"
+      },
+      {
+        "cc": 64,
+        "name": "SUS Pedal",
+        "section": "General"
+      },
+      {
+        "cc": 123,
+        "name": "Note OFF",
+        "section": "General"
+      },
+      {
+        "cc": 5,
+        "name": "Glide Time",
+        "section": "General"
+      },
+      {
+        "cc": 66,
+        "name": "Glide",
+        "section": "General"
+      },
+      {
+        "cc": 95,
+        "name": "Detune",
+        "section": "General"
+      },
+      {
+        "cc": 117,
+        "name": "ST Width",
+        "section": "General"
+      }
+    ]
+  }
+]

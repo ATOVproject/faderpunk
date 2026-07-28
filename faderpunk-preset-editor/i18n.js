@@ -132,6 +132,7 @@
       "row.trimTitle":
         "Delete overflow rows from the end (push already ignores them)",
       "row.remove": "Remove row",
+      "row.meteorTitle": "Live push indicator",
       "row.drag": "Drag (also into/out of overflow)",
       "row.overflowPill":
         "Does not fit in 1–16 — drag up or shrink/remove the app",
@@ -180,7 +181,7 @@
         "Default port → {port}. {n} rows have their own port (ignore default). Use “Apply to all”.",
       "status.defaultPortAll": "Default port → {port} (applies to all rows)",
       "status.storageFull":
-        "Browser storage full/blocked — saving to server…",
+        "Browser storage full/blocked — saving to server …",
       "status.copied": "JSON copied to clipboard",
       "status.bankFromServer":
         "Bank from server · {n} presets · tab {tab}",
@@ -191,7 +192,7 @@
       "status.resetConfirm": "Reset preset {index} to default?",
       "status.chromeOk":
         "Local Configurator open — Connect Device there, Push/Pull here",
-      "status.waitContinue": "Waiting for Continue…",
+      "status.waitContinue": "Waiting for Continue …",
       "status.waitPreset": 'Preset "{name}" live — Continue = load next preset',
       "status.stoppedPreset": "Stopped at preset {index}.",
       "status.stoppedLayout": 'Stopped. Active layout: "{name}".',
@@ -212,11 +213,15 @@
       "warn.noMidiOut":
         "Preset {index}: layoutId {id} ({app}) has no MidiOut — port would become default",
 
-      "push.metaChrome": "chrome…",
+      "push.metaChrome": "chrome …",
       "push.metaChromeOk": "chrome ok",
       "push.metaChromeErr": "chrome error",
-      "push.metaRunning": "running…",
-      "push.metaPull": "pull…",
+      "push.metaRunning": "running …",
+      "push.metaPull": "pull …",
+      "push.metaOk": "ok · {sec}s",
+      "push.metaErr": "error · {sec}s",
+      "pull.metaOk": "pull ok · {sec}s",
+      "pull.metaErr": "pull fail · {sec}s",
       "push.openLocal": "=== Open Local Configurator ===",
       "push.openLocalTitle": "Open Local Configurator",
       "push.openLocalFail": "Open Local Configurator failed",
@@ -231,6 +236,28 @@
       "push.liveOverflow":
         'Preset "{name}" live · {n} overflow editor-only',
       "push.liveOk": 'Preset "{name}" live',
+      "push.liveToggle": "Live sync",
+      "push.liveTitle":
+        "Live sync: param edits → SetAppParams (even if layout is dirty). App swap / add / reorder → SetLayout. Full Push still best after big layout changes.",
+      "push.liveOkSlot": "✓ live · layoutId {id}",
+      "push.liveErr": "Live push failed: {msg}",
+      "push.liveNeedFull":
+        "Live: layout out of sync — param edits still push; app/row changes need Push or live structure",
+      "push.liveStructureBusy": "Live · applying layout …",
+      "push.liveStructureOk": "✓ live layout applied",
+      "push.liveParamBusy": "Live · pushing {n} row(s) …",
+      "push.liveParamBusyUnsynced":
+        "Live · pushing {n} row(s) (layout may differ on device) …",
+      "push.liveQueued": "Live · queued (waiting for current push)",
+      "push.liveQueuedRow": "Live · row {row} queued",
+      "push.liveBusyFull": "Live paused — full Push in progress",
+      "push.liveOverflowRow": "Live skipped row {row} (overflow / not on device)",
+      "push.liveNoParams": "Live failed: no params for layoutId {id}",
+      "push.liveNothing": "Live: nothing to push for that edit",
+      "push.liveOnSynced": "Live sync on — edits go to the Punk",
+      "push.liveOnUnsynced":
+        "Live sync on — params push anyway; Push once if apps/order changed",
+      "push.liveOff": "Live sync off",
       "push.failTips":
         "{msg}\n\nTips:\n• Allow MIDI/SysEx in this browser tab\n• Close other tabs using the Faderpunk (Configurator, Diagnostics)\n• Check the push log below",
       "pull.confirm":
@@ -288,6 +315,8 @@
       "param.oscB": "Osc B",
       "param.mixBalance": "Mix %",
       "param.mixBalanceHint": "Mix balance 0% (A) … 50% (center) … 100% (B)",
+      "param.rateModDepth": "Rate-mod %",
+      "param.rateModDepthHint": "Internal rate wobble depth 0% (steady) … 100% (full)",
       "param.cvDest": "CV Dest",
       "param.gateSpeed": "Gate Speed",
       "param.gateMode": "Output Mode",
@@ -304,7 +333,7 @@
       "param.echoSignal": "Signal",
       "desc.portOverrides": " — {n} row port override(s)",
       "dock.done": "Done",
-      "dock.waitContinue": "Waiting for Continue…",
+      "dock.waitContinue": "Waiting for Continue …",
       "inst.nameMissing": "Name required",
       "load.failed": "Load failed: {msg}",
     },
@@ -434,6 +463,7 @@
       "row.trimTitle":
         "Overflow-Zeilen von hinten löschen (Push ignoriert sie ohnehin)",
       "row.remove": "Zeile entfernen",
+      "row.meteorTitle": "Live-Push-Anzeige",
       "row.drag": "Ziehen (auch in/aus Overflow)",
       "row.overflowPill":
         "Passt nicht in 1–16 — nach oben ziehen oder App verkleinern/entfernen",
@@ -487,7 +517,7 @@
       "status.defaultPortAll":
         "Default-Port → {port} (gilt für alle Zeilen)",
       "status.storageFull":
-        "Browser-Speicher voll/gesperrt — speichere auf Server…",
+        "Browser-Speicher voll/gesperrt — speichere auf Server …",
       "status.copied": "JSON in Zwischenablage",
       "status.bankFromServer":
         "Bank vom Server · {n} Presets · Tab {tab}",
@@ -500,7 +530,7 @@
         "Preset {index} auf Default zurücksetzen?",
       "status.chromeOk":
         "Local Configurator offen — Connect Device dort, Push/Pull weiter hier",
-      "status.waitContinue": "Warte auf Weiter…",
+      "status.waitContinue": "Warte auf Weiter …",
       "status.waitPreset":
         'Preset „{name}“ live — Weiter = nächstes Preset laden',
       "status.stoppedPreset": "Gestoppt bei Preset {index}.",
@@ -523,11 +553,15 @@
       "warn.noMidiOut":
         "Preset {index}: layoutId {id} ({app}) ohne MidiOut — Port würde Default werden",
 
-      "push.metaChrome": "chrome…",
+      "push.metaChrome": "chrome …",
       "push.metaChromeOk": "chrome ok",
       "push.metaChromeErr": "chrome fehler",
-      "push.metaRunning": "läuft…",
-      "push.metaPull": "pull…",
+      "push.metaRunning": "läuft …",
+      "push.metaPull": "pull …",
+      "push.metaOk": "ok · {sec}s",
+      "push.metaErr": "fehler · {sec}s",
+      "pull.metaOk": "pull ok · {sec}s",
+      "pull.metaErr": "pull fail · {sec}s",
       "push.openLocal": "=== Open Local Configurator ===",
       "push.openLocalTitle": "Open Local Configurator",
       "push.openLocalFail": "Open Local Configurator fehlgeschlagen",
@@ -598,6 +632,8 @@
       "param.oscB": "Osc B",
       "param.mixBalance": "Mix %",
       "param.mixBalanceHint": "Mix-Balance 0 % (A) … 50 % (Mitte) … 100 % (B)",
+      "param.rateModDepth": "Rate-mod %",
+      "param.rateModDepthHint": "Interne Rate-Wobble-Tiefe 0 % (stabil) … 100 % (voll)",
       "param.cvDest": "CV-Ziel",
       "param.gateSpeed": "Gate-Speed",
       "param.gateMode": "Output-Modus",
@@ -616,12 +652,34 @@
       "push.liveOverflow":
         'Preset „{name}“ live · {n} Overflow nur im Editor',
       "push.liveOk": 'Preset „{name}“ live',
+      "push.liveToggle": "Live Sync",
+      "push.liveTitle":
+        "Live Sync: Param-Edits → SetAppParams (auch wenn Layout dirty). App tauschen / adden / umsortieren → SetLayout. Nach großen Layout-Änderungen weiter Push empfohlen.",
+      "push.liveOkSlot": "✓ live · layoutId {id}",
+      "push.liveErr": "Live-Push fehlgeschlagen: {msg}",
+      "push.liveNeedFull":
+        "Live: Layout nicht synchron — Param-Edits gehen trotzdem; App/Reihenfolge braucht Push",
+      "push.liveStructureBusy": "Live · Layout wird angewendet …",
+      "push.liveStructureOk": "✓ Live-Layout angewendet",
+      "push.liveParamBusy": "Live · {n} Zeile(n) werden gepusht …",
+      "push.liveParamBusyUnsynced":
+        "Live · {n} Zeile(n) (Layout auf Gerät evtl. anders) …",
+      "push.liveQueued": "Live · in Warteschlange (aktueller Push läuft)",
+      "push.liveQueuedRow": "Live · Zeile {row} wartend",
+      "push.liveBusyFull": "Live pausiert — voller Push läuft",
+      "push.liveOverflowRow": "Live übersprungen: Zeile {row} (Overflow / nicht auf Gerät)",
+      "push.liveNoParams": "Live fehlgeschlagen: keine Params für layoutId {id}",
+      "push.liveNothing": "Live: für diese Änderung nichts zu pushen",
+      "push.liveOnSynced": "Live Sync an — Edits gehen zum Punk",
+      "push.liveOnUnsynced":
+        "Live Sync an — Params gehen trotzdem; einmal Push wenn Apps/Reihenfolge geändert",
+      "push.liveOff": "Live Sync aus",
       "push.failTips":
         "{msg}\n\nTipps:\n• MIDI/SysEx in diesem Tab erlauben\n• Andere Tabs mit dem Faderpunk schließen (Configurator, Diagnostics)\n• Push-Log unten prüfen",
       "pull.failTips":
         "{msg}\n\nTipps:\n• Configurator offen, Device verbunden\n• Layout mit mind. einer App\n• Push-Log prüfen",
       "dock.done": "Fertig",
-      "dock.waitContinue": "Warte auf Weiter…",
+      "dock.waitContinue": "Warte auf Weiter …",
       "inst.nameMissing": "Name fehlt",
       "load.failed": "Laden fehlgeschlagen: {msg}",
       "push.openLocalOk":
@@ -753,6 +811,7 @@
       "row.trimTitle":
         "Supprimer les lignes overflow depuis la fin (le push les ignore déjà)",
       "row.remove": "Supprimer la ligne",
+      "row.meteorTitle": "Indicateur push live",
       "row.drag": "Glisser (aussi dans/hors overflow)",
       "row.overflowPill":
         "Ne tient pas dans 1–16 — glisser vers le haut ou réduire/supprimer l’app",
@@ -806,7 +865,7 @@
       "status.defaultPortAll":
         "Port par défaut → {port} (toutes les lignes)",
       "status.storageFull":
-        "Stockage navigateur plein/bloqué — enregistrement serveur…",
+        "Stockage navigateur plein/bloqué — enregistrement serveur …",
       "status.copied": "JSON copié dans le presse-papiers",
       "status.bankFromServer":
         "Banque serveur · {n} presets · onglet {tab}",
@@ -819,7 +878,7 @@
         "Réinitialiser le preset {index} au défaut ?",
       "status.chromeOk":
         "Configurator local ouvert — Connect Device là-bas, Push/Pull ici",
-      "status.waitContinue": "En attente de Continuer…",
+      "status.waitContinue": "En attente de Continuer …",
       "status.waitPreset":
         'Preset « {name} » actif — Continuer = charger le suivant',
       "status.stoppedPreset": "Arrêté au preset {index}.",
@@ -842,11 +901,15 @@
       "warn.noMidiOut":
         "Preset {index}: layoutId {id} ({app}) sans MidiOut — le port deviendrait default",
 
-      "push.metaChrome": "chrome…",
+      "push.metaChrome": "chrome …",
       "push.metaChromeOk": "chrome ok",
       "push.metaChromeErr": "erreur chrome",
-      "push.metaRunning": "en cours…",
-      "push.metaPull": "pull…",
+      "push.metaRunning": "en cours …",
+      "push.metaPull": "pull …",
+      "push.metaOk": "ok · {sec}s",
+      "push.metaErr": "erreur · {sec}s",
+      "pull.metaOk": "pull ok · {sec}s",
+      "pull.metaErr": "pull échec · {sec}s",
       "push.openLocal": "=== Open Local Configurator ===",
       "push.openLocalTitle": "Open Local Configurator",
       "push.openLocalFail": "Échec Open Local Configurator",
@@ -917,6 +980,8 @@
       "param.oscB": "Osc B",
       "param.mixBalance": "Mix %",
       "param.mixBalanceHint": "Mix balance 0% (A) … 50% (centre) … 100% (B)",
+      "param.rateModDepth": "Rate-mod %",
+      "param.rateModDepthHint": "Profondeur de wobble de rate 0% (stable) … 100% (plein)",
       "param.cvDest": "Dest. CV",
       "param.gateSpeed": "Vitesse Gate",
       "param.gateMode": "Mode de sortie",
@@ -935,12 +1000,34 @@
       "push.liveOverflow":
         'Preset « {name} » actif · {n} overflow éditeur seulement',
       "push.liveOk": 'Preset « {name} » actif',
+      "push.liveToggle": "Sync live",
+      "push.liveTitle":
+        "Sync live : params → SetAppParams (même si layout dirty). Changer d’app / ordre → SetLayout. Push complet encore utile après gros changements.",
+      "push.liveOkSlot": "✓ live · layoutId {id}",
+      "push.liveErr": "Échec push live : {msg}",
+      "push.liveNeedFull":
+        "Live : layout désync — les params partent quand même ; apps/ordre → Push",
+      "push.liveStructureBusy": "Live · application du layout …",
+      "push.liveStructureOk": "✓ layout live appliqué",
+      "push.liveParamBusy": "Live · envoi de {n} ligne(s) …",
+      "push.liveParamBusyUnsynced":
+        "Live · envoi de {n} ligne(s) (layout device peut différer) …",
+      "push.liveQueued": "Live · en file (push en cours)",
+      "push.liveQueuedRow": "Live · ligne {row} en file",
+      "push.liveBusyFull": "Live en pause — Push complet en cours",
+      "push.liveOverflowRow": "Live ignoré : ligne {row} (overflow)",
+      "push.liveNoParams": "Échec live : pas de params pour layoutId {id}",
+      "push.liveNothing": "Live : rien à envoyer pour cet edit",
+      "push.liveOnSynced": "Sync live on — les edits partent vers le Punk",
+      "push.liveOnUnsynced":
+        "Sync live on — params quand même ; Push si apps/ordre ont changé",
+      "push.liveOff": "Sync live off",
       "push.failTips":
         "{msg}\n\nConseils :\n• Autoriser MIDI/SysEx dans cet onglet\n• Fermer les autres onglets qui utilisent le Faderpunk (Configurator, Diagnostics)\n• Vérifier le journal push",
       "pull.failTips":
         "{msg}\n\nConseils :\n• Configurator ouvert, appareil connecté\n• Layout avec au moins une app\n• Vérifier le journal",
       "dock.done": "Terminé",
-      "dock.waitContinue": "En attente de Continuer…",
+      "dock.waitContinue": "En attente de Continuer …",
       "inst.nameMissing": "Nom requis",
       "load.failed": "Échec du chargement : {msg}",
       "push.openLocalOk":

@@ -173,7 +173,9 @@ function is_CONFIG_MSG_IN(v) {
          v.tag === "GetLayout" ||
          v.tag === "GetAllAppParams" ||
          v.tag === "FactoryReset" ||
-         v.tag === "GetVersion") ||
+         v.tag === "GetVersion" ||
+         v.tag === "HoldPerfMute" ||
+         v.tag === "ReleasePerfMute") ||
          (typeof v === "object" &&
          "tag" in v &&
          "value" in v &&
@@ -805,6 +807,12 @@ function serialize_CONFIG_MSG_IN(s, v) {
         break;
     case "GetVersion":
         s.serialize_number(U32_BYTES, false, 10);
+        break;
+    case "HoldPerfMute":
+        s.serialize_number(U32_BYTES, false, 11);
+        break;
+    case "ReleasePerfMute":
+        s.serialize_number(U32_BYTES, false, 12);
         break;
     default:
         throw "variant not implemented"
@@ -1946,6 +1954,14 @@ function deserialize_CONFIG_MSG_IN(d) {
     case 10:
         return {
             tag: "GetVersion"
+        };
+    case 11:
+        return {
+            tag: "HoldPerfMute"
+        };
+    case 12:
+        return {
+            tag: "ReleasePerfMute"
         };
     default:
         throw "variant not implemented"
