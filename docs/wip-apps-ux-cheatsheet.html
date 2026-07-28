@@ -161,7 +161,7 @@
   <div class="app-head">
     <span class="id">ID 30</span>
     <h2>Grooves <span class="tag ready">ready</span></h2>
-    <span class="desc">Multi-genre MIDI drum grooves with swing</span>
+    <span class="desc">Multi-genre MIDI drum grooves with feel</span>
   </div>
   <div class="app-body">
     <div class="cols">
@@ -169,13 +169,15 @@
         <h3>Faders</h3>
         <ul>
           <li><strong>Main</strong> — Density (extra hits)</li>
-          <li><strong>Alt</strong> — Genre scrub (same colors as Chord Vamp)</li>
-          <li><strong>Third</strong> — Swing (capped by Swing max %)</li>
+          <li><strong>Alt</strong> — Genre morph (LED = red→blue spectrum)</li>
+          <li><strong>Third</strong> — Feel (0 = flat/grid → max = accents + timing + swing)</li>
         </ul>
         <h3>Genres</h3>
         <ul>
-          <li>Dub → Disco → Hip-Hop → House → Techno → Trip-Hop → UK Garage → Dubstep</li>
-          <li>Colors (shared): Orange · Yellow · Red · Pink · Cyan · Violet · Green · Blue</li>
+          <li>Dub → Disco → House → Techno → Trip-Hop → Hip-Hop → Jungle → UK Garage → Dubstep</li>
+          <li>Alt LED: continuous spectrum (red→blue); Enum chrome still uses discrete genre colors</li>
+          <li>Morph: soft-lerp accents/timing/swing between neighbors; core masks from nearer genre</li>
+          <li>DNA: accent masks + microtiming; swing bias from shared <code>groove</code> module</li>
         </ul>
       </div>
       <div>
@@ -189,7 +191,7 @@
         <h3>Jack params</h3>
         <ul>
           <li>Jack: CV Out / CV In</li>
-          <li>CV Dest: Density · Swing · Reset (Configurator only)</li>
+          <li>CV Dest: Density · Feel · Reset (Configurator only)</li>
           <li>Range, CV Att</li>
         </ul>
       </div>
@@ -197,12 +199,12 @@
         <h3>Params</h3>
         <ul>
           <li>Kick / Snare / Hats: note + channel</li>
-          <li>Groove, Swing max %, GATE %, Color, MIDI Out</li>
+          <li>Groove, Swing max % (Feel swing ceiling), GATE %, Color, MIDI Out</li>
         </ul>
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> Genre MIDI drums on the global clock. Density reveals hits; Shift+Fader scrubs genre (Vamp-aligned); Button+Fader = Swing (capped by Swing max %). Shift+Long toggles CV Out Any↔Stacked. Jack=CV In modulates Density/Swing or triggers Reset — set CV Dest in the Configurator only. CV Att scales input.</p>
+      <p><strong>Manual.</strong> Genre MIDI drums on the global clock. Density reveals fills; Shift+Fader is a continuous genre morph (park between neighbors blends feel DNA; core pattern snaps at midpoint; LED = red→blue spectrum). Button+Fader = <strong>Feel</strong> — attenuates accents, microtiming, and genre swing (capped by Swing max %). Feel bottom ≈ flat equal velocity / straight grid; top = full groove. Shift+Long toggles CV Out Any↔Stacked. Jack=CV In modulates Density/Feel or triggers Reset — set CV Dest in the Configurator only. CV Att scales input.</p>
     </div>
   </div>
 </section>
@@ -269,7 +271,7 @@
       <div>
         <h3>Faders</h3>
         <ul>
-          <li><strong>Ch0 Main</strong> — Morph · <strong>Alt</strong> — Attenuation (Amp)</li>
+          <li><strong>Ch0 Main</strong> — Morph (LED = red→blue spectrum) · <strong>Alt</strong> — Attenuation (Amp)</li>
           <li><strong>Ch0 Third</strong> — Skew</li>
           <li><strong>Ch1 Main</strong> — Symmetry · <strong>Alt</strong> — Speed</li>
           <li><strong>Ch1 Third</strong> — Phase-Warp</li>
@@ -424,7 +426,7 @@
         <ul>
           <li><strong>Main (Perform)</strong> — Scrub genre degrees × 3 octaves (pitch map)</li>
           <li><strong>Main (Auto)</strong> — Tension (Meander only)</li>
-          <li><strong>Alt</strong> — Genre (+ Capture clip slot if clip exists)</li>
+          <li><strong>Alt</strong> — Genre morph (+ Capture clip slot if clip exists; Capture LED = rose)</li>
           <li><strong>Third (Auto)</strong> — Feel (laid ↔ advanced stab length)</li>
           <li><strong>Third (Perform)</strong> — Feel still stored; LEDs = blue / chord pitch</li>
         </ul>
@@ -458,13 +460,13 @@
         <h3>Scene storage</h3>
         <ul>
           <li>8-slot vamp + Capture clip</li>
-          <li><strong>Swing</strong> 0–100 — genre-seeded; odd-16th delay (no Configurator param)</li>
+          <li><strong>Swing</strong> 0–100 — morphs between neighbor genre biases while parked; reseeds structure only on nearest-genre change</li>
           <li>Feel, scrub, tension, mode, play/pause</li>
         </ul>
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> captures recent harmony (starts quantized to 16ths, lead-in cropped to first hit; hold lengths free) into a timed clip and arms Auto. <strong>Auto</strong>: genre rhythm phrase loops — multi-chord statement (~1–2 bars) then multi-bar rest; harmony Repeat or Meander; Feel sets short stab gate (rests fixed); Swing (scene, genre-seeded) delays odd 16ths on Auto + Capture. Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform. Alt = genre (+ Capture slot). CV Macro = scrub/tension; Panic from CV optional.</p>
+      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> captures recent harmony (starts quantized to 16ths, lead-in cropped to first hit; hold lengths free) into a timed clip and arms Auto. <strong>Auto</strong>: genre rhythm phrase loops — multi-chord statement (~1–2 bars) then multi-bar rest; harmony Repeat or Meander; Feel sets short stab gate (rests fixed); Swing delays odd 16ths — Shift+Fader morphs swing bias between neighbors without reseeding; crossing the midpoint reseeds phrase/slots once. Alt LED = red→blue spectrum (Capture slot stays rose). Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform. CV Macro = scrub/tension; Panic from CV optional.</p>
     </div>
   </div>
 </section>
