@@ -36,8 +36,13 @@ SECTIONS {
 
 } INSERT AFTER .vector_table;
 
-/* move .text to start /after/ the boot info */
-_stext = ADDR(.start_block) + SIZEOF(.start_block);
+/* move .text to start /after/ the boot info.
+ * ALIGN(8): .text contains input sections requiring 8-byte alignment, but the
+ * raw end of .start_block (0x1000013c) is only 4-aligned. rust-lld warns
+ * ("address of section .text is not a multiple of alignment") and the
+ * misaligned section caused flaky app-task spawn crashes that moved to a
+ * different app with every code change. */
+_stext = ALIGN(ADDR(.start_block) + SIZEOF(.start_block), 8);
 
 SECTIONS {
     /* ### Picotool 'Binary Info' Entries
