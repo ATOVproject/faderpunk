@@ -88,7 +88,7 @@
 <body>
 
 <h1>Faderpunk WIP Apps — UX Cheatsheet</h1>
-<p class="sub">Synced to <code>test/playground</code> (CV Jack In/Out) · 26 Jul 2026 · A4 print</p>
+<p class="sub">Synced to <code>test/playground</code> (CV Jack In/Out) · 31 Jul 2026 · A4 print · Hold Sam 36 · Harmonica 37</p>
 
 <div class="legend">
   <div><strong>Main</strong> — Fader alone</div>
@@ -100,7 +100,7 @@
 </div>
 
 <div class="jack-note">
-  <strong>Jack CV Out / CV In</strong> (Heat Pump, Grooves, Golden Gate, Arp de Lévy, Chord Vamp; Super LFO is 2-ch with CV on Ch0):
+  <strong>Jack CV Out / CV In</strong> (Heat Pump, Grooves, Golden Gate, Arp de Lévy, Chord Vamp, Harmonica; Super LFO is 2-ch with CV on Ch0):
   <strong>CV Out</strong> = app drives the jack · <strong>CV In</strong> = jack modulates a <strong>CV Dest</strong> (attenuated by <strong>CV Att</strong> 0–100%).
   Device-cycle Dest: Heat Pump &amp; Super LFO via <strong>Shift+Short</strong> (Grooves: Configurator only).
   Golden Gate + Jack=CV In → MIDI-first (no CV/gate outs).
@@ -135,7 +135,6 @@
         <ul>
           <li><strong>Short</strong> — Manual duck trigger</li>
           <li><strong>Long</strong> — Mute (freeze level; no snap to idle)</li>
-          <li><strong>Shift+Short (CV Out)</strong> — Cycle clock division</li>
           <li><strong>Shift+Short (CV In)</strong> — Cycle CV Dest (flash)</li>
           <li><strong>Shift+Long</strong> — Invert duck direction</li>
         </ul>
@@ -151,7 +150,7 @@
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> Clock-synced ducking envelope: each division pulse ducks, then recovers by Release. Depth sets how far. Mute freezes the envelope at its current level (clock triggers discarded). Invert flips duck direction. Third sets division directly; Shift+Short cycles division (CV Out) or CV Dest (CV In). CV Att scales modulation.</p>
+      <p><strong>Manual.</strong> Clock-synced sidechain duck: each division pulse drops to Depth, holds ~⅛ of the division, then log-shaped Release back to idle. Mute freezes the envelope (clock triggers discarded). Invert flips duck direction. Third (button+fader) sets division; Shift+Short cycles CV Dest when Jack=CV In. CV Att scales modulation.</p>
     </div>
   </div>
 </section>
@@ -175,7 +174,7 @@
         <h3>Genres</h3>
         <ul>
           <li>Dub → Disco → House → Techno → Trip-Hop → Hip-Hop → Jungle → UK Garage → Dubstep</li>
-          <li>Alt LED: continuous spectrum (red→blue); Enum chrome still uses discrete genre colors</li>
+          <li>LEDs always follow genre spectrum (no Color param); Enum chrome still discrete</li>
           <li>Morph: soft-lerp accents/timing/swing between neighbors; core masks from nearer genre</li>
           <li>DNA: accent masks + microtiming; swing bias from shared <code>groove</code> module</li>
         </ul>
@@ -188,6 +187,11 @@
           <li><strong>Shift+Short</strong> — Reverse swing</li>
           <li><strong>Shift+Long</strong> — Toggle jack Any ↔ Stacked (yellow/violet flash)</li>
         </ul>
+        <h3>LEDs</h3>
+        <ul>
+          <li>Button / Top / Bottom = genre hue (red→blue spectrum)</li>
+          <li>Button Mid→Low blink on each hit</li>
+        </ul>
         <h3>Jack params</h3>
         <ul>
           <li>Jack: CV Out / CV In</li>
@@ -199,12 +203,12 @@
         <h3>Params</h3>
         <ul>
           <li>Kick / Snare / Hats: note + channel</li>
-          <li>Groove, Swing max % (Feel swing ceiling), GATE %, Color, MIDI Out</li>
+          <li>Groove, Swing max % (Feel swing ceiling), GATE %, MIDI Out</li>
         </ul>
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> Genre MIDI drums on the global clock. Density reveals fills; Shift+Fader is a continuous genre morph (park between neighbors blends feel DNA; core pattern snaps at midpoint; LED = red→blue spectrum). Button+Fader = <strong>Feel</strong> — attenuates accents, microtiming, and genre swing (capped by Swing max %). Feel bottom ≈ flat equal velocity / straight grid; top = full groove. Shift+Long toggles CV Out Any↔Stacked. Jack=CV In modulates Density/Feel or triggers Reset — set CV Dest in the Configurator only. CV Att scales input.</p>
+      <p><strong>Manual.</strong> Genre MIDI drums on the global clock. Density reveals fills; Shift+Fader is a continuous genre morph (park between neighbors blends feel DNA; core pattern snaps at midpoint). Button / bar LEDs always use the genre spectrum hue (like LFO has no Color param). Button Mid→Low blinks on hits. Button+Fader = <strong>Feel</strong> — attenuates accents, microtiming, and genre swing (capped by Swing max %). Feel bottom ≈ flat equal velocity / straight grid; top = full groove. Shift+Long toggles CV Out Any↔Stacked. Jack=CV In modulates Density/Feel or triggers Reset — set CV Dest in the Configurator only. CV Att scales input.</p>
     </div>
   </div>
 </section>
@@ -442,7 +446,7 @@
         <ul>
           <li><strong>Perform hold</strong> — Chord on; release = off (blue LEDs track pitch)</li>
           <li><strong>Auto short</strong> — Play / pause</li>
-          <li><strong>Shift+Short (Perform)</strong> — Capture last N bars → Auto+Play</li>
+          <li><strong>Shift+Short (Perform)</strong> — Auto (capture if ring has chords)</li>
           <li><strong>Shift+Short (Auto)</strong> — Return to Perform</li>
           <li><strong>Auto Long</strong> — Clear clip, reseed genre phrase</li>
           <li><strong>Shift+Long (Auto)</strong> — Panic</li>
@@ -466,7 +470,126 @@
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> captures recent harmony (starts quantized to 16ths, lead-in cropped to first hit; hold lengths free) into a timed clip and arms Auto. <strong>Auto</strong>: genre rhythm phrase loops — multi-chord statement (~1–2 bars) then multi-bar rest; harmony Repeat or Meander; Feel sets short stab gate (rests fixed); Swing delays odd 16ths — Shift+Fader morphs swing bias between neighbors without reseeding; crossing the midpoint reseeds phrase/slots once. Alt LED = red→blue spectrum (Capture slot stays rose). Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform. CV Macro = scrub/tension; Panic from CV optional.</p>
+      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> enters Auto (and captures recent harmony into a timed clip when the ring has chords; empty ring = genre phrase Auto). <strong>Auto</strong>: genre rhythm phrase loops — multi-chord statement (~1–2 bars) then multi-bar rest; harmony Repeat or Meander; Feel sets short stab gate (rests fixed); Swing delays odd 16ths — Shift+Fader morphs swing bias between neighbors without reseeding; crossing the midpoint reseeds phrase/slots once. Alt LED = red→blue spectrum (Capture slot stays rose). Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform. CV Macro = scrub/tension; Panic from CV optional.</p>
+    </div>
+  </div>
+</section>
+
+<!-- HOLD SAM -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 36</span>
+    <h2>Hold Sam <span class="tag ready">ready</span></h2>
+    <span class="desc">Clocked sample &amp; hold → MIDI Note/CC</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main (Note)</strong> — Gate length (% of current division)</li>
+          <li><strong>Main (CC)</strong> — Output amount (sample → CC)</li>
+          <li><strong>Alt</strong> — Clock division</li>
+          <li><strong>Third (Note)</strong> — Velocity sensitivity from CV delta</li>
+          <li><strong>Third (CC)</strong> — unused</li>
+        </ul>
+        <h3>Jack</h3>
+        <ul>
+          <li>CV In — signal to sample (pitch / CC source)</li>
+          <li>Config Attenuverter applied before sample</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Soft mute (ausklingen; no new events)</li>
+          <li><strong>Shift+Short</strong> — Manual sample (+ Note/CC)</li>
+          <li><strong>Long (no fader move)</strong> — Hard Note Off + mute on</li>
+          <li><strong>Long + Fader</strong> — Third layer only (no panic)</li>
+        </ul>
+        <h3>Transport</h3>
+        <ul>
+          <li><strong>Stop</strong> — like soft mute; gate finishes via timer</li>
+          <li><strong>Reset</strong> — phase only; sample/note kept</li>
+          <li>Always retrigger on tick (even same pitch); monophonic cut</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>MidiMode Note/CC, Channel, CC #, Color</li>
+          <li>Range, MidiOut, V/Oct, Bypass quantizer</li>
+          <li>Attenuverter (0–4095, 4095 = unity)</li>
+          <li>Base Velocity 1–127</li>
+        </ul>
+        <h3>LEDs</h3>
+        <ul>
+          <li>Button = app color (off when muted)</li>
+          <li>Top = note/CC activity (velocity brightness)</li>
+          <li>Bottom = active latch value (Main/Alt/Third)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Clocked S&amp;H bridge: each division tick samples CV In (after Config Att) and sends MIDI. Note mode: cut+retrigger with <code>vel = base + sens × |ΔCV|</code>; Main = gate % of the division. CC mode: Main = amount. Soft mute and Stop let the sounding note finish; Long without fader move is panic. Shift+Short samples off the clock. Global clock source (Internal / MIDI / one Aux); Aux divisions are just patchable outs into the jack if you want.</p>
+    </div>
+  </div>
+</section>
+
+<!-- HARMONICA -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 37</span>
+    <h2>Harmonica <span class="tag ready">ready</span></h2>
+    <span class="desc">Monophonic MIDI/CV harmonizer</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Chord type (Unison → Power → min → maj → Sus4 → min7 → Dom7)</li>
+          <li><strong>Alt</strong> — Voicing spread (lift harmony in octave steps)</li>
+          <li><strong>Third</strong> — Harmony velocity (root keeps input vel)</li>
+        </ul>
+        <h3>Jack</h3>
+        <ul>
+          <li>MIDI→CV: highest sounding pitch out</li>
+          <li>CV→MIDI: root pitch in (stable before arm/play)</li>
+          <li>MIDI→MIDI: unused</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Mute harmony only (root keeps sounding)</li>
+          <li><strong>Shift+Short</strong> — Cycle harmony octave −1 → 0 → +1</li>
+          <li><strong>Long</strong> — Panic (all notes this app owns)</li>
+          <li><strong>Long + Fader</strong> — Third layer only (no panic)</li>
+        </ul>
+        <h3>I/O</h3>
+        <ul>
+          <li>MIDI→MIDI / MIDI→CV / CV→MIDI</li>
+          <li>Templates chromatic; non-root tones snap to global scale (bypass = chromatic)</li>
+          <li>Live revoice as fader moves</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>I/O, Range, Color</li>
+          <li>MIDI In / In CH / Out / Out CH</li>
+          <li>1V/Oct, Bypass quantizer</li>
+        </ul>
+        <h3>LEDs</h3>
+        <ul>
+          <li>Top = chord type / pitch (red on Alt or Third)</li>
+          <li>Bottom = octave (−1 dim, 0 mid, +1 bright); velocity on Third</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Builds a chord from a single root. Fader picks chord type; Alt opens the voicing; Third sets harmony velocity. Mute affects harmony only. Shift+Short cycles harmony octave. CV→MIDI waits for a stable quantized pitch (anti-float) before arming, then plays on change. Long panics every note this app owns.</p>
     </div>
   </div>
 </section>
