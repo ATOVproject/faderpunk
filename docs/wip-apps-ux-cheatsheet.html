@@ -524,7 +524,7 @@
         </ul>
         <h3>LEDs</h3>
         <ul>
-          <li>Button = app color (off when muted)</li>
+          <li>Button = app color Mid; Low while note gated / brief CC duck (off when muted)</li>
           <li>Top = note/CC activity (velocity brightness)</li>
           <li>Bottom = active latch value (Main/Alt/Third)</li>
         </ul>
@@ -555,7 +555,7 @@
         <h3>Jack</h3>
         <ul>
           <li>MIDI→CV: highest sounding pitch out</li>
-          <li>CV→MIDI: root pitch in (stable before arm/play)</li>
+          <li>CV→MIDI: root pitch in (quiet→Armed; motion then stable→play)</li>
           <li>MIDI→MIDI: unused</li>
         </ul>
       </div>
@@ -589,7 +589,7 @@
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> Builds a chord from a single root. Fader picks chord type; Alt opens the voicing; Third sets harmony velocity. Mute affects harmony only. Shift+Short cycles harmony octave. CV→MIDI waits for a stable quantized pitch (anti-float) before arming, then plays on change. Long panics every note this app owns.</p>
+      <p><strong>Manual.</strong> Builds a chord from a single root. Fader picks chord type; Alt opens the voicing; Third sets harmony velocity. Mute affects harmony only. Shift+Short cycles harmony octave. CV→MIDI arms silent on quiet float; after ADC motion the next stable pitch plays (stepped CV / Note Fader friendly). Long panics every note this app owns.</p>
     </div>
   </div>
 </section>
