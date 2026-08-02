@@ -1344,7 +1344,7 @@ On a clock **Reset**, the step counter resets to step 1 — the pattern is not c
 #### LED Feedback
 
 * **Ch 1 Top:** Density level as brightness (user color)
-* **Ch 1 Bottom:** While Button 1 is held (resolution mode), flashes in sync with the current clock division — orange for straight divisions, blue for triplets.
+* **Ch 1 Bottom:** While Button 1 is held (resolution mode), flashes in sync with the current clock division — orange for triplet divisions, blue for straight divisions.
 * **Ch 1 Button:** Mid brightness (user color); flashes white on each reseed.
 * **Ch 2 Top:** Gate open indicator (user color)
 * **Ch 2 Bottom:** Step progress — bright at step 1, dims toward the end of the sequence
@@ -1695,7 +1695,13 @@ export const ManualTab = () => {
             <Link to="#apps">Apps</Link>
             <List>
               <li>
+                <Link to="#attenuation-apps">Attenuation</Link>
+              </li>
+              <li>
                 <Link to="#muting-apps">Muting apps</Link>
+              </li>
+              <li>
+                <Link to="#resolution-apps">Clock Resolution</Link>
               </li>
               {apps.map((app) => (
                 <li key={app.title}>
