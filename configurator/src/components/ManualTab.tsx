@@ -8,6 +8,7 @@ import { Troubleshooting } from "./manual/Troubleshooting";
 import { Apps } from "./manual/Apps";
 import { H2, List, Link } from "./manual/Shared";
 import { Interface } from "./manual/Interface";
+import { PunkBus } from "./manual/PunkBus";
 import { Configurator } from "./manual/Configurator";
 
 const apps: ManualAppData[] = [
@@ -1648,6 +1649,9 @@ export const ManualTab = () => {
             </List>
           </li>
           <li>
+            <Link to="#punkbus">PunkBus</Link>
+          </li>
+          <li>
             <Link to="#configurator">Configurator</Link>
             <List>
               <li>
@@ -1718,6 +1722,7 @@ export const ManualTab = () => {
       </nav>
       <Preface />
       <Interface />
+      <PunkBus />
       <Configurator />
       <Apps apps={apps} />
       <UpdateGuide />
