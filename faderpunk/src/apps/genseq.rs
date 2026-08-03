@@ -278,6 +278,20 @@ pub async fn run(
                     }
                     register_pitch = storage.query(|s| s.register_pitch);
                 }
+                ClockEvent::Stop => {
+                    // No phase reset (see ClockEvent::Stop docs) — just silence
+                    // whatever note/gate is currently held, including a legato
+                    // tie whose note-off would otherwise wait on a Tick that
+                    // will never come.
+                    if gate_on {
+                        gate_out.set_value(0);
+                        gate_on = false;
+                        midi.send_note_off(last_note_on.get()).await;
+                        leds.set(1, Led::Top, led_color, Brightness::Custom(0));
+                    }
+                    pending_note_off = false;
+                    aux_out.set_value(0);
+                }
                 ClockEvent::Tick => {
                     let clkn = ticks() as u32;
                     if clkn.is_multiple_of(div) {
@@ -404,19 +418,34 @@ pub async fn run(
                         let is_beat =
                             euclidean_at(euclid_length, euclid_beat, 0, clkn_euclid as u32);
 
-                        if is_beat && !glob_muted.get() {
-                            if gate_on {
-                                midi.send_note_off(last_note_on.get()).await;
+                        if is_beat {
+                            if glob_muted.get() {
+                                // Muted: don't sound a new note, but still close out
+                                // any note/gate left open by a prior legato tie — the
+                                // pending_note_off resolution below only fires once a
+                                // non-legato step is reached, which may not happen for
+                                // a long run of tied steps.
+                                if gate_on {
+                                    gate_out.set_value(0);
+                                    gate_on = false;
+                                    pending_note_off = false;
+                                    leds.set(1, Led::Top, led_color, Brightness::Custom(0));
+                                    midi.send_note_off(last_note_on.get()).await;
+                                }
+                            } else {
+                                if gate_on {
+                                    midi.send_note_off(last_note_on.get()).await;
+                                }
+                                let note = midi_note.get();
+                                last_note_on.set(note);
+                                gate_out.set_value(4095);
+                                gate_on = true;
+                                pending_note_off = false;
+                                aux_out.set_value(if is_accented { 4095 } else { 0 });
+                                midi.send_note_on(note, if is_accented { 4095 } else { 2048 })
+                                    .await;
+                                leds.set(1, Led::Top, led_color, Brightness::Low);
                             }
-                            let note = midi_note.get();
-                            last_note_on.set(note);
-                            gate_out.set_value(4095);
-                            gate_on = true;
-                            pending_note_off = false;
-                            aux_out.set_value(if is_accented { 4095 } else { 0 });
-                            midi.send_note_on(note, if is_accented { 4095 } else { 2048 })
-                                .await;
-                            leds.set(1, Led::Top, led_color, Brightness::Low);
                         }
 
                         legato = is_legato;
