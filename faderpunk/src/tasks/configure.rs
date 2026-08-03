@@ -14,7 +14,6 @@ use libfp::{
     AuxJackMode, ConfigMsgIn, ConfigMsgOut, Layout, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS,
 };
 use max11300::config::{ConfigMode0, ConfigMode3, ConfigMode5, Mode, Port, DACRANGE};
-use portable_atomic::Ordering;
 
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
 use crate::layout::{EvictionCmd, LAYOUT_EVICTION_REQ, LAYOUT_EVICTION_RES, LAYOUT_WATCH};
