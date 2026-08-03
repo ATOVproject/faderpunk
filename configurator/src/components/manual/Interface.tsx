@@ -7,7 +7,7 @@ import {
   TableCell,
 } from "@heroui/table";
 import { Icon } from "../Icon";
-import { H2, H3, List } from "./Shared";
+import { H2, H3, List, Link } from "./Shared";
 
 export const Interface = () => (
   <>
@@ -415,6 +415,20 @@ export const Interface = () => (
         settings.
         <br />
         These connectors follow the <strong>Type A</strong> MIDI standard.
+      </li>
+
+      <li>
+        <strong>PunkBus (Micro HDMI)</strong>
+        <br />A micro HDMI–style connector used exclusively with the optional{" "}
+        <Link to="#punkbus">PunkBus</Link> breakout accessory, which exposes all
+        19 Faderpunk jacks—the 16 channel jacks plus Atom, Meteor, and Cube—on a
+        single panel via one cable.
+        <br />
+        <strong>
+          This port carries CV/gate signals only, never video.
+        </strong>{" "}
+        Never connect it to a TV, monitor, or other HDMI video equipment—doing
+        so can seriously damage both devices.
       </li>
     </List>
 
