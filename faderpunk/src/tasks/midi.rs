@@ -387,15 +387,22 @@ pub async fn midi_out_task<'a>(
                             },
                         ];
                         for event in ccs {
-                            if let MidiOut([true, _, _]) = target {
-                                let _ = write_msg_to_usb(usb_tx, event).await;
-                            }
-                            if let MidiOut([_, true, _]) = target {
-                                let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
-                            }
-                            if let MidiOut([_, _, true]) = target {
-                                let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
-                            }
+                            let usb_fut = async {
+                                if let MidiOut([true, _, _]) = target {
+                                    let _ = write_msg_to_usb(usb_tx, event).await;
+                                }
+                            };
+                            let out1_fut = async {
+                                if let MidiOut([_, true, _]) = target {
+                                    let _ = write_msg_to_uart1(&mut uart1_tx, event).await;
+                                }
+                            };
+                            let out2_fut = async {
+                                if let MidiOut([_, _, true]) = target {
+                                    let _ = write_msg_to_uart0(&mut uart0_tx, event).await;
+                                }
+                            };
+                            join3(usb_fut, out1_fut, out2_fut).await;
                         }
                     }
                     MidiOutEvent::Clock(msg) => {
