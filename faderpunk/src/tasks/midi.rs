@@ -24,6 +24,7 @@ use midly::{
     stream::MidiStream,
     MidiMessage,
 };
+use portable_atomic::Ordering;
 
 use libfp::{ClockSrc, MidiIn, MidiOut, MidiOutConfig, MidiOutMode, GLOBAL_CHANNELS};
 
@@ -209,6 +210,9 @@ async fn write_msg_to_usb<'a>(
     usb_tx: &SharedUsbSender<'a>,
     midi_ev: LiveEvent<'a>,
 ) -> Result<(), TimeoutError> {
+    if !crate::tasks::transport::USB_CONNECTED.load(Ordering::Relaxed) {
+        return Err(TimeoutError);
+    }
     let mut usb_buf = [0_u8; 4];
     // Cable nibble 0 (performance MIDI) | CIN
     usb_buf[0] = cin_from_live_event(&midi_ev) as u8;
