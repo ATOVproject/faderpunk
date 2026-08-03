@@ -180,7 +180,7 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
-    let mut clkn = 0;
+    let mut clkn: u16 = 0;
 
     let curve = Curve::Exponential;
     let fader_curve = Curve::Exponential;
