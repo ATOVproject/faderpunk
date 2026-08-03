@@ -462,22 +462,37 @@ pub async fn run(
                     }
 
                     // Gate / MIDI
-                    if (is_gated || is_slid_prev) && !muted {
-                        accent_active_glob.set(is_accent);
+                    if is_gated || is_slid_prev {
+                        if muted {
+                            // Muted: don't sound a new note, but still resolve
+                            // any gate/note left open by a prior slide step —
+                            // the duty-cycle countdown above only turns the
+                            // gate off on non-slid steps, so this retrigger
+                            // point is otherwise the only place that off is
+                            // ever sent.
+                            if gate_active_glob.get() {
+                                gate_active_glob.set(false);
+                                gate_out.set_low().await;
+                                midi.send_note_off(last_midi_note_glob.get()).await;
+                                accent_out.set_value(0);
+                            }
+                        } else {
+                            accent_active_glob.set(is_accent);
 
-                        // Quantise for MIDI note (use target pitch for note identity)
-                        let out = quantizer.get_quantized_note(target_raw).await;
-                        let note = out.as_midi();
+                            // Quantise for MIDI note (use target pitch for note identity)
+                            let out = quantizer.get_quantized_note(target_raw).await;
+                            let note = out.as_midi();
 
-                        midi.send_note_off(last_midi_note_glob.get()).await;
-                        let velocity = if is_accent { 4095 } else { 2048 };
-                        midi.send_note_on(note, velocity).await;
-                        last_midi_note_glob.set(note);
+                            midi.send_note_off(last_midi_note_glob.get()).await;
+                            let velocity = if is_accent { 4095 } else { 2048 };
+                            midi.send_note_on(note, velocity).await;
+                            last_midi_note_glob.set(note);
 
-                        gate_out.set_high().await;
-                        gate_active_glob.set(true);
-                        accent_out.set_value(if is_accent { 4095 } else { 0 });
-                        gate_off_ticks_glob.set((div / 2).max(1));
+                            gate_out.set_high().await;
+                            gate_active_glob.set(true);
+                            accent_out.set_value(if is_accent { 4095 } else { 0 });
+                            gate_off_ticks_glob.set((div / 2).max(1));
+                        }
                     }
 
                     // Apply any pending pattern regeneration (density changed since last tick)
