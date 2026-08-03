@@ -278,6 +278,20 @@ pub async fn run(
                     }
                     register_pitch = storage.query(|s| s.register_pitch);
                 }
+                ClockEvent::Stop => {
+                    // No phase reset (see ClockEvent::Stop docs) — just silence
+                    // whatever note/gate is currently held, including a legato
+                    // tie whose note-off would otherwise wait on a Tick that
+                    // will never come.
+                    if gate_on {
+                        gate_out.set_value(0);
+                        gate_on = false;
+                        midi.send_note_off(last_note_on.get()).await;
+                        leds.set(1, Led::Top, led_color, Brightness::Custom(0));
+                    }
+                    pending_note_off = false;
+                    aux_out.set_value(0);
+                }
                 ClockEvent::Tick => {
                     let clkn = ticks() as u32;
                     if clkn.is_multiple_of(div) {
