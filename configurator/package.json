@@ -8,8 +8,10 @@
   "scripts": {
     "dev": "vite",
     "dev:landing": "vite --config vite.landing.config.mjs",
+    "dev:apps": "vite --config vite.apps.config.mjs",
     "build": "tsc -b tsconfig.app.json && vite build",
     "build:landing": "tsc -b tsconfig.landing.json && vite build --config vite.landing.config.mjs",
+    "build:apps": "tsc -b tsconfig.apps.json && vite build --config vite.apps.config.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -205,6 +205,14 @@ jobs:
         with:
           name: landing-pages-artifact
           path: configurator/dist-landing
+      - name: Build apps page
+        run: pnpm run build:apps
+        working-directory: ./configurator
+      - name: Upload apps page artifact for GitHub Pages
+        uses: actions/upload-artifact@v7
+        with:
+          name: apps-pages-artifact
+          path: configurator/dist-apps
       # Overwrites dist/, so this must run after the regular build's artifacts
       # have been uploaded
       - name: Build simulator configurator
@@ -277,6 +285,11 @@ jobs:
         with:
           name: simulator-pages-artifact
           path: simulator-dist
+      - name: Download apps page artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: apps-pages-artifact
+          path: apps-dist
       - name: Deploy to versioned folder and root
         run: |
           VERSION="${{ needs.detect-changes.outputs.configurator_minor }}"
@@ -293,15 +306,22 @@ jobs:
           cp -r simulator-dist/* gh-pages/simulator/
           rm -f gh-pages/simulator/CNAME
 
+          # Update apps directory (always tracks the latest release; stable
+          # unversioned path so external iframe embeds don't break)
+          mkdir -p gh-pages/apps
+          rm -rf gh-pages/apps/*
+          cp -r apps-dist/* gh-pages/apps/
+          rm -f gh-pages/apps/CNAME
+
           # Preserve CNAME
           mkdir -p temp-preserve
           cp -f gh-pages/CNAME temp-preserve/CNAME 2>/dev/null || true
 
-          # Clear root except versioned folders, beta, simulator, and .git
+          # Clear root except versioned folders, beta, simulator, apps, and .git
           find gh-pages -mindepth 1 -maxdepth 1 -type f -exec rm {} \;
           find gh-pages -mindepth 1 -maxdepth 1 -type d \
             ! -name '[0-9]*.[0-9]*' ! -name 'beta' ! -name 'simulator' \
-            ! -name '.git' ! -name 'img' ! -name 'fonts' -exec rm -rf {} \;
+            ! -name 'apps' ! -name '.git' ! -name 'img' ! -name 'fonts' -exec rm -rf {} \;
 
           # Deploy landing page (built by Vite with version already injected)
           cp -r landing-dist/* gh-pages/
