@@ -4,7 +4,8 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_usb::{Builder, Config as UsbConfig};
+use embassy_usb::{Builder, Config as UsbConfig, Handler};
+use portable_atomic::{AtomicBool, Ordering};
 
 use embassy_rp::uart::{Async, BufferedUart, UartTx};
 
@@ -19,6 +20,44 @@ const USB_VENDOR_NAME: &str = "ATOV";
 const USB_PRODUCT_NAME: &str = "Faderpunk";
 
 pub const USB_MAX_PACKET_SIZE: u16 = 64;
+
+/// True once the USB device has completed enumeration and the host has
+/// selected our configuration (SET_CONFIGURATION). False on boot, on a bus
+/// reset, and whenever de-configured. Lets USB writes in tasks/midi.rs and
+/// tasks/configure.rs short-circuit instead of paying a per-write timeout
+/// when no host is attached — the out-of-the-box state, since USB MIDI-out
+/// defaults on.
+///
+/// Known gap: this only covers "never enumerated" / "de-configured via a
+/// bus reset". A host that completed enumeration but has no application
+/// actively reading the MIDI port (or a cable pulled without a subsequent
+/// bus reset) still reads as connected here.
+pub static USB_CONNECTED: AtomicBool = AtomicBool::new(false);
+
+struct UsbConnectionHandler;
+
+impl Handler for UsbConnectionHandler {
+    fn configured(&mut self, configured: bool) {
+        USB_CONNECTED.store(configured, Ordering::Relaxed);
+    }
+
+    fn reset(&mut self) {
+        // Event::Reset does not imply configured(false) — without this, a
+        // real bus reset (unplug/replug) would leave the flag stuck true
+        // until the next full enumeration completes.
+        USB_CONNECTED.store(false, Ordering::Relaxed);
+    }
+
+    fn suspended(&mut self, suspended: bool) {
+        // embassy-rp has no VBUS sensing, so Suspend fires from bus
+        // inactivity alone — a real logical suspend and a cable physically
+        // pulled after enumeration are indistinguishable here, and both
+        // warrant the same response (nothing is draining the endpoint
+        // either way). Without this, unplugging after a session had been
+        // enumerated would leave the flag stuck true.
+        USB_CONNECTED.store(!suspended, Ordering::Relaxed);
+    }
+}
 
 pub async fn start_transports(
     spawner: &Spawner,
@@ -70,6 +109,9 @@ async fn run_transports(
     let mut control_buf = [0; 64];
     // Serves the jack name strings; must outlive the USB device.
     let mut jack_name_handler = JackNameHandler::new();
+    // Must outlive `usb_builder`/`usb`, so declared alongside the other
+    // buffers above, before the builder borrows them.
+    let mut usb_conn_handler = UsbConnectionHandler;
 
     let mut usb_builder = Builder::new(
         usb_driver,
@@ -79,6 +121,8 @@ async fn run_transports(
         &mut [], // no MS OS descriptors
         &mut control_buf,
     );
+
+    usb_builder.handler(&mut usb_conn_handler);
 
     // Two virtual cables: cable 0 = performance MIDI, cable 1 = config SysEx
     let usb_midi = MidiClass::new(
