@@ -3,6 +3,7 @@ use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::{with_timeout, Duration};
 use heapless::Vec;
+use portable_atomic::Ordering;
 use postcard::{from_bytes, to_slice};
 
 use libfp::sysex::{
@@ -60,6 +61,7 @@ pub enum ProtocolError {
     TransmissionError,
     CorruptedMessage,
     Timeout,
+    NotConnected,
 }
 
 pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
@@ -291,6 +293,9 @@ impl<'a> ConfigTransport<'a> {
 }
 
 async fn write_usb_packet(usb_tx: &SharedUsbSender<'_>, data: &[u8]) -> Result<(), ProtocolError> {
+    if !crate::tasks::transport::USB_CONNECTED.load(Ordering::Relaxed) {
+        return Err(ProtocolError::NotConnected);
+    }
     let mut tx = usb_tx.lock().await;
     with_timeout(
         Duration::from_millis(CONFIG_WRITE_TIMEOUT_MS),
