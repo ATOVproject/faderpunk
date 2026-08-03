@@ -15,7 +15,6 @@ use embassy_sync::{
     pubsub::{PubSubChannel, Publisher, Subscriber},
 };
 use embassy_time::{with_timeout, Duration, Instant, Ticker, TimeoutError};
-use embassy_usb::class::midi::{Receiver as UsbReceiver, Sender as UsbSender};
 use embedded_io_async::{Read, Write};
 use heapless::{Deque, Vec};
 use midly::{
@@ -35,6 +34,7 @@ use crate::{
         configure::{CONFIG_FRAME_BUF, CONFIG_RX_CHANNEL},
         global_config::GLOBAL_CONFIG_WATCH,
     },
+    usb_midi::{Receiver as UsbReceiver, Sender as UsbSender},
 };
 
 /// Virtual USB-MIDI cable carrying the configurator SysEx protocol.
