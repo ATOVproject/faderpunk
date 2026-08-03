@@ -9,9 +9,8 @@ import { AboutPage } from "./components/AboutPage";
 import { ConnectPage } from "./components/ConnectPage";
 import { ManualPage } from "./components/ManualPage";
 import { UpdatePage } from "./components/UpdatePage";
-import { TroubleshootingPage } from "./components/TroubleshootingPage";
 
-const DEVICELESS_ROUTES = ["/about", "/manual", "/update", "/troubleshooting"];
+const DEVICELESS_ROUTES = ["/about", "/manual", "/update"];
 
 const App = () => {
   const { device, isSimulator, autoConnect, connectSimulator } = useStore();
@@ -72,7 +71,6 @@ const App = () => {
       <Route path="/about" element={<AboutPage />} />
       <Route path="/manual" element={<ManualPage />} />
       <Route path="/update" element={<UpdatePage />} />
-      <Route path="/troubleshooting" element={<TroubleshootingPage />} />
     </Routes>
   );
 };
