@@ -396,7 +396,9 @@ pub async fn run(
                     }
 
                     // Division LED: flash on at step boundary, off at half-cycle.
-                    // Orange = straight (power-of-2 divisors), Blue = triplet.
+                    // Orange = triplet (16th/32nd-triplet divisors 4 and 2), Blue = straight
+                    // (power-of-2-of-a-beat divisors 96/48/24/12/6/3), matching the
+                    // orange-triplet/blue-straight convention used by the other clocked apps.
                     if in_res_mode {
                         if clkn.is_multiple_of(div) {
                             let color = if matches!(div, 2 | 4 | 8 | 16) {

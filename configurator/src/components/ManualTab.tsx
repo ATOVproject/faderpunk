@@ -8,6 +8,7 @@ import { Troubleshooting } from "./manual/Troubleshooting";
 import { Apps } from "./manual/Apps";
 import { H2, List, Link } from "./manual/Shared";
 import { Interface } from "./manual/Interface";
+import { PunkBus } from "./manual/PunkBus";
 import { Configurator } from "./manual/Configurator";
 
 const apps: ManualAppData[] = [
@@ -36,7 +37,7 @@ const apps: ManualAppData[] = [
       "Muted (if 'Store state' enabled)",
       "Attenuation",
     ],
-    text: "This app is designed to provide a simple way to manually control any parameters using either CV or MIDI CC. The MIDI channel and CC numbers can be adjusted in the app's settings, and both MIDI and CV outputs are always active simultaneously. The range can be adjusted using Shift + Fader, which affects both CC and CV ranges. The fader controls the level of the CV or CC. The button behavior is set by the Button mode parameter: Mute toggles the output on and off; CC toggle sends a CC value that alternates between 0 and 127; CC momentary sends 127 while held and 0 on release; Program Change sends a MIDI Program Change message on press using the Button CC / PC number as the program number—useful for switching presets on external devices. The fader level and the mute state can be saved in scenes if the 'Store state' parameter is enabled (active by default). You can then use this app as a way to save and recall CV voltage allowing for preset in a modular system for example. The curve can be adjusted in the settings; however, this only affects the CV output. Two voltage ranges are available in the settings: 0V to 10V or -5V to 5V. Note that this range also affects the level at which CV and CC are set when muting. In the 0V to 10V range, mute is at 0V and CC 0, making it ideal for controlling volume, send levels, or similar parameters. In the -5V to 5V range, mute is at 0V and CC 64, making it suitable for controlling panning, crossfading, or similar functions. The mute behavior can be set to trigger on press or on release, depending on your preference. Due to popular demand, the app's action can also be inverted—this means that when the fader is at the top, the output will be set to the minimum value, and when at the bottom, it will send the maximum CC and CV value. As with all apps where the LED color does not serve any specific function, you are free to configure it in the settings.",
+    text: "This app is designed to provide a simple way to manually control any parameters using either CV or MIDI CC. The MIDI channel and CC numbers can be adjusted in the app's settings, and both MIDI and CV outputs are always active simultaneously. The range can be adjusted using Shift + Fader, which affects both CC and CV ranges. The fader controls the level of the CV or CC. The button behavior is set by the Button mode parameter: Mute toggles the output on and off; CC toggle sends a CC value that alternates between 0 and 127; CC momentary sends 127 while held and 0 on release; Program Change sends a MIDI Program Change message on press using the Button CC / PC number as the program number—useful for switching presets on external devices. The fader level and the mute state can be saved in scenes if the 'Store state' parameter is enabled (active by default). You can then use this app as a way to save and recall CV voltage allowing for presets in a modular system for example. The curve can be adjusted in the settings; however, this only affects the CV output. Two voltage ranges are available in the settings: 0V to 10V or -5V to 5V. Note that this range also affects the level at which CV and CC are set when muting. In the 0V to 10V range, mute is at 0V and CC 0, making it ideal for controlling volume, send levels, or similar parameters. In the -5V to 5V range, mute is at 0V and CC 64, making it suitable for controlling panning, crossfading, or similar functions. The mute behavior can be set to trigger on press or on release, depending on your preference. Due to popular demand, the app's action can also be inverted—this means that when the fader is at the top, the output will be set to the minimum value, and when at the bottom, it will send the maximum CC and CV value. As with all apps where the LED color does not serve any specific function, you are free to configure it in the settings.",
     channels: [
       {
         jackTitle: "Output",
@@ -125,7 +126,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
       "Trigger to gate timing",
       "Muted",
     ],
-    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. Long press on Button 2 (no shift) mutes the envelope output. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. The 'MIDI retrigger' parameter allow for the envelope to be retriggered when MIDI notes are overlapping",
+    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. Long press on Button 2 (no shift) mutes the envelope output. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. The 'MIDI retrigger' parameter allows for the envelope to be retriggered when MIDI notes are overlapping.",
     channels: [
       {
         jackTitle: "Gate Input",
@@ -603,7 +604,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
         faderDescription: "Scales and inverts the input signal (max gain 2x)",
         fnTitle: "Kill Attenuverter",
         fnDescription:
-          "Button 2 disables the attenuvertion and set to unity gain",
+          "Button 2 disables the attenuvertion and sets to unity gain",
         ledTop: "Positive output",
         ledBottom: "Negative output",
       },
@@ -833,7 +834,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
     icon: "note-box",
     params: ["MIDI Channel", "MIDI Note", "GATE %", "Divisions", "Color"],
     storage: ["Division", "Muted", "Maximum division", "Minimum division"],
-    text: "This is a simple clock divider app that was suggested by youtuber and Discord member Synthdad. The app allows for a performative control of clock division/multiplication allowing for 'build ups and drops' for example. The maximum and minimum divisions can be user set using shift + fader and button + fader respectively. These are saved into the scenes allowing you to set different ranges depending on your needs. Button (no shift) mutes the output. The **Divisions** parameter selects which divider set is available to the fader: **Straight**, **Triplets**, or **Both**.",
+    text: "This is a simple clock divider app that was suggested by YouTuber and Discord member Synthdad. The app allows for a performative control of clock division/multiplication allowing for 'build ups and drops' for example. The maximum and minimum divisions can be user set using shift + fader and button + fader respectively. These are saved into the scenes allowing you to set different ranges depending on your needs. Button (no shift) mutes the output. The **Divisions** parameter selects which divider set is available to the fader: **Straight**, **Triplets**, or **Both**.",
     channels: [
       {
         jackTitle: "Trigger out",
@@ -858,7 +859,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
     appId: 19,
     title: "Panner",
     description:
-      "Use with 2 VCA to do panning or cross fading with internal LFO for modulation",
+      "Use with 2 VCAs to do panning or cross fading with internal LFO for modulation",
     color: "Blue",
     icon: "stereo",
     params: [
@@ -1162,7 +1163,7 @@ Disabling Grid Lock reverts to free-running phase accumulation: the LFO will smo
       "DnB Pattern",
     ],
     text: `
-Grids is described as a "topographic drum sequencer" - it generates a variety of drum patterns based on continuous interpolation through a "map" of patterns (Drum Mode) or using Euclidean algorithms (Euclidean Mode).  The original Mutable Instruments module manual is [here](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/manual/).
+Grids is described as a "topographic drum sequencer" - it generates a variety of drum patterns based on continuous interpolation through a "map" of patterns (Drum Mode) or using Euclidean algorithms (Euclidean Mode). The original Mutable Instruments module manual is [here](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/manual/).
 
 * FP-Grids outputs CV gates (0V = off, 10V = on) and, optionally MIDI note on/off messages, with normal and accented velocity levels.
 
@@ -1183,7 +1184,7 @@ Generates classic Euclidean rhythms for each of the three main trigger outputs i
 * **Fill 1 / Fill 2 / Fill 3:** Main faders set the number of active beats from 0 to the current Length for each channel.
 * **Offset 1 / Offset 2 / Offset 3:** While holding Shift, press channel buttons 1-3 to rotate each Euclidean pattern by one step.
 * **Chaos Amount:** Controls the probability of randomly flipping a beat on or off each step.
-* **Clock Division:** Shift + Fader 4 sets the step resolution (default 1/16th note).
+* **Clock Division:** Shift + Fader 4 sets the step resolution (default 1/16th).
 * While Shift is held in Euclidean mode, channel buttons light pink to indicate offset control.
 
 #### DnB Mode (Easter Egg)
@@ -1196,7 +1197,7 @@ A drum and bass pattern generator with 12 preset kick/snare/hi-hat patterns and 
 * **Vary pattern:** Shift + Button 1 randomly mutates the current pattern.
 * **Restore pattern:** Shift + Button 2 restores the pattern to the last selected base pattern.
 * Clock division is set automatically by the selected pattern — Fader 4 Alt (resolution) has no effect in this mode.
-* The Ghost Snare uses the the "DnB Ghost Note MIDI Note" and MIDI Channel, at a reduced velocity.
+* The Ghost Snare uses the "DnB Ghost Note MIDI Note" and MIDI Channel, at a reduced velocity.
 
 #### Patch Ideas
 
@@ -1277,7 +1278,7 @@ Fader functions vary by output mode. Drums / Euclidean / DnB descriptions are sh
           "Drums / Euclidean: pattern randomisation and humanisation. DnB: ghost snare trigger probability.",
         faderPlusShiftTitle: "Resolution",
         faderPlusShiftDescription:
-          "Sets clock resolution (Drums / Euclidean only): 32ndT, 32nd, 16thT, 16th (default), 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar. No effect in DnB mode.",
+          "Sets clock resolution (Euclidean only): 32ndT, 32nd, 16thT, 16th (default), 8thT, 8th, 4thT, 4th, 2nd, note, half bar, bar. No effect in DnB mode.",
         ledTop: "Accent / Ghost Snare gate output",
         ledBottom: "Chaos / Ghost Probability level",
         ledBottomPlusShift: "Resolution in blue, 16th note shown in yellow",
@@ -1343,7 +1344,7 @@ On a clock **Reset**, the step counter resets to step 1 — the pattern is not c
 #### LED Feedback
 
 * **Ch 1 Top:** Density level as brightness (user color)
-* **Ch 1 Bottom:** While Button 1 is held (resolution mode), flashes in sync with the current clock division — orange for straight divisions, blue for triplets.
+* **Ch 1 Bottom:** While Button 1 is held (resolution mode), flashes in sync with the current clock division — orange for triplet divisions, blue for straight divisions.
 * **Ch 1 Button:** Mid brightness (user color); flashes white on each reseed.
 * **Ch 2 Top:** Gate open indicator (user color)
 * **Ch 2 Bottom:** Step progress — bright at step 1, dims toward the end of the sequence
@@ -1614,8 +1615,9 @@ export const ManualTab = () => {
     <>
       <H2>A quick note</H2>
       <p>
-        This manual is currently under heavy development. Check back regularly
-        for updates.
+        Faderpunk is a constantly evolving project and therefore receives
+        frequent updates with new features and fixes. Connecting Faderpunk to
+        the configurator will prompt you in case a new firmware is available.
       </p>
       <H2>Contents</H2>
       <nav>
@@ -1645,6 +1647,9 @@ export const ManualTab = () => {
                 <Link to="#important-points">Important Points</Link>
               </li>
             </List>
+          </li>
+          <li>
+            <Link to="#punkbus">PunkBus</Link>
           </li>
           <li>
             <Link to="#configurator">Configurator</Link>
@@ -1690,7 +1695,13 @@ export const ManualTab = () => {
             <Link to="#apps">Apps</Link>
             <List>
               <li>
+                <Link to="#attenuation-apps">Attenuation</Link>
+              </li>
+              <li>
                 <Link to="#muting-apps">Muting apps</Link>
+              </li>
+              <li>
+                <Link to="#resolution-apps">Clock Resolution</Link>
               </li>
               {apps.map((app) => (
                 <li key={app.title}>
@@ -1717,6 +1728,7 @@ export const ManualTab = () => {
       </nav>
       <Preface />
       <Interface />
+      <PunkBus />
       <Configurator />
       <Apps apps={apps} />
       <UpdateGuide />
