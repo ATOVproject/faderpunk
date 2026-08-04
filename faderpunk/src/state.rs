@@ -1,8 +1,12 @@
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use libfp::GLOBAL_CHANNELS;
 use minicbor::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
-use crate::storage;
+use crate::{
+    app::{GateJack, InJack, OutJack},
+    storage,
+};
 
 /// Persisted to FRAM as CBOR. Adding/removing fields is migration-free as long
 /// as every field carries `#[cbor(default)]` and a fresh `#[n(N)]`. See the
@@ -50,4 +54,55 @@ where
 
 pub async fn is_clock_running() -> bool {
     STATE.lock().await.clock_is_running
+}
+
+/// Runtime-only registry of which jack is currently configured on each global
+/// channel. Rebuilt every time apps spawn (each app re-registers its jacks on
+/// init) — never persisted to FRAM, unlike `RuntimeState`.
+struct JackRegistry {
+    out_jacks: [Option<OutJack>; GLOBAL_CHANNELS],
+    in_jacks: [Option<InJack>; GLOBAL_CHANNELS],
+    gate_jacks: [Option<GateJack>; GLOBAL_CHANNELS],
+}
+
+static JACKS: Mutex<CriticalSectionRawMutex, JackRegistry> = Mutex::new(JackRegistry {
+    out_jacks: [None; GLOBAL_CHANNELS],
+    in_jacks: [None; GLOBAL_CHANNELS],
+    gate_jacks: [None; GLOBAL_CHANNELS],
+});
+
+pub async fn register_out_jack(global_chan: usize, jack: OutJack) {
+    JACKS.lock().await.out_jacks[global_chan] = Some(jack);
+}
+
+pub async fn register_in_jack(global_chan: usize, jack: InJack) {
+    JACKS.lock().await.in_jacks[global_chan] = Some(jack);
+}
+
+pub async fn register_gate_jack(global_chan: usize, jack: GateJack) {
+    JACKS.lock().await.gate_jacks[global_chan] = Some(jack);
+}
+
+/// Clears any registered jack for the given global channel. Called when an
+/// app exits so a despawned app's jack doesn't outlive it in the registry.
+pub async fn clear_jacks(global_chan: usize) {
+    let mut jacks = JACKS.lock().await;
+    jacks.out_jacks[global_chan] = None;
+    jacks.in_jacks[global_chan] = None;
+    jacks.gate_jacks[global_chan] = None;
+}
+
+/// Gets configured set of each CV out app jack
+pub async fn get_out_jacks() -> [Option<OutJack>; GLOBAL_CHANNELS] {
+    JACKS.lock().await.out_jacks
+}
+
+/// Gets configured set of each input app jack
+pub async fn get_in_jacks() -> [Option<InJack>; GLOBAL_CHANNELS] {
+    JACKS.lock().await.in_jacks
+}
+
+/// Gets configured set of each gate out app jack
+pub async fn get_gate_jacks() -> [Option<GateJack>; GLOBAL_CHANNELS] {
+    JACKS.lock().await.gate_jacks
 }
