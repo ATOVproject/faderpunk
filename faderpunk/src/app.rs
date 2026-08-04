@@ -9,18 +9,22 @@ use max11300::config::{
     NSAMPLES,
 };
 use midly::{live::LiveEvent, num::u4, MidiMessage, PitchBend};
-use portable_atomic::Ordering;
+use portable_atomic::{AtomicBool, Ordering};
 
 use libfp::{
     latch::AnalogLatch,
     quantizer::{Pitch, QuantizerState},
     utils::{scale_bits_12_7, scale_bits_14_12},
     Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
-    Range, TakeoverMode, VoltPerOct,
+    Range, TakeoverMode, VoltPerOct, GLOBAL_CHANNELS,
 };
 
 use crate::{
     events::{EventPubSubChannel, InputEvent},
+    state::{
+        clear_jacks, get_gate_jacks, get_in_jacks, get_out_jacks, register_gate_jack,
+        register_in_jack, register_out_jack,
+    },
     tasks::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
         clock::{ClockSubscriber, CLOCK_PUBSUB, TICK_COUNTER},
@@ -86,9 +90,16 @@ impl<const N: usize> Leds<N> {
     }
 }
 
+/// Last level each channel's `GateJack` was set to. App-facing counterpart to
+/// `MAX_VALUES_DAC`: read by other apps (e.g. Gate Combine) to sample a gate
+/// jack's current output without a round trip through the MAX task.
+static GATE_LEVELS: [AtomicBool; GLOBAL_CHANNELS] =
+    [const { AtomicBool::new(false) }; GLOBAL_CHANNELS];
+
+#[derive(Clone, Copy)]
 pub struct InJack {
-    channel: usize,
-    range: Range,
+    pub channel: usize,
+    pub range: Range,
 }
 
 impl InJack {
@@ -105,8 +116,9 @@ impl InJack {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct GateJack {
-    channel: usize,
+    pub channel: usize,
 }
 
 impl GateJack {
@@ -115,19 +127,22 @@ impl GateJack {
     }
 
     pub async fn set_high(&self) {
+        GATE_LEVELS[self.channel].store(true, Ordering::Relaxed);
         let port = Port::try_from(self.channel).unwrap();
         MAX_CHANNEL.sender().send(MaxCmd::GpoSetHigh { port }).await;
     }
 
     pub async fn set_low(&self) {
+        GATE_LEVELS[self.channel].store(false, Ordering::Relaxed);
         let port = Port::try_from(self.channel).unwrap();
         MAX_CHANNEL.sender().send(MaxCmd::GpoSetLow { port }).await;
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct OutJack {
-    channel: usize,
-    range: Range,
+    pub channel: usize,
+    pub range: Range,
 }
 
 impl OutJack {
@@ -754,7 +769,10 @@ impl<const N: usize> App<N> {
         )
         .await;
 
-        InJack::new(self.start_channel + chan, range)
+        let global_chan = self.start_channel + chan;
+        let jack = InJack::new(global_chan, range);
+        register_in_jack(global_chan, jack).await;
+        jack
     }
 
     pub async fn make_out_jack(&self, chan: usize, range: Range) -> OutJack {
@@ -766,7 +784,10 @@ impl<const N: usize> App<N> {
         self.reconfigure_jack(chan, Mode::Mode5(ConfigMode5(dac_range)), None)
             .await;
 
-        OutJack::new(self.start_channel + chan, range)
+        let global_chan = self.start_channel + chan;
+        let jack = OutJack::new(global_chan, range);
+        register_out_jack(global_chan, jack).await;
+        jack
     }
 
     pub async fn make_gate_jack(&self, chan: usize, level: u16) -> GateJack {
@@ -774,7 +795,53 @@ impl<const N: usize> App<N> {
         self.reconfigure_jack(chan, Mode::Mode3(ConfigMode3), Some(level))
             .await;
 
-        GateJack::new(self.start_channel + chan)
+        let global_chan = self.start_channel + chan;
+        let jack = GateJack::new(global_chan);
+        register_gate_jack(global_chan, jack).await;
+        jack
+    }
+
+    /// Obtain current output value from any CV jack global channel, 0-based (not an app-specific channel)
+    /// If output jack voltage range is 0-10V or -5 to +5V, return value is in range 0-4095
+    /// If output jack voltage range in 0-5V, return value is in range 0-2047
+    ///
+    /// If you point this at a gate out jack by mistake, it will return 0.
+    ///
+    pub fn get_out_global_jack_value(global_chan: usize) -> u16 {
+        let chan = global_chan.clamp(0, GLOBAL_CHANNELS - 1);
+        MAX_VALUES_DAC[chan].load(Ordering::Relaxed)
+    }
+
+    /// Obtain current gate value from any Gate Jack global channel, 0-based (not an app-specific channel).
+    /// If gate is hi, will return true
+    /// If gate is lo, will return false
+    pub fn get_out_global_gate_jack_is_high(global_chan: usize) -> bool {
+        let chan = global_chan.clamp(0, GLOBAL_CHANNELS - 1);
+        GATE_LEVELS[chan].load(Ordering::Relaxed)
+    }
+
+    /// Gets a possible copy of the stored config of a given global CV output jack channel, if any
+    #[allow(unused)]
+    pub async fn get_out_jack_config(global_chan: usize) -> Option<OutJack> {
+        let chan = global_chan.clamp(0, GLOBAL_CHANNELS - 1);
+        let jacks = get_out_jacks().await;
+        jacks[chan]
+    }
+
+    /// Gets a possible copy of the stored config of a given global Gate output jack channel, if any
+    #[allow(unused)]
+    pub async fn get_gate_jack_config(global_chan: usize) -> Option<GateJack> {
+        let chan = global_chan.clamp(0, GLOBAL_CHANNELS - 1);
+        let jacks = get_gate_jacks().await;
+        jacks[chan]
+    }
+
+    /// Gets a possible copy of the stored config of a given global Gate input jack channel, if any
+    #[allow(unused)]
+    pub async fn get_in_jack_config(global_chan: usize) -> Option<InJack> {
+        let chan = global_chan.clamp(0, GLOBAL_CHANNELS - 1);
+        let jacks = get_in_jacks().await;
+        jacks[chan]
     }
 
     pub async fn delay_millis(&self, millis: u64) {
@@ -860,6 +927,9 @@ impl<const N: usize> App<N> {
         for chan in 0..N {
             self.reconfigure_jack(chan, Mode::Mode0(ConfigMode0), None)
                 .await;
+            let global_chan = self.start_channel + chan;
+            GATE_LEVELS[global_chan].store(false, Ordering::Relaxed);
+            clear_jacks(global_chan).await;
         }
     }
 
