@@ -369,6 +369,7 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
+
     let (range, midi_out, midi_chan, midi_cc, led_color, nrpn, mix_mode, osc_b, p_dest, p_rate_mod) =
         params.query(|p| {
             (
@@ -1223,11 +1224,12 @@ fn mix_samples(a: u16, b: u16, mode: usize, balance: u16) -> u16 {
     }
 }
 
-/// Even spectrum sweep: morph 0..=4095 → full hue circle 0°..360°
-/// (red → yellow → green → cyan → blue → magenta → red), via HSV.
+/// Spectrum sweep: morph 0..=4095 → hue 0°..270°
+/// (infrared/red → yellow → green → cyan → blue → ultraviolet/violet).
+/// No wrap back to red — same IR→UV convention as other WIP meters.
 fn morph_color(morph: u16) -> Color {
-    let hue = (morph.min(4095) as u32 * 360) / 4096; // degrees, wraps red→red
-    let (r, g, b) = hsv_to_rgb(hue as u16);
+    let hue = (morph.min(4095) as u32 * 270 / 4095) as u16;
+    let (r, g, b) = hsv_to_rgb(hue);
     Color::Custom(r, g, b)
 }
 
