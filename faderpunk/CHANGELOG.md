@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.11.0 (2026-08-05)
+
+### Features
+
+- add Bernoulli Gate app (#573)
+- move configurator protocol from WebUSB to MIDI SysEx (#590)
+
+### Fixes
+
+- use different names for MIDI ports (#592)
+- send MIDI CC/NRPN non-blocking to avoid stalling app control loops (#617)
+- [genseq] silence stuck gate on clock stop / mute during legato tie (#621)
+- [tb3po] silence stuck gate on mute during slide (#622)
+- eliminate false fader events from ADC noise (#556)
+
 ## 1.11.0-beta.1 (2026-08-03)
 
 ### Features
