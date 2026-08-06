@@ -40,6 +40,11 @@ use crate::{
 
 const MAX_CHANNEL_SIZE: usize = 16;
 
+/// Number of ADC reads taken within one mux dwell (~1ms). The MAX11300 sweep
+/// refreshes the fader port's data register every sweep (~tens of µs), so each
+/// read is a fresh conversion; the median of the burst rejects sweep glitches.
+const FADER_BURST_READS: usize = 5;
+
 type SharedMax = Mutex<NoopRawMutex, Max11300<Spi<'static, SPI0, Async>, Output<'static>>>;
 type MuxPins = (
     Peri<'static, PIN_12>,
@@ -208,10 +213,19 @@ async fn read_fader(
         // send the channel value to the PIO state machine to trigger the program
         sm0.tx().wait_push(chan as u32).await;
 
-        // this translates to ~60Hz refresh rate for the faders (1000 / (1 * 16) = 62.5)
-        Timer::after_millis(1).await;
-
-        let val = fader_port.get_value().await.unwrap();
+        // Let the mux output settle, then take the burst back-to-back: each SPI
+        // read spans several ADC sweep conversions, so the samples are already
+        // decorrelated. A single timer await per dwell keeps the dwell short
+        // (~1.3ms measured, ~45Hz scan rate); sleeping between reads would blow
+        // it up to >2.4ms due to executor scheduling overshoot on the loaded core.
+        Timer::after_micros(700).await;
+        let mut burst = [0u16; FADER_BURST_READS];
+        for slot in burst.iter_mut() {
+            *slot = fader_port.get_value().await.unwrap();
+        }
+        let mut sorted = burst;
+        sorted.sort_unstable();
+        let val = sorted[FADER_BURST_READS / 2];
 
         // Scale a bit across the dead-zone (~4087 -> 4095) using integer math
         let val = (((val as u32 * 1002) / 1000) as u16).clamp(0, 4095);
@@ -226,6 +240,7 @@ async fn read_fader(
 
         if let Some(new_value) = latch.update(val, active_layer, target_value) {
             let diff = (new_value as i32 - target_value as i32).abs();
+
             match active_layer {
                 LatchLayer::Main => {
                     if diff >= 4 {
