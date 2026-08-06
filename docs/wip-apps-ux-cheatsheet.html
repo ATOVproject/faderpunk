@@ -88,7 +88,7 @@
 <body>
 
 <h1>Faderpunk WIP Apps — UX Cheatsheet</h1>
-<p class="sub">Synced to <code>test/playground</code> (IDs 29–38) · 3 Aug 2026 · A4 print</p>
+<p class="sub">Synced to <code>test/playground</code> (IDs 29–40) · 6 Aug 2026 · A4 print</p>
 
 <div class="legend">
   <div><strong>Main</strong> — Fader alone</div>
@@ -100,7 +100,7 @@
 </div>
 
 <div class="jack-note">
-  <strong>Jack CV Out / CV In</strong> (Heat Pump, Grooves, Golden Gate, Arp de Lévy, Chord Vamp, Echolot, Loop de Cay modes; Super LFO is 2-ch with CV on Ch0):
+  <strong>Jack CV Out / CV In</strong> (Heat Pump, Grooves, Golden Gate, Arp de Lévy, Chord Vamp, Echolot, Loop de Cay; Super LFO is 2-ch with CV on Ch0):
   <strong>CV Out</strong> = app drives the jack · <strong>CV In</strong> = jack modulates a <strong>CV Dest</strong> (attenuated by <strong>CV Att</strong> 0–100% where present).
   Device-cycle Dest: Heat Pump &amp; Super LFO via <strong>Shift+Short</strong> (Grooves: Configurator only).
   Golden Gate + Jack=CV In → MIDI-first (no CV/gate outs).
@@ -134,7 +134,7 @@
         <h3>Buttons</h3>
         <ul>
           <li><strong>Short</strong> — Manual duck trigger</li>
-          <li><strong>Long</strong> — Mute (freeze level; no snap to idle)</li>
+          <li><strong>Long</strong> — Mute (freeze level; no snap to idle; dim red button)</li>
           <li><strong>Shift+Short (CV Out)</strong> — Cycle clock division</li>
           <li><strong>Shift+Short (CV In)</strong> — Cycle CV Dest (flash)</li>
           <li><strong>Shift+Long</strong> — Invert duck direction</li>
@@ -143,7 +143,7 @@
       <div>
         <h3>LEDs / other params</h3>
         <ul>
-          <li>Button metronome Mid→Low per division</li>
+          <li>Button metronome Mid→Low per division · Mute = dim red (not off)</li>
           <li>1/1 uses Color param</li>
           <li>Invert: white ↔ off fade</li>
           <li>Color, Range, MIDI CH/CC, NRPN, MIDI Out</li>
@@ -174,8 +174,9 @@
         </ul>
         <h3>Genres</h3>
         <ul>
-          <li>Dub → Disco → Hip-Hop → House → Techno → Trip-Hop → UK Garage → Dubstep</li>
-          <li>Colors (shared): Orange · Yellow · Red · Pink · Cyan · Violet · Green · Blue</li>
+          <li>Dub → Disco → House → Techno → Trip-Hop → Hip-Hop → Jungle → UK Garage → Dubstep</li>
+          <li>Colors (shared w/ Vamp): Orange · Yellow · Pink · Cyan · Violet · Red · Lime · Green · Blue</li>
+          <li>Alt scrub LEDs: continuous IR→UV spectrum (not discrete genre chrome)</li>
         </ul>
       </div>
       <div>
@@ -194,15 +195,18 @@
         </ul>
       </div>
       <div>
-        <h3>Params</h3>
+        <h3>Params / LEDs</h3>
         <ul>
           <li>Kick / Snare / Hats: note + channel</li>
           <li>Groove, Swing max %, GATE %, Color, MIDI Out</li>
+          <li><strong>Button</strong> Main: genre hue sat half→full (density) + bar lightness; hit dips kick −50% / snare −30% / hats −10%</li>
+          <li><strong>Button</strong> Third: White→Color→Red (swing); same voice-weighted hit dips</li>
+          <li><strong>Button</strong> Alt: committed genre hue (Top/Bottom = live fader meters; color changes only after latch pickup)</li>
         </ul>
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> Genre MIDI drums on the global clock. Density reveals hits; Shift+Fader scrubs genre (Vamp-aligned); Button+Fader = Swing (capped by Swing max %). Shift+Long toggles CV Out Any↔Stacked. Jack=CV In modulates Density/Swing or triggers Reset — set CV Dest in the Configurator only. CV Att scales input.</p>
+      <p><strong>Manual.</strong> Genre MIDI drums on the global clock (9 shared genres with Chord Vamp, including Jungle). Density reveals hits; Shift+Fader scrubs genre on the shared axis — button hue follows the latched genre (meters show live fader until pickup); Button+Fader = Swing (capped by Swing max %). Watch the button: Main density ramps genre hue from half→full saturation with bar lightness; hits dim by voice (kick −50%, snare −30%, hats −10%) — not a clock blink. MIDI fires outside the clock subscriber (pending_* isolate). Third swing blends White→app→Red. Shift+Long toggles CV Out Any↔Stacked. Jack=CV In modulates Density/Swing or triggers Reset — set CV Dest in the Configurator only. CV Att scales input.</p>
     </div>
   </div>
 </section>
@@ -430,6 +434,7 @@
           <li><strong>Main (Perform)</strong> — Scrub genre degrees × 3 octaves (pitch map)</li>
           <li><strong>Main (Auto)</strong> — Tension (Meander only)</li>
           <li><strong>Alt</strong> — Genre (+ Capture clip slot if clip exists)</li>
+          <li>Shared axis: Dub → Disco → House → Techno → Trip-Hop → Hip-Hop → Jungle → UK Garage → Dubstep</li>
           <li><strong>Third (Auto)</strong> — Feel (laid ↔ advanced stab length)</li>
           <li><strong>Third (Perform)</strong> — Feel still stored; LEDs = blue / chord pitch</li>
         </ul>
@@ -469,7 +474,7 @@
       </div>
     </div>
     <div class="manual">
-      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> captures recent harmony (starts quantized to 16ths, lead-in cropped to first hit; hold lengths free) into a timed clip and arms Auto. <strong>Auto</strong>: genre rhythm phrase loops — multi-chord statement (~1–2 bars) then multi-bar rest; harmony Repeat or Meander; Feel sets short stab gate (rests fixed); Swing (scene, genre-seeded) delays odd 16ths on Auto + Capture. Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform. Alt = genre (+ Capture slot). CV Macro = scrub/tension; Panic from CV optional.</p>
+      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. Shared 9-genre axis with Grooves (Dub→…→Jungle→…→Dubstep). <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> captures recent harmony (starts quantized to 16ths, lead-in cropped to first hit; hold lengths free) into a timed clip and arms Auto. <strong>Auto</strong>: genre rhythm phrase loops — multi-chord statement (~1–2 bars) then multi-bar rest; harmony Repeat or Meander; Feel sets short stab gate (rests fixed); Swing (scene, genre-seeded) delays odd 16ths on Auto + Capture. Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform. Alt = genre (+ Capture slot). CV Macro = scrub/tension; Panic from CV optional.</p>
     </div>
   </div>
 </section>
@@ -589,12 +594,96 @@
           <li>Mode: Pitch→MIDI · Gate→MIDI · MIDI→MIDI · MIDI→CV · Fader→Both</li>
           <li>MIDI CH / In / Out, Base Note, Span (semitones across fader)</li>
           <li>Color, Range, V/Oct</li>
-          <li>Playback hit flash on Top; layer meters on Top/Bottom/Button</li>
+          <li>Capture/playback hit: sharp button 80% dim (~2 PPQN) + Top white; layer meters on Top/Bottom/Button</li>
         </ul>
       </div>
     </div>
     <div class="manual">
       <p><strong>Manual.</strong> Clocked overdub loop: play while armed to capture; layers decay each loop wrap by Alt amount (0 = freeze forever; max ≈ 4 wraps). Hold the button for long notes — mute is Shift+Long only. Length is Third while muted (not Alt). Velocity uses a squared curve so fades are audible on MIDI. Quantized to 16ths.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CONTROL ISSUES -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 39</span>
+    <h2>Control Issues <span class="tag ready">ready</span></h2>
+    <span class="desc">Shape CV and send it as MIDI CC / NRPN</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Attenuverter −100…+100 % (center deadband = 0)</li>
+          <li><strong>Alt</strong> (Shift+Fader) — Offset −100…+100 %</li>
+          <li><strong>Third</strong> (hold button + fader) — Slew 0…10 s</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short click</strong> (no fader move) — Mute toggle on release (sends Output Min)</li>
+          <li><strong>Hold + fader</strong> — edit Slew (suppresses mute)</li>
+          <li><strong>Shift+Hold</strong> — momentary Bypass (keeps Range / Min-Max / Rate)</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params / LEDs</h3>
+        <ul>
+          <li>Pipeline: Gate/CV → Att → Offset → Transfer → Slew → Steps → Min/Max → Rate</li>
+          <li>Button LED only: Main = app color × out; Alt = red × |offset|; Third = cyan × slew (floor so hue stays visible at 0)</li>
+          <li>Mute = off · Bypass = full · black blink on downbeat while out &gt; Min</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> 1-channel CV→MIDI sculptor. Defaults are transparent (+100 % att, 0 offset, 0 slew, Linear, full CC window, 100 Hz). Gate mode runs a Schmitt threshold (0.1 V hysteresis) then the same pipeline. Mute sends Output Min once and goes silent; unmute resends the live value. Watch the button LED for level — fader LEDs stay dark. Uses clock ticker only (no CLOCK_PUBSUB). No clock → no downbeat blink.</p>
+    </div>
+  </div>
+</section>
+
+<!-- VENN -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 40</span>
+    <h2>Venn <span class="tag ready">ready</span></h2>
+    <span class="desc">Dual Euclidean layers + boolean logic (OR/AND/XOR/Accnt)</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — F0 pulses A · F1 pulses B</li>
+          <li><strong>Alt</strong> (Shift) — F0 rotation A · F1 rotation B</li>
+          <li><strong>Third</strong> (Btn1 or Btn2 hold) — F0 length A · F1 length B (2–32)</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Btn1 or Btn2 hold</strong> — Third (length A/B on F0/F1)</li>
+          <li><strong>Btn2 tap</strong> (no fader move) — Mute both outs</li>
+          <li><strong>Shift+Btn1</strong> — Cycle Logic OR → AND → XOR → Accnt</li>
+          <li><strong>Shift+Btn2</strong> — Toggle post-logic invert (shadow); white↔none fade like Heat Pump</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params / LEDs</h3>
+        <ul>
+          <li>Division, GATE %, Prob %, Vel %, MIDI CH / Notes / Out, Color</li>
+          <li>Color = Layer A; Btn2 / Top B = fixed complement (Cyan↔Pink, Blue↔Orange, Green↔Violet, Rose↔Yellow, …)</li>
+          <li>Main Btn: logic hue / complement · density bright · soft hit dip (−38% → 62%)</li>
+          <li>Alt: Top+Btn ∝ rotation (floor); Bottom = step-0 sync · Third: white Top ∝ length, Bottom/Btn = length band (live 1 ms)</li>
+          <li>Top flashes = layer hits (Main) · Bottom flashes = logic outs (Main)</li>
+          <li>Jack0 = logic result · Jack1 coupled (OR→∩, AND→△, XOR→∩, Accnt→accent)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Two independent Euclidean masks combined with boolean logic — the OXI GEN dual-layer idea without pitch. Color sets Layer A; Layer B LEDs use a fixed complement (always the same pairs). Btn1 shows logic mode, not Color. Different lengths per layer enable polyrhythmic XOR/AND patterns Euclid cannot make alone. Needs clock. Prob % &lt; 100 adds optional flakiness; 100 is fully deterministic. No pitch CV (use GenSeq for that).</p>
     </div>
   </div>
 </section>

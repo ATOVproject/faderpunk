@@ -22,5 +22,8 @@ Flash integration branch: **`test/playground`** (count-agnostic; formerly
 | 36 | Hold Sam | `feat/hold-sam` | Sample-and-hold / clocked capture |
 | 37 | Harmonica | `feat/harmonica` | Monophonic in → chord out |
 | 38 | Loop de Cay | `feat/loop-de-cay` | Additive overdub loop + level decay |
+| 39 | Control Issues | `feat/control-issues` | CV shape → MIDI CC/NRPN |
+| 40 | Venn | `feat/venn` | Dual Euclidean + boolean logic |
 
-Next free WIP ID: **39**
+Next free WIP ID: **41**
+
