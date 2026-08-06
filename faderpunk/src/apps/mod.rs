@@ -26,4 +26,6 @@ register_apps!(
     25 => automator,
     26 => genseq,
     27 => bernoulli,
+    44 => cvcombine,
+    45 => gatecombine,
 );
