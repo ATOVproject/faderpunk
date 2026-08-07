@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{Config, Param, Range, Value};
 
-use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
+use crate::app::{
+    pitch_as_counts, App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent,
+};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 4;
@@ -173,8 +175,8 @@ pub async fn run(
                 .get_quantized_note((inval + oct + st).clamp(0, 4095) as u16)
                 .await;
 
-            output.set_value(outval.as_counts(range, vpo));
-            let oct_led = split_unsigned_value(outval.as_counts(range, vpo));
+            output.set_value(pitch_as_counts(outval, range, vpo));
+            let oct_led = split_unsigned_value(pitch_as_counts(outval, range, vpo));
             leds.set(1, Led::Top, led_color, Brightness::Custom(oct_led[0]));
             leds.set(1, Led::Bottom, led_color, Brightness::Custom(oct_led[1]));
             leds.set(
