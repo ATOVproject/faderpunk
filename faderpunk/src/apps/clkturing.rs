@@ -227,7 +227,9 @@ pub async fn run(
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
                 register = register_glob.get();
-                let prob = prob_glob.get();
+                // Curved so the fader's center flat zone reliably lands on a
+                // balanced 50/50 flip probability instead of drifting near it.
+                let prob = Curve::Deadzone.at(prob_glob.get());
                 let rand = die.roll().clamp(100, 3900);
 
                 let rotation = rotate_select_bit(register, prob, rand, length);

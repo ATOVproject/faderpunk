@@ -7,7 +7,7 @@ use heapless::Vec;
 use libfp::{
     latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, midi_gate, split_unsigned_value},
-    AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, APP_MAX_PARAMS,
+    AppIcon, Brightness, Color, Curve, MidiCc, MidiChannel, MidiOut, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -188,8 +188,10 @@ pub async fn run(
                         + storage.query(|s| s.offset_saved))
                     .clamp(0, 4095)
                 } else {
+                    // Curved so the fader's center flat zone reliably lands
+                    // on exactly zero offset instead of drifting near it.
                     (attenuate_bipolar(input.get_value(), storage.query(|s| s.att_saved)) as i16
-                        + (storage.query(|s| s.offset_saved) as i16 - 2047))
+                        + (Curve::Deadzone.at(storage.query(|s| s.offset_saved)) as i16 - 2047))
                         .clamp(0, 4095) as u16
                 }
             } else if range.is_bipolar() {

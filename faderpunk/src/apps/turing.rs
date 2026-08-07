@@ -300,7 +300,9 @@ pub async fn run(
                             }
                             leds.set(0, Led::Bottom, Color::White, Brightness::Mid);
                         }
-                        let prob = prob_glob.get();
+                        // Curved so the fader's center flat zone reliably lands on a
+                        // balanced 50/50 flip probability instead of drifting near it.
+                        let prob = Curve::Deadzone.at(prob_glob.get());
                         let rand = die.roll().clamp(100, 3900);
 
                         let (new_reg, _, gate_bit) =
