@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" id="b" data-name="Layer 2" width="25" height="25" viewBox="0 0 22 22">
+  <defs>
+    <linearGradient id="d" x1="11" y1="21.3" x2="11" y2=".7" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#161616"/>
+      <stop offset="1" stop-color="#696969"/>
+    </linearGradient>
+    <filter id="e" data-name="drop-shadow-1" x=".8343" y="1.4592" width="24" height="24" filterUnits="userSpaceOnUse">
+      <feOffset dx="2" dy="2"/>
+      <feGaussianBlur result="f" stdDeviation="1"/>
+      <feFlood flood-color="#000" flood-opacity=".4"/>
+      <feComposite in2="f" operator="in"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+    <linearGradient id="g" x1="5.3431" y1="5.3431" x2="16.6569" y2="16.6569" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#a6a7a7"/>
+    </linearGradient>
+    <linearGradient id="h" x1="13.2994" y1="6.0701" x2="8.6982" y2="15.9351" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5c5c5c"/>
+      <stop offset="1" stop-color="#acacad"/>
+    </linearGradient>
+  </defs>
+  <g id="c" data-name="assets">
+    <g>
+      <circle cx="11" cy="11" r="11" style="fill: #333;"/>
+      <circle cx="11" cy="11" r="10.3" style="fill: url(#d);"/>
+      <circle cx="11" cy="11" r="8.5" style="fill: #828282; filter: url(#e);"/>
+      <circle cx="11" cy="11" r="8.5" style="fill: #828282;"/>
+      <circle cx="11" cy="11" r="8" style="fill: url(#g);"/>
+      <circle cx="11" cy="11" r="7" style="fill: #c5c7c5;"/>
+      <circle cx="11" cy="11" r="5.5" style="fill: url(#h);"/>
+      <circle cx="11" cy="11" r="4.5"/>
+    </g>
+  </g>
+</svg>
