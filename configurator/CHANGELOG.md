@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.12.0-beta.0 (2026-08-07)
+
+### Features
+
+- variable PPQN external clock input and phase-correct clock ticks (#579)
+- Curve::Deadzone fader curve + wire into 8 apps (#578)
+
 ## 1.11.0 (2026-08-05)
 
 ### Features
