@@ -67,7 +67,7 @@ Executes user-facing apps:
 - USB cable for programming and power
 
 #### Software
-- Rust toolchain (nightly recommended)
+- Rust stable toolchain (nightly is only required by `./gen-bindings.sh`)
 - `picotool` for UF2 conversion
 - Chromium-based browser for WebUSB configurator
 
@@ -75,7 +75,7 @@ Executes user-facing apps:
 
 You will need:
 - `rustup`
-- Rust (1.89 or newer) with `thumbv8m.main-none-eabihf` target (`rustup target add thumbv8m.main-none-eabihf`)
+- Rust stable (1.89 or newer) with the firmware target (`rustup target add --toolchain stable thumbv8m.main-none-eabihf`)
 - [picotool](https://github.com/raspberrypi/picotool)
 
 ## Building and Flashing
@@ -84,7 +84,7 @@ You will need:
 
 ```bash
 cd faderpunk # important, not in root
-cargo build --release
+cargo +stable build --release
 ```
 
 ### Create UF2 File
