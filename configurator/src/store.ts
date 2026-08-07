@@ -77,6 +77,12 @@ interface State {
   setParams: (id: number, newParams: Value[]) => void;
   setAllParams: (newParams: ParamValues) => void;
   device: FpMidiDevice | undefined;
+  // Set while a long-running, single-in-flight device operation (e.g. V/Oct
+  // calibration) is blocking the firmware's config loop, so
+  // useConnectionHealthCheck doesn't mistake the resulting slow/absent
+  // response for a dropped connection and force-navigate away.
+  suspendHealthCheck: boolean;
+  setSuspendHealthCheck: (suspendHealthCheck: boolean) => void;
 }
 
 const initialState = {
@@ -87,6 +93,7 @@ const initialState = {
   layout: undefined,
   params: undefined,
   device: undefined,
+  suspendHealthCheck: false,
 };
 
 export const useStore = create<State>((set, get) => ({
@@ -182,4 +189,5 @@ export const useStore = create<State>((set, get) => ({
     if (isSimulator && layout && config)
       persistSimulatorState(layout, newParams, config);
   },
+  setSuspendHealthCheck: (suspendHealthCheck) => set({ suspendHealthCheck }),
 }));

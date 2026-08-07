@@ -2,6 +2,7 @@
 
 use core::ops::Add;
 
+use crate::quantizer::Pitch;
 use embassy_time::Duration;
 use heapless::Vec;
 use max11300::config::{ADCRANGE, DACRANGE};
@@ -382,12 +383,14 @@ impl Key {
 }
 
 /// Volts-per-octave standard. Selects pitch calibration for quantizer and pitch apps.
-/// `Standard` = 1V/Oct (Eurorack), `Buchla` = 1.2V/Oct.
+/// `Standard` = 1V/Oct (Eurorack), `Buchla` = 1.2V/Oct, `Custom(idx)` = user-calibrated curve.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum VoltPerOct {
     #[default]
     Standard,
     Buchla,
+    /// Index into `GlobalConfig::custom_voct_curves` (0–3).
+    Custom(u8),
 }
 
 impl VoltPerOct {
@@ -395,6 +398,16 @@ impl VoltPerOct {
         match self {
             VoltPerOct::Standard => 410,
             VoltPerOct::Buchla => 492,
+            VoltPerOct::Custom(_) => 410,
+        }
+    }
+
+    /// Like `counts_per_oct` but resolves custom curves from the stored calibration data.
+    pub fn counts_per_oct_with_curves(self, curves: &[CustomVoOctCurve; 4]) -> i16 {
+        match self {
+            VoltPerOct::Standard => 410,
+            VoltPerOct::Buchla => 492,
+            VoltPerOct::Custom(idx) => resolve_custom_cpo(idx, curves) as i16,
         }
     }
 
@@ -402,6 +415,7 @@ impl VoltPerOct {
         match self {
             VoltPerOct::Standard => 12.0,
             VoltPerOct::Buchla => 10.0,
+            VoltPerOct::Custom(_) => 12.0,
         }
     }
 
@@ -409,8 +423,47 @@ impl VoltPerOct {
         match self {
             VoltPerOct::Standard => 1.0,
             VoltPerOct::Buchla => 1.2,
+            VoltPerOct::Custom(_) => 1.0,
         }
     }
+
+    /// Like `voltage_scale` but resolves custom curves from calibration data.
+    /// Derives scale from `counts_per_oct / 409.5` (the DAC counts for 1V in a 10V range).
+    pub fn voltage_scale_with_curves(self, curves: &[CustomVoOctCurve; 4]) -> f32 {
+        match self {
+            VoltPerOct::Standard => 1.0,
+            VoltPerOct::Buchla => 1.2,
+            VoltPerOct::Custom(idx) => resolve_custom_cpo(idx, curves) as f32 / 409.5,
+        }
+    }
+}
+
+/// Resolve a Custom curve's calibrated counts-per-octave, clamped to a
+/// plausible hardware range and falling back to the nominal Standard value
+/// (410) if uncalibrated (0) or implausible. Shared by
+/// `counts_per_oct_with_curves`/`voltage_scale_with_curves` so their
+/// fallback rule can't drift apart, and so a corrupt or wildly-miscalibrated
+/// curve can't produce a negative `i16` count (the raw `u16` would otherwise
+/// wrap when cast for any value above `i16::MAX`).
+fn resolve_custom_cpo(idx: u8, curves: &[CustomVoOctCurve; 4]) -> u16 {
+    let cpo = curves
+        .get(idx as usize)
+        .map(|c| c.counts_per_oct)
+        .unwrap_or(0);
+    if cpo == 0 || cpo > 2000 {
+        410
+    } else {
+        cpo
+    }
+}
+
+/// One user-calibrated V/Oct gain curve stored in `GlobalConfig`.
+/// `counts_per_oct = 0` means uncalibrated; apps fall back to the Standard value (410).
+#[derive(Clone, Copy, Default, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+pub struct CustomVoOctCurve {
+    #[n(0)]
+    #[cbor(default)]
+    pub counts_per_oct: u16,
 }
 
 impl From<VoltPerOct> for Value {
@@ -662,6 +715,9 @@ pub struct GlobalConfig {
     #[n(6)]
     #[cbor(default)]
     pub takeover_mode: TakeoverMode,
+    #[n(7)]
+    #[cbor(default)]
+    pub custom_voct_curves: [CustomVoOctCurve; 4],
 }
 
 impl Default for GlobalConfig {
@@ -685,6 +741,7 @@ impl GlobalConfig {
             midi: MidiConfig::new(),
             quantizer: QuantizerConfig::new(),
             takeover_mode: TakeoverMode::Pickup,
+            custom_voct_curves: [CustomVoOctCurve { counts_per_oct: 0 }; 4],
         }
     }
 
@@ -713,6 +770,20 @@ impl GlobalConfig {
             }
             _ => {}
         }
+    }
+
+    /// Convert a quantized pitch to DAC counts, resolving any Custom V/Oct
+    /// curve from this config's `custom_voct_curves`. Prefer this over
+    /// `Pitch::as_counts_with_curves` when a `GlobalConfig` value is already
+    /// in hand.
+    pub fn pitch_as_counts(&self, pitch: Pitch, range: Range, vpo: VoltPerOct) -> u16 {
+        pitch.as_counts_with_curves(range, vpo, &self.custom_voct_curves)
+    }
+
+    /// Return DAC counts-per-octave for `vpo`, resolving any Custom V/Oct
+    /// curve from this config's `custom_voct_curves`.
+    pub fn vpo_counts_per_oct(&self, vpo: VoltPerOct) -> i16 {
+        vpo.counts_per_oct_with_curves(&self.custom_voct_curves)
     }
 }
 
@@ -1104,6 +1175,27 @@ pub enum ConfigMsgIn {
     },
     FactoryReset,
     GetVersion,
+    /// Set `output_jack` to `dac_counts` (0-10V DAC range), then measure the
+    /// frequency on `aux_input` (0=Atom, 1=Meteor, 2=Cube). Responds with
+    /// `VoOctFrequency` or `VoOctCalError`. Call twice with dac_counts=410
+    /// then dac_counts=2460 to get the two reference frequencies.
+    MeasureVoOct {
+        output_jack: u8,
+        aux_input: u8,
+        dac_counts: u16,
+    },
+    /// Set `output_jack` to `dac_counts` (0-10V DAC range) and hold it there.
+    /// Used for manual V/Oct calibration where the user reads the resulting
+    /// frequency off an external meter. Responds with `VoOctOutputSet`.
+    SetVoOctOutput {
+        output_jack: u8,
+        dac_counts: u16,
+    },
+    /// Release `output_jack` back to high-Z so apps can reclaim it. Responds
+    /// with `VoOctOutputSet`.
+    ReleaseVoOctOutput {
+        output_jack: u8,
+    },
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]
@@ -1116,7 +1208,19 @@ pub enum ConfigMsgOut<'a> {
     Layout(Layout),
     AppConfig(u8, usize, ConfigMeta<'a>),
     AppState(u8, &'a [Value]),
-    Version { major: u8, minor: u8, patch: u8 },
+    Version {
+        major: u8,
+        minor: u8,
+        patch: u8,
+    },
+    /// Frequency measured on the selected AUX input during V/Oct calibration.
+    VoOctFrequency {
+        freq_hz: f32,
+    },
+    /// V/Oct calibration measurement failed (no signal or timeout).
+    VoOctCalError,
+    /// Acknowledges `SetVoOctOutput` / `ReleaseVoOctOutput`.
+    VoOctOutputSet,
 }
 
 pub struct Config<const N: usize> {
@@ -1416,8 +1520,42 @@ impl MidiOut {
 
 #[cfg(test)]
 mod tests {
-    use super::{Layout, GLOBAL_CHANNELS};
+    use super::{CustomVoOctCurve, Layout, VoltPerOct, GLOBAL_CHANNELS};
     use heapless::Vec;
+
+    #[test]
+    fn custom_cpo_falls_back_to_standard_when_uncalibrated_or_implausible() {
+        let uncalibrated = [CustomVoOctCurve::default(); 4];
+        assert_eq!(
+            VoltPerOct::Custom(0).counts_per_oct_with_curves(&uncalibrated),
+            410
+        );
+
+        // A wildly-miscalibrated curve above the plausible range must not be
+        // used verbatim: cast to i16 it would otherwise wrap negative.
+        let mut wild = [CustomVoOctCurve::default(); 4];
+        wild[0].counts_per_oct = 43_000;
+        assert_eq!(VoltPerOct::Custom(0).counts_per_oct_with_curves(&wild), 410);
+        // Falls back to the same resolved 410 counts/oct as the counts
+        // variant above (410 / 409.5), not an artificial exact 1.0 — the two
+        // variants must agree on what "uncalibrated" resolves to.
+        assert!(
+            (VoltPerOct::Custom(0).voltage_scale_with_curves(&wild) - 410.0 / 409.5).abs() < 1e-6
+        );
+
+        // A plausible calibrated curve is used as-is, consistently between
+        // the counts and scale variants (410/409.5 would disagree otherwise).
+        let mut calibrated = [CustomVoOctCurve::default(); 4];
+        calibrated[0].counts_per_oct = 450;
+        assert_eq!(
+            VoltPerOct::Custom(0).counts_per_oct_with_curves(&calibrated),
+            450
+        );
+        assert!(
+            (VoltPerOct::Custom(0).voltage_scale_with_curves(&calibrated) - 450.0 / 409.5).abs()
+                < 1e-6
+        );
+    }
 
     fn mock_get_channels(app_id: u8) -> Option<usize> {
         match app_id {
@@ -1761,6 +1899,7 @@ mod tests {
             midi: decoded_v0.midi,
             quantizer: decoded_v0.quantizer,
             takeover_mode: decoded_v0.takeover_mode,
+            custom_voct_curves: Default::default(),
         };
         assert_eq!(migrated.led_brightness, 111);
 
@@ -1858,6 +1997,7 @@ mod tests {
             midi: decoded_v17.midi,
             quantizer: decoded_v17.quantizer,
             takeover_mode: TakeoverMode::Pickup,
+            custom_voct_curves: Default::default(),
         };
         assert_eq!(migrated.led_brightness, 111);
         assert_eq!(migrated.clock.swing_amount, 0);
