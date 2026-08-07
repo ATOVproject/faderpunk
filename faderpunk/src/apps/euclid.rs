@@ -155,7 +155,6 @@ pub async fn run(
     storage: &ManagedStorage<Storage>,
 ) {
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let die = app.use_die();
     let faders = app.use_faders();
     let buttons = app.use_buttons();
@@ -230,8 +229,8 @@ pub async fn run(
                     jack[0].set_low().await;
                     jack[1].set_low().await;
                 }
-                ClockEvent::Tick => {
-                    let clkn = ticks() as u32;
+                ClockEvent::Tick(tick) => {
+                    let clkn = tick as u32;
                     let muted = glob_muted.get();
                     let div = div_glob.get();
 

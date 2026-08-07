@@ -1,11 +1,11 @@
 import type { ClockSrc, ResetSrc } from "@atov/fp-config";
 import { Input } from "@heroui/input";
-import { SelectItem } from "@heroui/select";
+import { Select, SelectItem } from "@heroui/select";
 import { Tooltip } from "@heroui/tooltip";
 import classNames from "classnames";
-import { Controller, useFormContext } from "react-hook-form";
+import { Controller, useFormContext, useWatch } from "react-hook-form";
 import { Icon } from "../Icon";
-import { inputProps } from "../input/defaultProps";
+import { inputProps, selectProps } from "../input/defaultProps";
 import type { Inputs } from "../SettingsTab";
 import { ControlledSelect } from "./ControlledFields";
 
@@ -38,6 +38,22 @@ const clockSrcItems: ClockSrcItem[] = [
   { key: "MidiUsb", value: "MIDI USB", icon: "usb" },
 ];
 
+// Integral ratios of the internal 24 PPQN clock: divisors are multiplied up,
+// multiples divided down. Must stay in sync with the firmware's
+// `effective_ppqn` and the validator in utils/validators.ts.
+const extPpqnItems = [
+  { key: "1", value: "1 PPQN (quarter notes)" },
+  { key: "2", value: "2 PPQN (8th notes)" },
+  { key: "3", value: "3 PPQN (8th triplets)" },
+  { key: "4", value: "4 PPQN (16th notes)" },
+  { key: "6", value: "6 PPQN (16th triplets)" },
+  { key: "8", value: "8 PPQN (32nd notes)" },
+  { key: "12", value: "12 PPQN (32nd triplets)" },
+  { key: "24", value: "24 PPQN (MIDI / DIN sync)" },
+  { key: "48", value: "48 PPQN" },
+  { key: "96", value: "96 PPQN" },
+];
+
 const resetSrcItems: ResetSrcItems[] = [
   { key: "None", value: "None" },
   { key: "Atom", value: "Atom", icon: "atom", iconClass: "text-cyan-fp" },
@@ -52,6 +68,9 @@ const resetSrcItems: ResetSrcItems[] = [
 
 export const ClockSettings = () => {
   const { control } = useFormContext<Inputs>();
+  const clockSrc = useWatch({ control, name: "clockSrc" });
+  const isAnalogClockSrc =
+    clockSrc === "Atom" || clockSrc === "Meteor" || clockSrc === "Cube";
 
   return (
     <div className="mb-12">
@@ -82,6 +101,43 @@ export const ClockSettings = () => {
             </SelectItem>
           )}
         </ControlledSelect>
+        <Controller
+          name="extPpqn"
+          control={control}
+          render={({ field }) => (
+            <Select
+              {...selectProps}
+              classNames={{
+                ...selectProps.classNames,
+                label: "font-medium pb-2 w-full",
+              }}
+              label={
+                <div className="flex w-full items-center justify-between gap-1">
+                  <span>External PPQN</span>
+                  <Tooltip
+                    content="Pulses per quarter note of the analog clock input. Below 24 the clock is multiplied up, above 24 divided down. MIDI clock is always 24 PPQN. Swing is bypassed unless set to 24."
+                    showArrow={true}
+                  >
+                    <button type="button" className="cursor-help">
+                      <Icon className="h-4 w-4" name="info" />
+                    </button>
+                  </Tooltip>
+                </div>
+              }
+              placeholder="External PPQN"
+              isDisabled={!isAnalogClockSrc}
+              selectedKeys={[String(field.value)]}
+              onSelectionChange={(keys) => {
+                if (keys.currentKey) {
+                  field.onChange(Number(keys.currentKey));
+                }
+              }}
+              items={extPpqnItems}
+            >
+              {(item) => <SelectItem>{item.value}</SelectItem>}
+            </Select>
+          )}
+        />
         <ControlledSelect
           name="resetSrc"
           control={control}

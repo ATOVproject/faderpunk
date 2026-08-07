@@ -160,7 +160,6 @@ pub async fn run(
     let curve = Curve::Linear;
 
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let die = app.use_die();
     let faders = app.use_faders();
     let buttons = app.use_buttons();
@@ -230,14 +229,14 @@ pub async fn run(
                     leds.unset(1, Led::Top);
                 }
 
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick) => {
                     let div = div_glob.get();
                     if div != cached_div {
                         cached_div = div;
                         cached_gate_step = (cached_div * gatel / 100).clamp(1, cached_div - 1);
                     }
 
-                    let clkn = ticks() as u32;
+                    let clkn = tick as u32;
 
                     if clkn.is_multiple_of(cached_div) {
                         let probability = prob_glob.get();

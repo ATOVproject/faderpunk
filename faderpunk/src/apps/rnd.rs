@@ -140,7 +140,6 @@ pub async fn run(
         params.query(|p| (p.range, p.midi_out, p.midi_channel, p.midi_cc, p.nrpn));
 
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let rnd = app.use_die();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
@@ -180,9 +179,9 @@ pub async fn run(
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Reset => {}
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick) => {
                     let muted = glob_muted.get();
-                    let clkn = ticks() as u32;
+                    let clkn = tick as u32;
                     let div = div_glob.get();
                     if clkn.is_multiple_of(div) && !muted && storage.query(|s: &Storage| s.clocked)
                     {
