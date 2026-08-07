@@ -1,0 +1,18 @@
+<svg data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" width="36.8" height="36.8">
+  <defs>
+    <radialGradient id="prefix__b" cx="18.4" cy="18.4" fx="18.4" fy="18.4" r="20" gradientUnits="userSpaceOnUse">
+      <stop offset=".4" stop-color="#fff" />
+      <stop offset="1" stop-color="#b5b5b5" />
+    </radialGradient>
+    <linearGradient id="prefix__a" x1="18.4" y1="36.8" x2="18.4" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#313131" />
+      <stop offset="1" stop-color="#464646" />
+    </linearGradient>
+  </defs>
+  <rect width="36.8" height="36.8" rx="2" ry="2" fill="url(#prefix__a)" />
+  <rect x=".4" y=".4" width="36" height="36" rx="1.8" ry="1.8" fill="#111" />
+  <rect x="1.4" y="1.4" width="34" height="34" rx="1.2" ry="1.2" fill="#778285" />
+  <path
+    d="M33.976 35.132a85.744 85.744 0 00-31.149 0 .99.99 0 01-1.157-1.158C3.571 23.592 3.568 13.211 1.667 2.83A.99.99 0 012.824 1.67a85.755 85.755 0 0031.152-.003.99.99 0 011.157 1.158 85.742 85.742 0 000 31.148.99.99 0 01-1.157 1.157z"
+    fill="url(#prefix__b)" />
+</svg>
