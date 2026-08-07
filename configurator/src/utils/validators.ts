@@ -224,7 +224,14 @@ const globalConfigSchema = z.object({
   aux: z.array(taggedObjectSchema).length(3),
   clock: z.object({
     clock_src: taggedObjectSchema,
-    ext_ppqn: z.number().int().min(1).max(96),
+    ext_ppqn: z
+      .number()
+      .int()
+      .min(1)
+      .max(96)
+      .refine((n) => 24 % n === 0 || n % 24 === 0, {
+        message: "External PPQN must be a divisor or multiple of 24",
+      }),
     reset_src: taggedObjectSchema,
     internal_bpm: z.number().min(1).max(300),
     swing_amount: z.number().int().min(-35).max(35).default(0),

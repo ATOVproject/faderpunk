@@ -221,7 +221,6 @@ pub async fn run(
     let fader = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let die = app.use_die();
     let quantizer = app.use_quantizer(range, vpo, bypass);
 
@@ -279,8 +278,8 @@ pub async fn run(
                     }
                     register = storage.query(|s| s.register_saved);
                 }
-                ClockEvent::Tick => {
-                    let clkn = ticks() as usize;
+                ClockEvent::Tick(tick) => {
+                    let clkn = tick as usize;
                     if clkn.is_multiple_of(div) {
                         if (clkn / div).is_multiple_of(length as usize) {
                             let reg_old = storage.query(|s| s.register_saved);

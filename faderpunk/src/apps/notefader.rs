@@ -181,7 +181,6 @@ pub async fn run(
         });
 
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let quantizer = app.use_quantizer(range, vpo, bypass);
 
     let fader = app.use_faders();
@@ -249,11 +248,11 @@ pub async fn run(
                         jack.set_value(0);
                     }
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick) => {
                     let muted = glob_muted.get();
 
                     let div = div_glob.get();
-                    let clkn = ticks() as u32;
+                    let clkn = tick as u32;
 
                     if clkn.is_multiple_of(div) && storage.query(|s| s.clocked) {
                         if !muted {

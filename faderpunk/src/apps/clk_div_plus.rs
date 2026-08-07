@@ -176,7 +176,6 @@ pub async fn run(
     });
 
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
 
     let fader = app.use_faders();
     let buttons = app.use_buttons();
@@ -252,12 +251,12 @@ pub async fn run(
                         leds.set(1, Led::Bottom, led_color, Brightness::Off);
                     }
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick) => {
                     if storage.query(|s| s.dest) != 0 {
                         continue;
                     }
 
-                    let clkn = ticks() as u32;
+                    let clkn = tick as u32;
                     let muted = glob_muted.get();
                     let div_u32 = div_glob.get();
                     let gate_step = (div_u32 * gatel / 100).clamp(1, div_u32.saturating_sub(1));
