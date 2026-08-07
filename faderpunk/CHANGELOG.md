@@ -6,6 +6,10 @@
 
 - variable PPQN external clock input and phase-correct clock ticks (#579)
 - Curve::Deadzone fader curve + wire into 8 apps (#578)
+- automated gain calibration wizard with AUX frequency measurement (#574)
+- MIDI out CC/NRPN from envelope output (#575)
+- default clock to running on factory-fresh boot (#610)
+- [rnd_plus] add sample & hold CV destination mode (#584)
 
 ### Fixes
 

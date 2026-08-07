@@ -6,6 +6,7 @@
 
 - variable PPQN external clock input and phase-correct clock ticks (#579)
 - Curve::Deadzone fader curve + wire into 8 apps (#578)
+- automated gain calibration wizard with AUX frequency measurement (#574)
 
 ## 0.10.5 (2026-08-05)
 
