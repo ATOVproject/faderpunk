@@ -1,7 +1,8 @@
 # Faderpunk Desktop Simulator — Status & Roadmap
 
-Working state as of 2026-07-17, branch `feat/desktop-sim-panel`
-(stacked on `feat/desktop-sim-poc`, which holds the committed phase 1).
+Status audited and locally rebased 2026-08-08 on branch
+`feat/desktop-sim-panel`, onto `origin/main` at `6a9ed793`. The three rewritten
+simulator commits are GPG-signed, have not been pushed, and there is no PR.
 Original feasibility assessment: `~/.claude-cli/plans/i-want-to-gauge-eager-bee.md`.
 
 ## The grand plan
@@ -23,10 +24,11 @@ Decisions settled during planning:
   (GPU/shader styling, live design DSL, same-code WASM build; Ironfish synth
   demo is precedent). The parent/child IPC split makes the swap cheap.
 
-## Phase 1 — PoC (DONE, verified)
+## Phase 1 — PoC (IMPLEMENTED; rebased; partially revalidated)
 
-**Proved: apps run unmodified on macOS, and the config protocol works over
-virtual MIDI.**
+**The original branch proved that apps run unmodified on macOS and that the
+config protocol works over virtual MIDI. The rebased code builds and boots on
+Linux; the MIDI/configurator E2E checks still need to be repeated.**
 
 What exists:
 
@@ -38,8 +40,9 @@ What exists:
   (configure.rs), `platform::init` (RNG + sys-reset hooks), defmt/log `fmt.rs`
   facade, `CoreLocalRawMutex` alias (ThreadModeRawMutex on ARM, CS on host).
 - **`faderpunk`** firmware now contains only hardware (pin/SPI/USB/UART/I2C
-  drivers + `main.rs`) implementing those seams. Behavior unchanged; all CI
-  gates green; UF2 builds.
+  drivers + `main.rs`) implementing those seams. The extraction has been
+  reconciled with current `main`; firmware clippy and the shared-library gates
+  pass. A real-hardware smoke test remains required.
 - **`fp-sim`** (headless): embassy `arch-std` executor; two virtual MIDI port
   pairs mirroring the USB cables — "Faderpunk Sim" (performance) and
   "Faderpunk Sim Config" (configurator); file-backed FRAM
@@ -59,20 +62,58 @@ Gotchas already learned (don't relearn):
   `cargo build -p fp-sim`.
 - **Zombie sims hold their virtual ports**; DAWs latch onto the dead one.
   `pkill -f fp-sim` before restarting.
-- Fresh FRAM = clock stopped (like hardware) — nothing streams until the
-  transport starts.
+- A fresh FRAM now starts the clock running, matching current hardware. The
+  rebased headless smoke test observed the expected 48 internal ticks/s at
+  120 BPM × 24 PPQN.
 - Apps send no MIDI until their "MIDI Out" param is enabled (stock firmware
   behavior); configure via the configurator.
+- **Linux/NixOS dependencies are not declared**: the repository devenv lacks
+  ALSA development files and the Wayland/Vulkan runtime libraries needed to
+  build and launch the panel. Fix the environment before advertising the
+  README's plain `cargo build -p fp-sim` command as reproducible on Linux.
+
+## Validation audit — 2026-08-08
+
+Validated after rebasing onto current `main`:
+
+- Upstream app, clock, fader/deadzone, MIDI, calibration, storage, and runtime
+  state changes were ported into the extracted architecture.
+- The V/Oct configurator flow now uses a portable frequency-measurement backend:
+  firmware delegates to the AUX-pin measurement task; the simulator reports a
+  calibration error rather than pretending to measure unavailable hardware.
+- Both firmware and simulator layout loops service scoped V/Oct app
+  eviction/restoration.
+- `cargo fmt --all -- --check` passed.
+- Firmware clippy for `thumbv8m.main-none-eabihf`, libfp clippy, and fp-core
+  clippy passed with warnings denied.
+- All 105 libfp unit tests passed.
+- `fp-sim` clippy and build passed after supplying ALSA through a temporary Nix
+  shell.
+- Headless mode booted with both virtual MIDI port pairs and file-backed FRAM;
+  a fresh image ran the clock at 48 ticks/s.
+- The panel reached the egui/WGPU event loop after supplying Wayland,
+  libxkbcommon, Vulkan, and OpenGL runtime libraries.
+
+Not revalidated after the rebase: the configurator handshake, captured MIDI
+clock/app output, or real hardware.
+
+Current product boundary: this is an in-repository simulator that requires a
+Rust toolchain. There is no child process, source watcher, rebuild-on-save loop,
+bundled toolchain, packaged desktop application, or VCV module yet.
 
 ## Next steps
 
-**Immediate (before new work):**
-1. User review of the branch → commit (conventional message) → PR per repo
-   workflow. Firmware smoke test on real hardware (boot, apps, configurator,
-   FRAM migration) since main.rs/tasks were restructured.
-2. Decide whether AGENTS.md gets an fp-core/fp-sim section (crate map, the
-   default-members rule, sim build/run commands) and whether knope/release
-   config should know about the new crates.
+**Immediate (before new simulator features):**
+1. Review the three signed rewritten commits and the remaining uncommitted
+   reconciliation changes, then update the remote branch with force-with-lease.
+2. Add Linux host dependencies to the development environment and a host
+   build/clippy CI job for `fp-sim`.
+3. Repeat the simulator MIDI/configurator checks and smoke-test real hardware
+   (boot, apps, configurator, clock, FRAM migration).
+4. Add an fp-core/fp-sim section to AGENTS.md. Keep fp-core out of release
+   management unless it becomes independently published; decide how fp-sim is
+   versioned when packaging produces a distributable artifact.
+5. User review of the integrated branch, then PR per repository workflow.
 
 **Phase 2 — Simulator app (panel UI + dev loop):**
 
