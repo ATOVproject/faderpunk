@@ -22,11 +22,14 @@ mod ui;
 use std::path::PathBuf;
 
 use embassy_executor::{Executor, Spawner};
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select3, Either3};
 use portable_atomic::{AtomicU32, Ordering};
 use static_cell::StaticCell;
 
-use fp_core::layout::{LayoutManager, FORCE_RESPAWN_SIGNAL, LAYOUT_MANAGER, LAYOUT_WATCH};
+use fp_core::layout::{
+    EvictionCmd, LayoutManager, FORCE_RESPAWN_SIGNAL, LAYOUT_EVICTION_REQ, LAYOUT_EVICTION_RES,
+    LAYOUT_MANAGER, LAYOUT_WATCH,
+};
 use fp_core::storage::{load_global_config, load_layout, migrate_fram, store_layout};
 use fp_core::tasks::clock::{
     metronome, run_clock_gatekeeper, run_unified_clock_engine, TransportCmd, TRANSPORT_CMD_CHANNEL,
@@ -147,15 +150,35 @@ async fn layout_loop(spawner: Spawner) {
     let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
     let mut receiver = LAYOUT_WATCH.receiver().unwrap();
     loop {
-        match select(receiver.changed(), FORCE_RESPAWN_SIGNAL.wait()).await {
-            Either::First(layout) => {
+        match select3(
+            receiver.changed(),
+            FORCE_RESPAWN_SIGNAL.wait(),
+            LAYOUT_EVICTION_REQ.wait(),
+        )
+        .await
+        {
+            Either3::First(layout) => {
                 if lm.spawn_layout(&layout).await {
                     store_layout(&layout).await;
                 }
             }
-            Either::Second(_) => {
+            Either3::Second(_) => {
                 let layout = receiver.get().await;
                 lm.respawn_all(&layout).await;
+            }
+            Either3::Third(cmd) => {
+                match cmd {
+                    EvictionCmd::Evict(start_channel) => {
+                        lm.set_held(start_channel, true).await;
+                        lm.exit_app(start_channel).await;
+                    }
+                    EvictionCmd::Restore(start_channel, app_id, channels, layout_id) => {
+                        lm.spawn_one(start_channel, app_id, channels, layout_id)
+                            .await;
+                        lm.set_held(start_channel, false).await;
+                    }
+                }
+                LAYOUT_EVICTION_RES.signal(());
             }
         }
     }

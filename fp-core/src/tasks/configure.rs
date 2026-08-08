@@ -285,9 +285,9 @@ async fn restore_jack_owner(evicted: EvictedApp) {
     LAYOUT_EVICTION_RES.wait().await;
 }
 
-/// Set the output jack to 0-10V DAC mode, write `dac_counts`, signal the
-/// clock task to measure frequency on the chosen AUX pin, wait for the result,
-/// then release the jack (Mode1 high-Z). If an app is running on `output_jack`,
+/// Set the output jack to 0-10V DAC mode, write `dac_counts`, ask the platform
+/// backend to measure frequency on the chosen AUX input, then release the jack
+/// (Mode1 high-Z). If an app is running on `output_jack`,
 /// it is temporarily evicted and respawned afterward so calibration never
 /// leaves it stranded in high-Z. Shares `pending_eviction` with
 /// `handle_set_voct_output`/`handle_release_voct_output` (rather than
