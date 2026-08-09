@@ -400,9 +400,17 @@ async fn run_clock_gatekeeper() {
                             || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
                         {
                             tick_counter = tick_counter.wrapping_add(1);
-                            clock_publisher
-                                .publish(ClockEvent::Tick(tick_counter))
-                                .await;
+                            // Lossy: a stale/skipped tick is recoverable (the
+                            // counter in the payload lets a subscriber notice
+                            // a gap; `next_message_pure` already treats a
+                            // lagged read the same as a fresh one). Blocking
+                            // here would couple every subscriber's tick
+                            // delivery to whichever single app is slowest to
+                            // drain its 16-deep queue — the same head-of-line
+                            // blocking #631 fixes for MIDI clock output,
+                            // applied to the internal clock distribution
+                            // this app-facing Clock::wait_for_event runs on.
+                            clock_publisher.publish_immediate(ClockEvent::Tick(tick_counter));
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
                         }
                     }

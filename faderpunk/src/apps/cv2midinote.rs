@@ -20,6 +20,21 @@ pub const PARAMS: usize = 7;
 
 const BUTTON_BRIGHTNESS: Brightness = Brightness::Mid;
 
+// Asymmetric on purpose: only the rising threshold moves. A single shared
+// 406 threshold let noise right at that point register spurious or rapidly
+// repeated rising edges (duplicated/jittery note-on retriggers); this gap
+// requires the signal to clear noise before a note-on fires. The falling
+// threshold is left at the original 406 deliberately — widening the gap on
+// both sides would make note-off *harder* to reach than before, and for a
+// short trigger pulse (not a sustained gate) whose decay lands in a wider
+// dead zone, that risks a stuck note, which is worse than the chatter this
+// is fixing. The 25 LSB gap size is carried over from AnalogLatch's default
+// fader jitter_tolerance (libfp/src/latch.rs) as a starting point, not a
+// jack-specific measurement — jack ADC ports go through a different,
+// unfiltered path than the burst-median'd fader port.
+const GATE_THRESHOLD_RISING: u16 = 431;
+const GATE_THRESHOLD_FALLING: u16 = 406;
+
 pub static CONFIG: Config<PARAMS> = Config::new(
     "CV/OCT to MIDI",
     "CV and gate to MIDI note converter",
@@ -192,7 +207,7 @@ pub async fn run(
 
             let gatein = gate_in.get_value();
 
-            if gatein >= 406 && old_gatein < 406 {
+            if gatein >= GATE_THRESHOLD_RISING && old_gatein < GATE_THRESHOLD_RISING {
                 // catching rising edge
                 if !muted_glob.get() {
                     app.delay_millis(delay as u64).await;
@@ -237,7 +252,7 @@ pub async fn run(
                 leds.set(1, Led::Top, led_color, Brightness::Mid);
             }
 
-            if gatein <= 406 && old_gatein > 406 {
+            if gatein <= GATE_THRESHOLD_FALLING && old_gatein > GATE_THRESHOLD_FALLING {
                 // catching falling edge
                 if note_on {
                     midi.send_note_off(midi_out).await;
