@@ -16,6 +16,7 @@ pub mod apps;
 pub mod events;
 pub mod layout;
 pub mod platform;
+pub mod registry;
 pub mod state;
 pub mod storage;
 pub mod tasks;
@@ -40,3 +41,31 @@ pub static QUANTIZER: LazyLock<Mutex<CriticalSectionRawMutex, Quantizer>> =
 pub use tasks::i2c::I2C_LEADER_CHANNEL;
 pub use tasks::max::MAX_CHANNEL;
 pub use tasks::midi::APP_MIDI_CHANNEL;
+
+#[macro_export]
+macro_rules! register_external_app {
+    ($visibility:vis static $descriptor:ident = $id:literal => $app_mod:ident) => {
+        $visibility static $descriptor: $crate::registry::ExternalAppDescriptor =
+            $crate::registry::ExternalAppDescriptor::new(
+                $id,
+                $app_mod::CHANNELS,
+                || $app_mod::CONFIG.get_meta(),
+                |app_id, start_channel, layout_id, spawner, exit_signals| {
+                    let app = $crate::app::App::<{ $app_mod::CHANNELS }>::new(
+                        app_id,
+                        start_channel,
+                        layout_id,
+                        &$crate::events::EVENT_PUBSUB,
+                        $crate::I2C_LEADER_CHANNEL.sender(),
+                        $crate::MAX_CHANNEL.sender(),
+                        $crate::APP_MIDI_CHANNEL.sender(),
+                        &$crate::tasks::midi::MIDI_DIN_PUBSUB,
+                        &$crate::tasks::midi::MIDI_USB_PUBSUB,
+                    );
+                    spawner
+                        .spawn($app_mod::wrapper(app, &exit_signals[start_channel]))
+                        .unwrap();
+                },
+            );
+    };
+}

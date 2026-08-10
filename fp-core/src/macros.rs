@@ -26,6 +26,37 @@ macro_rules! register_apps {
 
         pub const REGISTERED_APP_IDS: [u8; _APP_COUNT] = [$($id),*];
 
+        pub fn set_external_apps(
+            apps: &'static [$crate::registry::ExternalAppDescriptor],
+        ) {
+            for (index, app) in apps.iter().enumerate() {
+                assert!(app.id != 0, "external app id 0 is reserved");
+                assert!(
+                    !REGISTERED_APP_IDS.contains(&app.id),
+                    "external app id collides with a built-in app"
+                );
+                assert!(
+                    (1..=16).contains(&app.channels),
+                    "external app channel count must be 1..=16"
+                );
+                assert!(
+                    !apps[..index].iter().any(|other| other.id == app.id),
+                    "duplicate external app id"
+                );
+            }
+            $crate::registry::set_external_apps(apps);
+        }
+
+        pub fn registered_app_ids() -> impl Iterator<Item = u8> {
+            REGISTERED_APP_IDS
+                .into_iter()
+                .chain($crate::registry::external_apps().iter().map(|app| app.id))
+        }
+
+        pub fn app_count() -> usize {
+            _APP_COUNT + $crate::registry::external_apps().len()
+        }
+
         pub fn spawn_app_by_id(
             app_id: u8,
             start_channel: usize,
@@ -52,7 +83,9 @@ macro_rules! register_apps {
                     },
                 )*
                 _ => {
-                    // Do nothing if app_id isn't valid
+                    if let Some(app) = $crate::registry::external_app(app_id) {
+                        app.spawn(start_channel, layout_id, spawner, exit_signals);
+                    }
                 }
             }
         }
@@ -62,7 +95,7 @@ macro_rules! register_apps {
                 $(
                     $id => Some($app_mod::CHANNELS),
                 )*
-                _ => None,
+                _ => $crate::registry::external_app(app_id).map(|app| app.channels),
             }
         }
 
@@ -73,7 +106,8 @@ macro_rules! register_apps {
                         Some((app_id, $app_mod::CHANNELS, $app_mod::CONFIG.get_meta()))
                     },
                 )*
-                _ => None
+                _ => $crate::registry::external_app(app_id)
+                    .map(|app| (app.id, app.channels, app.config())),
             }
         }
     };

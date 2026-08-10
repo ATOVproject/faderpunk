@@ -137,6 +137,28 @@ The `libfp` crate contains shared types and utilities used by both firmware and
 configurator. Changes here require regenerating bindings (see above). `libfp`
 has unit tests (`cargo test --lib -p libfp`) — run them when you touch it.
 
+### Desktop Simulator
+
+`fp-sim` is the stable UI/MIDI parent. It builds and launches `fp-sim-core` as
+a child, then watches app/core sources and swaps the child after successful
+builds without closing the panel or virtual MIDI ports.
+
+```bash
+cargo build -p fp-sim
+./target/debug/fp-sim
+./target/debug/fp-sim --headless
+
+# Build/watch a standalone app crate (see fp-sim-app-example):
+FP_SIM_APP_ID=128 ./target/debug/fp-sim --project fp-sim-app-example
+```
+
+External app crates implement the normal `CHANNELS`/`CONFIG`/`wrapper`
+contract, register descriptors with `fp_core::register_external_app!`, and
+call `fp_sim_core::run` from their single binary. See `fp-sim/README.md` for
+the full contract, host dependencies, state files, and environment variables.
+Simulator crates are excluded from `default-members`; name them explicitly in
+Cargo commands.
+
 ## Architecture
 
 ### Dual-Core Design
@@ -362,23 +384,31 @@ manually in a Chromium browser with a live device connection.
 ## File Structure Summary
 
 ```
-faderpunk/           # Main firmware crate (embedded Rust)
+faderpunk/           # Hardware-specific embedded firmware shell
 ├── src/
-│   ├── main.rs      # Core initialization, dual-core setup
-│   ├── app.rs       # App API and hardware abstractions
-│   ├── apps/        # App implementations (20+ apps)
-│   ├── tasks/       # Hardware driver tasks (Core 0)
-│   ├── events.rs    # Event definitions and PubSub
-│   ├── layout.rs    # Layout management and app spawning
-│   ├── storage.rs   # FRAM persistence layer
-│   └── macros.rs    # register_apps! macro
+│   ├── main.rs      # RP2350 initialization and dual-core startup
+│   └── tasks/       # USB, GPIO, MAX11300, FRAM, and other hardware adapters
 
-libfp/               # Shared library (no_std)
+fp-core/             # Portable no_std app/runtime core shared by firmware and sim
 ├── src/
-│   ├── lib.rs       # Core types (Layout, Config, Params)
-│   ├── types.rs     # Protocol message types
-│   ├── sysex.rs     # Config-over-SysEx codec (mirrored in configurator)
-│   └── quantizer.rs # Musical quantization
+│   ├── app.rs       # App API and hardware abstractions
+│   ├── apps/        # Built-in app implementations
+│   ├── layout.rs    # Layout reconciliation and app spawning
+│   ├── registry.rs  # External simulator app descriptors
+│   ├── storage.rs   # Portable storage/layout logic
+│   └── tasks/       # Portable clock, MIDI, config, LED, and state logic
+
+fp-sim/              # Stable desktop panel, MIDI ports, watcher, child manager
+fp-sim-core/         # Rebuildable Embassy std child with virtual hardware
+fp-sim-protocol/     # Framed postcard parent/child IPC contract
+fp-sim-app-example/  # Standalone external app crate contract example
+
+libfp/               # Shared protocol/config/utility library (no_std)
+└── src/
+    ├── lib.rs       # Core types (Layout, Config, Params)
+    ├── types.rs     # Protocol message types
+    ├── sysex.rs     # Config-over-SysEx codec (mirrored in configurator)
+    └── quantizer.rs # Musical quantization
 
 configurator/        # Web configurator (React + TypeScript)
 ├── src/

@@ -1,0 +1,34 @@
+[package]
+name = "fp-sim-core"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0"
+
+[dependencies]
+embassy-executor = { version = "0.7.0", features = [
+  "arch-std",
+  "executor-thread",
+  "task-arena-size-262144",
+  "log",
+] }
+embassy-futures = "0.1.0"
+embassy-sync = { version = "0.7.2", features = ["std"] }
+embassy-time = { version = "0.4.0", features = ["std"] }
+critical-section = { version = "1.2.0", features = ["std"] }
+env_logger = "0.11"
+heapless = "0.7.17"
+log = "0.4.29"
+max11300 = "0.5.2"
+midly = { version = "0.5.3", default-features = false }
+portable-atomic = "1.13.1"
+static_cell = "2.1.1"
+
+fp-core = { path = "../fp-core", features = ["log"] }
+fp-sim-protocol = { path = "../fp-sim-protocol" }
+libfp = { path = "../libfp" }
+
+[lints.clippy]
+large_futures = "warn"
+
+[lints.rust]
+unused_must_use = "deny"

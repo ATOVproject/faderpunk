@@ -1,249 +1,109 @@
-//! Faderpunk desktop simulator.
-//!
-//! Runs the unmodified fp-core app/clock/config stack on the embassy std
-//! executor, with virtual hardware behind the shared statics:
-//! - Panel: an egui window with the 16 channel strips (fader, button, LEDs),
-//!   scene/shift buttons, CV jack states and transport control
-//! - MIDI: two virtual port pairs mirroring the hardware's USB cables —
-//!   "Faderpunk Sim" (performance) and "Faderpunk Sim Config" (configurator)
-//! - FRAM: a file-backed image (`fp-sim-fram.bin`, override with FP_SIM_FRAM)
-//!
-//! Pass `--headless` (or set FP_SIM_HEADLESS=1) to run without the panel
-//! window; Enter then toggles the transport, q quits.
-//!
-//! Set FP_SIM_LFO=1 to force the LFO app onto channel 0 for testing.
-
-mod hw;
+mod core_process;
 mod midi;
-mod panel;
-mod storage;
+mod state;
 mod ui;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use embassy_executor::{Executor, Spawner};
-use embassy_futures::select::{select3, Either3};
-use portable_atomic::{AtomicU32, Ordering};
-use static_cell::StaticCell;
-
-use fp_core::layout::{
-    EvictionCmd, LayoutManager, FORCE_RESPAWN_SIGNAL, LAYOUT_EVICTION_REQ, LAYOUT_EVICTION_RES,
-    LAYOUT_MANAGER, LAYOUT_WATCH,
-};
-use fp_core::storage::{load_global_config, load_layout, migrate_fram, store_layout};
-use fp_core::tasks::clock::{
-    metronome, run_clock_gatekeeper, run_unified_clock_engine, TransportCmd, TRANSPORT_CMD_CHANNEL,
-};
-use fp_core::tasks::global_config::GLOBAL_CONFIG_WATCH;
-use fp_core::tasks::midi::midi_distributor;
-use fp_core::{platform, state};
-
-include!(concat!(env!("OUT_DIR"), "/firmware_version.rs"));
-
-static EXECUTOR: StaticCell<Executor> = StaticCell::new();
-
-static RNG_STATE: AtomicU32 = AtomicU32::new(0);
-
-/// xorshift32 seeded from the clock — plenty for dice rolls and random apps.
-fn rand_u16() -> u16 {
-    let mut x = RNG_STATE.load(Ordering::Relaxed);
-    while x == 0 {
-        x = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.subsec_nanos())
-            .unwrap_or(0x1234_5678)
-            | 1;
-    }
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    RNG_STATE.store(x, Ordering::Relaxed);
-    (x >> 8) as u16
-}
-
-fn sys_reset() -> ! {
-    log::info!("System reset requested — exiting (restart the simulator)");
-    std::process::exit(0)
-}
-
-fn fram_path() -> PathBuf {
-    std::env::var_os("FP_SIM_FRAM")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("fp-sim-fram.bin"))
-}
+use core_process::CoreManager;
+use midi::{MidiOutputs, MidiPorts};
+use state::PanelState;
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let options = match Options::parse() {
+        Ok(options) => options,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+    };
 
-    platform::init(platform::Platform {
-        rand_u16,
-        sys_reset,
+    let state = Arc::new(PanelState::load());
+    let outputs = MidiOutputs::create().unwrap_or_else(|error| {
+        eprintln!("Failed to create virtual MIDI outputs: {error}");
+        std::process::exit(1);
+    });
+    let manager = CoreManager::start(options.project, Arc::clone(&state), Arc::clone(&outputs));
+    let sender = manager.sender();
+    let ports = MidiPorts::open(sender.clone(), outputs).unwrap_or_else(|error| {
+        eprintln!("Failed to create virtual MIDI inputs: {error}");
+        std::process::exit(1);
     });
 
-    // Must exist before the executor starts; the input connections' callback
-    // threads feed the RX channels for the whole process lifetime.
-    let ports = midi::create_virtual_ports();
-
-    let headless = std::env::args().any(|a| a == "--headless")
-        || std::env::var_os("FP_SIM_HEADLESS").is_some();
-
-    if headless {
-        spawn_stdin_transport_control();
-        let executor = EXECUTOR.init(Executor::new());
-        executor.run(|spawner| {
-            spawner.spawn(boot(spawner, ports, true)).unwrap();
-        });
-    } else {
-        // The window toolkit must own the main thread (hard requirement on
-        // macOS), so the core runs on a background thread.
-        std::thread::Builder::new()
-            .name("fp-core".into())
-            .spawn(move || {
-                let executor = EXECUTOR.init(Executor::new());
-                executor.run(|spawner| {
-                    spawner.spawn(boot(spawner, ports, false)).unwrap();
-                });
-            })
-            .unwrap();
-
-        if let Err(err) = ui::run() {
-            log::error!("Panel UI failed: {err}");
-        }
-        // The executor thread has no shutdown path; end the process with it.
-        std::process::exit(0);
-    }
-}
-
-/// Headless stand-in for the hardware's Shift+Scene transport toggle:
-/// pressing Enter starts/stops the clock, `q` quits.
-fn spawn_stdin_transport_control() {
-    std::thread::spawn(|| {
-        let mut line = String::new();
+    if options.headless {
+        log::info!("Headless parent running; Enter toggles transport, q+Enter quits");
         loop {
-            line.clear();
+            let mut line = String::new();
             match std::io::stdin().read_line(&mut line) {
-                // Err or EOF (stdin closed/piped): stop, don't spin on Ok(0)
-                Err(_) | Ok(0) => return,
-                Ok(_) => {}
-            }
-            match line.trim() {
-                "q" | "quit" | "exit" => std::process::exit(0),
-                _ => {
-                    if TRANSPORT_CMD_CHANNEL.try_send(TransportCmd::Toggle).is_ok() {
-                        log::info!("Transport toggled (Enter to toggle again, q to quit)");
-                    }
+                Ok(0) => std::thread::sleep(std::time::Duration::from_millis(200)),
+                Ok(_) if line.trim().eq_ignore_ascii_case("q") => break,
+                Ok(_) => {
+                    sender.send(fp_sim_protocol::HostToCore::TransportToggle);
+                }
+                Err(error) => {
+                    log::warn!("Headless input failed: {error}");
+                    break;
                 }
             }
         }
-    });
-}
-
-#[embassy_executor::task]
-async fn clock_engine() {
-    run_unified_clock_engine().await
-}
-
-/// The layout spawn loop — the simulator's equivalent of the firmware's
-/// core-1 main task.
-#[embassy_executor::task]
-async fn layout_loop(spawner: Spawner) {
-    let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
-    let mut receiver = LAYOUT_WATCH.receiver().unwrap();
-    loop {
-        match select3(
-            receiver.changed(),
-            FORCE_RESPAWN_SIGNAL.wait(),
-            LAYOUT_EVICTION_REQ.wait(),
-        )
-        .await
-        {
-            Either3::First(layout) => {
-                if lm.spawn_layout(&layout).await {
-                    store_layout(&layout).await;
-                }
-            }
-            Either3::Second(_) => {
-                let layout = receiver.get().await;
-                lm.respawn_all(&layout).await;
-            }
-            Either3::Third(cmd) => {
-                match cmd {
-                    EvictionCmd::Evict(start_channel) => {
-                        lm.set_held(start_channel, true).await;
-                        lm.exit_app(start_channel).await;
-                    }
-                    EvictionCmd::Restore(start_channel, app_id, channels, layout_id) => {
-                        lm.spawn_one(start_channel, app_id, channels, layout_id)
-                            .await;
-                        lm.set_held(start_channel, false).await;
-                    }
-                }
-                LAYOUT_EVICTION_RES.signal(());
-            }
+    } else {
+        let native_options = eframe::NativeOptions {
+            viewport: eframe::egui::ViewportBuilder::default()
+                .with_title("Faderpunk Simulator")
+                .with_inner_size([1340.0, 760.0])
+                .with_min_inner_size([980.0, 620.0]),
+            ..Default::default()
+        };
+        let ui_state = Arc::clone(&state);
+        let sender = sender.clone();
+        if let Err(error) = eframe::run_native(
+            "Faderpunk Simulator",
+            native_options,
+            Box::new(move |_creation_context| {
+                Ok(Box::new(ui::FaderpunkPanel::new(ui_state, sender)))
+            }),
+        ) {
+            log::error!("Panel UI failed: {error}");
         }
     }
+
+    state.persist();
+    manager.shutdown();
+    drop(ports);
 }
 
-/// Mirrors the firmware's boot sequence in `main.rs`, minus the hardware.
-#[embassy_executor::task]
-async fn boot(spawner: Spawner, ports: midi::SimMidiPorts, headless: bool) {
-    spawner.spawn(storage::run_storage(fram_path())).unwrap();
-
-    migrate_fram().await;
-
-    let global_config = load_global_config().await;
-    GLOBAL_CONFIG_WATCH.sender().send(global_config);
-
-    state::init_state().await;
-
-    spawner.spawn(hw::run_virtual_max()).unwrap();
-    spawner.spawn(hw::run_leds()).unwrap();
-
-    spawner.spawn(panel::run_buttons()).unwrap();
-    spawner.spawn(panel::run_faders()).unwrap();
-
-    fp_core::tasks::input_handlers::start_input_handlers(&spawner).await;
-    fp_core::tasks::global_config::start_global_config(&spawner).await;
-
-    spawner.spawn(clock_engine()).unwrap();
-    spawner.spawn(run_clock_gatekeeper()).unwrap();
-    spawner.spawn(metronome()).unwrap();
-
-    spawner.spawn(midi_distributor()).unwrap();
-    spawner
-        .spawn(midi::midi_out_bridge(ports.perf_out))
-        .unwrap();
-    spawner.spawn(midi::midi_in_bridge()).unwrap();
-    spawner.spawn(midi::config_in_bridge()).unwrap();
-    spawner.spawn(midi::config_loop(ports.config_out)).unwrap();
-
-    if headless {
-        spawner.spawn(hw::dac_monitor()).unwrap();
-    }
-    spawner.spawn(layout_loop(spawner)).unwrap();
-
-    let mut layout = load_layout().await;
-
-    // PoC helper: force the LFO app (id 2) onto channel 0
-    if std::env::var_os("FP_SIM_LFO").is_some() {
-        layout.0[0] = Some((2, 1, 0));
-        log::info!("FP_SIM_LFO set: LFO app forced onto channel 0");
-    }
-
-    log::info!(
-        "Booted. {} app(s) in layout, internal BPM {}",
-        layout.count(),
-        get_bpm()
-    );
-    if headless {
-        log::info!("Press Enter to start/stop the clock transport, q+Enter to quit");
-    }
-
-    LAYOUT_WATCH.sender().send(layout);
+struct Options {
+    project: Option<PathBuf>,
+    headless: bool,
 }
 
-fn get_bpm() -> f32 {
-    fp_core::tasks::global_config::get_global_config()
-        .clock
-        .internal_bpm
+impl Options {
+    fn parse() -> Result<Self, String> {
+        let mut project = None;
+        let mut headless = std::env::var_os("FP_SIM_HEADLESS").is_some();
+        let mut arguments = std::env::args_os().skip(1);
+        while let Some(argument) = arguments.next() {
+            match argument.to_str() {
+                Some("--project") => {
+                    let value = arguments
+                        .next()
+                        .ok_or_else(|| "--project requires a path".to_owned())?;
+                    project = Some(PathBuf::from(value));
+                }
+                Some("--headless") => headless = true,
+                Some("--help" | "-h") => {
+                    println!(
+                        "fp-sim [--project PATH] [--headless]\n\n\
+                         --project PATH  external app crate (exactly one binary)\n\
+                         --headless      run parent, MIDI, watcher, and child without the panel"
+                    );
+                    std::process::exit(0);
+                }
+                _ => return Err(format!("unknown argument: {}", argument.to_string_lossy())),
+            }
+        }
+        Ok(Self { project, headless })
+    }
 }

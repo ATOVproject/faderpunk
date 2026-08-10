@@ -5,30 +5,18 @@ edition = "2021"
 license = "GPL-3.0"
 
 [dependencies]
-embassy-executor = { version = "0.7.0", features = [
-  "arch-std",
-  "executor-thread",
-  "task-arena-size-262144",
-  "log",
-] }
-embassy-futures = { version = "0.1.0" }
-embassy-sync = { version = "0.7.2", features = ["std"] }
-embassy-time = { version = "0.4.0", features = ["std"] }
-
-critical-section = { version = "1.2.0", features = ["std"] }
+eframe = "0.35.0"
 env_logger = "0.11"
-# NOTE: Older version needed by postcard
-heapless = "0.7.17"
 log = "0.4.29"
 midir = "0.10"
-midly = { version = "0.5.3", default-features = false }
-portable-atomic = "1.13.1"
-static_cell = "2.1.1"
+notify = "8.2"
+parking_lot = "0.12"
+postcard = { version = "1.1.3", features = ["use-std"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0"
 
-fp-core = { path = "../fp-core", features = ["log"] }
+fp-sim-protocol = { path = "../fp-sim-protocol" }
 libfp = { path = "../libfp" }
-max11300 = "0.5.2"
-eframe = "0.35.0"
 
 [lints.clippy]
 large_futures = "warn"
