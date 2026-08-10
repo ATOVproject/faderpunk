@@ -19,6 +19,7 @@ mod version {
     include!(concat!(env!("OUT_DIR"), "/version.rs"));
 }
 
+use defmt_rtt as _;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::clocks::{ClockConfig, CoreVoltage};
 use embassy_rp::config::Config;
@@ -39,7 +40,20 @@ use fm24v10::{Address, Fm24v10};
 use libfp::quantizer::Quantizer;
 use libfp::I2cMode;
 use static_cell::StaticCell;
-use {defmt_rtt as _, panic_probe as _};
+
+/// Records the panic site for `tasks::panic_beacon` before halting this core.
+/// Replaces `panic-probe` so a Core-1 death is still observable over MIDI when
+/// no debug probe is attached.
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    if let Some(loc) = info.location() {
+        defmt::error!("panic at {}:{}", loc.file(), loc.line());
+        crate::tasks::panic_beacon::record(loc.file(), loc.line());
+    }
+    loop {
+        cortex_m::asm::wfe();
+    }
+}
 
 use crate::storage::{factory_reset, store_layout};
 
@@ -254,6 +268,8 @@ async fn main(spawner: Spawner) {
     tasks::clock::start_clock(&spawner, aux_inputs).await;
 
     tasks::global_config::start_global_config(&spawner).await;
+
+    tasks::panic_beacon::start_panic_beacon(&spawner).await;
 
     spawn_core1(
         p.CORE1,
