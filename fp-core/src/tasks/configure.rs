@@ -22,7 +22,7 @@ use libfp::{
 };
 use max11300::config::{ConfigMode0, ConfigMode3, ConfigMode5, Mode, Port, DACRANGE};
 
-use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
+use crate::apps::{app_count, get_channels, get_config, registered_app_ids};
 use crate::layout::{EvictionCmd, LAYOUT_EVICTION_REQ, LAYOUT_EVICTION_RES, LAYOUT_WATCH};
 use crate::storage::factory_reset;
 use crate::tasks::global_config::{get_global_config, GLOBAL_CONFIG_WATCH};
@@ -109,17 +109,18 @@ pub async fn start_config_loop<S: ConfigSink>(sink: S, firmware_version: (u8, u8
                     .await
             }
             ConfigMsgIn::GetAllApps => {
-                let configs = REGISTERED_APP_IDS.map(get_config);
                 let mut res = proto
-                    .send_msg(ConfigMsgOut::BatchMsgStart(configs.len()))
+                    .send_msg(ConfigMsgOut::BatchMsgStart(app_count()))
                     .await;
-                for (app_id, channels, config_meta) in configs.into_iter().flatten() {
+                for app_id in registered_app_ids() {
                     if res.is_err() {
                         break;
                     }
-                    res = proto
-                        .send_msg(ConfigMsgOut::AppConfig(app_id, channels, config_meta))
-                        .await;
+                    if let Some((app_id, channels, config_meta)) = get_config(app_id) {
+                        res = proto
+                            .send_msg(ConfigMsgOut::AppConfig(app_id, channels, config_meta))
+                            .await;
+                    }
                 }
                 if res.is_ok() {
                     res = proto.send_msg(ConfigMsgOut::BatchMsgEnd).await;

@@ -1,8 +1,8 @@
 # Faderpunk Desktop Simulator — Status & Roadmap
 
-Status audited and locally rebased 2026-08-08 on branch
-`feat/desktop-sim-panel`, onto `origin/main` at `6a9ed793`. The three rewritten
-simulator commits are GPG-signed, have not been pushed, and there is no PR.
+Status updated 2026-08-08 on branch `feat/desktop-sim-panel`, rebased onto
+`origin/main` at `6a9ed793`. Phase 2 is implemented in the current uncommitted
+worktree; the four pre-Phase-2 commits are GPG-signed and have not been pushed.
 Original feasibility assessment: `~/.claude-cli/plans/i-want-to-gauge-eager-bee.md`.
 
 ## The grand plan
@@ -74,78 +74,85 @@ Gotchas already learned (don't relearn):
 
 ## Validation audit — 2026-08-08
 
-Validated after rebasing onto current `main`:
+Validated after the current-main rebase:
 
 - Upstream app, clock, fader/deadzone, MIDI, calibration, storage, and runtime
   state changes were ported into the extracted architecture.
-- The V/Oct configurator flow now uses a portable frequency-measurement backend:
-  firmware delegates to the AUX-pin measurement task; the simulator reports a
-  calibration error rather than pretending to measure unavailable hardware.
-- Both firmware and simulator layout loops service scoped V/Oct app
-  eviction/restoration.
-- `cargo fmt --all -- --check` passed.
-- Firmware clippy for `thumbv8m.main-none-eabihf`, libfp clippy, and fp-core
-  clippy passed with warnings denied.
-- All 105 libfp unit tests passed.
-- `fp-sim` clippy and build passed after supplying ALSA through a temporary Nix
-  shell.
-- Headless mode booted with both virtual MIDI port pairs and file-backed FRAM;
-  a fresh image ran the clock at 48 ticks/s.
-- The panel reached the egui/WGPU event loop after supplying Wayland,
-  libxkbcommon, Vulkan, and OpenGL runtime libraries.
+- The portable V/Oct flow delegates frequency measurement to hardware and
+  reports unavailable measurement in the simulator.
+- Firmware and simulator layout loops service scoped app eviction/restoration.
+- Firmware, `libfp`, `fp-core`, and the original simulator passed their
+  applicable format, clippy, unit-test, build, and headless boot gates.
+- Fresh simulator FRAM ran the internal clock at 48 ticks/s.
+- The panel reached the egui/WGPU event loop with the required Linux runtime
+  libraries.
 
-Not revalidated after the rebase: the configurator handshake, captured MIDI
-clock/app output, or real hardware.
+Validated for Phase 2:
 
-Current product boundary: this is an in-repository simulator that requires a
-Rust toolchain. There is no child process, source watcher, rebuild-on-save loop,
-bundled toolchain, packaged desktop application, or VCV module yet.
+- `fp-sim-protocol` framing tests cover sequential messages, clean EOF,
+  truncated prefixes, and the allocation limit.
+- `fp-sim`, `fp-sim-core`, and `fp-sim-protocol` build and pass clippy with
+  warnings denied.
+- The host launches the child, receives `Ready`/state frames, and replays
+  physical fader/button/ADC state.
+- Touching an in-tree core source rebuilt and booted exactly one replacement
+  child. ALSA client/port IDs before and after were identical.
+- The standalone `fp-sim-app-example` contract builds and runs app id 128.
+  Touching its source rebuilt only the external binary and booted exactly one
+  replacement child.
+- A deliberate external-app compiler error was rendered and surfaced in status;
+  the original child PID stayed alive with no extra boot. Restoring valid code
+  produced exactly one successful replacement boot.
+- Parent-state tests cover fader persistence across launches and complete
+  physical-input replay after child replacement.
+- `devenv.nix` now supplies ALSA, Wayland, libxkbcommon, Vulkan, and OpenGL
+  host dependencies on Linux. The panel booted through WGPU, received child
+  `Ready` v1.12.0, and replayed panel state using that environment.
+- CI now lints/tests the three simulator crates and checks the standalone
+  external app project.
+- Full firmware, `libfp`, `fp-core`, simulator, and external-example format,
+  clippy, and applicable unit-test gates passed; `actionlint` accepted the CI
+  workflow.
+
+Still not revalidated after the rebase: the full Chromium configurator
+handshake, captured performance MIDI output, or real hardware.
+
+Current product boundary: the complete in-repository developer loop exists,
+but it still requires a host Rust toolchain and platform libraries. No bundled
+toolchain, packaged desktop application, or VCV module exists yet.
 
 ## Next steps
 
-**Immediate (before new simulator features):**
-1. Review the three signed rewritten commits and the remaining uncommitted
-   reconciliation changes, then update the remote branch with force-with-lease.
-2. Add Linux host dependencies to the development environment and a host
-   build/clippy CI job for `fp-sim`.
-3. Repeat the simulator MIDI/configurator checks and smoke-test real hardware
-   (boot, apps, configurator, clock, FRAM migration).
-4. Add an fp-core/fp-sim section to AGENTS.md. Keep fp-core out of release
-   management unless it becomes independently published; decide how fp-sim is
-   versioned when packaging produces a distributable artifact.
-5. User review of the integrated branch, then PR per repository workflow.
+**Immediate integration and validation:**
 
-**Phase 2 — Simulator app (panel UI + dev loop):**
+1. Review the Phase 2 worktree, then commit and push only after explicit user
+   approval.
+2. Repeat the configurator handshake and performance MIDI capture against the
+   parent/child host.
+3. Smoke-test real hardware after the `fp-core` registry/config enumeration
+   change.
+4. Decide simulator version/release ownership before packaging; keep `fp-core`
+   and protocol internals out of Knope unless independently published.
 
-*Done (this branch):*
-- egui panel (`fp-sim/src/ui.rs`, eframe 0.35): 16 channel strips (top/bottom
-  LEDs, fader, lit button, jack cell), SCENE/SHIFT, aux jacks, transport bar.
-  Keyboard: Shift=SHIFT, Ctrl/Cmd=SCENE, Space=transport. `--headless` /
-  `FP_SIM_HEADLESS` keeps the phase-1 mode.
-- `fp-sim/src/panel.rs`: firmware-faithful input semantics — button
-  long-press/scene-hold/SHIFT+SCENE from `tasks/buttons.rs` (minus GPIO
-  debounce) and the `AnalogLatch` fader layers from `read_fader` (global
-  settings via SCENE-hold work, incl. takeover). UI↔core boundary is only
-  thread-safe statics (`SIM_FADER_POS`, `set_button`, `LED_FRAME`, MAX
-  atomics) — deliberately narrow so the process split later is a transport
-  swap. Executor runs on a background thread; UI owns main (macOS rule).
-- Virtual MAX now tracks port modes + DAC/ADC ranges + `Gpo*` gate states;
-  jack cells render per mode, ADC inputs are drag-editable in the UI.
-- LED frame published with brightness applied (`hw::LED_FRAME`).
-- Firmware version mirrored from `faderpunk/Cargo.toml` via `fp-sim/build.rs`
-  (prerelease suffixes tolerated).
-- fp-core: new `CLOCK_RUNNING` atomic mirrored by the clock gatekeeper (UI
-  transport indicator; useful for VCV later).
+**Phase 2 — Simulator app (IMPLEMENTED in worktree):**
 
-*Remaining in phase 2:*
-- Parent/child process split: UI parent owns state + file watching, headless
-  core as child; IPC decided: length-prefixed postcard frames over
-  stdin/stdout (logs on stderr); `cargo watch`-style rebuild of the child on
-  app-source change. Split fp-sim into `fp-sim` (UI parent) + `fp-sim-core`
-  (child) when this lands.
-- Nice-to-haves surfaced while building: persist panel fader positions
-  across restarts (parent-side state), current-scene indicator in the
-  transport bar.
+- Stable `fp-sim` parent owns egui, physical panel state, persisted faders, and
+  both virtual MIDI port pairs.
+- Rebuildable `fp-sim-core` child owns Embassy, portable firmware logic, virtual
+  MAX/LED/input tasks, and file-backed FRAM.
+- `fp-sim-protocol` carries length-prefixed postcard frames on child
+  stdin/stdout; logs stay on stderr.
+- Successful source builds replace the child; failed builds leave the previous
+  child running and surface the error in the UI.
+- Child startup, EOF, shutdown, unexpected exit, and restart paths are handled.
+- Parent replays faders, held buttons, and ADC values after every `Ready`.
+- The transport bar displays child version, build status, BPM, swing,
+  transport, and current scene.
+- `fp_core::register_external_app!`, runtime descriptors, and
+  `fp-sim-app-example` define the standalone app-project contract.
+- `--project PATH` watches the user's crate and lets Cargo recompile the app
+  binary while dependencies remain cached.
+- `fp-sim/README.md` and `AGENTS.md` document the run path and architecture.
 
 **Phase 3 — Packaging (Arduino model):**
 - Bundle pinned toolchain + prebuilt target dir into the app; private
@@ -157,19 +164,20 @@ bundled toolchain, packaged desktop application, or VCV module yet.
   in `process()`; single instance per patch (global statics) for v1;
   macOS/Linux first.
 
-**Deferred/optional:** hosted browser sim (wasm — fp-core is already
-target-clean), wasm hot-reload app plugins, out-of-tree app SDK, Windows
-(loopMIDI; no user-space virtual ports).
+**Deferred/optional:** hosted browser sim (fp-core is target-clean), WASM
+hot-reload plugins, and Windows virtual-MIDI support (loopMIDI).
 
-## Phase 2 decisions (settled 2026-07-17)
+## Phase 2 decisions (implemented 2026-08-08)
 
-- **In-process first**: the panel UI ships inside fp-sim; the parent/child
-  split happens later in phase 2 when the rebuild-on-save loop is built.
-- **IPC when split**: length-prefixed postcard frames over the child's
-  stdin/stdout, logs on stderr. State ownership: fader/panel state in the
-  parent, FRAM in the child.
-- **Crate split** (`fp-sim` UI parent + `fp-sim-core` headless child)
-  deferred to the split itself.
-- **Fader layers**: solved without extracting `read_fader` —
-  `libfp::latch::AnalogLatch` is already portable; `fp-sim/src/panel.rs`
-  re-implements the thin sweep loop over UI slider positions.
+- **Process boundary**: `fp-sim` is the stable UI/MIDI/watch parent;
+  `fp-sim-core` is the replaceable firmware core child.
+- **IPC**: length-prefixed postcard frames over stdin/stdout; child logs on
+  stderr. Parent owns physical panel and MIDI state; child owns FRAM/runtime
+  state.
+- **Rebuild policy**: build before stopping the current child. Swap only after
+  a successful build, then replay all physical inputs after `Ready`.
+- **External app boundary**: one binary calls `fp_sim_core::run` with static
+  descriptors produced by `register_external_app!`; IDs 128–255 are the
+  recommended user range.
+- **Fader layers**: `libfp::latch::AnalogLatch` stays shared; the child panel
+  task retains the hardware-faithful sweep over parent-supplied positions.

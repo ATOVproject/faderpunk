@@ -2,6 +2,7 @@
 /faderpunk/target
 /gen-bindings/target
 /libfp/target
+/fp-sim-app-example/target
 /target
 
 # devenv

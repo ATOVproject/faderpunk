@@ -9,6 +9,11 @@ use crate::tasks::leds::{clear_led_overlay, set_led_overlay_mode, LedMode};
 
 static LAST_SCENE: AtomicU8 = AtomicU8::new(u8::MAX);
 
+pub fn current_scene() -> Option<u8> {
+    let scene = LAST_SCENE.load(Ordering::Relaxed);
+    (scene < NUM_CHANNELS as u8).then_some(scene)
+}
+
 const SCALE_LED_FIRST_CHANNEL: usize = 3;
 const SCALE_LED_LAST_CHANNEL: usize = SCALE_LED_FIRST_CHANNEL + SCALE_LED_COUNT;
 const SCALE_LED_COUNT: usize = 12;

@@ -31,6 +31,23 @@ jobs:
           cargo clippy -p libfp -- -D warnings
       - name: Run tests on libfp
         run: cargo test --lib -p libfp
+  check-simulator:
+    name: Build and test desktop simulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install simulator dependencies
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: clippy
+      - name: Lint simulator
+        run: cargo clippy -p fp-sim-protocol -p fp-sim-core -p fp-sim --all-targets -- -D warnings
+      - name: Test simulator
+        run: cargo test -p fp-sim-protocol -p fp-sim
+      - name: Check external app contract
+        run: cargo clippy --manifest-path fp-sim-app-example/Cargo.toml -- -D warnings
   check-configurator:
     name: Generate bindings and build configurator
     runs-on: ubuntu-latest

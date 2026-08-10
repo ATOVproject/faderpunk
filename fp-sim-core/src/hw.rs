@@ -45,22 +45,6 @@ pub static GATE_STATES: [AtomicBool; 20] = [const { AtomicBool::new(false) }; 20
 /// Written by [`run_leds`] at the hardware refresh rate, read by the UI.
 pub static LED_FRAME: [AtomicU32; NUM_LEDS] = [const { AtomicU32::new(0) }; NUM_LEDS];
 
-pub fn port_mode(port: usize) -> PortMode {
-    match PORT_MODES[port].load(Ordering::Relaxed) {
-        3 => PortMode::GateOut,
-        5 => PortMode::CvOut,
-        7 => PortMode::CvIn,
-        _ => PortMode::Unconfigured,
-    }
-}
-
-pub fn port_range(port: usize) -> PortRange {
-    match PORT_RANGES[port].load(Ordering::Relaxed) {
-        1 => PortRange::Bipolar,
-        _ => PortRange::Unipolar,
-    }
-}
-
 /// Consumes MAX11300 commands and mirrors their effect into the shared
 /// state above. DAC/ADC values already flow through `MAX_VALUES_DAC/ADC`.
 #[embassy_executor::task]
