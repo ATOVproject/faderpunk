@@ -709,6 +709,28 @@ impl<P: AppParams> ParamStore<P> {
         accessor(&*guard)
     }
 
+    /// Change a param from inside the app, persist it, and tell the host.
+    ///
+    /// Params normally travel host→device. An app that lets the user pick a
+    /// value on the hardware has to close the loop itself, otherwise the
+    /// configurator keeps showing the old value until the app restarts.
+    #[allow(dead_code)]
+    pub async fn update<F>(&self, modifier: F)
+    where
+        F: FnOnce(&mut P),
+    {
+        {
+            let mut inner = self.inner.borrow_mut();
+            modifier(&mut inner);
+        }
+        self.save().await;
+        let values = {
+            let guard = self.inner.borrow();
+            guard.to_values()
+        };
+        let _ = crate::tasks::configure::APP_PARAM_PUSH_CHANNEL.try_send((self.layout_id, values));
+    }
+
     pub async fn param_handler(&self) {
         APP_PARAM_SIGNALS[self.layout_id as usize].reset();
         loop {
