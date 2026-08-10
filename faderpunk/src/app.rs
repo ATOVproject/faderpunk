@@ -440,6 +440,63 @@ impl MidiOutput {
         self.send_midi_msg(msg).await;
     }
 
+    /// Non-blocking, non-async NoteOn — drops the note if the app MIDI queue
+    /// is full.
+    ///
+    /// [`Self::send_note_on`] awaits queue space, which parks the caller on
+    /// Core 1 and backs pressure up into USB TX. Voice engines that decide
+    /// notes inside a tight clock step want the opposite trade: lose one note
+    /// rather than delay every later one. Being sync also lets them fire from
+    /// closures where `.await` is not available.
+    #[allow(dead_code)]
+    pub fn try_send_note_on(&self, note_number: MidiNote, velocity: u16) {
+        let event = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::NoteOn {
+                key: note_number.into(),
+                vel: scale_bits_12_7(velocity),
+            },
+        };
+        let msg = MidiMsg::new(event, self.midi_out, MidiEventSource::Local);
+        let _ = self.midi_sender.try_send((self.start_channel, msg));
+    }
+
+    /// Non-blocking, non-async NoteOff — see [`Self::try_send_note_on`].
+    ///
+    /// Pair it with `try_send_note_on`: an engine that can drop a NoteOn must
+    /// be able to drop the matching NoteOff without stalling.
+    #[allow(dead_code)]
+    pub fn try_send_note_off(&self, note_number: MidiNote) {
+        let event = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::NoteOff {
+                key: note_number.into(),
+                vel: 0.into(),
+            },
+        };
+        let msg = MidiMsg::new(event, self.midi_out, MidiEventSource::Local);
+        let _ = self.midi_sender.try_send((self.start_channel, msg));
+    }
+
+    /// Non-blocking, non-async CC — same payload as [`Self::send_cc`], usable
+    /// from sync code.
+    #[allow(dead_code)]
+    pub fn try_send_cc(&self, cc: MidiCc, value: u16) {
+        let msg = if self.nrpn_mode {
+            MidiMsg::nrpn(self.midi_channel, cc.as_u16(), value, self.midi_out)
+        } else {
+            let event = LiveEvent::Midi {
+                channel: self.midi_channel,
+                message: MidiMessage::Controller {
+                    controller: cc.into(),
+                    value: scale_bits_12_7(value),
+                },
+            };
+            MidiMsg::new(event, self.midi_out, MidiEventSource::Local)
+        };
+        let _ = self.midi_sender.try_send((self.start_channel, msg));
+    }
+
     /// Sends a MIDI Aftertouch message.
     /// velocity is normalized to a range of 0-4095
     #[allow(dead_code)]
