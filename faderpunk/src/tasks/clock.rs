@@ -275,10 +275,11 @@ async fn send_analog_ticks(spawner: &Spawner, config: &GlobalConfig, counters: &
         }
     }
     if !ports.is_empty() {
-        MAX_CHANNEL
+        // try_send for the same reason: a full MAX queue must not stall the
+        // clock gatekeeper. A dropped analog tick is better than a dead clock.
+        let _ = MAX_CHANNEL
             .sender()
-            .send(MaxCmd::GpoSetHighMany(ports.clone()))
-            .await;
+            .try_send(MaxCmd::GpoSetHighMany(ports.clone()));
         spawner.spawn(analog_tick_release(ports, 5)).ok();
     }
 }
@@ -291,10 +292,11 @@ async fn send_analog_reset(spawner: &Spawner, config: &GlobalConfig) {
         }
     }
     if !ports.is_empty() {
-        MAX_CHANNEL
+        // try_send for the same reason: a full MAX queue must not stall the
+        // clock gatekeeper. A dropped analog tick is better than a dead clock.
+        let _ = MAX_CHANNEL
             .sender()
-            .send(MaxCmd::GpoSetHighMany(ports.clone()))
-            .await;
+            .try_send(MaxCmd::GpoSetHighMany(ports.clone()));
         spawner.spawn(analog_tick_release(ports, 10)).ok();
     }
 }
@@ -302,10 +304,7 @@ async fn send_analog_reset(spawner: &Spawner, config: &GlobalConfig) {
 #[embassy_executor::task(pool_size = 4)]
 async fn analog_tick_release(ports: heapless::Vec<Port, 4>, trigger_len: u64) {
     Timer::after_millis(trigger_len).await;
-    MAX_CHANNEL
-        .sender()
-        .send(MaxCmd::GpoSetLowMany(ports))
-        .await;
+    let _ = MAX_CHANNEL.sender().try_send(MaxCmd::GpoSetLowMany(ports));
 }
 
 #[embassy_executor::task]
@@ -400,9 +399,12 @@ async fn run_clock_gatekeeper() {
                             || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
                         {
                             tick_counter = tick_counter.wrapping_add(1);
-                            clock_publisher
-                                .publish(ClockEvent::Tick(tick_counter))
-                                .await;
+                            // Never await on the tick path: a subscriber that
+                            // sleeps while holding its slot fills the queue,
+                            // and a blocked gatekeeper stops the whole device
+                            // clock. Overwriting the oldest tick only costs a
+                            // lagged subscriber a beat.
+                            clock_publisher.publish_immediate(ClockEvent::Tick(tick_counter));
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
                         }
                     }
