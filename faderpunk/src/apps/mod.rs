@@ -1,3 +1,12 @@
+// Shared helpers for the genre-based apps (Grooves, Chord Vamp, Bassment).
+// Those apps land in their own PRs, so nothing references these yet.
+#[allow(dead_code)]
+mod genre_palette;
+#[allow(dead_code)]
+mod groove;
+#[allow(dead_code)]
+mod led_fx;
+
 register_apps!(
     1 => control,
     2 => lfo,
