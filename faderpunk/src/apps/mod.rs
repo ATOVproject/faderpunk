@@ -26,5 +26,5 @@ register_apps!(
     25 => automator,
     26 => genseq,
     27 => bernoulli,
-    31 => super_lfo,
+    32 => super_lfo,
 );
