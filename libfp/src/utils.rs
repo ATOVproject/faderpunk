@@ -2,7 +2,7 @@ use embassy_time::Duration;
 use libm::expf;
 use midly::num::u7;
 
-use crate::Curve;
+use crate::{Brightness, Curve};
 
 pub const fn bpm_to_clock_duration(bpm: f32, ppqn: u8) -> Duration {
     Duration::from_nanos((1_000_000_000.0 / (bpm as f64 / 60.0 * ppqn as f64)) as u64)
@@ -60,6 +60,61 @@ pub fn split_unsigned_value(input: u16) -> [u8; 2] {
         let pos = ((clamped - 2047) / 8).clamp(0, 255) as u8;
         [pos, 0]
     }
+}
+
+/// Clock divisions in 24 PPQN ticks per cycle, slowest first.
+///
+/// Apps expose a prefix of this table: nine entries stop at a 6-tick cycle
+/// (quarter note), twelve reach 2 ticks, thirteen reach a single tick.
+pub const CLOCK_DIVISIONS: [u32; 13] = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2, 1];
+
+/// Pick a clock division for a 12-bit fader, spread evenly over the first
+/// `count` entries of [`CLOCK_DIVISIONS`].
+pub fn division_at(fader: u16, count: usize) -> u32 {
+    let count = count.clamp(1, CLOCK_DIVISIONS.len());
+    let idx = (fader.min(4095) as usize * count / 4096).min(count - 1);
+    CLOCK_DIVISIONS[idx]
+}
+
+/// Free-running LFO phase increment per millisecond, in 1/4096 of a cycle.
+///
+/// `speed` is a raw 12-bit fader; the exponential curve keeps the slow end
+/// usable while still reaching audible rates at the top.
+pub fn lfo_step(speed: u16) -> f32 {
+    lfo_step_modulated(speed, 2047)
+}
+
+/// [`lfo_step`] with a bipolar 12-bit modulation input (2047 = no change).
+pub fn lfo_step_modulated(speed: u16, cv: u16) -> f32 {
+    (Curve::Exponential.at(speed) as f32 + cv as f32 - 2047.0) * 0.015 + 0.0682
+}
+
+/// Clock-synced phase increment per millisecond, in 1/4096 of a cycle.
+///
+/// `ms_per_tick` is the measured wall-clock gap between PPQN ticks, so the
+/// wave spans exactly `division` ticks at the incoming tempo.
+pub fn quant_step(ms_per_tick: u32, division: u32) -> f32 {
+    4096. / (ms_per_tick.max(1) as f32 * division.max(1) as f32)
+}
+
+/// Button brightness that tracks a live signal level.
+///
+/// Floors at [`Brightness::Low`] so a trough or a zero crossing never looks
+/// like an off (muted) button, then compresses the remaining headroom into
+/// that floor..255. `bipolar` meters the distance from mid-scale instead of
+/// the absolute level.
+pub fn signal_brightness(value: u16, bipolar: bool) -> Brightness {
+    const MIN: u8 = 110; // Brightness::Low
+
+    // Clamped, not cast: a bipolar 4095 divides to 256 and would wrap to a
+    // dark button at the very peak of the wave.
+    let raw = if bipolar {
+        ((value.min(4095) as i32 - 2047).unsigned_abs() / 8).min(255) as u8
+    } else {
+        (value.min(4095) / 16) as u8
+    };
+    let span = 255u16 - MIN as u16;
+    Brightness::Custom(MIN + ((raw as u16 * span) / 255) as u8)
 }
 
 /// Split -2047 2047 value to two 0-255 u8 used for LEDs
@@ -364,6 +419,82 @@ pub fn interp_loop_sample(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clock_divisions_are_strictly_faster() {
+        for pair in CLOCK_DIVISIONS.windows(2) {
+            assert!(pair[0] > pair[1], "{pair:?} is not descending");
+        }
+    }
+
+    #[test]
+    fn division_at_spans_the_requested_prefix() {
+        // Bottom of the fader = slowest entry, top = last entry of the prefix.
+        assert_eq!(division_at(0, 9), 384);
+        assert_eq!(division_at(4095, 9), 6);
+        assert_eq!(division_at(4095, 13), 1);
+        // Out-of-range counts must not panic or index past the table.
+        assert_eq!(division_at(4095, 0), 384);
+        assert_eq!(division_at(4095, 99), 1);
+    }
+
+    #[test]
+    fn division_at_never_speeds_up_as_the_fader_falls() {
+        let mut prev = u32::MAX;
+        for fader in (0..=4095).step_by(16) {
+            let div = division_at(fader, 12);
+            assert!(div <= prev, "fader {fader} went slower: {div} > {prev}");
+            prev = div;
+        }
+    }
+
+    #[test]
+    fn lfo_step_rises_with_the_fader() {
+        let slow = lfo_step(0);
+        let fast = lfo_step(4095);
+        assert!(slow > 0.0, "a parked LFO would never advance");
+        assert!(fast > slow);
+        // Mid CV is the documented no-op for the modulated variant.
+        assert_eq!(lfo_step_modulated(2000, 2047), lfo_step(2000));
+    }
+
+    #[test]
+    fn quant_step_covers_one_cycle_over_the_division() {
+        // 24 ticks at 20 ms each = 480 ms per cycle → 4096/480 per ms.
+        let step = quant_step(20, 24);
+        assert!((step * 480.0 - 4096.0).abs() < 0.01);
+        // Degenerate inputs must not divide by zero.
+        assert!(quant_step(0, 0).is_finite());
+    }
+
+    fn brightness_u8(value: u16, bipolar: bool) -> u8 {
+        u8::from(signal_brightness(value, bipolar))
+    }
+
+    #[test]
+    fn signal_brightness_never_falls_below_low() {
+        // A bipolar zero crossing and a unipolar zero must still be visible.
+        assert_eq!(brightness_u8(2047, true), u8::from(Brightness::Low));
+        assert_eq!(brightness_u8(0, false), u8::from(Brightness::Low));
+    }
+
+    #[test]
+    fn signal_brightness_reaches_full_at_the_rails() {
+        assert_eq!(brightness_u8(4095, false), 255);
+        assert_eq!(brightness_u8(4095, true), 255);
+        // Bipolar meters distance from mid-scale, so both rails read full.
+        assert_eq!(brightness_u8(0, true), 255);
+    }
+
+    #[test]
+    fn signal_brightness_rises_monotonically() {
+        let mut prev = 0u8;
+        for level in (0..=4095).step_by(64) {
+            let b = brightness_u8(level, false);
+            assert!(b >= prev, "level {level} dipped: {b} < {prev}");
+            prev = b;
+        }
+    }
 
     #[test]
     fn slew_state_from_u16_round_trips_through_value() {
