@@ -448,6 +448,12 @@ impl MidiOutput {
     /// notes inside a tight clock step want the opposite trade: lose one note
     /// rather than delay every later one. Being sync also lets them fire from
     /// closures where `.await` is not available.
+    ///
+    /// There is deliberately no `try_send_note_off` counterpart: a dropped
+    /// NoteOn is silence, but a dropped NoteOff is a note that hangs until
+    /// something else happens to end it, and `APP_MIDI_CHANNEL` is shared by
+    /// all 16 channels, so a busy neighbour can cause the drop. Send the
+    /// matching NoteOff with [`Self::send_note_off`] from an async voice task.
     #[allow(dead_code)]
     pub fn try_send_note_on(&self, note_number: MidiNote, velocity: u16) {
         let event = LiveEvent::Midi {
@@ -455,23 +461,6 @@ impl MidiOutput {
             message: MidiMessage::NoteOn {
                 key: note_number.into(),
                 vel: scale_bits_12_7(velocity),
-            },
-        };
-        let msg = MidiMsg::new(event, self.midi_out, MidiEventSource::Local);
-        let _ = self.midi_sender.try_send((self.start_channel, msg));
-    }
-
-    /// Non-blocking, non-async NoteOff — see [`Self::try_send_note_on`].
-    ///
-    /// Pair it with `try_send_note_on`: an engine that can drop a NoteOn must
-    /// be able to drop the matching NoteOff without stalling.
-    #[allow(dead_code)]
-    pub fn try_send_note_off(&self, note_number: MidiNote) {
-        let event = LiveEvent::Midi {
-            channel: self.midi_channel,
-            message: MidiMessage::NoteOff {
-                key: note_number.into(),
-                vel: 0.into(),
             },
         };
         let msg = MidiMsg::new(event, self.midi_out, MidiEventSource::Local);
