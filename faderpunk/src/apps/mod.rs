@@ -1,3 +1,6 @@
+mod coltrane_geo;
+mod follow_key;
+
 register_apps!(
     1 => control,
     2 => lfo,
@@ -26,4 +29,6 @@ register_apps!(
     25 => automator,
     26 => genseq,
     27 => bernoulli,
+    44 => giant_steps,
+    45 => axis_matrix,
 );

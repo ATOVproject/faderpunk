@@ -1,0 +1,90 @@
+{
+  "id": 44,
+  "slug": "giant-steps",
+  "name": "Giant Steps",
+  "status": "wip",
+  "tag": "draft",
+  "description": "Clock-driven chord sequencer over Coltrane tonal center geometry",
+  "color": "Blue",
+  "icon": "NoteGrid",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "MIDI Out",
+    "MIDI Channel",
+    "Root",
+    "Division",
+    "Interval",
+    "Voicing",
+    "Direction",
+    "Velocity",
+    "Color",
+    "Jack",
+    "Range",
+    "V/Oct",
+    "CV Att",
+    "Follow device tonic",
+    "Follow device scale"
+  ],
+  "storage": [
+    "Density",
+    "Muted"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> \u2014 approach density: bottom = centers only (3 chords), middle = V-I (6), top = full ii-V-I (9)",
+            "<strong>Alt</strong> (Shift) \u2014 reserved",
+            "<strong>Third</strong> (Btn hold) \u2014 live velocity override"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Short tap</strong> \u2014 reset cycle to step 0",
+            "<strong>Hold</strong> \u2014 toggle reverse direction"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Signal / LEDs",
+          "items": [
+            "Three tonal center hues: blue, green, orange \u2014 LED shows the current center",
+            "CV Out tracks root pitch of the current step",
+            "CV In Density modulates approach depth; CV In Reset triggers cycle reset on rising edge",
+            "Button ducks briefly on each chord trigger"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "CV Out / In",
+      "jackDescription": "CV Out sends the root pitch of the current cycle step. CV In Density modulates the approach depth; CV In Reset triggers a cycle reset on rising edge.",
+      "faderTitle": "Density",
+      "faderDescription": "Approach depth: bottom = centers only (3 chords), middle = V-I (6), top = full ii-V-I (9 chords).",
+      "faderPlusShiftTitle": "Reserved",
+      "faderPlusShiftDescription": "Reserved for future use.",
+      "faderPlusFnTitle": "Velocity",
+      "faderPlusFnDescription": "Live velocity override for all chord voices.",
+      "fnTitle": "Reset",
+      "fnDescription": "Short tap resets the cycle to step 0.",
+      "fnPlusShiftTitle": "Reverse",
+      "fnPlusShiftDescription": "Hold toggles the reverse flag, inverting Forward/Reverse direction.",
+      "ledTop": "Current tonal center hue (blue / green / orange)",
+      "ledBottom": "Current tonal center hue, dimmer",
+      "ledTopPlusShift": ""
+    }
+  ]
+}
