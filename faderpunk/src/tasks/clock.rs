@@ -27,7 +27,7 @@ use crate::{
     state::{is_clock_running, update_state},
     tasks::{
         max::{MaxCmd, MAX_CHANNEL},
-        midi::{MidiClockMsg, MidiOutEvent, MIDI_CHANNEL},
+        midi::{MidiRealtimeMsg, MIDI_CLOCK_CHANNEL, MIDI_TRANSPORT_CHANNEL},
     },
     Spawner, GLOBAL_CONFIG_WATCH,
 };
@@ -361,7 +361,8 @@ async fn metronome() {
 #[embassy_executor::task]
 async fn run_clock_gatekeeper() {
     let clock_publisher = CLOCK_PUBSUB.publisher().unwrap();
-    let midi_sender = MIDI_CHANNEL.sender();
+    let midi_clock_sender = MIDI_CLOCK_CHANNEL.sender();
+    let midi_transport_sender = MIDI_TRANSPORT_CHANNEL.sender();
     let clock_in_receiver = CLOCK_IN_CHANNEL.receiver();
     let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
 
@@ -481,8 +482,21 @@ async fn run_clock_gatekeeper() {
 
                 if should_send_midi {
                     if let Some(rt_event) = midi_rt_event {
-                        let msg = MidiClockMsg::new(rt_event, midi_target);
-                        let _ = midi_sender.try_send(MidiOutEvent::Clock(msg));
+                        match rt_event {
+                            // Clock ticks are lossy rather than allowing a
+                            // stalled MIDI output to block clock generation.
+                            SystemRealtime::TimingClock => {
+                                let msg =
+                                    MidiRealtimeMsg::new(SystemRealtime::TimingClock, midi_target);
+                                let _ = midi_clock_sender.try_send(msg);
+                            }
+                            // Transport is rare and must not be silently
+                            // discarded or queued behind stale clock ticks.
+                            transport_event => {
+                                let msg = MidiRealtimeMsg::new(transport_event, midi_target);
+                                midi_transport_sender.send(msg).await;
+                            }
+                        }
                     }
                 }
             }
