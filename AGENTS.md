@@ -70,32 +70,32 @@ Follow this for **every** task, in order. Do not skip steps.
 
 ## Environment & Toolchain
 
-The toolchain (Rust nightly, Node, pnpm, picotool, probe-rs) is provided by
+Project commands use Rust, Node, pnpm, picotool, and probe-rs through
 **devenv** via **direnv** (`devenv.nix`, `.envrc`). A plain shell does not have
-it on PATH. Run project commands through the environment:
+the complete toolchain on PATH. Run project commands through the environment:
 
 ```bash
 direnv exec . <command>      # preferred (needs `direnv allow` once)
 devenv shell -- <command>    # equivalent fallback
 ```
 
-The firmware targets `thumbv8m.main-none-eabihf` and uses nightly features
-(`build-std`). `faderpunk/.cargo/config.toml` sets this target by default, so a
-bare `cargo build` works **from inside `faderpunk/`**. From the repo root you
-must pass `--bin faderpunk --target thumbv8m.main-none-eabihf` explicitly (this
-is what CI does, and it works on stable since the package-local `.cargo/config`
-is not in scope from root).
+The firmware targets `thumbv8m.main-none-eabihf` and builds on stable Rust.
+`faderpunk/.cargo/config.toml` sets this target by default, so
+`cargo +stable build` works **from inside `faderpunk/`**. From the repo root
+you must pass `--bin faderpunk --target thumbv8m.main-none-eabihf` explicitly
+(this is what CI does). `gen-bindings.sh` is the only build command that
+requires nightly, and selects it explicitly with `cargo +nightly`.
 
 ## Build Commands
 
 ### Firmware (Embedded Rust)
 
 ```bash
-# Build firmware from the package dir (uses configured target + build-std)
-cargo build --release            # run from faderpunk/
+# Build firmware from the package dir (uses configured target on stable)
+cargo +stable build --release    # run from faderpunk/
 
-# Build firmware from root (CI-equivalent; stable, no build-std)
-cargo build --bin faderpunk --release --target thumbv8m.main-none-eabihf
+# Build firmware from root (CI-equivalent; CI installs stable)
+cargo +stable build --bin faderpunk --release --target thumbv8m.main-none-eabihf
 
 # Build the flashable UF2 (wraps the above + picotool, from root)
 ./build-uf2.sh                   # → target/thumbv8m.main-none-eabihf/release/faderpunk.uf2
