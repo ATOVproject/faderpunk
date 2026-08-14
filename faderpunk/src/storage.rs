@@ -709,6 +709,25 @@ impl<P: AppParams> ParamStore<P> {
         accessor(&*guard)
     }
 
+    /// Change a param from inside the app and persist it to FRAM.
+    ///
+    /// Same call shape as the full AppParams writeback (#640), but without the
+    /// host push: the configurator stays stale until that lands. Apps can call
+    /// this now; swapping in the real #640 implementation later is a drop-in.
+    #[allow(dead_code)]
+    pub async fn update<F>(&self, modifier: F)
+    where
+        F: FnOnce(&mut P),
+    {
+        {
+            let mut inner = self.inner.borrow_mut();
+            modifier(&mut inner);
+        }
+        self.save().await;
+        // #640 adds: try_send AppState on APP_PARAM_PUSH_CHANNEL so the host
+        // tracks on-device edits live.
+    }
+
     pub async fn param_handler(&self) {
         APP_PARAM_SIGNALS[self.layout_id as usize].reset();
         loop {
