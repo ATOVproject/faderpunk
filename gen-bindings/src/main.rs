@@ -56,7 +56,7 @@ fn main() {
     .unwrap();
 
     catalog::generate(
-        &repo_root.join("faderpunk").join("src"),
+        &repo_root.join("fp-core").join("src"),
         &repo_root
             .join("configurator")
             .join("src")

@@ -1019,8 +1019,8 @@ mod tests {
         assert_eq!(0, generator.step_);
         assert_eq!(0, generator.sequence_step_);
         assert_eq!(0, generator.pulse_);
-        assert_eq!(true, generator.first_beat_);
-        assert_eq!(true, generator.beat_);
+        assert!(generator.first_beat_);
+        assert!(generator.beat_);
         assert_eq!(15, generator.state_);
         assert_eq!(0, generator.sequence_step_);
         assert_eq!(16, generator.base_dnb_pattern.steps);
