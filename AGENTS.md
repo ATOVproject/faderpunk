@@ -70,32 +70,32 @@ Follow this for **every** task, in order. Do not skip steps.
 
 ## Environment & Toolchain
 
-The toolchain (Rust nightly, Node, pnpm, picotool, probe-rs) is provided by
+Project commands use Rust, Node, pnpm, picotool, and probe-rs through
 **devenv** via **direnv** (`devenv.nix`, `.envrc`). A plain shell does not have
-it on PATH. Run project commands through the environment:
+the complete toolchain on PATH. Run project commands through the environment:
 
 ```bash
 direnv exec . <command>      # preferred (needs `direnv allow` once)
 devenv shell -- <command>    # equivalent fallback
 ```
 
-The firmware targets `thumbv8m.main-none-eabihf` and uses nightly features
-(`build-std`). `faderpunk/.cargo/config.toml` sets this target by default, so a
-bare `cargo build` works **from inside `faderpunk/`**. From the repo root you
-must pass `--bin faderpunk --target thumbv8m.main-none-eabihf` explicitly (this
-is what CI does, and it works on stable since the package-local `.cargo/config`
-is not in scope from root).
+The firmware targets `thumbv8m.main-none-eabihf` and builds on stable Rust.
+`faderpunk/.cargo/config.toml` sets this target by default, so
+`cargo +stable build` works **from inside `faderpunk/`**. From the repo root
+you must pass `--bin faderpunk --target thumbv8m.main-none-eabihf` explicitly
+(this is what CI does). `gen-bindings.sh` is the only build command that
+requires nightly, and selects it explicitly with `cargo +nightly`.
 
 ## Build Commands
 
 ### Firmware (Embedded Rust)
 
 ```bash
-# Build firmware from the package dir (uses configured target + build-std)
-cargo build --release            # run from faderpunk/
+# Build firmware from the package dir (uses configured target on stable)
+cargo +stable build --release    # run from faderpunk/
 
-# Build firmware from root (CI-equivalent; stable, no build-std)
-cargo build --bin faderpunk --release --target thumbv8m.main-none-eabihf
+# Build firmware from root (CI-equivalent; CI installs stable)
+cargo +stable build --bin faderpunk --release --target thumbv8m.main-none-eabihf
 
 # Build the flashable UF2 (wraps the above + picotool, from root)
 ./build-uf2.sh                   # → target/thumbv8m.main-none-eabihf/release/faderpunk.uf2
@@ -108,7 +108,7 @@ cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf -- -D warnings
 ### Configurator (Web App)
 
 ```bash
-# REQUIRED before first build (and after any libfp protocol-type change):
+# REQUIRED before first build (and after any libfp protocol-type or apps change):
 ./gen-bindings.sh                # from repo root — generates TS types from libfp
 
 pnpm -C configurator install
@@ -121,6 +121,15 @@ pnpm -C configurator lint        # eslint
 TypeScript types from the Rust structs in `libfp`. Re-run it whenever protocol
 types in `libfp` change. If types change and the bindings seem stale, delete
 `configurator/node_modules`, re-run `./gen-bindings.sh`, then reinstall.
+
+`./gen-bindings.sh` also regenerates `configurator/src/demo/catalog.ts` — the
+static app list used by the configurator's simulator mode (`VITE_SIMULATOR`) —
+by parsing each registered app's `CONFIG` directly out of
+`faderpunk/src/apps/*.rs`. That file is gitignored and never hand-edited: it's
+produced fresh on every `./gen-bindings.sh` run, which already happens in CI,
+beta, and release builds, so the simulator catalog can't drift out of sync
+with the actual apps. Run `./gen-bindings.sh` once before local configurator
+dev/build, same as the protocol bindings.
 
 ### Library (Shared Types)
 
@@ -212,9 +221,12 @@ Apps can implement scene storage by implementing serialization with `postcard`. 
 
 1. Create `faderpunk/src/apps/my_app.rs` with CHANNELS, CONFIG, wrapper task, and run function
 2. Register in `faderpunk/src/apps/mod.rs`: `register_apps!(... 42 => my_app,)`
-3. If adding new parameter types to CONFIG, update `libfp/src/lib.rs` and run `./gen-bindings.sh`
-4. Build firmware and flash to device
-5. App will appear in configurator's app library
+3. If adding new parameter types to CONFIG, update `libfp/src/lib.rs`
+4. Run `./gen-bindings.sh` — regenerates both the protocol bindings and the
+   simulator app catalog (`configurator/src/demo/catalog.ts`) so the new app
+   shows up in simulator mode
+5. Build firmware and flash to device
+6. App will appear in configurator's app library
 
 **App Development Pattern:**
 ```rust
@@ -339,7 +351,7 @@ manually in a Chromium browser with a live device connection.
 
 1. **Branching off stale state**: Always `git fetch origin` and branch off `origin/main`. Ignore `origin/HEAD`/`develop`.
 2. **Building firmware from root without flags**: From root you must pass `--bin faderpunk --target thumbv8m.main-none-eabihf`; a bare `cargo build` only works from inside `faderpunk/`.
-3. **Forgetting bindings**: Run `./gen-bindings.sh` after changing libfp types.
+3. **Forgetting bindings**: Run `./gen-bindings.sh` after changing libfp types or adding/editing an app's CONFIG — it also regenerates the gitignored simulator catalog (`configurator/src/demo/catalog.ts`).
 4. **App pool sizes**: `pool_size = 16/CHANNELS` in task macro must match CHANNELS constant.
 5. **Exit signals**: Apps must use `select(run(), exit_handler())` pattern for clean shutdown.
 6. **FRAM address ranges**: Don't overlap storage regions in `storage.rs`.
@@ -377,5 +389,7 @@ configurator/        # Web configurator (React + TypeScript)
 │   └── components/  # UI components
 
 gen-bindings/        # TypeScript binding generator
-└── src/main.rs      # Uses postcard-bindgen to generate TS types
+├── src/main.rs      # Uses postcard-bindgen to generate TS types
+└── src/catalog.rs   # Parses faderpunk/src/apps/*.rs to generate the
+                      # simulator app catalog (configurator/src/demo/catalog.ts)
 ```

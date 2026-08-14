@@ -26,6 +26,7 @@ import { I2cSettings } from "./settings/I2cSettings";
 import { MidiSettings } from "./settings/MidiSettings";
 import { MiscSettings } from "./settings/MiscSettings";
 import { QuantizerSettings } from "./settings/QuantizerSettings";
+import { VoOctCurvesSettings } from "./settings/VoOctCurvesSettings";
 
 interface SettingsFormProps {
   config: GlobalConfig;
@@ -39,6 +40,7 @@ export interface Inputs {
   auxMeteorDiv?: ClockDivision["tag"];
   auxCubeDiv?: ClockDivision["tag"];
   clockSrc: ClockSrc["tag"];
+  extPpqn: number;
   i2cMode: I2cMode["tag"];
   internalBpm: number;
   swingAmount: number;
@@ -110,6 +112,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
       auxCubeDiv:
         "value" in config.aux[2] ? config.aux[2].value.tag : undefined,
       clockSrc: config.clock.clock_src.tag,
+      extPpqn: config.clock.ext_ppqn,
       resetSrc: config.clock.reset_src.tag,
       internalBpm: config.clock.internal_bpm,
       swingAmount: config.clock.swing_amount,
@@ -148,19 +151,19 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
   const onSubmit: SubmitHandler<Inputs> = useCallback(
     async (formValues: Inputs) => {
       if (device && !isSimulator) {
-        const config = transformFormToGlobalConfig(formValues);
-        await setGlobalConfig(device, config);
-        setConfig(config);
+        const updatedConfig = transformFormToGlobalConfig(formValues, config);
+        await setGlobalConfig(device, updatedConfig);
+        setConfig(updatedConfig);
       } else if (isSimulator) {
-        const config = transformFormToGlobalConfig(formValues);
-        setConfig(config);
+        const updatedConfig = transformFormToGlobalConfig(formValues, config);
+        setConfig(updatedConfig);
       }
       if (device || isSimulator) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       }
     },
-    [device, isSimulator, setConfig],
+    [device, isSimulator, setConfig, config],
   );
 
   useEffect(() => {
@@ -180,6 +183,7 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
         <MidiSettings />
         <I2cSettings />
         <MiscSettings />
+        <VoOctCurvesSettings config={config} />
         <SaveLoadSetup />
         <FactoryReset />
         <div className="flex justify-between">
@@ -260,7 +264,10 @@ const buildMidiOutConfig = (
   };
 };
 
-const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
+const transformFormToGlobalConfig = (
+  formValues: Inputs,
+  currentConfig: GlobalConfig,
+): GlobalConfig => {
   const auxArray = [
     buildAuxJackMode(formValues.auxAtom, formValues.auxAtomDiv),
     buildAuxJackMode(formValues.auxMeteor, formValues.auxMeteorDiv),
@@ -295,7 +302,7 @@ const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
     aux: auxArray,
     clock: {
       clock_src: { tag: formValues.clockSrc },
-      ext_ppqn: 24,
+      ext_ppqn: formValues.extPpqn,
       reset_src: { tag: formValues.resetSrc },
       internal_bpm: formValues.internalBpm,
       swing_amount: formValues.swingAmount,
@@ -310,5 +317,6 @@ const transformFormToGlobalConfig = (formValues: Inputs): GlobalConfig => {
       tonic: { tag: formValues.quantizerTonic },
     },
     takeover_mode: { tag: formValues.takeoverMode },
+    custom_voct_curves: currentConfig.custom_voct_curves,
   };
 };

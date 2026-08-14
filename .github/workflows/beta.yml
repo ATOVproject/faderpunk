@@ -63,7 +63,7 @@ jobs:
           echo "picotool_hash=${picotool_hash}" >> $GITHUB_ENV
           echo "pico_sdk_hash=${pico_sdk_hash}" >> $GITHUB_ENV
       - name: Cache picotool build outputs
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: picotool/build
           key: ${{ runner.os }}-picotool-${{ env.picotool_hash }}-${{ env.pico_sdk_hash }}
@@ -154,11 +154,11 @@ jobs:
         with:
           ref: ${{ needs.prepare-beta.outputs.sha }}
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           version: latest
       - name: Setup rust toolchain

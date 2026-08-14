@@ -17,7 +17,7 @@ use libfp::{
     Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
-use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
+use crate::app::{pitch_as_counts, App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
 pub const PARAMS: usize = 10;
@@ -227,7 +227,9 @@ pub async fn run(
             let inputval = input.get_value();
             if inputval >= 406 && oldinputval < 406 {
                 register = register_glob.get();
-                let prob = prob_glob.get();
+                // Curved so the fader's center flat zone reliably lands on a
+                // balanced 50/50 flip probability instead of drifting near it.
+                let prob = Curve::Deadzone.at(prob_glob.get());
                 let rand = die.roll().clamp(100, 3900);
 
                 let rotation = rotate_select_bit(register, prob, rand, length);
@@ -245,7 +247,7 @@ pub async fn run(
 
                 let muted = glob_muted.get();
                 if !muted {
-                    output.set_value(out.as_counts(range, vpo));
+                    output.set_value(pitch_as_counts(out, range, vpo));
                     leds.set(
                         0,
                         Led::Top,

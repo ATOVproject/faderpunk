@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.12.0-beta.0 (2026-08-07)
+
+### Features
+
+- variable PPQN external clock input and phase-correct clock ticks (#579)
+- Curve::Deadzone fader curve + wire into 8 apps (#578)
+- automated gain calibration wizard with AUX frequency measurement (#574)
+- MIDI out CC/NRPN from envelope output (#575)
+- default clock to running on factory-fresh boot (#610)
+- [rnd_plus] add sample & hold CV destination mode (#584)
+
+### Fixes
+
+- eliminate false fader events from ADC noise (#556) (#628)
+
+## 1.11.0 (2026-08-05)
+
+### Features
+
+- add Bernoulli Gate app (#573)
+- move configurator protocol from WebUSB to MIDI SysEx, with named virtual MIDI ports (#590, #592)
+
+### Fixes
+
+- send MIDI CC/NRPN non-blocking to avoid stalling app control loops (#617)
+- [genseq] silence stuck gate on clock stop / mute during legato tie (#621)
+- [tb3po] silence stuck gate on mute during slide (#622)
+- re-arm external clock watchdog on Start/Continue (#594)
+- skip USB writes when the host isn't attached (#619)
+
+## 1.11.0-beta.1 (2026-08-03)
+
+### Features
+
+- add Bernoulli Gate app (#573)
+- move configurator protocol from WebUSB to MIDI SysEx (#590)
+
+### Fixes
+
+- use different names for MIDI ports (#592)
+- send MIDI CC/NRPN non-blocking to avoid stalling app control loops (#617)
+- [genseq] silence stuck gate on clock stop / mute during legato tie (#621)
+- [tb3po] silence stuck gate on mute during slide (#622)
+
 ## 1.11.0-beta.0 (2026-07-11)
 
 ### Features

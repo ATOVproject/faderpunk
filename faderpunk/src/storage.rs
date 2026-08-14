@@ -99,6 +99,7 @@ impl From<GlobalConfigV0> for GlobalConfig {
             midi: old.midi,
             quantizer: old.quantizer,
             takeover_mode: old.takeover_mode,
+            custom_voct_curves: Default::default(),
         }
     }
 }
@@ -132,6 +133,7 @@ impl From<GlobalConfigV170> for GlobalConfig {
             midi: old.midi,
             quantizer: old.quantizer,
             takeover_mode: TakeoverMode::Pickup,
+            custom_voct_curves: Default::default(),
         }
     }
 }

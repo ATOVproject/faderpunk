@@ -143,7 +143,13 @@ export const getParamSchema = (param: Param) => {
       return z
         .object({
           tag: z.literal("VoltPerOct"),
-          value: z.object({ tag: z.enum(["Standard", "Buchla"]) }),
+          value: z.union([
+            z.object({ tag: z.enum(["Standard", "Buchla"]) }),
+            z.object({
+              tag: z.literal("Custom"),
+              value: z.number().int().min(0).max(3),
+            }),
+          ]),
         })
         .catch({
           tag: "VoltPerOct",
@@ -215,6 +221,12 @@ export const defaultGlobalConfig: GlobalConfig = {
     tonic: { tag: "C" },
   },
   takeover_mode: { tag: "Pickup" },
+  custom_voct_curves: [
+    { counts_per_oct: 0 },
+    { counts_per_oct: 0 },
+    { counts_per_oct: 0 },
+    { counts_per_oct: 0 },
+  ] as GlobalConfig["custom_voct_curves"],
 };
 
 // Lenient schema that validates structure but allows any valid tag values
@@ -224,7 +236,14 @@ const globalConfigSchema = z.object({
   aux: z.array(taggedObjectSchema).length(3),
   clock: z.object({
     clock_src: taggedObjectSchema,
-    ext_ppqn: z.number().int().min(1).max(96),
+    ext_ppqn: z
+      .number()
+      .int()
+      .min(1)
+      .max(96)
+      .refine((n) => 24 % n === 0 || n % 24 === 0, {
+        message: "External PPQN must be a divisor or multiple of 24",
+      }),
     reset_src: taggedObjectSchema,
     internal_bpm: z.number().min(1).max(300),
     swing_amount: z.number().int().min(-35).max(35).default(0),
@@ -247,6 +266,17 @@ const globalConfigSchema = z.object({
     tonic: taggedObjectSchema,
   }),
   takeover_mode: taggedObjectSchema,
+  // Absent in setup files saved before Custom V/Oct curves existed — default
+  // to uncalibrated rather than failing the whole file.
+  custom_voct_curves: z
+    .array(z.object({ counts_per_oct: z.number().int().min(0).max(65535) }))
+    .length(4)
+    .default([
+      { counts_per_oct: 0 },
+      { counts_per_oct: 0 },
+      { counts_per_oct: 0 },
+      { counts_per_oct: 0 },
+    ]),
 });
 
 export const parseGlobalConfigFromFile = (
@@ -280,6 +310,12 @@ export const parseGlobalConfigFromFile = (
     },
     quantizer: validated.quantizer as GlobalConfig["quantizer"],
     takeover_mode: validated.takeover_mode as GlobalConfig["takeover_mode"],
+    custom_voct_curves: [
+      validated.custom_voct_curves[0],
+      validated.custom_voct_curves[1],
+      validated.custom_voct_curves[2],
+      validated.custom_voct_curves[3],
+    ] as GlobalConfig["custom_voct_curves"],
   };
 
   return config;

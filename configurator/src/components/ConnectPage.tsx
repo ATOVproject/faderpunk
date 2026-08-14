@@ -23,7 +23,7 @@ export const ConnectPage = () => {
         </div>
         <div className="flex items-center justify-between">
           <Link
-            to="/troubleshooting"
+            to="/manual#connection-issues"
             className="text-default-400 mt-4 cursor-pointer text-center underline"
           >
             Trouble connecting?

@@ -12,11 +12,13 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, utils::apply_slide, AppIcon, Brightness, ClockDivision,
-    Color, Config, MidiChannel, MidiNote, MidiOut, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    Color, Config, Curve, MidiChannel, MidiNote, MidiOut, Param, Range, Value, VoltPerOct,
+    APP_MAX_PARAMS,
 };
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage, ParamStore, SceneEvent,
+    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage,
+    ParamStore, SceneEvent,
 };
 use crate::tasks::leds::LedMode;
 
@@ -109,7 +111,7 @@ impl Default for Storage {
         Self {
             seed: 0xABCD,
             density_fader: 2048,   // density 7 (center)
-            length_fader: 1920,    // ~16 steps
+            length_fader: 1920,    // 16 steps (falls in the deadzone flat zone)
             transpose_fader: 2048, // 0 semitones
             octave_fader: 2048,    // 0 octave offset
             res_saved: 2048,       // index 4 → RESOLUTION[4] = 6 (16th notes)
@@ -285,6 +287,23 @@ fn raw_pitch_cv(p: &AcidPattern, step: u8, transpose: i16, vpo: VoltPerOct) -> u
 /// → ~100 ms time constant. `rc_coeff` isn't const-evaluable, so the value is inlined.
 const SLIDE_COEFF: f32 = 0.0465_f32;
 
+/// Maps the length fader (0–4095) to a step count (1–32). Runs through
+/// `Curve::Deadzone` first so the fader's center flat zone reliably lands on
+/// 16 steps instead of drifting between 15/16/17 as the fader wobbles.
+fn length_fader_to_num_steps(length_fader: u16) -> u8 {
+    (Curve::Deadzone.at(length_fader) as u32 * 31 / 4095 + 1) as u8
+}
+
+/// Maps the transpose (±24 semitones) and octave (±4 octaves) faders to a
+/// combined semitone transpose. Each runs through `Curve::Deadzone` first so
+/// its center flat zone reliably lands on exactly 0 instead of drifting
+/// near it.
+fn transpose_semitones(transpose_fader: u16, octave_fader: u16) -> i16 {
+    let semi = Curve::Deadzone.at(transpose_fader) as i32 * 48 / 4095 - 24;
+    let oct = Curve::Deadzone.at(octave_fader) as i32 * 8 / 4095 - 4;
+    (semi + oct * 12) as i16
+}
+
 // --- Embassy Task ---
 
 #[embassy_executor::task(pool_size = 16 / CHANNELS)]
@@ -324,7 +343,6 @@ pub async fn run(
     let faders = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let quantizer = app.use_quantizer(pitch_range, vpo, false);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
@@ -352,6 +370,8 @@ pub async fn run(
     let last_midi_note_glob: Global<MidiNote> = app.make_global(MidiNote::default());
     // Signals fader_task → clock_task that density changed and pattern needs regenerating
     let regen_pending_glob: Global<bool> = app.make_global(false);
+    // Last tick number seen by clock_task; read by button_task for reseeding.
+    let ticks_glob: Global<u64> = app.make_global(0);
     // Current clock divisor (raw 24-PPQN units); updated by fader_task via resolution table
     let (init_res, init_density_fader, init_seed) =
         storage.query(|s| (s.res_saved, s.density_fader, s.seed));
@@ -372,8 +392,9 @@ pub async fn run(
     let clock_task = async {
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Tick => {
-                    let clkn = ticks() as usize;
+                ClockEvent::Tick(tick) => {
+                    ticks_glob.set(tick);
+                    let clkn = tick as usize;
                     let div = div_glob.get();
                     let in_res_mode = latch_layer_glob.get() == LatchLayer::Third;
 
@@ -396,7 +417,9 @@ pub async fn run(
                     }
 
                     // Division LED: flash on at step boundary, off at half-cycle.
-                    // Orange = straight (power-of-2 divisors), Blue = triplet.
+                    // Orange = triplet (16th/32nd-triplet divisors 4 and 2), Blue = straight
+                    // (power-of-2-of-a-beat divisors 96/48/24/12/6/3), matching the
+                    // orange-triplet/blue-straight convention used by the other clocked apps.
                     if in_res_mode {
                         if clkn.is_multiple_of(div) {
                             let color = if matches!(div, 2 | 4 | 8 | 16) {
@@ -417,14 +440,10 @@ pub async fn run(
                     let pattern = pattern_glob.get();
                     let (num_steps, no_accents, muted, transpose) = storage.query(|s| {
                         (
-                            (s.length_fader as u32 * 31 / 4095 + 1) as u8,
+                            length_fader_to_num_steps(s.length_fader),
                             s.no_accents,
                             s.muted,
-                            {
-                                let semi = s.transpose_fader as i32 * 48 / 4095 - 24;
-                                let oct = s.octave_fader as i32 * 8 / 4095 - 4;
-                                (semi + oct * 12) as i16
-                            },
+                            transpose_semitones(s.transpose_fader, s.octave_fader),
                         )
                     });
 
@@ -449,33 +468,48 @@ pub async fn run(
                     if is_slid_prev {
                         // Glide: output_task will interpolate toward new target
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        slide_target_glob.set(out.as_counts(pitch_range, vpo));
+                        slide_target_glob.set(pitch_as_counts(out, pitch_range, vpo));
                         slide_active_glob.set(true);
                     } else if is_gated {
                         // Snap to new pitch
                         let out = quantizer.get_quantized_note(target_raw).await;
-                        let counts = out.as_counts(pitch_range, vpo);
+                        let counts = pitch_as_counts(out, pitch_range, vpo);
                         slide_target_glob.set(counts);
                         slide_active_glob.set(false);
                     }
 
                     // Gate / MIDI
-                    if (is_gated || is_slid_prev) && !muted {
-                        accent_active_glob.set(is_accent);
+                    if is_gated || is_slid_prev {
+                        if muted {
+                            // Muted: don't sound a new note, but still resolve
+                            // any gate/note left open by a prior slide step —
+                            // the duty-cycle countdown above only turns the
+                            // gate off on non-slid steps, so this retrigger
+                            // point is otherwise the only place that off is
+                            // ever sent.
+                            if gate_active_glob.get() {
+                                gate_active_glob.set(false);
+                                gate_out.set_low().await;
+                                midi.send_note_off(last_midi_note_glob.get()).await;
+                                accent_out.set_value(0);
+                            }
+                        } else {
+                            accent_active_glob.set(is_accent);
 
-                        // Quantise for MIDI note (use target pitch for note identity)
-                        let out = quantizer.get_quantized_note(target_raw).await;
-                        let note = out.as_midi();
+                            // Quantise for MIDI note (use target pitch for note identity)
+                            let out = quantizer.get_quantized_note(target_raw).await;
+                            let note = out.as_midi();
 
-                        midi.send_note_off(last_midi_note_glob.get()).await;
-                        let velocity = if is_accent { 4095 } else { 2048 };
-                        midi.send_note_on(note, velocity).await;
-                        last_midi_note_glob.set(note);
+                            midi.send_note_off(last_midi_note_glob.get()).await;
+                            let velocity = if is_accent { 4095 } else { 2048 };
+                            midi.send_note_on(note, velocity).await;
+                            last_midi_note_glob.set(note);
 
-                        gate_out.set_high().await;
-                        gate_active_glob.set(true);
-                        accent_out.set_value(if is_accent { 4095 } else { 0 });
-                        gate_off_ticks_glob.set((div / 2).max(1));
+                            gate_out.set_high().await;
+                            gate_active_glob.set(true);
+                            accent_out.set_value(if is_accent { 4095 } else { 0 });
+                            gate_off_ticks_glob.set((div / 2).max(1));
+                        }
                     }
 
                     // Apply any pending pattern regeneration (density changed since last tick)
@@ -616,7 +650,7 @@ pub async fn run(
             }
             match chan {
                 0 => {
-                    let new_seed = (ticks() & 0xFFFF) as u16;
+                    let new_seed = (ticks_glob.get() & 0xFFFF) as u16;
                     storage.modify_and_save(|s| s.seed = new_seed);
                     let d = (storage.query(|s| s.density_fader) as u32 * 14 / 4095) as u8;
                     pattern_glob.set(generate_pattern(new_seed, d));
@@ -657,7 +691,7 @@ pub async fn run(
                     )
                 });
             let density = (density_fader as u32 * 14 / 4095) as u8;
-            let num_steps = (length_fader as u32 * 31 / 4095 + 1) as u8;
+            let num_steps = length_fader_to_num_steps(length_fader);
             let gate_active = gate_active_glob.get();
             let accent = accent_active_glob.get();
             let slide_active = slide_active_glob.get();

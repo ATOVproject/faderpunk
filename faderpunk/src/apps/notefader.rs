@@ -13,7 +13,8 @@ use libfp::{
 };
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
+    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore,
+    SceneEvent,
 };
 
 pub const CHANNELS: usize = 1;
@@ -181,7 +182,6 @@ pub async fn run(
         });
 
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let quantizer = app.use_quantizer(range, vpo, bypass);
 
     let fader = app.use_faders();
@@ -218,7 +218,7 @@ pub async fn run(
 
         let out = quantizer.get_quantized_note(fadval).await;
         if outmode == 0 {
-            jack.set_value(out.as_counts(range, vpo));
+            jack.set_value(pitch_as_counts(out, range, vpo));
         } else {
             jack.set_value(4095)
         }
@@ -249,11 +249,11 @@ pub async fn run(
                         jack.set_value(0);
                     }
                 }
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick) => {
                     let muted = glob_muted.get();
 
                     let div = div_glob.get();
-                    let clkn = ticks() as u32;
+                    let clkn = tick as u32;
 
                     if clkn.is_multiple_of(div) && storage.query(|s| s.clocked) {
                         if !muted {

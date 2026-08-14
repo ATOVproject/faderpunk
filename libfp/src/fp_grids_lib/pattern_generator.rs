@@ -297,7 +297,7 @@ impl PatternGenerator {
     ///
     pub fn tick(&mut self, clkn: u32, div: u32) {
         // Derive the sequence step from the absolute clock tick count divided by the clock division,
-        // so the generator stays in sync with ticks() rather than tracking its own independent counter.
+        // so the generator stays in sync with the clock tick count rather than tracking its own independent counter.
         let step_count = clkn / div;
 
         self.sequence_step_ = if self.options_.output_mode == OutputMode::OutputModeDnB {

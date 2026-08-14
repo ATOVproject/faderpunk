@@ -219,7 +219,7 @@ export default function App() {
 
           <div className="mt-4 flex items-center justify-between gap-4">
             <a
-              href={versionPath(latestVersion) + "#/troubleshooting"}
+              href={versionPath(latestVersion) + "#/manual#connection-issues"}
               className="cursor-pointer text-center text-gray-400 underline hover:text-[#d4d4d8]"
             >
               Trouble connecting?

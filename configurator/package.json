@@ -1,15 +1,17 @@
 {
   "name": "configurator",
   "private": true,
-  "version": "1.11.0-beta.0",
+  "version": "1.12.0-beta.0",
   "license": "GPL-3.0",
   "description": "Web configurator for Faderpunk",
   "packageManager": "pnpm@11.1.1",
   "scripts": {
     "dev": "vite",
     "dev:landing": "vite --config vite.landing.config.mjs",
+    "dev:apps": "vite --config vite.apps.config.mjs",
     "build": "tsc -b tsconfig.app.json && vite build",
     "build:landing": "tsc -b tsconfig.landing.json && vite build --config vite.landing.config.mjs",
+    "build:apps": "tsc -b tsconfig.apps.json && vite build --config vite.apps.config.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

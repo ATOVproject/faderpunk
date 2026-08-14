@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.10.6-beta.0 (2026-08-07)
+
+### Features
+
+- variable PPQN external clock input and phase-correct clock ticks (#579)
+- Curve::Deadzone fader curve + wire into 8 apps (#578)
+- automated gain calibration wizard with AUX frequency measurement (#574)
+
+## 0.10.5 (2026-08-05)
+
+### Features
+
+- add Bernoulli Gate app (#573)
+- move configurator protocol from WebUSB to MIDI SysEx (#590)
+
+## 0.10.5-beta.1 (2026-08-03)
+
+### Features
+
+- add Bernoulli Gate app (#573)
+- move configurator protocol from WebUSB to MIDI SysEx (#590)
+
 ## 0.10.5-beta.0 (2026-07-11)
 
 ### Features

@@ -14,8 +14,8 @@ use libfp::{
 };
 
 use crate::app::{
-    App, AppParams, AppStorage, Arr, ClockEvent, Global, Led, ManagedStorage, ParamStore,
-    SceneEvent,
+    pitch_as_counts, vpo_counts_per_oct, App, AppParams, AppStorage, Arr, ClockEvent, Global,
+    Led, ManagedStorage, ParamStore, SceneEvent,
 };
 
 pub const CHANNELS: usize = 8;
@@ -172,6 +172,31 @@ fn probability_threshold(fader: u16) -> u16 {
     205 + ((fader as u32 * 3891) / 4095) as u16
 }
 
+// The "8 steps" bucket (`raw / 256 + 1 == 8`) spans raw [1792, 2047], centered
+// at ~1920 — not the fader's physical center (2048), since 256 divides evenly
+// into 2048 and lands exactly on the 8/9 boundary. Unlike swing/tb3po, whose
+// hot value happens to straddle 2048, this notch has to be centered off-axis.
+const SEQ_LENGTH_NOTCH_CENTER: i32 = 1920;
+const SEQ_LENGTH_NOTCH_HALF_WIDTH: i32 = 307;
+
+/// Maps the length fader (0..=4095) to a step count (1..=16). Widens a flat
+/// zone (~15% of travel) around the "8 steps" bucket so it's easy to land on
+/// precisely, mirroring `libfp::Curve::Deadzone` but centered on that bucket
+/// instead of the fader's midpoint.
+fn length_fader_to_seq_length(value: u16) -> u8 {
+    let value = value as i32;
+    let start = SEQ_LENGTH_NOTCH_CENTER - SEQ_LENGTH_NOTCH_HALF_WIDTH;
+    let end = SEQ_LENGTH_NOTCH_CENTER + SEQ_LENGTH_NOTCH_HALF_WIDTH;
+    let warped = if value <= start {
+        (value * SEQ_LENGTH_NOTCH_CENTER) / start
+    } else if value >= end {
+        SEQ_LENGTH_NOTCH_CENTER + ((value - end) * (4095 - SEQ_LENGTH_NOTCH_CENTER)) / (4095 - end)
+    } else {
+        SEQ_LENGTH_NOTCH_CENTER
+    };
+    (warped.clamp(0, 4095) / 256 + 1) as u8
+}
+
 /// Maps a raw step counter to a position within `length`, respecting `direction`.
 fn step_position(direction: Direction, step: usize, length: u8, die_roll: u16) -> usize {
     let l = length as usize;
@@ -209,7 +234,7 @@ fn derive_runtime_params(
     let mut clockres = [0usize; 4];
     let mut gatel = [0u8; 4];
     for n in 0..4 {
-        seq_length[n] = (length_faders[n] / 256 + 1) as u8;
+        seq_length[n] = length_fader_to_seq_length(length_faders[n]);
         clockres[n] = resolution[(res_faders[n] / 512) as usize];
         gatel[n] = (clockres[n] * (gate_faders[n] as usize) / 4096) as u8;
         gatel[n] = gatel[n].clamp(1, clockres[n] as u8 - 1);
@@ -303,7 +328,6 @@ pub async fn run(
     let faders = app.use_faders();
     let mut clk = app.use_clock();
     let die = app.use_die();
-    let ticks = clk.get_ticker();
     let led = app.use_leds();
 
     let midi = [
@@ -327,7 +351,10 @@ pub async fn run(
     ];
 
     let quantizer = app.use_quantizer(range, vpo, bypass);
+    // Nominal scale for pre-quantize offsets (matches the quantizer's internal decode).
     let counts_per_oct = vpo.counts_per_oct() as u32;
+    // Calibrated scale for the post-quantize transpose add (real DAC-counts domain).
+    let calibrated_counts_per_oct = vpo_counts_per_oct(vpo) as u32;
 
     let page_glob: Global<usize> = app.make_global(0);
     let prev_page_glob: Global<usize> = app.make_global(0);
@@ -340,6 +367,8 @@ pub async fn run(
     let seq_length_glob: Global<[u8; 4]> = app.make_global([16; 4]);
     let gatelength_glob: Global<[u8; 4]> = app.make_global([128; 4]);
     let clockres_glob = app.make_global([6usize; 4]);
+    // Last tick number seen by clock_handler; read by led_handler for display.
+    let ticks_glob: Global<u64> = app.make_global(0);
     let direction_glob: Global<[Direction; 4]> = app.make_global([Direction::Forward; 4]);
     // Cached die-roll thresholds (0..=4096); recomputed when F6 changes.
     let probability_glob: Global<[u16; 4]> = app.make_global([4096; 4]);
@@ -545,7 +574,7 @@ pub async fn run(
         loop {
             app.delay_millis(16).await;
             let clockres = clockres_glob.get();
-            let clockn = ticks() as usize;
+            let clockn = ticks_glob.get() as usize;
             let page = page_glob.get();
 
             if buttons.is_shift_pressed() {
@@ -676,8 +705,9 @@ pub async fn run(
                         gate_out[n].set_low().await;
                     }
                 }
-                ClockEvent::Tick => {
-                    let clockn = ticks() as usize;
+                ClockEvent::Tick(tick) => {
+                    ticks_glob.set(tick);
+                    let clockn = tick as usize;
                     let seq = seq_glob.get();
                     let direction = direction_glob.get();
                     let probability = probability_glob.get();
@@ -741,8 +771,9 @@ pub async fn run(
                                     // Hand the target CV to slide_handler; slide only if
                                     // the previously played step had legato enabled.
                                     let mut targets = target_cv_glob.get();
-                                    targets[n] = (out.as_counts(range, vpo) as i32
-                                        + transpo[n] as i32 * counts_per_oct as i32 / 12)
+                                    targets[n] = (pitch_as_counts(out, range, vpo) as i32
+                                        + transpo[n] as i32 * calibrated_counts_per_oct as i32
+                                            / 12)
                                         .clamp(0, 4095) as u16;
                                     target_cv_glob.set(targets);
                                     let mut slid = sliding_glob.get();
@@ -937,7 +968,7 @@ fn apply_alt_update(chan: usize, seq_idx: usize, value: u16, ctx: &AltUpdateCont
             ctx.storage
                 .modify_and_save(|s| s.length_fader[seq_idx] = value);
             let mut arr = ctx.seq_length_glob.get();
-            arr[seq_idx] = (value / 256 + 1) as u8;
+            arr[seq_idx] = length_fader_to_seq_length(value);
             ctx.seq_length_glob.set(arr);
         }
         1 => {

@@ -19,7 +19,8 @@ use libfp::{
 };
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
+    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore,
+    SceneEvent,
 };
 
 pub const CHANNELS: usize = 1;
@@ -221,7 +222,6 @@ pub async fn run(
     let fader = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let die = app.use_die();
     let quantizer = app.use_quantizer(range, vpo, bypass);
 
@@ -279,8 +279,8 @@ pub async fn run(
                     }
                     register = storage.query(|s| s.register_saved);
                 }
-                ClockEvent::Tick => {
-                    let clkn = ticks() as usize;
+                ClockEvent::Tick(tick) => {
+                    let clkn = tick as usize;
                     if clkn.is_multiple_of(div) {
                         if (clkn / div).is_multiple_of(length as usize) {
                             let reg_old = storage.query(|s| s.register_saved);
@@ -300,7 +300,9 @@ pub async fn run(
                             }
                             leds.set(0, Led::Bottom, Color::White, Brightness::Mid);
                         }
-                        let prob = prob_glob.get();
+                        // Curved so the fader's center flat zone reliably lands on a
+                        // balanced 50/50 flip probability instead of drifting near it.
+                        let prob = Curve::Deadzone.at(prob_glob.get());
                         let rand = die.roll().clamp(100, 3900);
 
                         let (new_reg, _, gate_bit) =
@@ -340,7 +342,7 @@ pub async fn run(
                             let out = quantizer.get_quantized_note(att_reg).await;
                             let muted = glob_muted.get();
                             if !muted {
-                                cv_jack.as_ref().unwrap().set_value(out.as_counts(range, vpo));
+                                cv_jack.as_ref().unwrap().set_value(pitch_as_counts(out, range, vpo));
                                 leds.set(
                                     0,
                                     Led::Top,

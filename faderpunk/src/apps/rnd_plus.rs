@@ -106,7 +106,7 @@ impl Default for Storage {
             clocked: true,
             in_att: 4095,
             in_mute: false,
-            dest: 0, // 0 => speed, 1 => ext clock, 2 => slew
+            dest: 0, // 0 => speed, 1 => ext clock, 2 => slew, 3 => sample & hold
         }
     }
 }
@@ -154,7 +154,6 @@ pub async fn run(
         params.query(|p| (p.bipolar, p.midi_out, p.midi_channel, p.midi_cc, p.nrpn, p.color));
 
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let rnd = app.use_die();
     let fader = app.use_faders();
     let buttons = app.use_buttons();
@@ -181,6 +180,8 @@ pub async fn run(
 
     let resolution = [384, 192, 96, 48, 24, 16, 12, 8, 6, 4, 3, 2];
 
+    let mut clkn: u16 = 0;
+
     let curve = Curve::Exponential;
     let fader_curve = Curve::Exponential;
 
@@ -200,9 +201,10 @@ pub async fn run(
     let fut1 = async {
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Reset => {}
-                ClockEvent::Tick => {
-                    let clkn = ticks() as u16;
+                ClockEvent::Reset => {
+                    clkn = 0;
+                }
+                ClockEvent::Tick(_) => {
                     let muted = storage.query(|s: &Storage| s.mute_save);
 
                     let destination = storage.query(|s| s.dest);
@@ -217,14 +219,23 @@ pub async fn run(
                         && storage.query(|s: &Storage| s.clocked)
                         && destination != 1
                     {
-                        val_glob.set(rnd.roll());
+                        let new_val = if destination == 3 {
+                            in_val_glob.get()
+                        } else {
+                            rnd.roll()
+                        };
+                        val_glob.set(new_val);
 
                         let rnd_color = if !storage.query(|s: &Storage| s.mute_save) {
-                            let r = (rnd.roll() / 16) as u8;
-                            let g = (rnd.roll() / 16) as u8;
-                            let b = (rnd.roll() / 16) as u8;
+                            if destination == 3 {
+                                led_color
+                            } else {
+                                let r = (rnd.roll() / 16) as u8;
+                                let g = (rnd.roll() / 16) as u8;
+                                let b = (rnd.roll() / 16) as u8;
 
-                            Color::Custom(r, g, b)
+                                Color::Custom(r, g, b)
+                            }
                         } else {
                             Color::Custom(0, 0, 0)
                         };
@@ -244,6 +255,7 @@ pub async fn run(
                     {
                         leds.unset(1, Led::Bottom);
                     }
+                    clkn += 1;
                 }
                 _ => {}
             }
@@ -260,7 +272,7 @@ pub async fn run(
                         s.in_mute = !s.in_mute;
                     });
                 } else {
-                    let dest = (storage.query(|s| s.dest) + 1) % 3;
+                    let dest = (storage.query(|s| s.dest) + 1) % 4;
                     storage.modify_and_save(|s| {
                         s.dest = dest;
                     });
@@ -497,6 +509,7 @@ pub async fn run(
                     0 => Color::Yellow,
                     1 => Color::Pink,
                     2 => Color::Cyan,
+                    3 => Color::White,
                     _ => Color::Yellow,
                 };
                 leds.set(0, Led::Button, dest_color, Brightness::Mid);
@@ -526,14 +539,19 @@ pub async fn run(
                 let timed_div = (curve.at(4095 - speed) as u32 * 5000 / 4095 + 71) as u16;
 
                 if destination != 1 && count.is_multiple_of(timed_div as u32) {
-                    val_glob.set(rnd.roll());
+                    let new_val = if destination == 3 { in_val } else { rnd.roll() };
+                    val_glob.set(new_val);
 
                     let rnd_color = if !storage.query(|s: &Storage| s.mute_save) {
-                        let r = (rnd.roll() / 16) as u8;
-                        let g = (rnd.roll() / 16) as u8;
-                        let b = (rnd.roll() / 16) as u8;
+                        if destination == 3 {
+                            led_color
+                        } else {
+                            let r = (rnd.roll() / 16) as u8;
+                            let g = (rnd.roll() / 16) as u8;
+                            let b = (rnd.roll() / 16) as u8;
 
-                        Color::Custom(r, g, b)
+                            Color::Custom(r, g, b)
+                        }
                     } else {
                         Color::Custom(0, 0, 0)
                     };

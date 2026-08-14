@@ -2,6 +2,7 @@
 
 use core::ops::Add;
 
+use crate::quantizer::Pitch;
 use embassy_time::Duration;
 use heapless::Vec;
 use max11300::config::{ADCRANGE, DACRANGE};
@@ -382,12 +383,14 @@ impl Key {
 }
 
 /// Volts-per-octave standard. Selects pitch calibration for quantizer and pitch apps.
-/// `Standard` = 1V/Oct (Eurorack), `Buchla` = 1.2V/Oct.
+/// `Standard` = 1V/Oct (Eurorack), `Buchla` = 1.2V/Oct, `Custom(idx)` = user-calibrated curve.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum VoltPerOct {
     #[default]
     Standard,
     Buchla,
+    /// Index into `GlobalConfig::custom_voct_curves` (0–3).
+    Custom(u8),
 }
 
 impl VoltPerOct {
@@ -395,6 +398,16 @@ impl VoltPerOct {
         match self {
             VoltPerOct::Standard => 410,
             VoltPerOct::Buchla => 492,
+            VoltPerOct::Custom(_) => 410,
+        }
+    }
+
+    /// Like `counts_per_oct` but resolves custom curves from the stored calibration data.
+    pub fn counts_per_oct_with_curves(self, curves: &[CustomVoOctCurve; 4]) -> i16 {
+        match self {
+            VoltPerOct::Standard => 410,
+            VoltPerOct::Buchla => 492,
+            VoltPerOct::Custom(idx) => resolve_custom_cpo(idx, curves) as i16,
         }
     }
 
@@ -402,6 +415,7 @@ impl VoltPerOct {
         match self {
             VoltPerOct::Standard => 12.0,
             VoltPerOct::Buchla => 10.0,
+            VoltPerOct::Custom(_) => 12.0,
         }
     }
 
@@ -409,8 +423,47 @@ impl VoltPerOct {
         match self {
             VoltPerOct::Standard => 1.0,
             VoltPerOct::Buchla => 1.2,
+            VoltPerOct::Custom(_) => 1.0,
         }
     }
+
+    /// Like `voltage_scale` but resolves custom curves from calibration data.
+    /// Derives scale from `counts_per_oct / 409.5` (the DAC counts for 1V in a 10V range).
+    pub fn voltage_scale_with_curves(self, curves: &[CustomVoOctCurve; 4]) -> f32 {
+        match self {
+            VoltPerOct::Standard => 1.0,
+            VoltPerOct::Buchla => 1.2,
+            VoltPerOct::Custom(idx) => resolve_custom_cpo(idx, curves) as f32 / 409.5,
+        }
+    }
+}
+
+/// Resolve a Custom curve's calibrated counts-per-octave, clamped to a
+/// plausible hardware range and falling back to the nominal Standard value
+/// (410) if uncalibrated (0) or implausible. Shared by
+/// `counts_per_oct_with_curves`/`voltage_scale_with_curves` so their
+/// fallback rule can't drift apart, and so a corrupt or wildly-miscalibrated
+/// curve can't produce a negative `i16` count (the raw `u16` would otherwise
+/// wrap when cast for any value above `i16::MAX`).
+fn resolve_custom_cpo(idx: u8, curves: &[CustomVoOctCurve; 4]) -> u16 {
+    let cpo = curves
+        .get(idx as usize)
+        .map(|c| c.counts_per_oct)
+        .unwrap_or(0);
+    if cpo == 0 || cpo > 2000 {
+        410
+    } else {
+        cpo
+    }
+}
+
+/// One user-calibrated V/Oct gain curve stored in `GlobalConfig`.
+/// `counts_per_oct = 0` means uncalibrated; apps fall back to the Standard value (410).
+#[derive(Clone, Copy, Default, Serialize, Deserialize, PostcardBindings, Encode, Decode)]
+pub struct CustomVoOctCurve {
+    #[n(0)]
+    #[cbor(default)]
+    pub counts_per_oct: u16,
 }
 
 impl From<VoltPerOct> for Value {
@@ -662,6 +715,9 @@ pub struct GlobalConfig {
     #[n(6)]
     #[cbor(default)]
     pub takeover_mode: TakeoverMode,
+    #[n(7)]
+    #[cbor(default)]
+    pub custom_voct_curves: [CustomVoOctCurve; 4],
 }
 
 impl Default for GlobalConfig {
@@ -685,6 +741,7 @@ impl GlobalConfig {
             midi: MidiConfig::new(),
             quantizer: QuantizerConfig::new(),
             takeover_mode: TakeoverMode::Pickup,
+            custom_voct_curves: [CustomVoOctCurve { counts_per_oct: 0 }; 4],
         }
     }
 
@@ -714,6 +771,20 @@ impl GlobalConfig {
             _ => {}
         }
     }
+
+    /// Convert a quantized pitch to DAC counts, resolving any Custom V/Oct
+    /// curve from this config's `custom_voct_curves`. Prefer this over
+    /// `Pitch::as_counts_with_curves` when a `GlobalConfig` value is already
+    /// in hand.
+    pub fn pitch_as_counts(&self, pitch: Pitch, range: Range, vpo: VoltPerOct) -> u16 {
+        pitch.as_counts_with_curves(range, vpo, &self.custom_voct_curves)
+    }
+
+    /// Return DAC counts-per-octave for `vpo`, resolving any Custom V/Oct
+    /// curve from this config's `custom_voct_curves`.
+    pub fn vpo_counts_per_oct(&self, vpo: VoltPerOct) -> i16 {
+        vpo.counts_per_oct_with_curves(&self.custom_voct_curves)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, PostcardBindings)]
@@ -722,6 +793,47 @@ pub enum Curve {
     Linear,
     Logarithmic,
     Exponential,
+    Deadzone,
+}
+
+/// Center output value of [`deadzone_curve`]'s flat zone.
+pub const DEADZONE_CENTER: u16 = 2048;
+const DEADZONE_HALF_WIDTH: i32 = 307;
+const DEADZONE_START: i32 = DEADZONE_CENTER as i32 - DEADZONE_HALF_WIDTH;
+const DEADZONE_END: i32 = DEADZONE_CENTER as i32 + DEADZONE_HALF_WIDTH;
+const DEADZONE_MAX: i32 = 4095;
+
+/// Linear ramp with a flat zone (~15% of travel) held at the exact center
+/// value, so the middle of a fader's travel is easy to land on precisely
+/// (e.g. zeroing a bipolar parameter like swing).
+fn deadzone_curve(value: u16) -> u16 {
+    let value = value as i32;
+    let center = DEADZONE_CENTER as i32;
+    let out = if value <= DEADZONE_START {
+        (value * center) / DEADZONE_START
+    } else if value >= DEADZONE_END {
+        center + ((value - DEADZONE_END) * (DEADZONE_MAX - center)) / (DEADZONE_MAX - DEADZONE_END)
+    } else {
+        center
+    };
+    out.clamp(0, DEADZONE_MAX) as u16
+}
+
+/// Inverse of [`deadzone_curve`]. The flat zone maps a whole range of raw
+/// inputs to the single output `DEADZONE_CENTER`, so an input exactly equal
+/// to it resolves back to the exact center of the flat zone — the canonical
+/// representative raw position — rather than to either ramp.
+pub fn deadzone_curve_inverse(value: u16) -> u16 {
+    let value = (value as i32).clamp(0, DEADZONE_MAX);
+    let center = DEADZONE_CENTER as i32;
+    let out = if value < center {
+        (value * DEADZONE_START) / center
+    } else if value > center {
+        DEADZONE_END + ((value - center) * (DEADZONE_MAX - DEADZONE_END)) / (DEADZONE_MAX - center)
+    } else {
+        center
+    };
+    out.clamp(0, DEADZONE_MAX) as u16
 }
 
 impl Curve {
@@ -731,6 +843,7 @@ impl Curve {
             Curve::Linear => value,
             Curve::Exponential => CURVE_EXP[value as usize],
             Curve::Logarithmic => CURVE_LOG[value as usize],
+            Curve::Deadzone => deadzone_curve(value),
         }
     }
 
@@ -739,6 +852,7 @@ impl Curve {
             Curve::Linear => Curve::Exponential,
             Curve::Exponential => Curve::Logarithmic,
             Curve::Logarithmic => Curve::Linear,
+            Curve::Deadzone => Curve::Linear,
         }
     }
 }
@@ -974,6 +1088,43 @@ pub enum Param {
     VoltPerOct,
 }
 
+impl Param {
+    const fn metadata_is_ascii(&self) -> bool {
+        match self {
+            Self::None
+            | Self::MidiIn
+            | Self::MidiMode
+            | Self::MidiOut
+            | Self::MidiNrpn
+            | Self::VoltPerOct => true,
+            Self::i32 { name, .. }
+            | Self::f32 { name, .. }
+            | Self::bool { name }
+            | Self::Curve { name, .. }
+            | Self::Waveform { name, .. }
+            | Self::Color { name, .. }
+            | Self::Range { name, .. }
+            | Self::Note { name, .. }
+            | Self::MidiCc { name }
+            | Self::MidiChannel { name }
+            | Self::MidiNote { name } => name.is_ascii(),
+            Self::Enum { name, variants } => {
+                if !name.is_ascii() {
+                    return false;
+                }
+                let mut index = 0;
+                while index < variants.len() {
+                    if !variants[index].is_ascii() {
+                        return false;
+                    }
+                    index += 1;
+                }
+                true
+            }
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum Value {
@@ -1104,6 +1255,27 @@ pub enum ConfigMsgIn {
     },
     FactoryReset,
     GetVersion,
+    /// Set `output_jack` to `dac_counts` (0-10V DAC range), then measure the
+    /// frequency on `aux_input` (0=Atom, 1=Meteor, 2=Cube). Responds with
+    /// `VoOctFrequency` or `VoOctCalError`. Call twice with dac_counts=410
+    /// then dac_counts=2460 to get the two reference frequencies.
+    MeasureVoOct {
+        output_jack: u8,
+        aux_input: u8,
+        dac_counts: u16,
+    },
+    /// Set `output_jack` to `dac_counts` (0-10V DAC range) and hold it there.
+    /// Used for manual V/Oct calibration where the user reads the resulting
+    /// frequency off an external meter. Responds with `VoOctOutputSet`.
+    SetVoOctOutput {
+        output_jack: u8,
+        dac_counts: u16,
+    },
+    /// Release `output_jack` back to high-Z so apps can reclaim it. Responds
+    /// with `VoOctOutputSet`.
+    ReleaseVoOctOutput {
+        output_jack: u8,
+    },
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]
@@ -1116,7 +1288,19 @@ pub enum ConfigMsgOut<'a> {
     Layout(Layout),
     AppConfig(u8, usize, ConfigMeta<'a>),
     AppState(u8, &'a [Value]),
-    Version { major: u8, minor: u8, patch: u8 },
+    Version {
+        major: u8,
+        minor: u8,
+        patch: u8,
+    },
+    /// Frequency measured on the selected AUX input during V/Oct calibration.
+    VoOctFrequency {
+        freq_hz: f32,
+    },
+    /// V/Oct calibration measurement failed (no signal or timeout).
+    VoOctCalError,
+    /// Acknowledges `SetVoOctOutput` / `ReleaseVoOctOutput`.
+    VoOctOutputSet,
 }
 
 pub struct Config<const N: usize> {
@@ -1136,6 +1320,15 @@ impl<const N: usize> Config<N> {
         icon: AppIcon,
     ) -> Self {
         assert!(N <= APP_MAX_PARAMS, "Too many params");
+        // postcard-bindgen's JavaScript codec only round-trips ASCII strings.
+        assert!(
+            name.is_ascii(),
+            "App name must contain only ASCII characters"
+        );
+        assert!(
+            description.is_ascii(),
+            "App description must contain only ASCII characters"
+        );
         Config {
             color,
             description,
@@ -1147,6 +1340,10 @@ impl<const N: usize> Config<N> {
     }
 
     pub const fn add_param(mut self, param: Param) -> Self {
+        assert!(
+            param.metadata_is_ascii(),
+            "Parameter metadata must contain only ASCII characters"
+        );
         self.params[self.len] = param;
         let new_len = self.len + 1;
         Config {
@@ -1416,8 +1613,87 @@ impl MidiOut {
 
 #[cfg(test)]
 mod tests {
-    use super::{Layout, GLOBAL_CHANNELS};
+    use super::{
+        AppIcon, Color, Config, CustomVoOctCurve, Layout, Param, VoltPerOct, GLOBAL_CHANNELS,
+    };
     use heapless::Vec;
+
+    #[test]
+    fn config_accepts_ascii_metadata() {
+        let _ = Config::<1>::new(
+            "Clock Divider+",
+            "CV/OCT routing (1-16)",
+            Color::Yellow,
+            AppIcon::Fader,
+        )
+        .add_param(Param::Enum {
+            name: "Division / Mode",
+            variants: &["1/2", "x2 + gate"],
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "App name must contain only ASCII characters")]
+    fn config_rejects_non_ascii_name() {
+        let _ = Config::<0>::new("Arp de Lévy", "Sequencer", Color::Yellow, AppIcon::Fader);
+    }
+
+    #[test]
+    #[should_panic(expected = "App description must contain only ASCII characters")]
+    fn config_rejects_non_ascii_description() {
+        let _ = Config::<0>::new("Sequencer", "Café sequencer", Color::Yellow, AppIcon::Fader);
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameter metadata must contain only ASCII characters")]
+    fn config_rejects_non_ascii_parameter_name() {
+        let _ = Config::<1>::new("Sequencer", "Sequencer", Color::Yellow, AppIcon::Fader)
+            .add_param(Param::bool { name: "Activé" });
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameter metadata must contain only ASCII characters")]
+    fn config_rejects_non_ascii_enum_variant() {
+        let _ = Config::<1>::new("Sequencer", "Sequencer", Color::Yellow, AppIcon::Fader)
+            .add_param(Param::Enum {
+                name: "Mode",
+                variants: &["Normal", "Lévy"],
+            });
+    }
+
+    #[test]
+    fn custom_cpo_falls_back_to_standard_when_uncalibrated_or_implausible() {
+        let uncalibrated = [CustomVoOctCurve::default(); 4];
+        assert_eq!(
+            VoltPerOct::Custom(0).counts_per_oct_with_curves(&uncalibrated),
+            410
+        );
+
+        // A wildly-miscalibrated curve above the plausible range must not be
+        // used verbatim: cast to i16 it would otherwise wrap negative.
+        let mut wild = [CustomVoOctCurve::default(); 4];
+        wild[0].counts_per_oct = 43_000;
+        assert_eq!(VoltPerOct::Custom(0).counts_per_oct_with_curves(&wild), 410);
+        // Falls back to the same resolved 410 counts/oct as the counts
+        // variant above (410 / 409.5), not an artificial exact 1.0 — the two
+        // variants must agree on what "uncalibrated" resolves to.
+        assert!(
+            (VoltPerOct::Custom(0).voltage_scale_with_curves(&wild) - 410.0 / 409.5).abs() < 1e-6
+        );
+
+        // A plausible calibrated curve is used as-is, consistently between
+        // the counts and scale variants (410/409.5 would disagree otherwise).
+        let mut calibrated = [CustomVoOctCurve::default(); 4];
+        calibrated[0].counts_per_oct = 450;
+        assert_eq!(
+            VoltPerOct::Custom(0).counts_per_oct_with_curves(&calibrated),
+            450
+        );
+        assert!(
+            (VoltPerOct::Custom(0).voltage_scale_with_curves(&calibrated) - 450.0 / 409.5).abs()
+                < 1e-6
+        );
+    }
 
     fn mock_get_channels(app_id: u8) -> Option<usize> {
         match app_id {
@@ -1761,6 +2037,7 @@ mod tests {
             midi: decoded_v0.midi,
             quantizer: decoded_v0.quantizer,
             takeover_mode: decoded_v0.takeover_mode,
+            custom_voct_curves: Default::default(),
         };
         assert_eq!(migrated.led_brightness, 111);
 
@@ -1858,6 +2135,7 @@ mod tests {
             midi: decoded_v17.midi,
             quantizer: decoded_v17.quantizer,
             takeover_mode: TakeoverMode::Pickup,
+            custom_voct_curves: Default::default(),
         };
         assert_eq!(migrated.led_brightness, 111);
         assert_eq!(migrated.clock.swing_amount, 0);
@@ -1866,5 +2144,52 @@ mod tests {
         let decoded: GlobalConfig = minicbor::decode(&encoded).unwrap();
         assert_eq!(decoded.led_brightness, 111);
         assert_eq!(decoded.clock.swing_amount, 0);
+    }
+
+    #[test]
+    fn deadzone_curve_covers_full_range_at_endpoints() {
+        assert_eq!(Curve::Deadzone.at(0), 0);
+        assert_eq!(Curve::Deadzone.at(4095), 4095);
+    }
+
+    #[test]
+    fn deadzone_curve_flat_zone_holds_exact_center() {
+        let start = DEADZONE_START as u16;
+        let end = DEADZONE_END as u16;
+        for raw in [start, start + 50, DEADZONE_CENTER, end - 50, end] {
+            assert_eq!(Curve::Deadzone.at(raw), DEADZONE_CENTER);
+        }
+    }
+
+    #[test]
+    fn deadzone_curve_inverse_returns_center_for_center_input() {
+        assert_eq!(deadzone_curve_inverse(DEADZONE_CENTER), DEADZONE_CENTER);
+    }
+
+    #[test]
+    fn deadzone_curve_inverse_round_trips_ramp_values() {
+        // Values right at DEADZONE_START/END are excluded: the forward curve
+        // already returns exactly DEADZONE_CENTER there (same as the flat
+        // zone), so their inverse is legitimately ambiguous.
+        let just_below_start = (DEADZONE_START - 1) as u16;
+        let just_above_end = (DEADZONE_END + 1) as u16;
+        for raw in [
+            0,
+            500,
+            1000,
+            1500,
+            just_below_start,
+            just_above_end,
+            3000,
+            3500,
+            4095,
+        ] {
+            let warped = Curve::Deadzone.at(raw);
+            let recovered = deadzone_curve_inverse(warped);
+            assert!(
+                (recovered as i32 - raw as i32).abs() <= 1,
+                "raw={raw} warped={warped} recovered={recovered}"
+            );
+        }
     }
 }

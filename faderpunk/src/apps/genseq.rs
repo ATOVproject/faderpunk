@@ -17,7 +17,8 @@ use libfp::{
 use midly::num::u7;
 
 use crate::app::{
-    App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent,
+    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore,
+    SceneEvent,
 };
 
 pub const CHANNELS: usize = 3;
@@ -202,7 +203,6 @@ pub async fn run(
     let fader = app.use_faders();
     let leds = app.use_leds();
     let mut clock = app.use_clock();
-    let ticks = clock.get_ticker();
     let die = app.use_die();
     let quantizer = app.use_quantizer(Range::_0_10V, vpo, bypass);
     let midi = app.use_midi_output(midi_out, midi_chan, false);
@@ -278,8 +278,22 @@ pub async fn run(
                     }
                     register_pitch = storage.query(|s| s.register_pitch);
                 }
-                ClockEvent::Tick => {
-                    let clkn = ticks() as u32;
+                ClockEvent::Stop => {
+                    // No phase reset (see ClockEvent::Stop docs) — just silence
+                    // whatever note/gate is currently held, including a legato
+                    // tie whose note-off would otherwise wait on a Tick that
+                    // will never come.
+                    if gate_on {
+                        gate_out.set_value(0);
+                        gate_on = false;
+                        midi.send_note_off(last_note_on.get()).await;
+                        leds.set(1, Led::Top, led_color, Brightness::Custom(0));
+                    }
+                    pending_note_off = false;
+                    aux_out.set_value(0);
+                }
+                ClockEvent::Tick(tick) => {
+                    let clkn = tick as u32;
                     if clkn.is_multiple_of(div) {
                         clkn_euclid = (clkn_euclid + 1) % euclid_length.max(1) as u16;
                         euclid_step_glob.set(clkn_euclid);
@@ -328,7 +342,7 @@ pub async fn run(
 
                             let register_scaled = scale_to_12bit(register_pitch, length as u8);
                             let raw_att = storage.query(|s| s.pitch_att);
-                            let att_reg = attenuate(register_scaled, raw_att);
+                            let att_reg: u16 = attenuate(register_scaled, raw_att);
                             let octave_offset =
                                 (storage.query(|s| s.octave_shift) / 819).min(4) as i32 - 2;
 
@@ -356,7 +370,7 @@ pub async fn run(
                             midi_note.set(note);
 
                             if !glob_muted.get() {
-                                cv_out.set_value(shifted.as_counts(Range::_0_10V, vpo));
+                                cv_out.set_value(pitch_as_counts(shifted, Range::_0_10V, vpo));
                             }
                             leds.set(
                                 0,
@@ -404,19 +418,34 @@ pub async fn run(
                         let is_beat =
                             euclidean_at(euclid_length, euclid_beat, 0, clkn_euclid as u32);
 
-                        if is_beat && !glob_muted.get() {
-                            if gate_on {
-                                midi.send_note_off(last_note_on.get()).await;
+                        if is_beat {
+                            if glob_muted.get() {
+                                // Muted: don't sound a new note, but still close out
+                                // any note/gate left open by a prior legato tie — the
+                                // pending_note_off resolution below only fires once a
+                                // non-legato step is reached, which may not happen for
+                                // a long run of tied steps.
+                                if gate_on {
+                                    gate_out.set_value(0);
+                                    gate_on = false;
+                                    pending_note_off = false;
+                                    leds.set(1, Led::Top, led_color, Brightness::Custom(0));
+                                    midi.send_note_off(last_note_on.get()).await;
+                                }
+                            } else {
+                                if gate_on {
+                                    midi.send_note_off(last_note_on.get()).await;
+                                }
+                                let note = midi_note.get();
+                                last_note_on.set(note);
+                                gate_out.set_value(4095);
+                                gate_on = true;
+                                pending_note_off = false;
+                                aux_out.set_value(if is_accented { 4095 } else { 0 });
+                                midi.send_note_on(note, if is_accented { 4095 } else { 2048 })
+                                    .await;
+                                leds.set(1, Led::Top, led_color, Brightness::Low);
                             }
-                            let note = midi_note.get();
-                            last_note_on.set(note);
-                            gate_out.set_value(4095);
-                            gate_on = true;
-                            pending_note_off = false;
-                            aux_out.set_value(if is_accented { 4095 } else { 0 });
-                            midi.send_note_on(note, if is_accented { 4095 } else { 2048 })
-                                .await;
-                            leds.set(1, Led::Top, led_color, Brightness::Low);
                         }
 
                         legato = is_legato;
