@@ -1088,6 +1088,43 @@ pub enum Param {
     VoltPerOct,
 }
 
+impl Param {
+    const fn metadata_is_ascii(&self) -> bool {
+        match self {
+            Self::None
+            | Self::MidiIn
+            | Self::MidiMode
+            | Self::MidiOut
+            | Self::MidiNrpn
+            | Self::VoltPerOct => true,
+            Self::i32 { name, .. }
+            | Self::f32 { name, .. }
+            | Self::bool { name }
+            | Self::Curve { name, .. }
+            | Self::Waveform { name, .. }
+            | Self::Color { name, .. }
+            | Self::Range { name, .. }
+            | Self::Note { name, .. }
+            | Self::MidiCc { name }
+            | Self::MidiChannel { name }
+            | Self::MidiNote { name } => name.is_ascii(),
+            Self::Enum { name, variants } => {
+                if !name.is_ascii() {
+                    return false;
+                }
+                let mut index = 0;
+                while index < variants.len() {
+                    if !variants[index].is_ascii() {
+                        return false;
+                    }
+                    index += 1;
+                }
+                true
+            }
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, PostcardBindings)]
 pub enum Value {
@@ -1283,6 +1320,15 @@ impl<const N: usize> Config<N> {
         icon: AppIcon,
     ) -> Self {
         assert!(N <= APP_MAX_PARAMS, "Too many params");
+        // postcard-bindgen's JavaScript codec only round-trips ASCII strings.
+        assert!(
+            name.is_ascii(),
+            "App name must contain only ASCII characters"
+        );
+        assert!(
+            description.is_ascii(),
+            "App description must contain only ASCII characters"
+        );
         Config {
             color,
             description,
@@ -1294,6 +1340,10 @@ impl<const N: usize> Config<N> {
     }
 
     pub const fn add_param(mut self, param: Param) -> Self {
+        assert!(
+            param.metadata_is_ascii(),
+            "Parameter metadata must contain only ASCII characters"
+        );
         self.params[self.len] = param;
         let new_len = self.len + 1;
         Config {
@@ -1563,8 +1613,53 @@ impl MidiOut {
 
 #[cfg(test)]
 mod tests {
-    use super::{CustomVoOctCurve, Layout, VoltPerOct, GLOBAL_CHANNELS};
+    use super::{
+        AppIcon, Color, Config, CustomVoOctCurve, Layout, Param, VoltPerOct, GLOBAL_CHANNELS,
+    };
     use heapless::Vec;
+
+    #[test]
+    fn config_accepts_ascii_metadata() {
+        let _ = Config::<1>::new(
+            "Clock Divider+",
+            "CV/OCT routing (1-16)",
+            Color::Yellow,
+            AppIcon::Fader,
+        )
+        .add_param(Param::Enum {
+            name: "Division / Mode",
+            variants: &["1/2", "x2 + gate"],
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "App name must contain only ASCII characters")]
+    fn config_rejects_non_ascii_name() {
+        let _ = Config::<0>::new("Arp de Lévy", "Sequencer", Color::Yellow, AppIcon::Fader);
+    }
+
+    #[test]
+    #[should_panic(expected = "App description must contain only ASCII characters")]
+    fn config_rejects_non_ascii_description() {
+        let _ = Config::<0>::new("Sequencer", "Café sequencer", Color::Yellow, AppIcon::Fader);
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameter metadata must contain only ASCII characters")]
+    fn config_rejects_non_ascii_parameter_name() {
+        let _ = Config::<1>::new("Sequencer", "Sequencer", Color::Yellow, AppIcon::Fader)
+            .add_param(Param::bool { name: "Activé" });
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameter metadata must contain only ASCII characters")]
+    fn config_rejects_non_ascii_enum_variant() {
+        let _ = Config::<1>::new("Sequencer", "Sequencer", Color::Yellow, AppIcon::Fader)
+            .add_param(Param::Enum {
+                name: "Mode",
+                variants: &["Normal", "Lévy"],
+            });
+    }
 
     #[test]
     fn custom_cpo_falls_back_to_standard_when_uncalibrated_or_implausible() {
