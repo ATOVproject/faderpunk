@@ -1,0 +1,58 @@
+<!-- ARP DE LÉVY -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 34</span>
+    <h2>Arp de Levy <span class="tag ready">ready</span></h2>
+    <span class="desc">Lévy-flight arp — evolve, texture, flight character</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Evolve / mutation (0 = frozen)</li>
+          <li><strong>Alt</strong> — Texture (density / phrase / swing feel)</li>
+          <li><strong>Third</strong> — Lévy α / flight character</li>
+        </ul>
+        <h3>Jack params</h3>
+        <ul>
+          <li>Jack: CV Out / CV In</li>
+          <li>CV Out source (Jack=Out): Pitch · Gate · Velocity</li>
+          <li>CV Dest (Jack=In): Evolve · Texture · Reroll</li>
+          <li>Range, CV Att · V/Oct · Bypass quantizer</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Reroll note pool (+ reset)</li>
+          <li><strong>Long</strong> — Mute</li>
+          <li><strong>Shift+Short (CV Out)</strong> — Cycle CV Out source</li>
+          <li><strong>Shift+Short (CV In)</strong> — Reverse playback</li>
+          <li><strong>Shift+Long</strong> — Cycle octave span 1→2→3→4</li>
+        </ul>
+        <h3>Octave LED</h3>
+        <ul>
+          <li>Blue · Cyan · Yellow · Red</li>
+        </ul>
+        <h3>LEDs</h3>
+        <ul>
+          <li><strong>Button / Top</strong> — latch hue + level: Main = Color/Evolve · Alt = Orange/Texture · Third = Violet/α; mute = off</li>
+          <li><strong>Bottom</strong> — Pitch height in Color while gated (note activity)</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>MIDI CH, Base Note, Color, MIDI Out</li>
+          <li>Follow device tonic (default on)</li>
+          <li>CV pitch + MIDI (dual path)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Generative arp whose pool evolves with Lévy-flight mutations. Main bottom freezes; raise to wander. Texture shapes phrase density/length; Third sets flight character (α). Shift+Long walks octave span (button color). Jack=CV Out: Shift+Short cycles Pitch/Gate/Velocity. Jack=CV In: Shift+Short reverses; CV modulates Evolve/Texture or fires Reroll. <strong>Follow device tonic</strong> (default on) makes the device Tonic a live transpose — hold the Scene button, move Fader 5, and the arp moves with Bassment, Contura, Chord Vamp and Venn. Because the pool holds absolute notes, it is <em>shifted</em> by the interval rather than rerolled, so the melodic shape it has evolved into survives the transpose. Takes effect at the next phrase start.</p>
+    </div>
+  </div>
+</section>
+
