@@ -20,6 +20,14 @@ const T: u64 = 1000 / REFRESH_RATE;
 const NUM_LEDS: usize = 50;
 const LED_OVERLAY_CHANNEL_SIZE: usize = 16;
 
+/// Fixed brightness for the boot animation, independent of the
+/// user-configured `LED_BRIGHTNESS`. On boards with the inline USB current
+/// limiter, driving all LEDs at a high (e.g. configured max) brightness
+/// before the decoupling caps have charged can brown out the MCU. The
+/// animation runs before the config is loaded from FRAM anyway, so it can't
+/// honor the configured brightness even if it wanted to.
+const STARTUP_BRIGHTNESS: u8 = 155;
+
 pub static LED_BRIGHTNESS: AtomicU8 = AtomicU8::new(LED_BRIGHTNESS_RANGE.end);
 
 static LED_SIGNALS: [Signal<CriticalSectionRawMutex, LedMsg>; NUM_LEDS] =
@@ -288,14 +296,15 @@ impl LedProcessor {
                 }
             }
         }
-        self.flush_buffer().await;
+        self.flush_buffer(LED_BRIGHTNESS.load(Ordering::Relaxed))
+            .await;
     }
 
-    async fn flush_buffer(&mut self) {
+    async fn flush_buffer(&mut self, brightness_level: u8) {
         self.ws
             .write(gamma(brightness(
                 self.buffer.iter().cloned(),
-                LED_BRIGHTNESS.load(Ordering::Relaxed),
+                brightness_level,
             )))
             .await
             .ok();
@@ -436,7 +445,7 @@ async fn startup_animation(leds: &mut LedProcessor) {
             }
         }
 
-        leds.flush_buffer().await;
+        leds.flush_buffer(STARTUP_BRIGHTNESS).await;
         Timer::after_millis(100).await;
     }
 
@@ -446,17 +455,17 @@ async fn startup_animation(leds: &mut LedProcessor) {
         if i > 0 {
             leds.buffer[i - 1] = BLACK;
         }
-        leds.flush_buffer().await;
+        leds.flush_buffer(STARTUP_BRIGHTNESS).await;
         Timer::after_millis(15).await;
     }
     // Clear last LED
     leds.buffer[NUM_LEDS - 1] = BLACK;
-    leds.flush_buffer().await;
+    leds.flush_buffer(STARTUP_BRIGHTNESS).await;
     Timer::after_millis(250).await;
 
     // Final Flash
     leds.buffer.fill(Color::Pink.into());
-    leds.flush_buffer().await;
+    leds.flush_buffer(STARTUP_BRIGHTNESS).await;
     Timer::after_millis(100).await;
 
     // Fade to black
@@ -464,10 +473,10 @@ async fn startup_animation(leds: &mut LedProcessor) {
     for i in (0..=255).rev().step_by(8) {
         let scaled_color = pink.scale(i);
         leds.buffer.fill(scaled_color);
-        leds.flush_buffer().await;
+        leds.flush_buffer(STARTUP_BRIGHTNESS).await;
         Timer::after_millis(T).await;
     }
 
     leds.buffer.fill(BLACK);
-    leds.flush_buffer().await;
+    leds.flush_buffer(STARTUP_BRIGHTNESS).await;
 }
