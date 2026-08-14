@@ -1,6 +1,6 @@
 // GENERATED FILE — do not edit by hand.
 // Regenerate with `./gen-app-library.sh` from repo root. Source of truth:
-// faderpunk/src/apps/mod.rs (order) and each app's `Config::new(...)` call.
+// fp-core/src/apps/mod.rs (order) and each app's `Config::new(...)` call.
 
 export interface AppLibraryEntry {
   id: number;

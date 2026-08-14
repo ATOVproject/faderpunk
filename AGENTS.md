@@ -125,7 +125,7 @@ types in `libfp` change. If types change and the bindings seem stale, delete
 `./gen-bindings.sh` also regenerates `configurator/src/demo/catalog.ts` — the
 static app list used by the configurator's simulator mode (`VITE_SIMULATOR`) —
 by parsing each registered app's `CONFIG` directly out of
-`faderpunk/src/apps/*.rs`. That file is gitignored and never hand-edited: it's
+`fp-core/src/apps/*.rs`. That file is gitignored and never hand-edited: it's
 produced fresh on every `./gen-bindings.sh` run, which already happens in CI,
 beta, and release builds, so the simulator catalog can't drift out of sync
 with the actual apps. Run `./gen-bindings.sh` once before local configurator
@@ -189,14 +189,14 @@ Cargo commands.
 
 ### App System
 
-Apps are registered using the `register_apps!` macro in `faderpunk/src/apps/mod.rs`. Each app must provide:
+Apps are registered using the `register_apps!` macro in `fp-core/src/apps/mod.rs`. Each app must provide:
 
 1. **CHANNELS constant**: Number of channels the app uses (1-16)
 2. **CONFIG constant**: Metadata (name, description, color, icon, parameters)
 3. **wrapper task**: Embassy task entry point with `#[embassy_executor::task(pool_size = 16/CHANNELS)]`
 4. **run function**: Main async logic
 
-Apps interact with hardware through the `App<N>` API (`faderpunk/src/app.rs`):
+Apps interact with hardware through the `App<N>` API (`fp-core/src/app.rs`):
 - `app.use_faders()` - Access fader values
 - `app.use_buttons()` - Await button events
 - `app.use_leds()` - Control RGB LEDs
@@ -241,8 +241,8 @@ Apps can implement scene storage by implementing serialization with `postcard`. 
 
 ## Creating a New App
 
-1. Create `faderpunk/src/apps/my_app.rs` with CHANNELS, CONFIG, wrapper task, and run function
-2. Register in `faderpunk/src/apps/mod.rs`: `register_apps!(... 42 => my_app,)`
+1. Create `fp-core/src/apps/my_app.rs` with CHANNELS, CONFIG, wrapper task, and run function
+2. Register in `fp-core/src/apps/mod.rs`: `register_apps!(... 42 => my_app,)`
 3. If adding new parameter types to CONFIG, update `libfp/src/lib.rs`
 4. Run `./gen-bindings.sh` — regenerates both the protocol bindings and the
    simulator app catalog (`configurator/src/demo/catalog.ts`) so the new app
@@ -420,6 +420,6 @@ configurator/        # Web configurator (React + TypeScript)
 
 gen-bindings/        # TypeScript binding generator
 ├── src/main.rs      # Uses postcard-bindgen to generate TS types
-└── src/catalog.rs   # Parses faderpunk/src/apps/*.rs to generate the
+└── src/catalog.rs   # Parses fp-core/src/apps/*.rs to generate the
                       # simulator app catalog (configurator/src/demo/catalog.ts)
 ```

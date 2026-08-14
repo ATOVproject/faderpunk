@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Generates src/generated/appLibrary.ts from the Rust source of truth:
-// faderpunk/src/apps/mod.rs (registration order) and each app's
+// fp-core/src/apps/mod.rs (registration order) and each app's
 // `Config::new(...)` call. The `faderpunk` crate is no_std/embedded-only and
 // can't be compiled on the host to introspect at build time, so this reads
 // the Rust source text directly instead.
@@ -11,7 +11,7 @@ import * as prettier from "prettier";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPT_DIR, "..", "..");
-const APPS_DIR = join(REPO_ROOT, "faderpunk", "src", "apps");
+const APPS_DIR = join(REPO_ROOT, "fp-core", "src", "apps");
 const OUT_FILE = join(SCRIPT_DIR, "..", "src", "generated", "appLibrary.ts");
 
 // Mirrors configurator/src/utils/utils.ts's pascalToKebab, reimplemented here
@@ -60,7 +60,7 @@ const library = registered.map(({ id, module }) => {
 
 const unformatted = `// GENERATED FILE — do not edit by hand.
 // Regenerate with \`./gen-app-library.sh\` from repo root. Source of truth:
-// faderpunk/src/apps/mod.rs (order) and each app's \`Config::new(...)\` call.
+// fp-core/src/apps/mod.rs (order) and each app's \`Config::new(...)\` call.
 
 export interface AppLibraryEntry {
   id: number;

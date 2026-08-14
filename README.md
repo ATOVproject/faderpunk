@@ -171,17 +171,24 @@ For more details, see [configurator/README.md](configurator/README.md)
 
 ```
 faderpunk/
-├── faderpunk/           # Main firmware crate
+├── faderpunk/           # Embedded firmware shell (drivers, main)
 │   ├── src/
-│   │   ├── main.rs      # System initialization, core orchestration
+│   │   ├── main.rs      # System initialization, dual-core orchestration
+│   │   └── tasks/       # Hardware driver tasks (RP2350, MAX11300, WS2812, etc.)
+│   └── Cargo.toml
+├── fp-core/             # Portable firmware logic & apps (no_std)
+│   ├── src/
 │   │   ├── app.rs       # App API and abstractions
 │   │   ├── apps/        # App implementations
-│   │   ├── tasks/       # Hardware driver tasks
-│   │   ├── events.rs    # Event types
+│   │   ├── events.rs    # Event types and PubSub
+│   │   ├── layout.rs    # Channel layout management
 │   │   ├── storage.rs   # FRAM persistence
-│   │   └── layout.rs    # Channel layout management
+│   │   └── tasks/       # Portable tasks (clock, configure, LED processing)
 │   └── Cargo.toml
-├── libfp/               # Shared library
+├── fp-sim/              # Desktop simulator host (egui UI & virtual MIDI)
+├── fp-sim-core/         # Desktop simulator Embassy runtime child process
+├── fp-sim-protocol/     # Postcard IPC protocol between host and child
+├── libfp/               # Shared library (protocol types, curves, math)
 │   ├── src/             # Common types and utilities
 │   └── Cargo.toml
 ├── configurator/        # Web configurator
@@ -193,7 +200,7 @@ faderpunk/
 
 ### Creating a New App
 
-1. Create a new file in `faderpunk/src/apps/my_app.rs`:
+1. Create a new file in `fp-core/src/apps/my_app.rs`:
 
 
 ```rust
@@ -237,7 +244,7 @@ pub async fn run(app: &App<CHANNELS>) {
 }
 ```
 
-2. Register in `faderpunk/src/apps/mod.rs`
+2. Register in `fp-core/src/apps/mod.rs`
 
 ```rust
     42 => my_app,
