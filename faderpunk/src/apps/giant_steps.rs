@@ -17,7 +17,7 @@ use libfp::{
 
 use crate::{
     app::{App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent},
-    apps::coltrane_geo::{build_coltrane_chord, build_cycle, center_color},
+    apps::coltrane_geo::{build_coltrane_chord, build_cycle, center_from_app},
     apps::follow_key,
 };
 
@@ -573,8 +573,9 @@ pub async fn run(
 
             let muted = glob_muted.get();
             let center = glob_center_idx.get();
-            let (cr, cg, cb) = center_color(center);
-            let center_col = Color::Custom(cr, cg, cb);
+            let app_color = params.query(|p| p.color);
+            // Whole 120 deg triad rotates with the Color param.
+            let center_col = center_from_app(app_color, center);
 
             if !muted {
                 leds.set(0, Led::Top, center_col, Brightness::Mid);

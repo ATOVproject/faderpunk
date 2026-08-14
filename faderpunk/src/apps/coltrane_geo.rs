@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
 //! Coltrane Changes geometry: tonal center cycles, approach patterns, chord
-//! building. Shared by Giant Steps and (later) Axis Matrix.
+//! building. Shared by Giant Steps and Axis Matrix.
 
 use heapless::Vec;
+use libfp::Color;
+use smart_leds::RGB8;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ChordQuality {
@@ -86,13 +88,74 @@ pub fn build_coltrane_chord(root_midi: u8, quality: ChordQuality, voicing: usize
     out
 }
 
-/// Distinct RGB color for each of the 3 tonal centers.
+/// Fixed RGB triad (legacy): Blue / Green / Orange at ~120 deg.
 pub fn center_color(center_idx: u8) -> (u8, u8, u8) {
     match center_idx % 3 {
         0 => (40, 80, 220),
         1 => (30, 200, 80),
         _ => (230, 120, 20),
     }
+}
+
+/// Tonal-center color: rotate the 120 deg triad so center 0 matches `base` hue.
+/// Centers stay equally spaced (+0 / +120 / +240) on the wheel.
+pub fn center_from_app(base: Color, center_idx: u8) -> Color {
+    let RGB8 { r, g, b } = RGB8::from(base);
+    let (h, s, v) = rgb_to_hsv(r, g, b);
+    // Near-white / grey: fall back to fixed triad so centers stay distinct.
+    if s < 20 {
+        let (cr, cg, cb) = center_color(center_idx);
+        return Color::Custom(cr, cg, cb);
+    }
+    let h2 = (h + u16::from(center_idx % 3) * 120) % 360;
+    let (nr, ng, nb) = hsv_to_rgb(h2, s.max(140), v.max(160));
+    Color::Custom(nr, ng, nb)
+}
+
+fn rgb_to_hsv(r: u8, g: u8, b: u8) -> (u16, u8, u8) {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let v = max;
+    if max == 0 {
+        return (0, 0, 0);
+    }
+    let d = max - min;
+    let s = ((u16::from(d) * 255) / u16::from(max)) as u8;
+    if d == 0 {
+        return (0, 0, v);
+    }
+    let (r, g, b, max, d) = (i32::from(r), i32::from(g), i32::from(b), i32::from(max), i32::from(d));
+    let h = if max == r {
+        ((g - b) * 60) / d
+    } else if max == g {
+        120 + ((b - r) * 60) / d
+    } else {
+        240 + ((r - g) * 60) / d
+    };
+    ((h.rem_euclid(360)) as u16, s, v)
+}
+
+fn hsv_to_rgb(h: u16, s: u8, v: u8) -> (u8, u8, u8) {
+    if s == 0 {
+        return (v, v, v);
+    }
+    let h = h % 360;
+    let sector = h / 60;
+    let f = h % 60;
+    let v = u16::from(v);
+    let s = u16::from(s);
+    let p = v * (255 - s) / 255;
+    let q = v * (255 - (s * f) / 60) / 255;
+    let t = v * (255 - (s * (60 - f)) / 60) / 255;
+    let (r, g, b) = match sector {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+    (r as u8, g as u8, b as u8)
 }
 
 /// Brightness (0-255) that peaks when fader position aligns with a center and
