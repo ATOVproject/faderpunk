@@ -103,6 +103,33 @@ fn push_indent(out: &mut String, indent: usize) {
     }
 }
 
+/// Mirrors `libfp::Config`'s compile-time ASCII assert (postcard-bindgen's
+/// JavaScript codec only round-trips ASCII strings). That assert only fires
+/// when `faderpunk` is actually compiled, which this generator never does
+/// (see module docs), so without this check a non-ASCII `CONFIG` would pass
+/// `./gen-bindings.sh` and land in the simulator catalog before the firmware
+/// build catches it.
+fn assert_ascii_strings(value: &TsValue, context: &str) {
+    match value {
+        TsValue::Str(s) => assert!(
+            s.is_ascii(),
+            "non-ASCII app metadata {s:?} in {context} (must be ASCII — see \
+             libfp::Config's ASCII assert)"
+        ),
+        TsValue::Num(_) => {}
+        TsValue::Object(fields) => {
+            for (_, v) in fields {
+                assert_ascii_strings(v, context);
+            }
+        }
+        TsValue::Array(items) => {
+            for item in items {
+                assert_ascii_strings(item, context);
+            }
+        }
+    }
+}
+
 fn path_last_segment(expr: &Expr) -> Option<String> {
     match expr {
         Expr::Path(ExprPath { path, .. }) => path.segments.last().map(|s| s.ident.to_string()),
@@ -200,7 +227,7 @@ struct ExtractedConfig {
 
 /// Walks a `Config::new(name, description, color, icon).add_param(..).add_param(..)`
 /// method-call chain and extracts the four base args plus each param.
-fn extract_config(expr: &Expr) -> ExtractedConfig {
+fn extract_config(expr: &Expr, context: &str) -> ExtractedConfig {
     fn walk(expr: &Expr, params: &mut Vec<Expr>) -> (Expr, Expr, Expr, Expr) {
         match expr {
             Expr::MethodCall(ExprMethodCall {
@@ -249,7 +276,15 @@ fn extract_config(expr: &Expr) -> ExtractedConfig {
     let color = path_last_segment(&color_expr).expect("Config::new color arg must be a path");
     let icon = path_last_segment(&icon_expr).expect("Config::new icon arg must be a path");
 
-    let params = param_exprs.iter().map(convert_param).collect();
+    assert!(
+        name.is_ascii() && description.is_ascii(),
+        "non-ASCII app name/description in {context} (must be ASCII — see \
+         libfp::Config's ASCII assert)"
+    );
+    let params: Vec<TsValue> = param_exprs.iter().map(convert_param).collect();
+    for param in &params {
+        assert_ascii_strings(param, context);
+    }
 
     ExtractedConfig {
         name,
@@ -367,7 +402,7 @@ pub fn generate(faderpunk_src: &Path, out_file: &Path) {
             .unwrap_or_else(|| panic!("no `pub const CHANNELS` found in {}", file_path.display()));
         let config_expr = find_config_static(&parsed)
             .unwrap_or_else(|| panic!("no `pub static CONFIG` found in {}", file_path.display()));
-        let config = extract_config(&config_expr);
+        let config = extract_config(&config_expr, &file_path.display().to_string());
 
         apps.push(AppData {
             id,
@@ -397,4 +432,56 @@ pub fn generate(faderpunk_src: &Path, out_file: &Path) {
         fs::create_dir_all(parent).unwrap();
     }
     fs::write(out_file, out).unwrap_or_else(|e| panic!("writing {}: {e}", out_file.display()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn extract_config_accepts_ascii_metadata() {
+        let expr: Expr = parse_quote! {
+            Config::new("Clock Divider+", "CV/OCT routing (1-16)", Color::Yellow, AppIcon::Fader)
+                .add_param(Param::Enum {
+                    name: "Division / Mode",
+                    variants: &["1/2", "x2 + gate"],
+                })
+        };
+        let config = extract_config(&expr, "test.rs");
+        assert_eq!(config.name, "Clock Divider+");
+        assert_eq!(config.params.len(), 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "non-ASCII app name/description")]
+    fn extract_config_rejects_non_ascii_name() {
+        let expr: Expr = parse_quote! {
+            Config::new("Arp de Lévy", "Sequencer", Color::Yellow, AppIcon::Fader)
+        };
+        extract_config(&expr, "test.rs");
+    }
+
+    #[test]
+    #[should_panic(expected = "non-ASCII app metadata")]
+    fn extract_config_rejects_non_ascii_param_name() {
+        let expr: Expr = parse_quote! {
+            Config::new("Sequencer", "Sequencer", Color::Yellow, AppIcon::Fader)
+                .add_param(Param::bool { name: "Activé" })
+        };
+        extract_config(&expr, "test.rs");
+    }
+
+    #[test]
+    #[should_panic(expected = "non-ASCII app metadata")]
+    fn extract_config_rejects_non_ascii_enum_variant() {
+        let expr: Expr = parse_quote! {
+            Config::new("Sequencer", "Sequencer", Color::Yellow, AppIcon::Fader)
+                .add_param(Param::Enum {
+                    name: "Mode",
+                    variants: &["Normal", "Lévy"],
+                })
+        };
+        extract_config(&expr, "test.rs");
+    }
 }
