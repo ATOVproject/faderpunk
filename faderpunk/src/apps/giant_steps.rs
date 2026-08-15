@@ -95,7 +95,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::i32 {
     name: "CV Att",
     min: 0,
-    max: 100,
+    max: 400,
 })
 .add_param(Param::bool {
     name: "Follow device tonic",
@@ -162,7 +162,7 @@ impl AppParams for Params {
             jack: usize::from_value(values[9]).min(JACK_COUNT - 1),
             range: Range::from_value(values[10]),
             vpo: VoltPerOct::from_value(values[11]),
-            cv_att: i32::from_value(values[12]).clamp(0, 100),
+            cv_att: i32::from_value(values[12]).clamp(0, 400),
             follow_tonic: bool::from_value(values[13]),
             follow_scale: bool::from_value(values[14]),
         })
@@ -207,7 +207,7 @@ impl Default for Storage {
 impl AppStorage for Storage {}
 
 fn att_from_pct(pct: i32) -> u16 {
-    ((pct.clamp(0, 100) as u32 * 4095) / 100) as u16
+    ((pct.clamp(0, 400) as u32 * 4095) / 100) as u16
 }
 
 fn interval_semitones(param: usize) -> u8 {
