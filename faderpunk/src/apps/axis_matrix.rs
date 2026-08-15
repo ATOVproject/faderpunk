@@ -3,8 +3,9 @@
 //! A 3x3 grid of tonal centers x harmonic functions. Main fader selects center
 //! position (with snap zones and approach-chord transition zones at boundaries),
 //! Alt fader selects harmonic function (I / V / ii). Clock triggers the chord
-//! at the current grid position. Button tap toggles mute, hold enters drone,
-//! Shift+tap latches, Shift+hold cycles the interval.
+//! at the current grid position. Third layer (button held + fader) selects the
+//! clock division. Button tap toggles mute, hold enters drone, Shift+tap
+//! latches, Shift+hold cycles Feel.
 
 use embassy_futures::{
     join::{join3, join5},
@@ -26,7 +27,7 @@ use crate::{
     app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent},
     apps::coltrane_geo::{
         arp_order, build_chord_voice_led, center_brightness, center_from_app, feel_swing_ticks,
-        feel_velocity, interval_color, step_div_mult, tritone_sub_root, ChordQuality, Motion,
+        feel_velocity, step_div_mult, tritone_sub_root, ChordQuality, Motion,
         MOTION_LABELS,
     },
     apps::follow_key,
@@ -54,9 +55,36 @@ fn cv_idle(range: Range) -> u16 {
 }
 
 const DIV_LABELS: &[&str] = &[
-    "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/4t", "1/8t", "1/16t", "1/32t", "1/64t",
+    "1/1", "1/2", "1/4", "1/4t", "1/8", "1/8t", "1/16", "1/16t", "1/32", "1/32t", "1/64t",
 ];
-const RESOLUTION: [u32; 11] = [96, 48, 24, 12, 6, 3, 16, 8, 4, 2, 1];
+const RESOLUTION: [u32; 11] = [96, 48, 24, 16, 12, 8, 6, 4, 3, 2, 1];
+
+/// Third-layer fader -> division index: bottom = 1/1, top = 1/64t.
+fn div_idx_from_fader(v: u16) -> usize {
+    ((v as u32 * 11) / 4096).min(10) as usize
+}
+
+/// Centre of a division index' fader zone, for the sentinel start value.
+fn fader_from_div_idx(idx: usize) -> u16 {
+    ((idx as u32 * 4096 + 2048) / 11).min(4095) as u16
+}
+
+/// Feel cycle stops for the Shift + long press gesture.
+const FEEL_STEPS: [u16; 4] = [0, 1365, 2730, 4095];
+
+fn next_feel_step(cur: u16) -> usize {
+    let i = FEEL_STEPS.iter().position(|&s| cur <= s).unwrap_or(3);
+    (i + 1) % 4
+}
+
+fn feel_color(step: usize) -> Color {
+    match step {
+        1 => Color::Cyan,
+        2 => Color::Yellow,
+        3 => Color::Rose,
+        _ => Color::Blue,
+    }
+}
 
 const JACK_OUT: usize = 0;
 const JACK_IN_POS: usize = 1;
@@ -152,7 +180,7 @@ impl Default for Params {
             midi_out: MidiOut([true, false, false]),
             midi_channel: MidiChannel::default(),
             root: MidiNote::from(48),
-            division: 3,
+            division: 4,
             interval: 1,
             voicing: 1,
             sustain: 0,
@@ -218,8 +246,8 @@ pub struct Storage {
     position_saved: u16,
     function_saved: u16,
     muted: bool,
-    interval_idx: u8,
     feel: u16,
+    time_fader: u16,
 }
 
 impl Default for Storage {
@@ -228,8 +256,9 @@ impl Default for Storage {
             position_saved: 2048,
             function_saved: 2048,
             muted: false,
-            interval_idx: 1,
             feel: 0,
+            // Sentinel: never touched, so the CONFIG Division seeds the fader.
+            time_fader: u16::MAX,
         }
     }
 }
@@ -383,16 +412,24 @@ pub async fn run(
         None
     };
 
-    let (pos0, func0, muted0, feel0) =
-        storage.query(|s| (s.position_saved, s.function_saved, s.muted, s.feel));
+    let (pos0, func0, muted0, feel0, time0) =
+        storage.query(|s| (s.position_saved, s.function_saved, s.muted, s.feel, s.time_fader));
+
+    let interval_semi = interval_semitones(interval_param.min(3));
+    let cfg_div_idx = division.min(RESOLUTION.len() - 1);
+    // Sentinel means the Time fader was never touched: start from CONFIG.
+    let (time_start, div_start) = if time0 == u16::MAX {
+        (fader_from_div_idx(cfg_div_idx), RESOLUTION[cfg_div_idx])
+    } else {
+        (time0, RESOLUTION[div_idx_from_fader(time0)])
+    };
 
     let glob_position = app.make_global(pos0);
     let glob_feel = app.make_global(feel0);
-    // Config Interval is the start value; Shift+Long cycles from there.
-    let glob_interval_idx = app.make_global(interval_param.min(3) as u8);
+    let glob_time = app.make_global(time_start);
     let glob_btn_flash = app.make_global(0u16);
     let glob_function = app.make_global(func0);
-    let glob_div = app.make_global(RESOLUTION[division.min(RESOLUTION.len() - 1)]);
+    let glob_div = app.make_global(div_start);
     let glob_muted = app.make_global(muted0);
     let glob_latch = app.make_global(LatchLayer::Main);
     let glob_fader_moved = app.make_global(false);
@@ -467,7 +504,6 @@ pub async fn run(
 
                 if center != prev_center || func != prev_func {
                     let root_midi = follow_key::root(follow_tonic, root_note);
-                    let interval_semi = interval_semitones(glob_interval_idx.get() as usize);
                     let (quality, root_offset) = if in_transition {
                         (ChordQuality::Dom7, function_root_offset(center, 1, interval_semi))
                     } else {
@@ -640,7 +676,6 @@ pub async fn run(
             let func = function_from_fader(func_fader);
 
             let root_midi = follow_key::root(follow_tonic, root_note);
-            let interval_semi = interval_semitones(glob_interval_idx.get() as usize);
             let (quality, root_offset) = if in_transition {
                 (ChordQuality::Dom7, function_root_offset(center, 1, interval_semi))
             } else {
@@ -732,7 +767,7 @@ pub async fn run(
             let target = match layer {
                 LatchLayer::Main => glob_position.get(),
                 LatchLayer::Alt => glob_function.get(),
-                LatchLayer::Third => glob_feel.get(),
+                LatchLayer::Third => glob_time.get(),
             };
 
             if let Some(v) = latch.update(faders.get_value(), layer, target) {
@@ -744,7 +779,8 @@ pub async fn run(
                         glob_function.set(v);
                     }
                     LatchLayer::Third => {
-                        glob_feel.set(v);
+                        glob_time.set(v);
+                        glob_div.set(RESOLUTION[div_idx_from_fader(v)]);
                     }
                 }
                 glob_fader_dirty.set(true);
@@ -780,10 +816,10 @@ pub async fn run(
                 continue;
             }
             if shift {
-                let idx = (glob_interval_idx.get() + 1) % 4;
-                glob_interval_idx.set(idx);
+                let step = next_feel_step(glob_feel.get());
+                glob_feel.set(FEEL_STEPS[step]);
                 glob_fader_dirty.set(true);
-                leds.set_mode(0, Led::Button, LedMode::Flash(interval_color(idx), Some(2)));
+                leds.set_mode(0, Led::Button, LedMode::Flash(feel_color(step), Some(2)));
                 glob_btn_flash.set(BUTTON_FLASH_MS);
             } else {
                 let was = glob_drone.get();
@@ -803,8 +839,8 @@ pub async fn run(
                 st.position_saved = glob_position.get();
                 st.function_saved = glob_function.get();
                 st.muted = glob_muted.get();
-                st.interval_idx = glob_interval_idx.get();
                 st.feel = glob_feel.get();
+                st.time_fader = glob_time.get();
             });
         }
     };
@@ -889,22 +925,27 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(_) => {
-                    let (p, f, m, iv, fe) = storage.query(|s| {
+                    let (p, f, m, fe, tf) = storage.query(|s| {
                         (
                             s.position_saved,
                             s.function_saved,
                             s.muted,
-                            s.interval_idx,
                             s.feel,
+                            s.time_fader,
                         )
                     });
                     glob_position.set(p);
                     glob_function.set(f);
                     glob_muted.set(m);
-                    glob_interval_idx.set(iv.min(3));
                     glob_feel.set(fe);
-                    let div = params.query(|p| p.division);
-                    glob_div.set(RESOLUTION[div.min(RESOLUTION.len() - 1)]);
+                    if tf == u16::MAX {
+                        let idx = params.query(|p| p.division).min(RESOLUTION.len() - 1);
+                        glob_time.set(fader_from_div_idx(idx));
+                        glob_div.set(RESOLUTION[idx]);
+                    } else {
+                        glob_time.set(tf);
+                        glob_div.set(RESOLUTION[div_idx_from_fader(tf)]);
+                    }
                 }
                 SceneEvent::SaveScene(_) => {}
             }

@@ -30,8 +30,8 @@
     "Position",
     "Function",
     "Muted",
-    "Interval",
-    "Feel"
+    "Feel",
+    "Time fader"
   ],
   "columns": [
     {
@@ -41,7 +41,7 @@
           "items": [
             "<strong>Main</strong> — center position: three zones with snap; approach chords sound in the transition zones at boundaries",
             "<strong>Alt</strong> (Shift) — harmonic function: bottom = root (Maj7), middle = dominant (Dom7), top = subdominant approach (m7)",
-            "<strong>Third</strong> (Btn hold) — Feel: swing and velocity dynamics, bottom = straight and flat"
+            "<strong>Third</strong> (Btn hold) — Time: clock division from 1/1 at the bottom down to 1/64t at the top, triplets interleaved; the Division param sets the power-on starting point"
           ]
         }
       ]
@@ -54,7 +54,7 @@
             "<strong>Short tap</strong> — mute (silences held chords, parks CV at 0 V)",
             "<strong>Hold</strong> — toggle drone mode (sustain indefinitely, immediate fader response)",
             "<strong>Shift + tap</strong> — toggle latch (chord holds until tapped again)",
-            "<strong>Shift + hold</strong> — cycle Interval: minor 3rd, major 3rd, 4th, tritone"
+            "<strong>Shift + hold</strong> — cycle Feel in four steps, from straight and flat to full swing and dynamics"
           ]
         },
         {
@@ -76,7 +76,7 @@
             "CV Out tracks root pitch of current position",
             "CV In Position modulates center selection; CV In Function modulates harmonic function",
             "Button blinks when latched, stays bright when droning, ducks on chord trigger",
-            "Interval flashes one colour per step"
+            "Feel flashes one colour per step"
           ]
         }
       ]
@@ -90,12 +90,12 @@
       "faderDescription": "Selects one of three tonal centers with snap zones. Transition zones at boundaries sound approach chords.",
       "faderPlusShiftTitle": "Function",
       "faderPlusShiftDescription": "Harmonic function at the current center: root (Maj7), dominant (Dom7) or subdominant approach (m7).",
-      "faderPlusFnTitle": "Feel",
-      "faderPlusFnDescription": "Humanises the playing: swings the off-beats and shapes velocity, accenting the root chord while approach chords lighten. Bottom is straight and flat.",
+      "faderPlusFnTitle": "Time",
+      "faderPlusFnDescription": "Selects the clock division live, from 1/1 at the bottom down to 1/64t at the top, with the triplets sorted in by duration. The Division param is the power-on starting point and the fader takes over from there.",
       "fnTitle": "Mute",
       "fnDescription": "Short tap mutes and unmutes, cutting any held chord. Hold toggles drone mode: the chord sustains indefinitely and updates on fader movement, ignoring the clock.",
-      "fnPlusShiftTitle": "Latch / Interval",
-      "fnPlusShiftDescription": "Shift + tap toggles latch: the chord sustains until tapped again regardless of fader movement. Shift + hold cycles the Interval between minor 3rd, major 3rd, 4th and tritone.",
+      "fnPlusShiftTitle": "Latch / Feel",
+      "fnPlusShiftDescription": "Shift + tap toggles latch: the chord sustains until tapped again regardless of fader movement. Shift + hold cycles Feel through four steps, from straight and flat up to full swing and dynamics. The Interval is set in the app params only.",
       "ledTop": "Center hue with brightness gradient (dims away from center)",
       "ledBottom": "Center hue, low brightness",
       "ledTopPlusShift": ""

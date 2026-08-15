@@ -298,6 +298,20 @@ pub fn center_from_app(base: Color, center_idx: u8) -> Color {
     Color::Custom(nr, ng, nb)
 }
 
+/// Tonal-center color swayed by `degrees` on the wheel, to encode how far the
+/// sounding chord sits from its center's own tonic.
+pub fn function_hue(base: Color, center_idx: u8, degrees: u16) -> Color {
+    let RGB8 { r, g, b } = RGB8::from(base);
+    let (h, s, v) = rgb_to_hsv(r, g, b);
+    if s < 20 {
+        let (cr, cg, cb) = center_color(center_idx);
+        return Color::Custom(cr, cg, cb);
+    }
+    let h2 = (h + u16::from(center_idx % 3) * 120 + degrees) % 360;
+    let (nr, ng, nb) = hsv_to_rgb(h2, s.max(140), v.max(160));
+    Color::Custom(nr, ng, nb)
+}
+
 fn rgb_to_hsv(r: u8, g: u8, b: u8) -> (u16, u8, u8) {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
