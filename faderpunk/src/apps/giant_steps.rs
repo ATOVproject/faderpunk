@@ -1,5 +1,5 @@
 use embassy_futures::{
-    join::{join, join3, join5},
+    join::{join3, join5},
     select::{select, select3},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -11,21 +11,42 @@ use libfp::{
     latch::LatchLayer,
     quantizer::Pitch,
     utils::attenuate_bipolar,
-    AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Note, Param,
-    Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    AppIcon, Brightness, Color, Config, MidiChannel, MidiNote, MidiOut, Note, Param, Range, Value,
+    VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::{
-    app::{App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore, SceneEvent},
-    apps::coltrane_geo::{build_coltrane_chord, build_cycle, center_from_app},
+    app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent},
+    apps::coltrane_geo::{
+        arp_order, build_chord_voice_led, build_cycle, center_from_app, feel_swing_ticks,
+        feel_velocity, interval_color, step_div_mult, tritone_sub_root, ChordQuality, Motion,
+        MOTION_LABELS,
+    },
     apps::follow_key,
+    tasks::global_config::get_global_config,
+    tasks::leds::LedMode,
 };
 
 pub const CHANNELS: usize = 1;
-pub const PARAMS: usize = 15;
+pub const PARAMS: usize = 16;
 
 const BUTTON_DUCK_MS: u16 = 25;
 const SOUNDING_CAP: usize = 8;
+/// Hold off the periodic button paint so LedMode::Flash can finish.
+const BUTTON_FLASH_MS: u16 = 550;
+/// Reverse gesture LED feedback (white<->none).
+const REVERSE_FADE_MS: u16 = 500;
+/// LED loop period; every ms countdown steps by this.
+const LED_STEP_MS: u16 = 8;
+
+/// CV out parking value while muted: 0 V, which is mid-scale on a bipolar range.
+fn cv_idle(range: Range) -> u16 {
+    if range.is_bipolar() {
+        2048
+    } else {
+        0
+    }
+}
 
 const DIV_LABELS: &[&str] = &[
     "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/4t", "1/8t", "1/16t", "1/32t", "1/64t",
@@ -102,6 +123,10 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::bool {
     name: "Follow device scale",
+})
+.add_param(Param::Enum {
+    name: "Motion",
+    variants: MOTION_LABELS,
 });
 
 pub struct Params {
@@ -120,6 +145,7 @@ pub struct Params {
     cv_att: i32,
     follow_tonic: bool,
     follow_scale: bool,
+    motion: usize,
 }
 
 impl Default for Params {
@@ -140,6 +166,7 @@ impl Default for Params {
             cv_att: 100,
             follow_tonic: true,
             follow_scale: false,
+            motion: 0,
         }
     }
 }
@@ -165,6 +192,7 @@ impl AppParams for Params {
             cv_att: i32::from_value(values[12]).clamp(0, 400),
             follow_tonic: bool::from_value(values[13]),
             follow_scale: bool::from_value(values[14]),
+            motion: usize::from_value(values[15]).min(3),
         })
     }
 
@@ -185,6 +213,7 @@ impl AppParams for Params {
         v.push(self.cv_att.into()).unwrap();
         v.push(self.follow_tonic.into()).unwrap();
         v.push(self.follow_scale.into()).unwrap();
+        v.push(self.motion.into()).unwrap();
         v
     }
 }
@@ -193,6 +222,8 @@ impl AppParams for Params {
 pub struct Storage {
     density_saved: u16,
     muted: bool,
+    interval_idx: u8,
+    feel: u16,
 }
 
 impl Default for Storage {
@@ -200,6 +231,8 @@ impl Default for Storage {
         Self {
             density_saved: 2048,
             muted: false,
+            interval_idx: 1,
+            feel: 0,
         }
     }
 }
@@ -288,6 +321,7 @@ pub async fn run(
         cv_att,
         follow_tonic,
         _follow_scale,
+        motion,
     ) = params.query(|p| {
         (
             p.midi_out,
@@ -305,16 +339,16 @@ pub async fn run(
             att_from_pct(p.cv_att),
             p.follow_tonic,
             p.follow_scale,
+            Motion::from_index(p.motion),
         )
     });
 
     let vel12 = velocity_12bit(velocity);
-    let interval_semi = interval_semitones(interval_param);
 
     let buttons = app.use_buttons();
     let faders = app.use_faders();
     let leds = app.use_leds();
-    let mut clock = app.use_clock();
+    let ticks = app.clock_ticker();
     let die = app.use_die();
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
@@ -329,9 +363,15 @@ pub async fn run(
         None
     };
 
-    let (density0, muted0) = storage.query(|s| (s.density_saved, s.muted));
+    let (density0, muted0, feel0) = storage.query(|s| (s.density_saved, s.muted, s.feel));
 
     let glob_density = app.make_global(density0);
+    let glob_feel = app.make_global(feel0);
+    // Config Interval is the start value; Shift+Long cycles from there.
+    let glob_interval_idx = app.make_global(interval_param.min(3) as u8);
+    let glob_btn_flash = app.make_global(0u16);
+    let glob_rev_fade = app.make_global(0u16);
+    let glob_rev_fade_up = app.make_global(false);
     let glob_div = app.make_global(RESOLUTION[division.min(RESOLUTION.len() - 1)]);
     let glob_muted = app.make_global(muted0);
     let glob_latch = app.make_global(LatchLayer::Main);
@@ -350,10 +390,42 @@ pub async fn run(
         leds.set(0, Led::Button, led_color, Brightness::Mid);
     }
 
-    let fut_cv = async {
+    let fut_engine = async {
+        let mut sounding: Vec<u8, SOUNDING_CAP> = Vec::new();
+        let mut step: usize = 0;
+        let mut pendulum_fwd = true;
+        let mut last_seen = ticks();
+        let mut last_div_fire: u64 = u64::MAX;
+        let mut stall_ms = 0u16;
         let mut prev_gate_high = false;
+        let mut prev_muted = muted0;
+        let mut pending_fire: Option<u64> = None;
+        // Arp run of the current chord, still waiting for its tick.
+        let mut pending_notes: Vec<(u64, u8), SOUNDING_CAP> = Vec::new();
+        // Division boundaries the current chord still swallows (harmonic rhythm).
+        let mut hold_boundaries: u32 = 0;
+        let mut arp_vel: u16 = vel12;
+
         loop {
             app.delay_millis(2).await;
+
+            // Polled, so mute silences a held chord even with the clock stopped.
+            let muted = glob_muted.get();
+            if muted != prev_muted {
+                prev_muted = muted;
+                if muted {
+                    for n in sounding.iter() {
+                        midi.send_note_off(MidiNote::from(*n)).await;
+                    }
+                    sounding.clear();
+                    pending_fire = None;
+                    pending_notes.clear();
+                    if let Some(ref jack) = out_jack {
+                        jack.set_value(cv_idle(range));
+                    }
+                }
+            }
+
             if let Some(ref input) = in_jack {
                 let raw = input.get_value();
                 let in_val = attenuate_bipolar(raw, cv_att);
@@ -368,123 +440,217 @@ pub async fn run(
                     prev_gate_high = false;
                 }
             }
-        }
-    };
 
-    let fut_engine = async {
-        let mut sounding: Vec<u8, SOUNDING_CAP> = Vec::new();
-        let mut step: usize = 0;
-        let mut pendulum_fwd = true;
-
-        loop {
-            match clock.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Stop => {
+            let t = ticks();
+            if t == last_seen {
+                stall_ms = stall_ms.saturating_add(2);
+                if stall_ms >= 250 && !sounding.is_empty() {
                     for n in sounding.iter() {
                         midi.send_note_off(MidiNote::from(*n)).await;
                     }
                     sounding.clear();
+                    pending_fire = None;
+                    pending_notes.clear();
+                    hold_boundaries = 0;
                 }
-                ClockEvent::Start | ClockEvent::Reset => {
-                    for n in sounding.iter() {
-                        midi.send_note_off(MidiNote::from(*n)).await;
-                    }
-                    sounding.clear();
-                    step = 0;
-                    pendulum_fwd = true;
+                continue;
+            }
+            stall_ms = 0;
+
+            if t < last_seen {
+                for n in sounding.iter() {
+                    midi.send_note_off(MidiNote::from(*n)).await;
                 }
-                ClockEvent::Tick(t) => {
-                    let div = glob_div.get().max(1) as u64;
-                    if t == 0 || !t.is_multiple_of(div) {
+                sounding.clear();
+                pending_fire = None;
+                pending_notes.clear();
+                hold_boundaries = 0;
+                last_seen = t;
+                last_div_fire = u64::MAX;
+                step = 0;
+                continue;
+            }
+
+            let div = glob_div.get().max(1) as u64;
+            let boundary = t - (t % div);
+            last_seen = t;
+
+            // Drain the arp run of the current chord.
+            if muted {
+                pending_notes.clear();
+            } else {
+                let mut i = 0;
+                while i < pending_notes.len() {
+                    let (at, n) = pending_notes[i];
+                    if t < at {
+                        i += 1;
                         continue;
                     }
-
-                    if glob_muted.get() {
-                        continue;
+                    pending_notes.swap_remove(i);
+                    // Retrigger on the descent: off first so the note stays
+                    // unique in `sounding`.
+                    if let Some(pos) = sounding.iter().position(|&s| s == n) {
+                        midi.send_note_off(MidiNote::from(n)).await;
+                        sounding.swap_remove(pos);
                     }
+                    midi.try_send_note_on(MidiNote::from(n), arp_vel);
+                    let _ = sounding.push(n);
+                }
+            }
 
-                    if glob_reset.get() {
-                        glob_reset.set(false);
-                        step = 0;
-                        pendulum_fwd = true;
-                    }
-
-                    let density_fader = if jack_param == JACK_IN_DENSITY {
-                        let base = glob_density.get();
-                        (base as i32 + glob_cv_val.get() as i32 - 2047).clamp(0, 4095) as u16
+            let mut fire = false;
+            if !(boundary == 0 && t < div) && boundary != last_div_fire {
+                last_div_fire = boundary;
+                if hold_boundaries > 0 {
+                    hold_boundaries -= 1;
+                } else {
+                    // Feel shares its timing budget with the device-global swing.
+                    let gs = get_global_config().clock.swing_amount;
+                    // Parity comes off the clock grid, not the app's start.
+                    let delay =
+                        feel_swing_ticks(glob_feel.get(), div as u32, (boundary / div) as u32, gs)
+                            as u64;
+                    if delay == 0 {
+                        fire = true;
                     } else {
-                        glob_density.get()
-                    };
-                    let density = density_from_fader(density_fader);
-
-                    let root_midi = follow_key::root(follow_tonic, root_note);
-                    let cycle = build_cycle(interval_semi, density);
-                    let cycle_len = cycle.len();
-
-                    if cycle_len == 0 {
-                        continue;
+                        pending_fire = Some(boundary + delay);
                     }
+                }
+            }
+            if let Some(at) = pending_fire {
+                if t >= at {
+                    pending_fire = None;
+                    fire = true;
+                }
+            }
+            if !fire || muted {
+                continue;
+            }
 
-                    let idx = step % cycle_len;
-                    let cs = cycle[idx];
+            if glob_reset.get() {
+                glob_reset.set(false);
+                step = 0;
+                pendulum_fwd = true;
+            }
 
-                    for n in sounding.iter() {
-                        midi.send_note_off(MidiNote::from(*n)).await;
-                    }
-                    sounding.clear();
+            let density_fader = if jack_param == JACK_IN_DENSITY {
+                let base = glob_density.get();
+                (base as i32 + glob_cv_val.get() as i32 - 2047).clamp(0, 4095) as u16
+            } else {
+                glob_density.get()
+            };
+            let density = density_from_fader(density_fader);
 
-                    let chord_root = (root_midi as u16 + cs.root_offset as u16).min(127) as u8;
-                    let notes = build_coltrane_chord(chord_root, cs.quality, voicing);
-                    for &n in notes.iter() {
-                        midi.send_note_on(MidiNote::from(n), vel12).await;
+            let root_midi = follow_key::root(follow_tonic, root_note);
+            let interval_semi = interval_semitones(glob_interval_idx.get() as usize);
+            let cycle = build_cycle(interval_semi, density);
+            let cycle_len = cycle.len();
+
+            if cycle_len == 0 {
+                continue;
+            }
+
+            let idx = step % cycle_len;
+            let cs = cycle[idx];
+
+            let chord_root = (root_midi as u16 + cs.root_offset as u16).min(127) as u8;
+            let chord_root = tritone_sub_root(chord_root, cs.quality, motion, die.roll());
+            let notes = build_chord_voice_led(chord_root, cs.quality, voicing, &sounding);
+
+            for n in sounding.iter() {
+                midi.send_note_off(MidiNote::from(*n)).await;
+            }
+            sounding.clear();
+            pending_notes.clear();
+
+            // Tonic of each center carries the accent, ii / V lighten.
+            let vel = feel_velocity(
+                vel12,
+                glob_feel.get(),
+                cs.quality == ChordQuality::Maj7,
+                die.roll(),
+            );
+            arp_vel = vel;
+
+            let mult = step_div_mult(motion, cs.quality);
+            hold_boundaries = mult - 1;
+
+            let order = if motion >= Motion::Sheets {
+                arp_order(notes.len())
+            } else {
+                Vec::new()
+            };
+            // Spread the run over what is left of the step (swing may have
+            // eaten into it); too short for a tick per note and it stays a
+            // block chord.
+            let spacing = if order.is_empty() {
+                0
+            } else {
+                let window = ((boundary / div + mult as u64) * div).saturating_sub(t);
+                window / order.len() as u64
+            };
+
+            if spacing == 0 {
+                for &n in notes.iter() {
+                    midi.try_send_note_on(MidiNote::from(n), vel);
+                    let _ = sounding.push(n);
+                }
+            } else {
+                for (slot, &i) in order.iter().enumerate() {
+                    let n = notes[i as usize];
+                    if slot == 0 {
+                        midi.try_send_note_on(MidiNote::from(n), vel);
                         let _ = sounding.push(n);
-                    }
-
-                    if let Some(ref jack) = out_jack {
-                        jack.set_value(note_to_pitch(chord_root).as_counts(range, vpo));
-                    }
-
-                    glob_center_idx.set(cs.center);
-                    glob_button_duck.set(BUTTON_DUCK_MS);
-
-                    let reversed = glob_reverse.get();
-                    let dir = if reversed {
-                        match direction {
-                            0 => 1,
-                            1 => 0,
-                            d => d,
-                        }
                     } else {
-                        direction
-                    };
-                    match dir {
-                        1 => {
-                            if step == 0 {
-                                step = cycle_len - 1;
-                            } else {
-                                step -= 1;
-                            }
-                        }
-                        2 => {
-                            if pendulum_fwd {
-                                step += 1;
-                                if step >= cycle_len {
-                                    step = cycle_len.saturating_sub(2);
-                                    pendulum_fwd = false;
-                                }
-                            } else if step == 0 {
-                                step = 1.min(cycle_len - 1);
-                                pendulum_fwd = true;
-                            } else {
-                                step -= 1;
-                            }
-                        }
-                        3 => {
-                            step = (die.roll() as usize) % cycle_len;
-                        }
-                        _ => {
-                            step = (step + 1) % cycle_len;
-                        }
+                        let _ = pending_notes.push((t + slot as u64 * spacing, n));
                     }
+                }
+            }
+
+            if let Some(ref jack) = out_jack {
+                jack.set_value(note_to_pitch(chord_root).as_counts(range, vpo));
+            }
+
+            glob_center_idx.set(cs.center);
+            glob_button_duck.set(BUTTON_DUCK_MS);
+
+            let reversed = glob_reverse.get();
+            let dir = if reversed {
+                match direction {
+                    0 => 1,
+                    1 => 0,
+                    d => d,
+                }
+            } else {
+                direction
+            };
+            match dir {
+                1 => {
+                    if step == 0 {
+                        step = cycle_len - 1;
+                    } else {
+                        step -= 1;
+                    }
+                }
+                2 => {
+                    if pendulum_fwd {
+                        step += 1;
+                        if step >= cycle_len {
+                            step = cycle_len.saturating_sub(2);
+                            pendulum_fwd = false;
+                        }
+                    } else if step == 0 {
+                        step = 1.min(cycle_len - 1);
+                        pendulum_fwd = true;
+                    } else {
+                        step -= 1;
+                    }
+                }
+                3 => {
+                    step = (die.roll() as usize) % cycle_len;
+                }
+                _ => {
+                    step = (step + 1) % cycle_len;
                 }
             }
         }
@@ -498,13 +664,19 @@ pub async fn run(
             glob_fader_moved.set(true);
 
             let target = match layer {
-                LatchLayer::Main => glob_density.get(),
+                LatchLayer::Third => glob_feel.get(),
                 _ => glob_density.get(),
             };
 
             if let Some(v) = latch.update(faders.get_value(), layer, target) {
-                if layer == LatchLayer::Main {
-                    glob_density.set(v);
+                match layer {
+                    LatchLayer::Main => {
+                        glob_density.set(v);
+                    }
+                    LatchLayer::Third => {
+                        glob_feel.set(v);
+                    }
+                    LatchLayer::Alt => {}
                 }
                 glob_fader_dirty.set(true);
             }
@@ -513,26 +685,43 @@ pub async fn run(
 
     let fut_buttons = async {
         loop {
-            let (_, _down_shift) = buttons.wait_for_any_down().await;
+            let (_, down_shift) = buttons.wait_for_any_down().await;
             long_press_fired.set(false);
             glob_fader_moved.set(false);
             buttons.wait_for_up(0).await;
 
-            if long_press_fired.get() {
+            if long_press_fired.get() || glob_fader_moved.get() {
                 continue;
             }
-            if !glob_fader_moved.get() {
+            if down_shift {
                 glob_reset.set(true);
+            } else {
+                glob_muted.set(!glob_muted.get());
+                glob_fader_dirty.set(true);
             }
         }
     };
 
     let fut_long = async {
         loop {
-            let (_, _shift) = buttons.wait_for_any_long_press().await;
+            let (_, shift) = buttons.wait_for_any_long_press().await;
             long_press_fired.set(true);
-            let rev = !glob_reverse.get();
-            glob_reverse.set(rev);
+            // Third layer is button held + fader moved; don't fire on those.
+            if glob_fader_moved.get() {
+                continue;
+            }
+            if shift {
+                let idx = (glob_interval_idx.get() + 1) % 4;
+                glob_interval_idx.set(idx);
+                glob_fader_dirty.set(true);
+                leds.set_mode(0, Led::Button, LedMode::Flash(interval_color(idx), Some(2)));
+                glob_btn_flash.set(BUTTON_FLASH_MS);
+            } else {
+                let rev = !glob_reverse.get();
+                glob_reverse.set(rev);
+                glob_rev_fade_up.set(!rev);
+                glob_rev_fade.set(REVERSE_FADE_MS);
+            }
         }
     };
 
@@ -546,6 +735,8 @@ pub async fn run(
             storage.modify_and_save(|st| {
                 st.density_saved = glob_density.get();
                 st.muted = glob_muted.get();
+                st.interval_idx = glob_interval_idx.get();
+                st.feel = glob_feel.get();
             });
         }
     };
@@ -554,12 +745,34 @@ pub async fn run(
         loop {
             app.delay_millis(8).await;
 
-            let layer = if buttons.is_shift_pressed() && !buttons.is_button_pressed(0) {
+            let shift = buttons.is_shift_pressed();
+            let pressed = buttons.is_button_pressed(0);
+            let layer = if shift && !pressed {
                 LatchLayer::Alt
+            } else if pressed && !shift {
+                LatchLayer::Third
             } else {
                 LatchLayer::Main
             };
             glob_latch.set(layer);
+
+            let flash_left = glob_btn_flash.get();
+            if flash_left > 0 {
+                glob_btn_flash.set(flash_left.saturating_sub(LED_STEP_MS));
+            }
+
+            // Reverse feedback: white<->none fade owns the button while it runs.
+            let rev_fade = glob_rev_fade.get();
+            if rev_fade > 0 {
+                let elapsed = REVERSE_FADE_MS.saturating_sub(rev_fade);
+                let ramp = if glob_rev_fade_up.get() {
+                    ((elapsed as u32 * 255) / REVERSE_FADE_MS as u32) as u8
+                } else {
+                    (((REVERSE_FADE_MS - elapsed) as u32 * 255) / REVERSE_FADE_MS as u32) as u8
+                };
+                leds.set(0, Led::Button, Color::White, Brightness::Custom(ramp));
+                glob_rev_fade.set(rev_fade.saturating_sub(LED_STEP_MS));
+            }
 
             let duck_active = {
                 let d = glob_button_duck.get();
@@ -580,16 +793,20 @@ pub async fn run(
             if !muted {
                 leds.set(0, Led::Top, center_col, Brightness::Mid);
                 leds.set(0, Led::Bottom, center_col, Brightness::Low);
-                let btn_bright = if duck_active {
-                    Brightness::Low
-                } else {
-                    Brightness::Mid
-                };
-                leds.set(0, Led::Button, center_col, btn_bright);
+                if rev_fade == 0 && flash_left == 0 {
+                    let btn_bright = if duck_active {
+                        Brightness::Low
+                    } else {
+                        Brightness::Mid
+                    };
+                    leds.set(0, Led::Button, center_col, btn_bright);
+                }
             } else {
                 leds.unset(0, Led::Top);
                 leds.unset(0, Led::Bottom);
-                leds.unset(0, Led::Button);
+                if rev_fade == 0 && flash_left == 0 {
+                    leds.unset(0, Led::Button);
+                }
             }
         }
     };
@@ -598,9 +815,12 @@ pub async fn run(
         loop {
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(_) => {
-                    let (d, m) = storage.query(|s| (s.density_saved, s.muted));
+                    let (d, m, iv, f) =
+                        storage.query(|s| (s.density_saved, s.muted, s.interval_idx, s.feel));
                     glob_density.set(d);
                     glob_muted.set(m);
+                    glob_interval_idx.set(iv.min(3));
+                    glob_feel.set(f);
                     let div = params.query(|p| p.division);
                     glob_div.set(RESOLUTION[div.min(RESOLUTION.len() - 1)]);
                 }
@@ -609,15 +829,12 @@ pub async fn run(
         }
     };
 
-    join(
-        join5(
-            fut_engine,
-            fut_cv,
-            fut_faders,
-            fut_leds,
-            fut_scene,
-        ),
+    join5(
+        fut_engine,
+        fut_faders,
         join3(fut_buttons, fut_long, fut_persist),
+        fut_leds,
+        fut_scene,
     )
     .await;
 }

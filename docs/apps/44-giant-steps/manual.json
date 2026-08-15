@@ -1,6 +1,6 @@
 {
   "id": 44,
-  "slug": "giant-steps",
+  "slug": "giant_steps",
   "name": "Giant Steps",
   "status": "wip",
   "tag": "draft",
@@ -24,11 +24,14 @@
     "V/Oct",
     "CV Att",
     "Follow device tonic",
-    "Follow device scale"
+    "Follow device scale",
+    "Motion"
   ],
   "storage": [
     "Density",
-    "Muted"
+    "Muted",
+    "Interval",
+    "Feel"
   ],
   "columns": [
     {
@@ -36,9 +39,9 @@
         {
           "heading": "Faders",
           "items": [
-            "<strong>Main</strong> \u2014 approach density: bottom = centers only (3 chords), middle = V-I (6), top = full ii-V-I (9)",
-            "<strong>Alt</strong> (Shift) \u2014 reserved",
-            "<strong>Third</strong> (Btn hold) \u2014 live velocity override"
+            "<strong>Main</strong> — approach density: bottom = centers only (3 chords), middle = V–I (6), top = full ii–V–I (9)",
+            "<strong>Alt</strong> (Shift) — reserved",
+            "<strong>Third</strong> (Btn hold) — Feel: swing and velocity dynamics, bottom = straight and flat"
           ]
         }
       ]
@@ -48,8 +51,10 @@
         {
           "heading": "Buttons",
           "items": [
-            "<strong>Short tap</strong> \u2014 reset cycle to step 0",
-            "<strong>Hold</strong> \u2014 toggle reverse direction"
+            "<strong>Short tap</strong> — mute (silences held chords, parks CV at 0 V)",
+            "<strong>Hold</strong> — toggle reverse direction",
+            "<strong>Shift + tap</strong> — reset cycle to step 0",
+            "<strong>Shift + hold</strong> — cycle Interval: minor 3rd, major 3rd, 4th, tritone"
           ]
         }
       ]
@@ -59,10 +64,11 @@
         {
           "heading": "Signal / LEDs",
           "items": [
-            "Three tonal center hues: blue, green, orange \u2014 LED shows the current center",
+            "Three tonal center hues rotated around the app colour — LED shows the current center",
             "CV Out tracks root pitch of the current step",
             "CV In Density modulates approach depth; CV In Reset triggers cycle reset on rising edge",
-            "Button ducks briefly on each chord trigger"
+            "Button ducks briefly on each chord trigger",
+            "Reverse fades the button white to none; Interval flashes one colour per step"
           ]
         }
       ]
@@ -71,18 +77,18 @@
   "channels": [
     {
       "jackTitle": "CV Out / In",
-      "jackDescription": "CV Out sends the root pitch of the current cycle step. CV In Density modulates the approach depth; CV In Reset triggers a cycle reset on rising edge.",
+      "jackDescription": "CV Out sends the root pitch of the current cycle step and parks at 0 V while muted. CV In Density modulates the approach depth; CV In Reset triggers a cycle reset on rising edge.",
       "faderTitle": "Density",
-      "faderDescription": "Approach depth: bottom = centers only (3 chords), middle = V-I (6), top = full ii-V-I (9 chords).",
+      "faderDescription": "Approach depth: bottom = centers only (3 chords), middle = V–I (6), top = full ii–V–I (9 chords).",
       "faderPlusShiftTitle": "Reserved",
       "faderPlusShiftDescription": "Reserved for future use.",
-      "faderPlusFnTitle": "Velocity",
-      "faderPlusFnDescription": "Live velocity override for all chord voices.",
-      "fnTitle": "Reset",
-      "fnDescription": "Short tap resets the cycle to step 0.",
-      "fnPlusShiftTitle": "Reverse",
-      "fnPlusShiftDescription": "Hold toggles the reverse flag, inverting Forward/Reverse direction.",
-      "ledTop": "Current tonal center hue (blue / green / orange)",
+      "faderPlusFnTitle": "Feel",
+      "faderPlusFnDescription": "Humanises the sequence: swings the off-beats and shapes velocity, accenting the tonic while approach chords lighten. Bottom is straight and flat.",
+      "fnTitle": "Mute",
+      "fnDescription": "Short tap mutes and unmutes, cutting any held chord. Hold toggles the reverse flag, inverting Forward/Reverse direction.",
+      "fnPlusShiftTitle": "Reset / Interval",
+      "fnPlusShiftDescription": "Shift + tap resets the cycle to step 0. Shift + hold cycles the Interval between minor 3rd, major 3rd, 4th and tritone.",
+      "ledTop": "Current tonal center hue",
       "ledBottom": "Current tonal center hue, dimmer",
       "ledTopPlusShift": ""
     }
