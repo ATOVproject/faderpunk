@@ -358,6 +358,27 @@ manually in a Chromium browser with a live device connection.
 7. **Atomic ordering**: Use `Ordering::Relaxed` for non-synchronized state, `Acquire`/`Release` for synchronized.
 8. **Web MIDI requirements**: Browser must support Web MIDI with SysEx (Chromium, Firefox); HTTPS required for non-localhost. The user must grant the MIDI/SysEx permission.
 9. **Commit trailers**: One-line conventional-commit messages; do not add a `Co-authored-by: Claude` trailer.
+10. **Editing generated artifacts**: never hand-edit a file a generator owns —
+    `configurator/src/demo/catalog.ts` and the protocol bindings both come from
+    `./gen-bindings.sh`. Edit the source and re-run the generator; otherwise the
+    next run silently reverts the change.
+11. **Gate ownership**: whoever makes an edit runs `cargo fmt` and `clippy` for
+    it. Do not re-run the full gate set after an agent has already reported it
+    green — run it once more before building or shipping.
+
+### Parallel agents
+
+When several agents work in the same checkout at once, give each one a disjoint
+set of files and keep shared, whole-tree operations in one place:
+
+- **Generators run in exactly one place** — the coordinating agent, after the
+  others have finished. Two agents running `gen-bindings.sh` against
+  half-finished sources produce garbage.
+- **Format scoped, not workspace-wide**: `cargo fmt -p faderpunk` rather than
+  `cargo fmt --all`, so an agent does not rewrite a file another one is editing.
+- **Expect foreign breakage**: a `clippy` failure may come from someone else's
+  half-written file. Check the path before "fixing" it.
+- Overlapping edits, shared modules and ordered migrations stay sequential.
 
 ## File Structure Summary
 
