@@ -77,18 +77,64 @@ crate on save while cached dependencies remain built.
 **Troubleshooting**: a stale host keeps its MIDI ports alive. Check with
 `pgrep -fl fp-sim` before starting another instance.
 
+## Workshop bundles (Offline / No-Rust installation)
+
+Pre-packaged offline workshop archives allow attendees to edit standalone apps in `workshop-app/` and use the live rebuild loop without installing Rust, rustup, or C build tools:
+
+| Platform | Archive artifact | Launcher |
+| --- | --- | --- |
+| **macOS (Apple Silicon)** | `faderpunk-sim-workshop-macos-aarch64.tar.gz` | `./launch-macos.command` |
+| **Linux (Ubuntu 22.04+ x86_64)** | `faderpunk-sim-workshop-linux-x86_64.tar.gz` | `./launch-linux.sh` |
+| **Windows (x86_64)** | `faderpunk-sim-workshop-windows-x86_64.zip` | `launch-windows.cmd` |
+
+Each archive contains the native simulator host, a bundled Rust 1.97.1 toolchain, vendored dependency crates, starter app (`workshop-app`), and a private cache. The first launch after extracting performs a one-time offline cache warm-up; subsequent saves compile only `workshop-app` in under a second.
+
+### Prerequisites & setup per platform
+
+#### macOS (Apple Silicon)
+- **Prerequisite**: Apple Command Line Tools (CLT) must be installed for Apple's system linker. If missing, install with:
+  ```bash
+  xcode-select --install
+  ```
+- **Quarantine removal**: If downloaded via a browser or AirDrop, remove macOS gatekeeper quarantine before launching:
+  ```bash
+  xattr -dr com.apple.quarantine faderpunk-sim-workshop-macos-aarch64
+  ```
+- **Run**: Double-click or run `./launch-macos.command`.
+
+#### Linux (Ubuntu 22.04+ x86_64)
+- **Prerequisite**: Standard desktop environment with Wayland/X11, graphics drivers, ALSA user library (`libasound.so.2`), and ALSA sequencer device `/dev/snd/seq`.
+- If `/dev/snd/seq` is missing, load the kernel module:
+  ```bash
+  sudo modprobe snd-seq
+  ```
+- **Run**: Run `./launch-linux.sh`. The child app compiles against the bundled static `musl` target using `rust-lld`, requiring no host C compiler.
+
+#### Windows (x86_64)
+- **Prerequisite**: Install and run [loopMIDI](http://www.tobias-erichsen.de/software/loopmidi.html).
+- In loopMIDI, create exactly these four virtual ports before launching:
+  1. `Faderpunk Sim In`
+  2. `Faderpunk Sim Out`
+  3. `Faderpunk Sim Config In`
+  4. `Faderpunk Sim Config Out`
+- **Port usage**:
+  - In DAWs / MIDI controllers: send MIDI into the simulator on `Faderpunk Sim In`, receive performance MIDI from `Faderpunk Sim Out`.
+  - In the Configurator: Web MIDI automatically pairs and discovers `Faderpunk Sim Config In` and `Faderpunk Sim Config Out`.
+- **Run**: Double-click or run `launch-windows.cmd`. The bundle includes `rust-mingw` linker/runtime binaries; no Visual Studio or MSVC installation is needed.
+
 ## Environment variables
 
-| Variable             | Effect                                                  |
-| -------------------- | ------------------------------------------------------- |
-| `RUST_LOG`           | Parent and child log level (`info` by default)          |
-| `FP_SIM_FRAM`        | FRAM image path (default `fp-sim-fram.bin`)             |
-| `FP_SIM_PANEL_STATE` | Panel fader image path (default `fp-sim-panel.bin`)     |
-| `FP_SIM_APP_ID`      | Force a registered built-in or external app on channel 0 |
-| `FP_SIM_LFO`         | Compatibility alias that forces built-in app id 2       |
-| `FP_SIM_CARGO`       | Cargo executable used by the rebuild manager            |
-| `FP_SIM_HEADLESS`    | Run the host without a panel window                      |
-| `FP_SIM_MONITOR`     | Log virtual channel 0 fader/DAC/tick state in the child  |
+| Variable              | Effect                                                   |
+| --------------------- | -------------------------------------------------------- |
+| `RUST_LOG`            | Parent and child log level (`info` by default)           |
+| `FP_SIM_FRAM`         | FRAM image path (default `fp-sim-fram.bin`)              |
+| `FP_SIM_PANEL_STATE`  | Panel fader image path (default `fp-sim-panel.bin`)      |
+| `FP_SIM_APP_ID`       | Force a registered built-in or external app on channel 0 |
+| `FP_SIM_LFO`          | Compatibility alias that forces built-in app id 2        |
+| `FP_SIM_CARGO`        | Cargo executable used by the rebuild manager             |
+| `FP_SIM_CARGO_FROZEN` | Pass `--frozen` to Cargo builds (set by workshop bundle) |
+| `FP_SIM_HEADLESS`     | Run the host without a panel window                      |
+| `FP_SIM_MONITOR`      | Log virtual channel 0 fader/DAC/tick state in the child   |
 
 ## Architecture notes
 
@@ -111,8 +157,5 @@ CoreMIDI/ALSA endpoint identity seen by a configurator or DAW.
 ## Known limitations
 
 - Only USB MIDI target 0 is bridged; DIN 1/2 have no desktop counterpart.
-- Windows virtual ports need an external tool such as loopMIDI and remain
-  untested.
+- Windows virtual ports require loopMIDI configured with the four named ports.
 - Calibration-related behavior is not validated in the simulator.
-- Packaging a pinned Rust toolchain/dependency cache is Phase 3; this checkout
-  still requires a working host Rust/Cargo environment.
