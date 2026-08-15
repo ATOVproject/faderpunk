@@ -258,7 +258,7 @@ fn function_root_offset(center: u8, func: u8, interval: u8) -> u8 {
     let center_offset = (center as u16 * interval as u16 % 12) as u8;
     match func {
         1 => (center_offset + 7) % 12,
-        2 => (center_offset + 12 - 2) % 12,
+        2 => (center_offset + 2) % 12,
         _ => center_offset,
     }
 }

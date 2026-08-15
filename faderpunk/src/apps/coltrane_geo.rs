@@ -34,7 +34,7 @@ pub fn build_cycle(interval: u8, density: u8) -> Vec<CycleStep, 9> {
         let center_offset = (c as u16 * interval as u16 % 12) as u8;
 
         if density >= 2 {
-            let ii_offset = (center_offset + 12 - 2) % 12;
+            let ii_offset = (center_offset + 2) % 12;
             let _ = out.push(CycleStep {
                 center: c,
                 root_offset: ii_offset,
