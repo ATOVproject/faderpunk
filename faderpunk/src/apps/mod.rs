@@ -1,5 +1,10 @@
 mod coltrane_geo;
 mod follow_key;
+#[allow(dead_code)]
+mod genre_palette;
+mod groove;
+#[allow(dead_code)]
+mod led_fx;
 
 register_apps!(
     1 => control,
