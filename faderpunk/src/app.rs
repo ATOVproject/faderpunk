@@ -23,7 +23,7 @@ use crate::{
     events::{EventPubSubChannel, InputEvent},
     tasks::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
-        clock::{ClockSubscriber, CLOCK_PUBSUB},
+        clock::{ClockSubscriber, CLOCK_PUBSUB, TICK_COUNTER},
         global_config::get_global_config,
         i2c::{I2cLeaderMessage, I2cLeaderSender},
         leds::{set_led_mode, LedMode, LedMsg},
@@ -841,6 +841,18 @@ impl<const N: usize> App<N> {
         Clock::new()
     }
 
+    /// Poll the current tick instead of subscribing to the clock.
+    ///
+    /// For apps that derive everything from the tick number and never react to
+    /// Start/Stop/Reset. Unlike [`Self::use_clock`] this costs no subscriber
+    /// slot, and an app that falls behind cannot back up the shared clock
+    /// queue. Returns `u64::MAX` before the first tick; the counter going
+    /// backwards means the clock was restarted or reset.
+    #[allow(dead_code)] // first users are the WIP app branches
+    pub fn clock_ticker(&self) -> fn() -> u64 {
+        ticks
+    }
+
     pub fn use_quantizer(&self, range: Range, vpo: VoltPerOct, bypass: bool) -> Quantizer {
         Quantizer::new(range, vpo, bypass)
     }
@@ -915,4 +927,9 @@ pub fn pitch_as_counts(pitch: Pitch, range: Range, vpo: VoltPerOct) -> u16 {
 /// from the live global config.
 pub fn vpo_counts_per_oct(vpo: VoltPerOct) -> i16 {
     get_global_config().vpo_counts_per_oct(vpo)
+}
+
+#[allow(dead_code)] // see App::clock_ticker
+fn ticks() -> u64 {
+    TICK_COUNTER.load(Ordering::Relaxed)
 }
