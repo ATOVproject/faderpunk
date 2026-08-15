@@ -2,7 +2,7 @@ Clock-driven chord sequencer cycling through three tonal centers spaced by a con
 
 Button tap mutes, cutting anything still held; hold toggles reverse. Shift + tap resets the cycle to step 0, shift + hold cycles the interval through minor 3rd, major 3rd, 4th and tritone. Direction param adds pendulum and random modes on top. CV out tracks the root pitch of the current step and parks at 0 V while muted; CV in modulates density or triggers reset.
 
-Hold the button and move the fader for Feel. At the bottom the sequence is straight and flat, exactly as before; further up the off-beats swing and the dynamics open out, accenting the tonic while the approach chords lighten. Feel steps aside when the device’s own swing is active so the two never stack.
+Hold the button and move the fader for Feel. At the bottom the sequence is straight and flat, exactly as before; further up the off-beats swing and the dynamics open out, accenting the tonic while the approach chords lighten. Feel steps aside when the device’s own swing is active so the two never stack. Shift + fader is a time multiplier over the Division param in five zones — quarter speed at the bottom, half speed, x1 at centre, double speed, quadruple speed at the top — clamped between one tick and one bar.
 
 Motion decides how far the harmony is allowed to wander. Straight is the plain engine. Rubato lets the tonic lean, holding twice as long while the ii and V keep passing. Sheets breaks each chord into a fast run up and back down instead of a block. Free adds tritone substitutions on roughly every third dominant.
 

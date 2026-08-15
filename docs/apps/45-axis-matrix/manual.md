@@ -4,6 +4,8 @@ Button tap mutes, cutting anything still held; hold enters drone mode, where the
 
 Hold the button and move the fader for Feel. At the bottom the playing is straight and flat, exactly as before; further up the off-beats swing and the dynamics open out, accenting the root chord while the approach chords lighten. Feel steps aside when the device’s own swing is active so the two never stack.
 
+Sustain sets how long the notes ring. Clock-gated holds each chord until the next one arrives. Legato does the same but also keeps the last chord ringing when the clock stops. Staccato releases every note halfway through its own step – half the chord’s step for a block chord, half the note’s slot in a Sheets or Free run.
+
 Motion decides how far the harmony is allowed to wander. Straight is the plain engine. Rubato lets the root chord lean, holding twice as long while the dominant and subdominant keep passing. Sheets breaks each chord into a fast run up and back down instead of a block. Free adds tritone substitutions on roughly every third dominant. Drone keeps its immediate feel and ignores the rhythmic side of Motion.
 
 LEDs show the current center hue, rotated around the app colour, and dim as the fader drifts from the center, visualising gravitational pull. The button blinks when latched, stays bright when droning, and flashes a colour per step when the interval cycles.

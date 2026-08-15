@@ -246,6 +246,11 @@ fn interval_semitones(param: usize) -> u8 {
     }
 }
 
+/// Staccato gate: half the note's own window, never shorter than one tick.
+fn gate_ticks(window: u64) -> u64 {
+    (window / 2).max(1)
+}
+
 fn velocity_12bit(vel_7: i32) -> u16 {
     let v = vel_7.clamp(1, 127) as u32;
     ((v * 4095) / 127) as u16
@@ -415,9 +420,13 @@ pub async fn run(
         let mut pending_fire: Option<u64> = None;
         // Arp run of the current chord, still waiting for its tick.
         let mut pending_notes: Vec<(u64, u8), SOUNDING_CAP> = Vec::new();
+        // Staccato only: scheduled note-offs, half a window after each note-on.
+        let mut gate_offs: Vec<(u64, u8), SOUNDING_CAP> = Vec::new();
         // Division boundaries the current chord still swallows (harmonic rhythm).
         let mut hold_boundaries: u32 = 0;
         let mut arp_vel: u16 = vel12;
+        // Tick spacing of the running arp, for staccato gate lengths.
+        let mut arp_spacing: u64 = 0;
 
         loop {
             app.delay_millis(2).await;
@@ -433,6 +442,7 @@ pub async fn run(
                     sounding.clear();
                     pending_fire = None;
                     pending_notes.clear();
+                    gate_offs.clear();
                     if let Some(ref jack) = out_jack {
                         jack.set_value(cv_idle(range));
                     }
@@ -444,6 +454,7 @@ pub async fn run(
 
             if drone {
                 pending_notes.clear();
+                gate_offs.clear();
                 if muted {
                     last_seen = t;
                     continue;
@@ -505,6 +516,7 @@ pub async fn run(
                     sounding.clear();
                     pending_fire = None;
                     pending_notes.clear();
+                    gate_offs.clear();
                     hold_boundaries = 0;
                 }
                 continue;
@@ -518,6 +530,7 @@ pub async fn run(
                 sounding.clear();
                 pending_fire = None;
                 pending_notes.clear();
+                gate_offs.clear();
                 hold_boundaries = 0;
                 last_seen = t;
                 last_div_fire = u64::MAX;
@@ -531,7 +544,23 @@ pub async fn run(
             // Drain the arp run of the current chord.
             if muted {
                 pending_notes.clear();
+                gate_offs.clear();
             } else {
+                // Staccato: release notes whose gate has run out.
+                let mut i = 0;
+                while i < gate_offs.len() {
+                    let (at, n) = gate_offs[i];
+                    if t < at {
+                        i += 1;
+                        continue;
+                    }
+                    gate_offs.swap_remove(i);
+                    if let Some(pos) = sounding.iter().position(|&s| s == n) {
+                        midi.send_note_off(MidiNote::from(n)).await;
+                        sounding.swap_remove(pos);
+                    }
+                }
+
                 let mut i = 0;
                 while i < pending_notes.len() {
                     let (at, n) = pending_notes[i];
@@ -546,8 +575,15 @@ pub async fn run(
                         midi.send_note_off(MidiNote::from(n)).await;
                         sounding.swap_remove(pos);
                     }
+                    // Drop a stale gate-off so it can't cut the retrigger.
+                    if let Some(pos) = gate_offs.iter().position(|&(_, g)| g == n) {
+                        gate_offs.swap_remove(pos);
+                    }
                     midi.try_send_note_on(MidiNote::from(n), arp_vel);
                     let _ = sounding.push(n);
+                    if sustain_mode == 2 {
+                        let _ = gate_offs.push((t + gate_ticks(arp_spacing), n));
+                    }
                 }
             }
 
@@ -620,6 +656,7 @@ pub async fn run(
             }
             sounding.clear();
             pending_notes.clear();
+            gate_offs.clear();
 
             // Tonic of a settled center carries the accent, V / ii lighten.
             let vel = feel_velocity(
@@ -648,10 +685,16 @@ pub async fn run(
                 window / order.len() as u64
             };
 
+            arp_spacing = spacing;
+
             if spacing == 0 {
+                let off_at = t + gate_ticks(div * mult as u64);
                 for &n in notes.iter() {
                     midi.try_send_note_on(MidiNote::from(n), vel);
                     let _ = sounding.push(n);
+                    if sustain_mode == 2 {
+                        let _ = gate_offs.push((off_at, n));
+                    }
                 }
             } else {
                 for (slot, &i) in order.iter().enumerate() {
@@ -659,6 +702,9 @@ pub async fn run(
                     if slot == 0 {
                         midi.try_send_note_on(MidiNote::from(n), vel);
                         let _ = sounding.push(n);
+                        if sustain_mode == 2 {
+                            let _ = gate_offs.push((t + gate_ticks(spacing), n));
+                        }
                     } else {
                         let _ = pending_notes.push((t + slot as u64 * spacing, n));
                     }

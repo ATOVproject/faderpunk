@@ -56,6 +56,14 @@
             "<strong>Shift + tap</strong> — toggle latch (chord holds until tapped again)",
             "<strong>Shift + hold</strong> — cycle Interval: minor 3rd, major 3rd, 4th, tritone"
           ]
+        },
+        {
+          "heading": "Sustain",
+          "items": [
+            "<strong>Clock-gated</strong> — each chord holds until the next one",
+            "<strong>Legato</strong> — same, and the last chord keeps ringing when the clock stops",
+            "<strong>Staccato</strong> — every note releases halfway through its own step"
+          ]
         }
       ]
     },
