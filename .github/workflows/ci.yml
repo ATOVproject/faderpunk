@@ -48,6 +48,28 @@ jobs:
         run: cargo test -p fp-sim-protocol -p fp-sim
       - name: Check external app contract
         run: cargo clippy --manifest-path fp-sim-app-example/Cargo.toml -- -D warnings
+  check-simulator-hosts:
+    name: Build and test desktop simulator (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          components: clippy
+          targets: ${{ matrix.target }}
+      - name: Lint simulator
+        run: cargo clippy -p fp-sim --all-targets -- -D warnings
+      - name: Test simulator
+        run: cargo test -p fp-sim
   check-configurator:
     name: Generate bindings and build configurator
     runs-on: ubuntu-latest

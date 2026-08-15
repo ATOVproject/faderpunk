@@ -11,3 +11,5 @@
 
 # fp-sim FRAM image (runtime state; delete for a factory-fresh sim)
 fp-sim-fram.bin
+
+/dist/

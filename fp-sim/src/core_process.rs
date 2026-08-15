@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -87,16 +88,21 @@ struct BuildSpec {
 
 impl BuildSpec {
     fn new(project: Option<PathBuf>) -> Result<Self, String> {
-        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("fp-sim must live in the workspace")
-            .to_path_buf();
         let working_dir = std::env::current_dir().map_err(|error| error.to_string())?;
         if let Some(project) = project {
-            let manifest = if project.is_dir() {
-                project.join("Cargo.toml")
+            let manifest = if project.is_absolute() {
+                if project.is_dir() {
+                    project.join("Cargo.toml")
+                } else {
+                    project
+                }
             } else {
-                project
+                let resolved = working_dir.join(project);
+                if resolved.is_dir() {
+                    resolved.join("Cargo.toml")
+                } else {
+                    resolved
+                }
             };
             if !manifest.is_file() {
                 return Err(format!(
@@ -104,7 +110,10 @@ impl BuildSpec {
                     manifest.display()
                 ));
             }
-            let project_dir = manifest.parent().unwrap().to_path_buf();
+            let project_dir = manifest
+                .parent()
+                .expect("manifest path must have a parent directory")
+                .to_path_buf();
             Ok(Self {
                 manifest: manifest.clone(),
                 package: None,
@@ -115,8 +124,13 @@ impl BuildSpec {
                 ],
             })
         } else {
+            let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("fp-sim must live in the workspace")
+                .to_path_buf();
+            let manifest = repository.join("Cargo.toml");
             Ok(Self {
-                manifest: repository.join("Cargo.toml"),
+                manifest,
                 package: Some("fp-sim-core"),
                 working_dir,
                 watch_paths: vec![
@@ -128,20 +142,33 @@ impl BuildSpec {
         }
     }
 
-    fn build(&self, state: &PanelState) -> Result<PathBuf, String> {
-        state.set_status("Building simulator core…");
-        let cargo = std::env::var_os("FP_SIM_CARGO").unwrap_or_else(|| "cargo".into());
+    fn cargo_command(&self, cargo: &OsStr, frozen: bool) -> Command {
+        let manifest_dir = self
+            .manifest
+            .parent()
+            .expect("manifest path must have a parent directory");
         let mut command = Command::new(cargo);
         command
+            .current_dir(manifest_dir)
             .arg("build")
             .arg("--manifest-path")
             .arg(&self.manifest)
-            .arg("--message-format=json-render-diagnostics")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .arg("--message-format=json-render-diagnostics");
         if let Some(package) = self.package {
             command.arg("--package").arg(package);
         }
+        if frozen {
+            command.arg("--frozen");
+        }
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        command
+    }
+
+    fn build(&self, state: &PanelState) -> Result<PathBuf, String> {
+        state.set_status("Building simulator core…");
+        let cargo = std::env::var_os("FP_SIM_CARGO").unwrap_or_else(|| "cargo".into());
+        let frozen = std::env::var_os("FP_SIM_CARGO_FROZEN").is_some();
+        let mut command = self.cargo_command(&cargo, frozen);
         let mut child = command
             .spawn()
             .map_err(|error| format!("failed to start cargo: {error}"))?;
@@ -399,5 +426,114 @@ fn stop_child(sender: &CoreSender, child: Option<&mut Child>) {
     if let Some(child) = child {
         let _ = child.kill();
         let _ = child.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repository_build_spec_command() {
+        let spec = BuildSpec::new(None).expect("repository build spec should construct");
+        assert_eq!(spec.package, Some("fp-sim-core"));
+        assert!(spec.manifest.is_absolute());
+        assert_eq!(spec.manifest.file_name(), Some(OsStr::new("Cargo.toml")));
+
+        let cmd = spec.cargo_command(OsStr::new("cargo"), false);
+        assert_eq!(cmd.get_program(), "cargo");
+        assert_eq!(cmd.get_current_dir(), Some(spec.manifest.parent().unwrap()));
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            vec![
+                "build",
+                "--manifest-path",
+                spec.manifest.to_str().unwrap(),
+                "--message-format=json-render-diagnostics",
+                "--package",
+                "fp-sim-core",
+            ]
+        );
+
+        let frozen_cmd = spec.cargo_command(OsStr::new("custom-cargo"), true);
+        assert_eq!(frozen_cmd.get_program(), "custom-cargo");
+        let frozen_args: Vec<String> = frozen_cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            frozen_args,
+            vec![
+                "build",
+                "--manifest-path",
+                spec.manifest.to_str().unwrap(),
+                "--message-format=json-render-diagnostics",
+                "--package",
+                "fp-sim-core",
+                "--frozen",
+            ]
+        );
+    }
+
+    #[test]
+    fn external_project_build_spec_command() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "fp_sim_test_ext_proj_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let manifest_path = temp_dir.join("Cargo.toml");
+        std::fs::write(&manifest_path, "[package]\nname = \"dummy\"\n").expect("write manifest");
+
+        let spec =
+            BuildSpec::new(Some(temp_dir.clone())).expect("external build spec should construct");
+        assert_eq!(spec.package, None);
+        assert_eq!(spec.manifest, manifest_path);
+        assert!(spec.manifest.is_absolute());
+
+        let cmd = spec.cargo_command(OsStr::new("cargo"), false);
+        assert_eq!(cmd.get_program(), "cargo");
+        assert_eq!(cmd.get_current_dir(), Some(temp_dir.as_path()));
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            vec![
+                "build",
+                "--manifest-path",
+                manifest_path.to_str().unwrap(),
+                "--message-format=json-render-diagnostics",
+            ]
+        );
+
+        let frozen_cmd = spec.cargo_command(OsStr::new("cargo"), true);
+        let frozen_args: Vec<String> = frozen_cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            frozen_args,
+            vec![
+                "build",
+                "--manifest-path",
+                manifest_path.to_str().unwrap(),
+                "--message-format=json-render-diagnostics",
+                "--frozen",
+            ]
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

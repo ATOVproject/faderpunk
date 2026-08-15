@@ -1,0 +1,187 @@
+name: Simulator Workshop Bundles
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'fp-core/**'
+      - 'fp-sim/**'
+      - 'fp-sim-core/**'
+      - 'fp-sim-protocol/**'
+      - 'fp-sim-app-example/**'
+      - 'libfp/**'
+      - 'faderpunk/Cargo.toml'
+      - 'scripts/package-simulator-workshop.py'
+      - '.github/workflows/simulator-workshop.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: 1.97.1
+
+permissions:
+  contents: read
+
+jobs:
+  package-macos:
+    name: Package macOS Workshop Bundle (Apple Silicon)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: aarch64-apple-darwin
+      - name: Assert rustc host and version
+        run: |
+          rustc -Vv
+          rustc -Vv | grep -q "release: ${{ env.RUST_VERSION }}"
+          rustc -Vv | grep -q "host: aarch64-apple-darwin"
+      - name: Build fp-sim release
+        run: cargo build --release -p fp-sim
+      - name: Package workshop bundle
+        run: |
+          SYSROOT="$(rustc --print sysroot)"
+          python3 scripts/package-simulator-workshop.py \
+            --platform macos-aarch64 \
+            --fp-sim target/release/fp-sim \
+            --toolchain "$SYSROOT" \
+            --rust-version "${{ env.RUST_VERSION }}" \
+            --output dist
+      - name: Test extracted bundle in path with spaces
+        run: |
+          TEST_DIR="$RUNNER_TEMP/test extraction dir with spaces"
+          mkdir -p "$TEST_DIR"
+          tar -xzf dist/faderpunk-sim-workshop-macos-aarch64.tar.gz -C "$TEST_DIR"
+          EXTRACTED="$TEST_DIR/faderpunk-sim-workshop-macos-aarch64"
+
+          rm -rf "$EXTRACTED/cache/target"
+          mkdir -p "$EXTRACTED/cache/target" "$EXTRACTED/cache/cargo-home"
+
+          export PATH="$EXTRACTED/toolchain/bin:$EXTRACTED/toolchain/lib/rustlib/aarch64-apple-darwin/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+          export CARGO_HOME="$EXTRACTED/cache/cargo-home"
+          export CARGO_TARGET_DIR="$EXTRACTED/cache/target"
+          export FP_SIM_CARGO_FROZEN=1
+          export RUSTC="$EXTRACTED/toolchain/bin/rustc"
+
+          cd "$EXTRACTED/workshop-app"
+          cargo build --manifest-path Cargo.toml --frozen
+      - uses: actions/upload-artifact@v4
+        with:
+          name: faderpunk-sim-workshop-macos-aarch64
+          path: dist/faderpunk-sim-workshop-macos-aarch64.tar.gz
+          if-no-files-found: error
+
+  package-linux:
+    name: Package Linux Workshop Bundle (x86_64)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system dependencies for parent build
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: x86_64-unknown-linux-musl
+          components: rust-src
+      - name: Assert rustc host and version
+        run: |
+          rustc -Vv
+          rustc -Vv | grep -q "release: ${{ env.RUST_VERSION }}"
+          rustc -Vv | grep -q "host: x86_64-unknown-linux-gnu"
+      - name: Build fp-sim release
+        run: cargo build --release -p fp-sim
+      - name: Package workshop bundle
+        run: |
+          SYSROOT="$(rustc --print sysroot)"
+          python3 scripts/package-simulator-workshop.py \
+            --platform linux-x86_64 \
+            --fp-sim target/release/fp-sim \
+            --toolchain "$SYSROOT" \
+            --rust-version "${{ env.RUST_VERSION }}" \
+            --output dist
+      - name: Test extracted bundle in path with spaces without ambient C compilers
+        run: |
+          TEST_DIR="$RUNNER_TEMP/test extraction dir with spaces"
+          mkdir -p "$TEST_DIR"
+          tar -xzf dist/faderpunk-sim-workshop-linux-x86_64.tar.gz -C "$TEST_DIR"
+          EXTRACTED="$TEST_DIR/faderpunk-sim-workshop-linux-x86_64"
+
+          rm -rf "$EXTRACTED/cache/target"
+          mkdir -p "$EXTRACTED/cache/target" "$EXTRACTED/cache/cargo-home"
+
+          CLEAN_BIN="$RUNNER_TEMP/clean-bin"
+          mkdir -p "$CLEAN_BIN"
+          for tool in sh bash cp mv rm mkdir rmdir cat ls touch chmod env test true false file; do
+            p="$(which $tool 2>/dev/null || true)"
+            [ -n "$p" ] && ln -sf "$p" "$CLEAN_BIN/$tool"
+          done
+
+          export PATH="$EXTRACTED/toolchain/bin:$EXTRACTED/toolchain/lib/rustlib/x86_64-unknown-linux-gnu/bin:$CLEAN_BIN"
+          export CARGO_HOME="$EXTRACTED/cache/cargo-home"
+          export CARGO_TARGET_DIR="$EXTRACTED/cache/target"
+          export FP_SIM_CARGO_FROZEN=1
+          export RUSTC="$EXTRACTED/toolchain/bin/rustc"
+
+          cd "$EXTRACTED/workshop-app"
+          cargo build --manifest-path Cargo.toml --frozen
+
+          BUILT_BIN="$EXTRACTED/cache/target/x86_64-unknown-linux-musl/debug/fp-sim-app-example"
+          file "$BUILT_BIN"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: faderpunk-sim-workshop-linux-x86_64
+          path: dist/faderpunk-sim-workshop-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  package-windows:
+    name: Package Windows Workshop Bundle (x86_64)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}-x86_64-pc-windows-gnu
+          components: rust-mingw
+      - name: Assert rustc host and version
+        run: |
+          rustc -Vv
+          rustc -Vv | Select-String "release: ${{ env.RUST_VERSION }}"
+          rustc -Vv | Select-String "host: x86_64-pc-windows-gnu"
+      - name: Build fp-sim release
+        run: cargo build --release -p fp-sim
+      - name: Package workshop bundle
+        run: |
+          $SYSROOT = (rustc --print sysroot)
+          python scripts/package-simulator-workshop.py `
+            --platform windows-x86_64 `
+            --fp-sim target/release/fp-sim.exe `
+            --toolchain "$SYSROOT" `
+            --rust-version "${{ env.RUST_VERSION }}" `
+            --output dist
+      - name: Test extracted bundle in path with spaces
+        shell: cmd
+        run: |
+          set "TEST_DIR=%RUNNER_TEMP%\test extraction dir with spaces"
+          mkdir "%TEST_DIR%"
+          powershell -Command "Expand-Archive -Path dist/faderpunk-sim-workshop-windows-x86_64.zip -DestinationPath '%TEST_DIR%'"
+          set "EXTRACTED=%TEST_DIR%\faderpunk-sim-workshop-windows-x86_64"
+
+          rmdir /s /q "%EXTRACTED%\cache\target"
+          mkdir "%EXTRACTED%\cache\target"
+          mkdir "%EXTRACTED%\cache\cargo-home"
+
+          set "PATH=%EXTRACTED%\toolchain\bin;%EXTRACTED%\toolchain\lib\rustlib\x86_64-pc-windows-gnu\bin;%SystemRoot%\system32;%SystemRoot%"
+          set "CARGO_HOME=%EXTRACTED%\cache\cargo-home"
+          set "CARGO_TARGET_DIR=%EXTRACTED%\cache\target"
+          set FP_SIM_CARGO_FROZEN=1
+          set "RUSTC=%EXTRACTED%\toolchain\bin\rustc.exe"
+
+          cd /d "%EXTRACTED%\workshop-app"
+          cargo.exe build --manifest-path Cargo.toml --frozen
+      - uses: actions/upload-artifact@v4
+        with:
+          name: faderpunk-sim-workshop-windows-x86_64
+          path: dist/faderpunk-sim-workshop-windows-x86_64.zip
+          if-no-files-found: error
