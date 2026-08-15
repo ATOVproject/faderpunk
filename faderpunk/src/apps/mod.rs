@@ -2,6 +2,7 @@ mod coltrane_geo;
 mod follow_key;
 #[allow(dead_code)]
 mod genre_palette;
+#[allow(dead_code)]
 mod groove;
 #[allow(dead_code)]
 mod led_fx;
