@@ -78,41 +78,59 @@ pub struct CycleStep {
     pub center: u8,
     pub root_offset: u8,
     pub quality: ChordQuality,
+    /// Extra division boundaries this chord swallows because the following
+    /// slots on the fixed 9-slot grid are empty (it sustains through them).
+    pub hold: u8,
 }
 
-/// Build the ordered Coltrane cycle.
+/// Build the ordered Coltrane cycle on a fixed 9-slot metric grid.
 ///
 /// `interval` is the semitone gap between tonal centers (3 = minor 3rd,
-/// 4 = major 3rd, etc.). `density` selects approach depth:
-/// 0 = centers only (3 steps), 1 = V-I (6), 2 = ii-V-I (9).
+/// 4 = major 3rd, etc.). The grid is always ii(c), V(c), I(c) for each of the
+/// three centers. `density` (0..=6) fades approach chords in one at a time:
+/// I is always present, V(c) appears once `density >= c + 1`, ii(c) once
+/// `density >= 4 + c`. That yields cycle lengths 3,4,5,6,7,8,9.
+///
+/// Empty slots do not shorten the cycle: they are folded cyclically into the
+/// `hold` of the preceding emitted chord (leading empties wrap onto the last
+/// chord), so `sum(1 + hold) == 9` always.
 pub fn build_cycle(interval: u8, density: u8) -> Vec<CycleStep, 9> {
     let mut out: Vec<CycleStep, 9> = Vec::new();
     let interval = interval.max(1);
+    let density = density.min(6);
+    let mut leading_empty = 0u8;
 
     for c in 0u8..3 {
         let center_offset = (c as u16 * interval as u16 % 12) as u8;
 
-        if density >= 2 {
-            let ii_offset = (center_offset + 2) % 12;
-            let _ = out.push(CycleStep {
-                center: c,
-                root_offset: ii_offset,
-                quality: ChordQuality::Min7,
-            });
+        let slots = [
+            (
+                density >= 4 + c,
+                (center_offset + 2) % 12,
+                ChordQuality::Min7,
+            ),
+            (density > c, (center_offset + 7) % 12, ChordQuality::Dom7),
+            (true, center_offset, ChordQuality::Maj7),
+        ];
+
+        for (present, root_offset, quality) in slots {
+            if present {
+                let _ = out.push(CycleStep {
+                    center: c,
+                    root_offset,
+                    quality,
+                    hold: 0,
+                });
+            } else if let Some(last) = out.last_mut() {
+                last.hold += 1;
+            } else {
+                leading_empty += 1;
+            }
         }
-        if density >= 1 {
-            let v_offset = (center_offset + 7) % 12;
-            let _ = out.push(CycleStep {
-                center: c,
-                root_offset: v_offset,
-                quality: ChordQuality::Dom7,
-            });
-        }
-        let _ = out.push(CycleStep {
-            center: c,
-            root_offset: center_offset,
-            quality: ChordQuality::Maj7,
-        });
+    }
+
+    if let Some(last) = out.last_mut() {
+        last.hold += leading_empty;
     }
     out
 }

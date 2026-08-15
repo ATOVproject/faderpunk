@@ -259,13 +259,7 @@ fn velocity_12bit(vel_7: i32) -> u16 {
 }
 
 fn density_from_fader(v: u16) -> u8 {
-    if v < 1366 {
-        0
-    } else if v < 2731 {
-        1
-    } else {
-        2
-    }
+    ((v as u32 * 7) / 4096).min(6) as u8
 }
 
 fn note_to_pitch(note: u8) -> Pitch {
@@ -573,7 +567,7 @@ pub async fn run(
             arp_vel = vel;
 
             let mult = step_div_mult(motion, cs.quality);
-            hold_boundaries = mult - 1;
+            hold_boundaries = mult - 1 + cs.hold as u32;
 
             let order = if motion >= Motion::Sheets {
                 arp_order(notes.len())
