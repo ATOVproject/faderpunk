@@ -104,6 +104,38 @@ pub fn swing_delay_ms(step: u32, swing_pct: i32, reversed: bool, sixteenth_ms: u
     raw.min(sixteenth_ms.saturating_sub(2))
 }
 
+/// Half of the device swing window in 24-PPQN ticks. Mirrors the private
+/// `SWING_HALF_INTERVAL` in [`crate::tasks::clock`]; keep both in sync.
+const DEVICE_SWING_HALF: u32 = 6;
+
+/// Fraction of one grid step, in per-mille, that the device's global swing
+/// already displaces. Zero when the app's grid is coarser than the swing
+/// window half, because those steps always land on the window anchor and the
+/// clock never moves them.
+#[allow(dead_code)]
+#[inline]
+pub fn device_swing_permille(div_ticks: u32, swing_amount: i8) -> u32 {
+    if div_ticks > DEVICE_SWING_HALF || swing_amount == 0 {
+        return 0;
+    }
+    // The clock shifts the offbeat by `H * s / 50` ticks, i.e. |s|/50 of a 16th.
+    (swing_amount.unsigned_abs() as u32 * 1000) / 50
+}
+
+/// Threshold below which a negative global swing is treated as straight for
+/// direction purposes. Flipping parity is a large musical change, so it should
+/// not fall out of a value that barely moves the grid at all.
+const DEVICE_SWING_DIRECTION_MIN: i8 = 8;
+
+/// Whether the app should flip which side of the grid it delays, so its own
+/// swing leans the same way the device clock already does instead of pulling
+/// against it.
+#[allow(dead_code)]
+#[inline]
+pub fn device_swing_reverses(swing_amount: i8) -> bool {
+    swing_amount <= -DEVICE_SWING_DIRECTION_MIN
+}
+
 /// Genre swing bias as 0–100.
 #[inline]
 pub fn swing_bias(genre: usize) -> u8 {
