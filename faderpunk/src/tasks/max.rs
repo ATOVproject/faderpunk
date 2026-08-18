@@ -1,4 +1,5 @@
 use embassy_executor::Spawner;
+use embassy_futures::yield_now;
 use embassy_rp::{
     gpio::{Level, Output},
     peripherals::{PIN_12, PIN_13, PIN_14, PIN_15, PIN_17, PIO0, SPI0},
@@ -222,6 +223,11 @@ async fn read_fader(
         let mut burst = [0u16; FADER_BURST_READS];
         for slot in burst.iter_mut() {
             *slot = fader_port.get_value().await.unwrap();
+            // Give message_loop a fair chance at SharedMax between reads:
+            // back-to-back re-locks here would otherwise always win the
+            // race (embassy-sync's Mutex has no FIFO fairness), starving
+            // gate output for the length of the whole burst.
+            yield_now().await;
         }
         let mut sorted = burst;
         sorted.sort_unstable();
@@ -332,6 +338,14 @@ async fn process_channel_values(
                 }
                 _ => {}
             }
+            // Release the lock and yield before the next iteration re-locks.
+            // Without this, dropping `max` and immediately calling
+            // `lock().await` again happens in the same synchronous
+            // continuation, so this loop always wins the race against
+            // message_loop (embassy-sync's Mutex has no FIFO fairness) and
+            // can starve gate output for the length of an entire sweep.
+            drop(max);
+            yield_now().await;
         }
     }
 }
