@@ -387,12 +387,17 @@ impl MidiOutput {
         }
     }
 
-    async fn send_midi_msg(&self, msg: MidiMessage) {
+    /// Wraps a `MidiMessage` as a local `MidiMsg` ready for either sender.
+    fn wrap_midi_msg(&self, message: MidiMessage) -> MidiMsg {
         let event = LiveEvent::Midi {
             channel: self.midi_channel,
-            message: msg,
+            message,
         };
-        let msg = MidiMsg::new(event, self.midi_out, MidiEventSource::Local);
+        MidiMsg::new(event, self.midi_out, MidiEventSource::Local)
+    }
+
+    async fn send_midi_msg(&self, msg: MidiMessage) {
+        let msg = self.wrap_midi_msg(msg);
         self.midi_sender.send((self.start_channel, msg)).await;
     }
 
@@ -405,20 +410,7 @@ impl MidiOutput {
     /// update supersedes it anyway. Unlike note on/off, dropping here can't
     /// leave a stuck note.
     pub async fn send_cc(&self, cc: MidiCc, value: u16) {
-        if self.nrpn_mode {
-            let msg = MidiMsg::nrpn(self.midi_channel, cc.as_u16(), value, self.midi_out);
-            let _ = self.midi_sender.try_send((self.start_channel, msg));
-        } else {
-            let event = LiveEvent::Midi {
-                channel: self.midi_channel,
-                message: MidiMessage::Controller {
-                    controller: cc.into(),
-                    value: scale_bits_12_7(value),
-                },
-            };
-            let msg = MidiMsg::new(event, self.midi_out, MidiEventSource::Local);
-            let _ = self.midi_sender.try_send((self.start_channel, msg));
-        }
+        self.try_send_cc(cc, value);
     }
 
     /// Sends a MIDI NoteOn message.
@@ -438,6 +430,44 @@ impl MidiOutput {
             vel: 0.into(),
         };
         self.send_midi_msg(msg).await;
+    }
+
+    /// Non-blocking, non-async NoteOn — drops the note if the app MIDI queue
+    /// is full.
+    ///
+    /// [`Self::send_note_on`] awaits queue space, which parks the caller on
+    /// Core 1 and backs pressure up into USB TX. Voice engines that decide
+    /// notes inside a tight clock step want the opposite trade: lose one note
+    /// rather than delay every later one. Being sync also lets them fire from
+    /// closures where `.await` is not available.
+    ///
+    /// There is deliberately no `try_send_note_off` counterpart: a dropped
+    /// NoteOn is silence, but a dropped NoteOff is a note that hangs until
+    /// something else happens to end it, and `APP_MIDI_CHANNEL` is shared by
+    /// all 16 channels, so a busy neighbour can cause the drop. Send the
+    /// matching NoteOff with [`Self::send_note_off`] from an async voice task.
+    #[allow(dead_code)]
+    pub fn try_send_note_on(&self, note_number: MidiNote, velocity: u16) {
+        let msg = self.wrap_midi_msg(MidiMessage::NoteOn {
+            key: note_number.into(),
+            vel: scale_bits_12_7(velocity),
+        });
+        let _ = self.midi_sender.try_send((self.start_channel, msg));
+    }
+
+    /// Non-blocking, non-async CC — same payload as [`Self::send_cc`], usable
+    /// from sync code.
+    #[allow(dead_code)]
+    pub fn try_send_cc(&self, cc: MidiCc, value: u16) {
+        let msg = if self.nrpn_mode {
+            MidiMsg::nrpn(self.midi_channel, cc.as_u16(), value, self.midi_out)
+        } else {
+            self.wrap_midi_msg(MidiMessage::Controller {
+                controller: cc.into(),
+                value: scale_bits_12_7(value),
+            })
+        };
+        let _ = self.midi_sender.try_send((self.start_channel, msg));
     }
 
     /// Sends a MIDI Aftertouch message.
