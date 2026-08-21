@@ -1,0 +1,104 @@
+{
+  "id": 45,
+  "slug": "axis_matrix",
+  "name": "Axis Matrix",
+  "status": "wip",
+  "tag": "draft",
+  "description": "Playable Coltrane tonal center navigator - fader position, clock trigger",
+  "color": "Green",
+  "icon": "NoteGrid",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "MIDI Out",
+    "MIDI Channel",
+    "Root",
+    "Division",
+    "Interval",
+    "Voicing",
+    "Sustain",
+    "Velocity",
+    "Color",
+    "Jack",
+    "Range",
+    "V/Oct",
+    "Follow device tonic",
+    "Follow device scale",
+    "Motion"
+  ],
+  "storage": [
+    "Position",
+    "Function",
+    "Muted",
+    "Feel",
+    "Time fader"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> — center position: three zones with snap; approach chords sound in the transition zones at boundaries",
+            "<strong>Alt</strong> (Shift) — harmonic function: bottom = root (Maj7), middle = dominant (Dom7), top = subdominant approach (m7)",
+            "<strong>Third</strong> (Btn hold) — Time: clock division from 1/1 at the bottom down to 1/64t at the top, triplets interleaved; the Division param sets the power-on starting point"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Short tap</strong> — mute (silences held chords, parks CV at 0 V)",
+            "<strong>Hold</strong> — toggle drone mode (sustain indefinitely, immediate fader response)",
+            "<strong>Shift + tap</strong> — toggle latch (chord holds until tapped again)",
+            "<strong>Shift + hold</strong> — cycle Feel in four steps, from straight and flat to full swing and dynamics"
+          ]
+        },
+        {
+          "heading": "Sustain",
+          "items": [
+            "<strong>Clock-gated</strong> — each chord holds until the next one",
+            "<strong>Legato</strong> — same, and the last chord keeps ringing when the clock stops",
+            "<strong>Staccato</strong> — every note releases halfway through its own step"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Signal / LEDs",
+          "items": [
+            "Three tonal center hues rotated around the app colour — brightness dims as fader drifts from center",
+            "CV Out tracks root pitch of current position",
+            "CV In Position modulates center selection; CV In Function modulates harmonic function",
+            "Button blinks when latched, stays bright when droning, ducks on chord trigger",
+            "Feel flashes one colour per step"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "CV Out / In",
+      "jackDescription": "CV Out sends the root pitch of the current matrix position and parks at 0 V while muted. CV In Position modulates the center selection; CV In Function modulates the harmonic function.",
+      "faderTitle": "Center Position",
+      "faderDescription": "Selects one of three tonal centers with snap zones. Transition zones at boundaries sound approach chords.",
+      "faderPlusShiftTitle": "Function",
+      "faderPlusShiftDescription": "Harmonic function at the current center: root (Maj7), dominant (Dom7) or subdominant approach (m7).",
+      "faderPlusFnTitle": "Time",
+      "faderPlusFnDescription": "Selects the clock division live, from 1/1 at the bottom down to 1/64t at the top, with the triplets sorted in by duration. The Division param is the power-on starting point and the fader takes over from there.",
+      "fnTitle": "Mute",
+      "fnDescription": "Short tap mutes and unmutes, cutting any held chord. Hold toggles drone mode: the chord sustains indefinitely and updates on fader movement, ignoring the clock.",
+      "fnPlusShiftTitle": "Latch / Feel",
+      "fnPlusShiftDescription": "Shift + tap toggles latch: the chord sustains until tapped again regardless of fader movement. Shift + hold cycles Feel through four steps, from straight and flat up to full swing and dynamics. The Interval is set in the app params only.",
+      "ledTop": "Center hue with brightness gradient (dims away from center)",
+      "ledBottom": "Center hue, low brightness",
+      "ledTopPlusShift": ""
+    }
+  ]
+}

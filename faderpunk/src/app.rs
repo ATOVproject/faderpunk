@@ -23,7 +23,7 @@ use crate::{
     events::{EventPubSubChannel, InputEvent},
     tasks::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
-        clock::{ClockSubscriber, CLOCK_PUBSUB},
+        clock::{ClockSubscriber, CLOCK_PUBSUB, TICK_COUNTER},
         global_config::get_global_config,
         i2c::{I2cLeaderMessage, I2cLeaderSender},
         leds::{set_led_mode, LedMsg},
@@ -440,6 +440,52 @@ impl MidiOutput {
         self.send_midi_msg(msg).await;
     }
 
+    /// Non-blocking, non-async NoteOn — drops the note if the app MIDI queue
+    /// is full.
+    ///
+    /// [`Self::send_note_on`] awaits queue space, which parks the caller on
+    /// Core 1 and backs pressure up into USB TX. Voice engines that decide
+    /// notes inside a tight clock step want the opposite trade: lose one note
+    /// rather than delay every later one. Being sync also lets them fire from
+    /// closures where `.await` is not available.
+    ///
+    /// There is deliberately no `try_send_note_off` counterpart: a dropped
+    /// NoteOn is silence, but a dropped NoteOff is a note that hangs until
+    /// something else happens to end it, and `APP_MIDI_CHANNEL` is shared by
+    /// all 16 channels, so a busy neighbour can cause the drop. Send the
+    /// matching NoteOff with [`Self::send_note_off`] from an async voice task.
+    #[allow(dead_code)]
+    pub fn try_send_note_on(&self, note_number: MidiNote, velocity: u16) {
+        let event = LiveEvent::Midi {
+            channel: self.midi_channel,
+            message: MidiMessage::NoteOn {
+                key: note_number.into(),
+                vel: scale_bits_12_7(velocity),
+            },
+        };
+        let msg = MidiMsg::new(event, self.midi_out, MidiEventSource::Local);
+        let _ = self.midi_sender.try_send((self.start_channel, msg));
+    }
+
+    /// Non-blocking, non-async CC — same payload as [`Self::send_cc`], usable
+    /// from sync code.
+    #[allow(dead_code)]
+    pub fn try_send_cc(&self, cc: MidiCc, value: u16) {
+        let msg = if self.nrpn_mode {
+            MidiMsg::nrpn(self.midi_channel, cc.as_u16(), value, self.midi_out)
+        } else {
+            let event = LiveEvent::Midi {
+                channel: self.midi_channel,
+                message: MidiMessage::Controller {
+                    controller: cc.into(),
+                    value: scale_bits_12_7(value),
+                },
+            };
+            MidiMsg::new(event, self.midi_out, MidiEventSource::Local)
+        };
+        let _ = self.midi_sender.try_send((self.start_channel, msg));
+    }
+
     /// Sends a MIDI Aftertouch message.
     /// velocity is normalized to a range of 0-4095
     #[allow(dead_code)]
@@ -798,6 +844,18 @@ impl<const N: usize> App<N> {
         Clock::new()
     }
 
+    /// Poll the current tick instead of subscribing to the clock.
+    ///
+    /// For apps that derive everything from the tick number and never react to
+    /// Start/Stop/Reset. Unlike [`Self::use_clock`] this costs no subscriber
+    /// slot, and an app that falls behind cannot back up the shared clock
+    /// queue. Returns `u64::MAX` before the first tick; the counter going
+    /// backwards means the clock was restarted or reset.
+    #[allow(dead_code)] // first users are the WIP app branches
+    pub fn clock_ticker(&self) -> fn() -> u64 {
+        ticks
+    }
+
     pub fn use_quantizer(&self, range: Range, vpo: VoltPerOct, bypass: bool) -> Quantizer {
         Quantizer::new(range, vpo, bypass)
     }
@@ -872,4 +930,9 @@ pub fn pitch_as_counts(pitch: Pitch, range: Range, vpo: VoltPerOct) -> u16 {
 /// from the live global config.
 pub fn vpo_counts_per_oct(vpo: VoltPerOct) -> i16 {
     get_global_config().vpo_counts_per_oct(vpo)
+}
+
+#[allow(dead_code)] // see App::clock_ticker
+fn ticks() -> u64 {
+    TICK_COUNTER.load(Ordering::Relaxed)
 }

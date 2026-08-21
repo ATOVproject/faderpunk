@@ -1,3 +1,12 @@
+mod coltrane_geo;
+mod follow_key;
+#[allow(dead_code)]
+mod genre_palette;
+#[allow(dead_code)]
+mod groove;
+#[allow(dead_code)]
+mod led_fx;
+
 register_apps!(
     1 => control,
     2 => lfo,
@@ -26,4 +35,6 @@ register_apps!(
     25 => automator,
     26 => genseq,
     27 => bernoulli,
+    44 => giant_steps,
+    45 => axis_matrix,
 );
