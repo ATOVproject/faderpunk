@@ -304,7 +304,13 @@ async fn send_analog_reset(spawner: &Spawner, config: &GlobalConfig) {
 #[embassy_executor::task(pool_size = 4)]
 async fn analog_tick_release(ports: heapless::Vec<Port, 4>, trigger_len: u64) {
     Timer::after_millis(trigger_len).await;
-    let _ = MAX_CHANNEL.sender().try_send(MaxCmd::GpoSetLowMany(ports));
+    // This task runs off the gatekeeper's path, so blocking here only delays
+    // this release, never the clock: awaiting a queue slot is safe, and the
+    // port is guaranteed to eventually go low instead of getting stuck high.
+    MAX_CHANNEL
+        .sender()
+        .send(MaxCmd::GpoSetLowMany(ports))
+        .await;
 }
 
 #[embassy_executor::task]
