@@ -1,0 +1,1 @@
+[{"filename": "faderpunk/src/apps/nested_test.rs", "status": "added", "additions": 6, "deletions": 0, "patch": "@@ -0,0 +1,6 @@\n+use crate::{\n+    app::{App, Led},\n+    storage::{AppParams, ParamStore},\n+    tasks::leds::LedMode,\n+};\n+fn foo() {}"}]

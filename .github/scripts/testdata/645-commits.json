@@ -1,0 +1,84 @@
+[
+  {
+    "sha": "9bfbf0186d7c043907d9171a39fe489bdf17a698",
+    "node_id": "C_kwDOLm7JjtoAKDliZmJmMDE4NmQ3YzA0MzkwN2Q5MTcxYTM5ZmU0ODliZGYxN2E2OTg",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-08-14T08:41:48Z"
+      },
+      "committer": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-08-14T08:41:57Z"
+      },
+      "message": "fix(leds): run boot animation at a fixed brightness",
+      "tree": {
+        "sha": "ba24e053ff5106932aee41682061b9f818269636",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/ba24e053ff5106932aee41682061b9f818269636"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/9bfbf0186d7c043907d9171a39fe489bdf17a698",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/9bfbf0186d7c043907d9171a39fe489bdf17a698",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/9bfbf0186d7c043907d9171a39fe489bdf17a698",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/9bfbf0186d7c043907d9171a39fe489bdf17a698/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "6a9ed793705c3abf9e9b2a93c5011bb5f82e9735",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/6a9ed793705c3abf9e9b2a93c5011bb5f82e9735",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/6a9ed793705c3abf9e9b2a93c5011bb5f82e9735"
+      }
+    ]
+  }
+]

@@ -323,10 +323,12 @@ Contributions are welcome! Please follow the [Rust Code of Conduct](https://www.
 - Update TypeScript bindings when changing protocol types
 
 ### Pull Request Process
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full PR scope policy and process before you start.
+
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes with clear commit messages
-4. Ensure code passes clippy and builds successfully (warnings are, for the most part ok and expected at this point)
+4. Ensure code passes clippy and builds successfully with **zero** warnings — `cargo fmt --all -- --check`, `cargo clippy --bin faderpunk --target thumbv8m.main-none-eabihf -- -D warnings`, `cargo clippy -p libfp -- -D warnings`, `cargo test --lib -p libfp`
 5. Test on hardware if applicable
 6. Submit a pull request with a clear description
 

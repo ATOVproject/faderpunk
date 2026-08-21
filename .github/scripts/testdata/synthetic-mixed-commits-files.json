@@ -1,0 +1,4 @@
+[
+  {"filename": "faderpunk/src/apps/widget.rs", "status": "added", "additions": 50, "deletions": 0, "patch": "@@ -0,0 +1,3 @@\n+use crate::app::{App};\n+fn widget() {}\n+"},
+  {"filename": "faderpunk/src/apps/mod.rs", "status": "modified", "additions": 1, "deletions": 0, "patch": "@@ -1,1 +1,2 @@\n+50 => widget,"}
+]

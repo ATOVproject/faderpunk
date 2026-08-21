@@ -1,0 +1,253 @@
+[
+  {
+    "sha": "ebcd566d9178057b7f886ec095bf34c9e27cde4e",
+    "node_id": "C_kwDOTeRQitoAKGViY2Q1NjZkOTE3ODA1N2I3Zjg4NmVjMDk1YmYzNGM5ZTI3Y2RlNGU",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-28T12:35:40Z"
+      },
+      "committer": {
+        "name": "Christian Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-08-08T12:17:01Z"
+      },
+      "message": "fix: align .text section start to 8 bytes\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+      "tree": {
+        "sha": "c1355002c4936c611679efa673c15764a8d71e6c",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/c1355002c4936c611679efa673c15764a8d71e6c"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/ebcd566d9178057b7f886ec095bf34c9e27cde4e",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/ebcd566d9178057b7f886ec095bf34c9e27cde4e",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/ebcd566d9178057b7f886ec095bf34c9e27cde4e",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/ebcd566d9178057b7f886ec095bf34c9e27cde4e/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "6a9ed793705c3abf9e9b2a93c5011bb5f82e9735",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/6a9ed793705c3abf9e9b2a93c5011bb5f82e9735",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/6a9ed793705c3abf9e9b2a93c5011bb5f82e9735"
+      }
+    ]
+  },
+  {
+    "sha": "0d93dd11b773a9c8a99a9e0e0a71fc66a937218a",
+    "node_id": "C_kwDOTeRQitoAKDBkOTNkZDExYjc3M2E5YzhhOTlhOWUwZTBhNzFmYzY2YTkzNzIxOGE",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-08-08T09:15:25Z"
+      },
+      "committer": {
+        "name": "Christian Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-08-08T12:17:01Z"
+      },
+      "message": "fix: soften .text alignment comment wording\n\nAuthored by an AI coding agent on behalf of kosmar.\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+      "tree": {
+        "sha": "d7ece1f83b9f82314b3a14b0fa65600a6d34e350",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/d7ece1f83b9f82314b3a14b0fa65600a6d34e350"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/0d93dd11b773a9c8a99a9e0e0a71fc66a937218a",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/0d93dd11b773a9c8a99a9e0e0a71fc66a937218a",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/0d93dd11b773a9c8a99a9e0e0a71fc66a937218a",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/0d93dd11b773a9c8a99a9e0e0a71fc66a937218a/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "ebcd566d9178057b7f886ec095bf34c9e27cde4e",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/ebcd566d9178057b7f886ec095bf34c9e27cde4e",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/ebcd566d9178057b7f886ec095bf34c9e27cde4e"
+      }
+    ]
+  },
+  {
+    "sha": "d69032e48bc402c486ea55150c957bc7f7c054d5",
+    "node_id": "C_kwDOTeRQitoAKGQ2OTAzMmU0OGJjNDAyYzQ4NmVhNTUxNTBjOTU3YmM3ZjdjMDU0ZDU",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "110692829+ArthurGibert@users.noreply.github.com",
+        "date": "2026-08-14T10:44:11Z"
+      },
+      "committer": {
+        "name": "GitHub",
+        "email": "noreply@github.com",
+        "date": "2026-08-14T10:44:11Z"
+      },
+      "message": "Merge branch 'main' into fix/text-section-alignment",
+      "tree": {
+        "sha": "88caedf2213198dad1e28650aea0661f2bb78568",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/88caedf2213198dad1e28650aea0661f2bb78568"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/d69032e48bc402c486ea55150c957bc7f7c054d5",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJqfvF7CRC1aQ7uu5UhlAAAptYQALC3UdQZELHDWZc8DpZFVEQx\nE2z6xpgXZOlkgy+YuO5MUu23nRP8jZtxBixh8r/8EhDesPKKKVVXprs8T29pQfsH\nbeEE9pP+Ak+RXVDCu8qoQ1ZquYetLx1Exm170OFmbZQ14arWgTTSw/PtTirTJuuS\n93PBJIWKizAQYfFMETQUoYlKBzCLRHbo2F/jYD/RFpljcTVTDsAsmme9WVyPZGzU\nB4zZQMbhA77x9iu1ucjiKjp7JQ06Wk4Gm6diewZU8EE5DU9gW4z0WUPz9CcF8agF\nzb0MK9/BF6GNmQiPZz5TDOTOgtjqajxZWwqmM4r7AdRsX4cZxV1rUj+w6o/0uT1b\nrhU2/ltDkpprB8Tj33IGhn8e3KXeO4OQqmhL2sqjoZX+tUGRf93N5KzII5fS9+hG\n95VPTDrI51nm+4s7SAEnode35lsqh8b33L3xj1/r3XQIhWoeCCgIGYPP/J1rY9bG\n3BSSW1lyPWSvQIZKG+kRmhpnunt3yRHUmjI56SnQuKwvmVhdGohEWSYlOEn1o5q9\nrcSGeyz58X4ZY89AeJ/JhlsLHuQncBNOb6QR2uEBSLjGz/+TzNb6xI+R8XDDhldo\n0vUWGV31ASXoh09lhM6xLvERTw2w62ojhCZnjJXH+UOoq/6n+lHEn9IG1UAc5gtC\n1ECHGmBxAWMpaIZuScbE\n=yI+B\n-----END PGP SIGNATURE-----\n",
+        "payload": "tree 88caedf2213198dad1e28650aea0661f2bb78568\nparent 0d93dd11b773a9c8a99a9e0e0a71fc66a937218a\nparent 4004b174c174c1a34406ad8c2705294f7b5087f6\nauthor ArthurGibert <110692829+ArthurGibert@users.noreply.github.com> 1786704251 +0200\ncommitter GitHub <noreply@github.com> 1786704251 +0200\n\nMerge branch 'main' into fix/text-section-alignment",
+        "verified_at": "2026-08-14T10:44:17Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/d69032e48bc402c486ea55150c957bc7f7c054d5",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/d69032e48bc402c486ea55150c957bc7f7c054d5",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/d69032e48bc402c486ea55150c957bc7f7c054d5/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "web-flow",
+      "id": 19864447,
+      "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+      "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/web-flow",
+      "html_url": "https://github.com/web-flow",
+      "followers_url": "https://api.github.com/users/web-flow/followers",
+      "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+      "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+      "organizations_url": "https://api.github.com/users/web-flow/orgs",
+      "repos_url": "https://api.github.com/users/web-flow/repos",
+      "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/web-flow/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "0d93dd11b773a9c8a99a9e0e0a71fc66a937218a",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/0d93dd11b773a9c8a99a9e0e0a71fc66a937218a",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/0d93dd11b773a9c8a99a9e0e0a71fc66a937218a"
+      },
+      {
+        "sha": "4004b174c174c1a34406ad8c2705294f7b5087f6",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/4004b174c174c1a34406ad8c2705294f7b5087f6",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/4004b174c174c1a34406ad8c2705294f7b5087f6"
+      }
+    ]
+  }
+]

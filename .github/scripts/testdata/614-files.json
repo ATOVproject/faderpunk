@@ -1,0 +1,14 @@
+[
+  {
+    "sha": "50492c7c8d8102a42c019711acbfa99d79da6787",
+    "filename": "faderpunk/memory.x",
+    "status": "modified",
+    "additions": 3,
+    "deletions": 2,
+    "changes": 5,
+    "blob_url": "https://github.com/ATOVproject/faderpunk/blob/d69032e48bc402c486ea55150c957bc7f7c054d5/faderpunk%2Fmemory.x",
+    "raw_url": "https://github.com/ATOVproject/faderpunk/raw/d69032e48bc402c486ea55150c957bc7f7c054d5/faderpunk%2Fmemory.x",
+    "contents_url": "https://api.github.com/repos/ATOVproject/faderpunk/contents/faderpunk%2Fmemory.x?ref=d69032e48bc402c486ea55150c957bc7f7c054d5",
+    "patch": "@@ -36,8 +36,9 @@ SECTIONS {\n \n } INSERT AFTER .vector_table;\n \n-/* move .text to start /after/ the boot info */\n-_stext = ADDR(.start_block) + SIZEOF(.start_block);\n+/* Move .text after the boot info and satisfy its current 8-byte\n+ * output-section alignment requirement. */\n+_stext = ALIGN(ADDR(.start_block) + SIZEOF(.start_block), 8);\n \n SECTIONS {\n     /* ### Picotool 'Binary Info' Entries"
+  }
+]
