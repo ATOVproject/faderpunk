@@ -1,0 +1,986 @@
+[
+  {
+    "sha": "73e5176c0b503a28a509abca669ce1198453f759",
+    "node_id": "C_kwDOLm7JjtoAKDczZTUxNzZjMGI1MDNhMjhhNTA5YWJjYTY2OWNlMTE5ODQ1M2Y3NTk",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-02-18T18:17:39Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:14:19Z"
+      },
+      "message": "feat(genseq): add gen-seq app (cherry-picked from WIP branch)\n\nOriginal WIP commit by Arthur, rebased onto current main:\n- assigned app id 24 (avoiding conflicts with rnd_plus/clk_div_plus/lfo_plus/fp_grids)\n- updated ParamStore::new() to current 3-arg signature with Params::default()\n- updated app.use_midi_output() to current 3-arg signature (NRPN flag = false)",
+      "tree": {
+        "sha": "4c85987948989c8608d3e001cb5fad5e0ef5f35b",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/4c85987948989c8608d3e001cb5fad5e0ef5f35b"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/73e5176c0b503a28a509abca669ce1198453f759",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBisACgkQWFO14pjh\nCgUuHQ//ZVzOA+yxxouaHNTWbEBHXhnKg+0JKBsEE/ZejldyGd49Ykzj5znKVfAf\n7e6GY/99T9UiOrGVBNLW6yeQM8h7quxxw09c8JjvrMKqDkJz/FhWADK7XS1kNLqR\nPRBfPyOVEdaQWkejh8P1Zsg4hoX6y92usBJ4GE1XEvZqrVoywcYLrJ0hC6sjxt/q\naaWrIXUK+niX9DcMGsuCngmEc+oaeOKsfB85rYljPwopr2SUOPPHiwi6dRBhGFj2\nj/LRJ5kskfheyEByrcmUU0kA3Kshn+mM/IW4bmCvWCUJnyaQLavvJk61Ry2j1E8x\nStE5r/KdU/lazqC9HPlqiB4VcmidcFnytKrHi1P9qiDy9514Nu/O2KGuCyU6ahnI\nhi8E61OpPk83x1/ojqUDPj7f9gbLPj53EXMMbcfRbd7+XMHSnHNY4Bh6nZqgv0zd\n9tRyd3DFEKlBcFfDOxUapACFR62CRB7O+vitcn6zqQbwNnAJFiEXVA9AIMmpv7nS\nBxsg3RWari8hpWNbKiGDVRwzwzh/HwCO6R2iz9+8M6Uo3BD1OeVPoylhsfNk+hXr\nl3sVWUH0wU1yPY43JuuILudP4XY0q7euppmMiKE++VDqpAWPMyAYKT1g92EvFQ6U\nJqEcN3bWDYEr+WnYei2w/mtuSjp/gGv37a+X6O5MUR3/UdI8F14=\n=gLe2\n-----END PGP SIGNATURE-----",
+        "payload": "tree 4c85987948989c8608d3e001cb5fad5e0ef5f35b\nparent 4b8f278971e89344f78299e21bb4e96f86d18a06\nauthor ArthurGibert <artgibert@gmail.com> 1771438659 +0100\ncommitter Chris Maniewski <code@chmanie.com> 1781270059 +0200\n\nfeat(genseq): add gen-seq app (cherry-picked from WIP branch)\n\nOriginal WIP commit by Arthur, rebased onto current main:\n- assigned app id 24 (avoiding conflicts with rnd_plus/clk_div_plus/lfo_plus/fp_grids)\n- updated ParamStore::new() to current 3-arg signature with Params::default()\n- updated app.use_midi_output() to current 3-arg signature (NRPN flag = false)\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/73e5176c0b503a28a509abca669ce1198453f759",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/73e5176c0b503a28a509abca669ce1198453f759",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/73e5176c0b503a28a509abca669ce1198453f759/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "4b8f278971e89344f78299e21bb4e96f86d18a06",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/4b8f278971e89344f78299e21bb4e96f86d18a06",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/4b8f278971e89344f78299e21bb4e96f86d18a06"
+      }
+    ]
+  },
+  {
+    "sha": "e2c4339ae7031e0d1ada18d048a3d23426dc2e56",
+    "node_id": "C_kwDOLm7JjtoAKGUyYzQzMzlhZTcwMzFlMGQxYWRhMThkMDQ4YTNkMjM0MjZkYzJlNTY",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-05-17T21:44:07Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:15:49Z"
+      },
+      "message": "feat(genseq): complete GenSeq app redesign and add manual entry\n\nRewrote genseq.rs from scratch with a finalized design:\n- 3 faders × 3 latch layers for 9 controls (pitch att, length att,\n  beat density on main; pitch length, legato, accent on alt; resolution,\n  octave shift, gate length on third layer)\n- Replaced beat-density Turing machine with direct fader control (0–100%)\n- Added accent pattern derived from register_legato.rotate_left(8), giving\n  correlated but independent legato/accent behavior from one register\n- Accent CV output on jack 3 (10V=accented, 0V=not), velocity on MIDI\n- Octave shift ±2 octaves on F1-Third, color-coded on button LED\n- Gate length on F2-Third, shown as brightness on top LED\n- Resolution colors (8 steps) on button 0 LED in third layer\n- Removed: recording system, beat TM, latched_glob dead code, debug logs\n- Reduced from join5→join4 (5→4 futures) by removing recording handler\n- Gate % moved from param to fader control (stored in scene)\n- Params reduced to 4: MIDI Channel, Base Note, Color, MIDI Out\n\nAdded GenSeq manual entry in ManualTab.tsx with full channel documentation\ncovering all three latch layers per fader.",
+      "tree": {
+        "sha": "d8b9d28648b47ed718e5e0b84b6f4da694ab70bf",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/d8b9d28648b47ed718e5e0b84b6f4da694ab70bf"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/e2c4339ae7031e0d1ada18d048a3d23426dc2e56",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBo4ACgkQWFO14pjh\nCgVhnhAAup9ML4yAL0US5SOQR0sFg+9TLXKNYLaOel3REm9bMZLUaimPokc+riQV\nD0OYOQGXnukMz2a1BS6ZBr81Uz9/cPJrVd88dmhBwSL8jfYp+5LSVed6RuOjzVVJ\n2Y2Vhf+q1D5JjDM9BI2vsdR4JN6co0pqWD5+Mhxjlq3+nQN6Iu/82x11t4n8kQWm\nXL22cg0/PodxfTvBLqMJmV/uzir1taPszrVOpihCL0CKK2qMQVavfM9nUragqpZT\nhVKMMOlG5XcQxLkfv+Pju5pVxIbTTRYn5R81mqbZrTKckIJrgoBNCf/46NHytMyq\nHXw1x83M4+nxsWug0w/Fl5s9fsTonfg/EHzK9507hrtUdUQvBLQyOUEZ3xXmWDnV\n5V3JxI3X9JsMK2zo0GWxIzj2byHRMp4iImDNHGFENUAIwnvExXULoTbnwWWyHHwS\ndQGiwdopGBJ7nquff5b0gu2kj3ugkfShBnOeskzV1WcSwCopSJ0Aq67smvDPtrFs\nVxRgAUovP/5cS6Ye+zOSjc5AkEHVHyNAHrfCvV+t6rQStEXYCrhnGcQrVwApz8GV\nRfz1wt9XXp6XYJ/kseq5y1+bOFoblaCWnaJ2FDkniuJWSEiDj1OtWL6h+XAKxNXs\nJ2NEAUaP1enHUfyTNS6MZU/kFK1FAMMoepva43li2MzpxY4ctpE=\n=75t7\n-----END PGP SIGNATURE-----",
+        "payload": "tree d8b9d28648b47ed718e5e0b84b6f4da694ab70bf\nparent 73e5176c0b503a28a509abca669ce1198453f759\nauthor ArthurGibert <artgibert@gmail.com> 1779054247 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270149 +0200\n\nfeat(genseq): complete GenSeq app redesign and add manual entry\n\nRewrote genseq.rs from scratch with a finalized design:\n- 3 faders × 3 latch layers for 9 controls (pitch att, length att,\n  beat density on main; pitch length, legato, accent on alt; resolution,\n  octave shift, gate length on third layer)\n- Replaced beat-density Turing machine with direct fader control (0–100%)\n- Added accent pattern derived from register_legato.rotate_left(8), giving\n  correlated but independent legato/accent behavior from one register\n- Accent CV output on jack 3 (10V=accented, 0V=not), velocity on MIDI\n- Octave shift ±2 octaves on F1-Third, color-coded on button LED\n- Gate length on F2-Third, shown as brightness on top LED\n- Resolution colors (8 steps) on button 0 LED in third layer\n- Removed: recording system, beat TM, latched_glob dead code, debug logs\n- Reduced from join5→join4 (5→4 futures) by removing recording handler\n- Gate % moved from param to fader control (stored in scene)\n- Params reduced to 4: MIDI Channel, Base Note, Color, MIDI Out\n\nAdded GenSeq manual entry in ManualTab.tsx with full channel documentation\ncovering all three latch layers per fader.\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/e2c4339ae7031e0d1ada18d048a3d23426dc2e56",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/e2c4339ae7031e0d1ada18d048a3d23426dc2e56",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/e2c4339ae7031e0d1ada18d048a3d23426dc2e56/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "73e5176c0b503a28a509abca669ce1198453f759",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/73e5176c0b503a28a509abca669ce1198453f759",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/73e5176c0b503a28a509abca669ce1198453f759"
+      }
+    ]
+  },
+  {
+    "sha": "4f06c21efed2e420ca05a8b6daba5f384f558d2a",
+    "node_id": "C_kwDOLm7JjtoAKDRmMDZjMjFlZmVkMmU0MjBjYTA1YThiNmRhYmE1ZjM4NGY1NThkMmE",
+    "commit": {
+      "author": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-02T18:42:48Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:15:59Z"
+      },
+      "message": "chore: fix some clippy issues",
+      "tree": {
+        "sha": "f49a88791920a51f6be56ee5c19edf922dffc5c7",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/f49a88791920a51f6be56ee5c19edf922dffc5c7"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/4f06c21efed2e420ca05a8b6daba5f384f558d2a",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBo8ACgkQWFO14pjh\nCgX1FxAAotFvoOXqljo2jeWe6FvCEe0QdmNyqgpp2+VA6VbZhcCyStMeA/TepmnN\n8IvkCK3B4XNIxkIlBqHnv70t/pCk85FbO8xaAWq6nI46pNiYA4pT8jK00TNp9gN8\nq9PptffJVwhWoP0ozxRt1r3xYuASef7ec7rrYQA5YOwWMXHe8PAEAk72GWht3d7s\nXJjZza5TXz0FUyvb81i0RaCIEcQe1eJa5EYLxhYw/RAWQDVv8GWAOKjpvj1ONKK+\n1WsfXPSq1pac94QFuUYzQqpfwKStX/xFmBJxwVbufKhtWmWW0T1ZAxU9Afp4EWD3\n3d4vIH3UJ2yJ5luvXX5ZAo4fBvyf0grZdX55iIl8mhEH6sv8MSg4fV5XQqv5wxZC\nPE+TG7XyB/FWmVF73KDXc1B5Ft5+yd+FH5R1LoeTZ7YqejvBD2ZQLtRrO2sRB1hv\ncPfVb3HvcJOwfjsqtCwoIUDIYaiJhKvqsPuNDVRzGa36nyAVR0nLQyPNeicOAL9C\nGDHW0+oxfd5b1Ug6L9KVG3Zyj059WHsMtouyuwrMY4qBAbPF68/zhLIkFr9kg9+z\nUH7tXt3o6+9Ujq1mUrRNNghA0hQ2rtMiLiYRzLb4V2Ql723t+NqzT8RkajeUK82G\nX9bwBgnYFLCekfNPvsfRjZdB9xJp7CRsM7vzZLrRKLhUdEe9LYI=\n=4R6+\n-----END PGP SIGNATURE-----",
+        "payload": "tree f49a88791920a51f6be56ee5c19edf922dffc5c7\nparent e2c4339ae7031e0d1ada18d048a3d23426dc2e56\nauthor Chris Maniewski <code@chmanie.com> 1780425768 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270159 +0200\n\nchore: fix some clippy issues\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/4f06c21efed2e420ca05a8b6daba5f384f558d2a",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/4f06c21efed2e420ca05a8b6daba5f384f558d2a",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/4f06c21efed2e420ca05a8b6daba5f384f558d2a/comments",
+    "author": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "e2c4339ae7031e0d1ada18d048a3d23426dc2e56",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/e2c4339ae7031e0d1ada18d048a3d23426dc2e56",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/e2c4339ae7031e0d1ada18d048a3d23426dc2e56"
+      }
+    ]
+  },
+  {
+    "sha": "db6c648e85e448bfebd02709212e9adb974c9cbf",
+    "node_id": "C_kwDOLm7JjtoAKGRiNmM2NDhlODVlNDQ4YmZlYmQwMjcwOTIxMmU5YWRiOTc0YzljYmY",
+    "commit": {
+      "author": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-02T18:47:34Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:16:00Z"
+      },
+      "message": "chore: lints",
+      "tree": {
+        "sha": "b835c7fbb1026c425b5170a07a63725f3fa8dd5b",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/b835c7fbb1026c425b5170a07a63725f3fa8dd5b"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/db6c648e85e448bfebd02709212e9adb974c9cbf",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBpAACgkQWFO14pjh\nCgWyIw//Z5bQ7cFRmGp26bNiqsWDUVoGV80Z1A/al1fRYH0vWSU/JjijUyoAmoqE\n2boWlHbgEi7uxeQa3SwUy7eBPaN9wtuzIg+70LjnIbRW0yttOFssAwWRTcITEhJ0\nfdJLsDkSjedBLtiZ2rQqakCbSNk3zg6ZeAC750ypdjrn0lCLFMoULXBejK1V6p8V\n7AG3jbP9XHh4Q/Je5f2TYxchi0XMf66muILI1sgsGCucm8EToh4966Y/W8/DDgmn\n8itOJEuy6n48H+uj930kh2ukSdwgO4Tid2wrMBxXxuzKDZEVqHlru8IFu+EJ9IWU\n2Ve9OiIsR5DisqwZ4l3FqG19lzHV4RrGfsKAOGNelcPG4eSRje186bLOYOeQJFGS\nWKEojVWiyPih12EqFLFXfJOj5eUTDoGBCSSzPPJH6RC9s3vDri+YU8BjKYm/vbDy\n7jsycK6vDCxq5lvINhzoJtMITu1TUsL40jpYmG0jE6XmXW/2ZQ5QWN19hC/HRNiV\ngdGKwABKxfkBnbYpgqhnuBJ5NMnPKngZnQpNN/Oz+1CI6R7JATZWPkRXsvArpmeu\nH4GDyGQFDEgX8QFG/UJqAq2nxkSlYuNKz50cI7zKBvrfwyEP7fPM4P9xcI1yHRJc\nulb/+kmd1nY6SxgohLAZs5tzy9yVWREvo6CvU+MyHTHSVLIF1x8=\n=Ec6Y\n-----END PGP SIGNATURE-----",
+        "payload": "tree b835c7fbb1026c425b5170a07a63725f3fa8dd5b\nparent 4f06c21efed2e420ca05a8b6daba5f384f558d2a\nauthor Chris Maniewski <code@chmanie.com> 1780426054 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270160 +0200\n\nchore: lints\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/db6c648e85e448bfebd02709212e9adb974c9cbf",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/db6c648e85e448bfebd02709212e9adb974c9cbf",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/db6c648e85e448bfebd02709212e9adb974c9cbf/comments",
+    "author": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "4f06c21efed2e420ca05a8b6daba5f384f558d2a",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/4f06c21efed2e420ca05a8b6daba5f384f558d2a",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/4f06c21efed2e420ca05a8b6daba5f384f558d2a"
+      }
+    ]
+  },
+  {
+    "sha": "49f9182d2441fbd15e3a41caa941a7e17d4811c6",
+    "node_id": "C_kwDOLm7JjtoAKDQ5ZjkxODJkMjQ0MWZiZDE1ZTNhNDFjYWE5NDFhN2UxN2Q0ODExYzY",
+    "commit": {
+      "author": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-02T19:26:53Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:16:01Z"
+      },
+      "message": "refactor: hoist shared turing/euclid utils to libfp and fix clkturing register loop",
+      "tree": {
+        "sha": "8d3f4380a9c2fb7a6c90940393be9c2b2f392291",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/8d3f4380a9c2fb7a6c90940393be9c2b2f392291"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/49f9182d2441fbd15e3a41caa941a7e17d4811c6",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBpEACgkQWFO14pjh\nCgUUAQ//RUB3UbGHOvwQkIiEQ9uzM4o2mKNngdhETexTXA1JDd9Ad4e4fOUyM3y9\nZarhD8f05i9PAkxcJvO1kqtrnY2i6TUEMMjmgFQAUTHUl1Q6xDYmYLiBNsjaY2pb\nxQ1SqBpbrmMqyvr0ufXdnCn6j3gT4DPOPvGT9gaiNpj4DtLy5DBhPxjaC2Ap4Owd\n6IJBBLxTD/Gjpx+eMQaz6Dt1/7LjlsOUHh1d/MBtmJMdlrw2AkwDxLAIxbScuFMq\nta6GdqnG/lqkJTWd4NQmXYrV07u1ZGGJhcZTgL0kfObnNGJbgKqflFgklZVF1ROu\nVuFY+QG0Urt3yDlys9+97ZxQaqhtOUGNl2CG3YYb4sf17GDKRrbB8IU13caAXsVI\npE0G2WBpST2Cs2SxnJkUsldrrKFPhoIWmm5a1g2FyoaC4SotKZ92D64iWpT1ASbg\nbfakkHEI4dPxW+cQd55FioVNsYHj4mUh9hODLX1AKSbKk0C25wnQ3CErjJbD4N9i\nmBWn05ThrQk5tY0Y9CUNfKZFFTu/Cqi5ELIrqmjvBmaMBQmrOMO4vRc4DjWTLr80\njLR7944D5NXX98eGb8HjXDCm6xO4cV5hsKK+nBqqz+Iq6CBUjuqFt8qsP19sAN4f\nW+tIrc0cfDri84S+C2UpAx3I31nILoX9nXUitqKT8bWOdt4yqqw=\n=SG/m\n-----END PGP SIGNATURE-----",
+        "payload": "tree 8d3f4380a9c2fb7a6c90940393be9c2b2f392291\nparent db6c648e85e448bfebd02709212e9adb974c9cbf\nauthor Chris Maniewski <code@chmanie.com> 1780428413 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270161 +0200\n\nrefactor: hoist shared turing/euclid utils to libfp and fix clkturing register loop\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/49f9182d2441fbd15e3a41caa941a7e17d4811c6",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/49f9182d2441fbd15e3a41caa941a7e17d4811c6",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/49f9182d2441fbd15e3a41caa941a7e17d4811c6/comments",
+    "author": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "db6c648e85e448bfebd02709212e9adb974c9cbf",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/db6c648e85e448bfebd02709212e9adb974c9cbf",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/db6c648e85e448bfebd02709212e9adb974c9cbf"
+      }
+    ]
+  },
+  {
+    "sha": "b4e0c6583117cad90edbd53f0c9e622a820bec0a",
+    "node_id": "C_kwDOLm7JjtoAKGI0ZTBjNjU4MzExN2NhZDkwZWRiZDUzZjBjOWU2MjJhODIwYmVjMGE",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-06-04T09:27:33Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:16:01Z"
+      },
+      "message": "fix(genseq): apply sqrt curve to pitch attenuator for better fader feel\n\nLinear attenuation caused the lower half of the fader to feel unresponsive\nbecause the quantizer only saw a compressed pitch range.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>",
+      "tree": {
+        "sha": "33372f366a07da03fda7ae2bce2c73709ed0fb69",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/33372f366a07da03fda7ae2bce2c73709ed0fb69"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/b4e0c6583117cad90edbd53f0c9e622a820bec0a",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBpEACgkQWFO14pjh\nCgXYjw/+NT6e1GTP1dajjZL+kmrTMrIet8pPskFJ2+w2gYPoW6pD3wyYeWLB2kqI\nEoL+7RmqqlPp1/PPHZ7tZxILgEcv1AeYEbl3qHyept+ZB5KGdchGgBSD8PctY0RH\nX0DAH5nzyis3SPZwf1AKq6bOnSwNm5iXtoVWtqROQPkR6VfwfFKuzk9cTExKPptE\n7fY93hMOubq0B+hgCFBO/GDtSHcwLTJb/eBHoTumSRdXOF2YPXcPCzQqTaa05wQS\nAeAxG7Hal3GDhGctAgkQhLqvq73np3WPrK/Z4BNNHq/iMPBbyfdh5762/osn+xPz\nSJpZH8NPSliU/rNpQx/vkBzooyTirJEqUyvyYvH9YkcTuxBcFjKHsTcnWixplmNG\nWDZhQLyo08pSNXrjNNe71STQCWu/Bwt2qUGNeG/3gAZGQRrrTlCbWv+Efnn5ital\ni5UONTpQP+oLAeVDQTc9U12N/78yjqeAaxzzLZ4WCiVkMc+ZTHljik187ELmJQaV\nclEWQZjJAYzgkDykdZ2IrKkAPrWrnJ3byWD+r9Oure4HRJIrxqemdvJIyQvvL0aJ\n2IJRnxGyypqAzx9lQuX2Mp7v2GT6n2Dud21/cOc+wjseShYoJKpXpKflOLx/lVXw\n6YUu50zg9omrzQsLxzw7LsHwex5ZY5+EGXsJgX+vQ8QKzXF2OSU=\n=booI\n-----END PGP SIGNATURE-----",
+        "payload": "tree 33372f366a07da03fda7ae2bce2c73709ed0fb69\nparent 49f9182d2441fbd15e3a41caa941a7e17d4811c6\nauthor ArthurGibert <artgibert@gmail.com> 1780565253 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270161 +0200\n\nfix(genseq): apply sqrt curve to pitch attenuator for better fader feel\n\nLinear attenuation caused the lower half of the fader to feel unresponsive\nbecause the quantizer only saw a compressed pitch range.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/b4e0c6583117cad90edbd53f0c9e622a820bec0a",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/b4e0c6583117cad90edbd53f0c9e622a820bec0a",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/b4e0c6583117cad90edbd53f0c9e622a820bec0a/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "49f9182d2441fbd15e3a41caa941a7e17d4811c6",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/49f9182d2441fbd15e3a41caa941a7e17d4811c6",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/49f9182d2441fbd15e3a41caa941a7e17d4811c6"
+      }
+    ]
+  },
+  {
+    "sha": "e6d257ee9357ae9b81c487fb224a09fe32498640",
+    "node_id": "C_kwDOLm7JjtoAKGU2ZDI1N2VlOTM1N2FlOWI4MWM0ODdmYjIyNGEwOWZlMzI0OTg2NDA",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-06-09T06:55:23Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:16:02Z"
+      },
+      "message": "fix(genseq): fix octave shift clipping at negative offsets\n\nRaise the quantizer input floor when shifting down so the bottom of the\npitch range maps to C0 instead of clipping negative DAC values to 0V.\nApply the octave shift in pitch space to avoid ±1 count rounding error\nfrom the integer counts_per_oct approximation.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>",
+      "tree": {
+        "sha": "af3207261fb1f34f027ff04f9c6d622f608f36e7",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/af3207261fb1f34f027ff04f9c6d622f608f36e7"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/e6d257ee9357ae9b81c487fb224a09fe32498640",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBpIACgkQWFO14pjh\nCgV5hg/+NnqgFdwwQVhdJWrjbmp0dLTs5eaCcHCpKrMu/Jr3Qjxq+7gd8RcrAtku\nz1bc5Vf3YpWjbw+XBCSZP2eQ7MhxtZcaAg1fM/DZZIyNoMpsD8xmEvqzoero6jpf\nFIl1e81KIOS+9YstUWgzeOxxlpDQXWwu33FB490/JRkMi5c21C6/SIU58i9NOPBJ\n+1gFSf0oMxmIHrGQBtfx4AZSKFZK5FOia8KguSUilp7mlAC4PsCcKm1gYibEDJYs\n8pgWOlKantS38CEYb1HlxMszgc4G4LCC6/gHZYGiqkxRo/riIfQ6HCAV1VCwIkDl\nA9WDqVjkm54FJlIYlVh8gAhP7itMy+ZqtDpVbITuz26hHNRnK+NFXfXYsnT/w2v9\n5DtaGsG8sFqaf2+Ee7GSZkYTztL4TkUfAJ5oJ1emITO7RNk3kVRVkHDacWfXoRtP\nRGFdvA4YlW5+nX6ZYl4d8DXM8Bp5sWUGymjkqw1ya6uP5BDPMgpubQM6z/mJM63j\nVMNara7ciLkOaxy4M/bjcXiub7O5envvPnF52qfr/ElScjyUZk93WQuLCDpNoXoV\nqkxdl7TPW0fHriL3yXIelWkZDY4OzJ141mrwvs0+WP4G09/cIg79BXz29lNUPklt\nvOG+poHKbCWMc5CJBsTkyPZssJ+wGLeagubFXRbXlULrgeu4EBo=\n=opOI\n-----END PGP SIGNATURE-----",
+        "payload": "tree af3207261fb1f34f027ff04f9c6d622f608f36e7\nparent b4e0c6583117cad90edbd53f0c9e622a820bec0a\nauthor ArthurGibert <artgibert@gmail.com> 1780988123 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270162 +0200\n\nfix(genseq): fix octave shift clipping at negative offsets\n\nRaise the quantizer input floor when shifting down so the bottom of the\npitch range maps to C0 instead of clipping negative DAC values to 0V.\nApply the octave shift in pitch space to avoid ±1 count rounding error\nfrom the integer counts_per_oct approximation.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/e6d257ee9357ae9b81c487fb224a09fe32498640",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/e6d257ee9357ae9b81c487fb224a09fe32498640",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/e6d257ee9357ae9b81c487fb224a09fe32498640/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "b4e0c6583117cad90edbd53f0c9e622a820bec0a",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/b4e0c6583117cad90edbd53f0c9e622a820bec0a",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/b4e0c6583117cad90edbd53f0c9e622a820bec0a"
+      }
+    ]
+  },
+  {
+    "sha": "ee3dbfbc18498493c5c0b43a6ba4772f2a18fe1e",
+    "node_id": "C_kwDOLm7JjtoAKGVlM2RiZmJjMTg0OTg0OTNjNWMwYjQzYTZiYTQ3NzJmMmExOGZlMWU",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-06-09T06:58:53Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:16:03Z"
+      },
+      "message": "feat(genseq): add VoltPerOct and bypass quantizer params\n\nBrings genseq in line with the other quantizer-using apps (turing,\nclkturing, seq8, notefader) updated in #543.\n\n- Add VoltPerOct param (Standard 1V/Oct / Buchla 1.2V/Oct); replaces\n  hardcoded VoltPerOct::Standard in use_quantizer() and as_counts().\n- Add \"Bypass quantizer\" param; passes raw register value through\n  without scale quantization.\n- Replace hardcoded 410/819 counts in input_floor with\n  vpo.counts_per_oct() so the Buchla mode floor is correct too.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>",
+      "tree": {
+        "sha": "163d821e096e27ff1a9b3a5d3021122222fcfb31",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/163d821e096e27ff1a9b3a5d3021122222fcfb31"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/ee3dbfbc18498493c5c0b43a6ba4772f2a18fe1e",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBpMACgkQWFO14pjh\nCgVKIg/+IoPga4pMw036yx5c8cuOKy3hw9AU4nvmdCobbKVA+qBkk1hKFvQ43YUM\nPPn1BSikcBEnP2i7YSLDGuiF1GjL3D65aDW2G0b9D9b1SnRWuJPECus639Z972Y5\npvWNU9l3DrFRlLWsfuy1X3C64iASxFfbI+9D9ETCLsg/lcHqqiHA/AKIVxsbwuSo\nKfvEIZsZR+MH/xU1ldl2W5SUgk8lxrlDjuXXyy/3hUMtWlmQ8rHez4XOSa/ucInf\nOZY8X9moRmdVdfTMyJ4EbRBc0MXae9Hao/zvhT+DHgt8YRZMCF/4GEpOlVoepyF1\nUTvfQcN/mGgZMeMfNTI7EIrz6CFN4+CoCnAdgeI1CdHzj8U24NVR6kJQ2cPVHRDt\nsUQM+tNo/LWVt0oSzfXQoJI4rqIOcjKZYKxO1jUDorFEPacAoa7cKW+iWQ6+ZKc/\nBwcCuDlNH3XklQZk74kUKTGQV8NekrfZI4VWHBn//VxZ20TvKVHTnhjC1aY2UZJj\n1OAGaiNzt+5mshDjUsqP2PKl0nLX6PPhaPm07bsCUnmtWdNhcfPC9KcUe0I+cLc+\nKeswoZuyp2a90QYyLzZwfX7tm+KoK4/gfJQEkFABrlwMNEzxzl2w20Uo4p+rDgD1\n18DJkcHtoEZ2UWQtMvAFJK4m8DuFlG3AsHINmzEWDjeg1Vj5Ul0=\n=EmmR\n-----END PGP SIGNATURE-----",
+        "payload": "tree 163d821e096e27ff1a9b3a5d3021122222fcfb31\nparent e6d257ee9357ae9b81c487fb224a09fe32498640\nauthor ArthurGibert <artgibert@gmail.com> 1780988333 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270163 +0200\n\nfeat(genseq): add VoltPerOct and bypass quantizer params\n\nBrings genseq in line with the other quantizer-using apps (turing,\nclkturing, seq8, notefader) updated in #543.\n\n- Add VoltPerOct param (Standard 1V/Oct / Buchla 1.2V/Oct); replaces\n  hardcoded VoltPerOct::Standard in use_quantizer() and as_counts().\n- Add \"Bypass quantizer\" param; passes raw register value through\n  without scale quantization.\n- Replace hardcoded 410/819 counts in input_floor with\n  vpo.counts_per_oct() so the Buchla mode floor is correct too.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/ee3dbfbc18498493c5c0b43a6ba4772f2a18fe1e",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/ee3dbfbc18498493c5c0b43a6ba4772f2a18fe1e",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/ee3dbfbc18498493c5c0b43a6ba4772f2a18fe1e/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "e6d257ee9357ae9b81c487fb224a09fe32498640",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/e6d257ee9357ae9b81c487fb224a09fe32498640",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/e6d257ee9357ae9b81c487fb224a09fe32498640"
+      }
+    ]
+  },
+  {
+    "sha": "edad6f9a54695fa384289e3d63bce01046b75e00",
+    "node_id": "C_kwDOLm7JjtoAKGVkYWQ2ZjlhNTQ2OTVmYTM4NDI4OWUzZDYzYmNlMDEwNDZiNzVlMDA",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-06-09T08:39:58Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:16:04Z"
+      },
+      "message": "refactor(genseq): redesign button/LED interactions and fix scene recall\n\n- Third layer: activator moves from Btn0 to Btn2; Btn0/Btn1 now purely\n  hold-to-mutate without side effects\n- Mute: moves to Btn2 release, gated by a third_layer_used flag so\n  navigating Third layer faders doesn't accidentally toggle mute\n- Octave indicator: moves from Btn1 Button LED to Btn1 Bottom LED;\n  Btn2 lights High while Third layer is held\n- Alt layer button LEDs: show stored TM length on Shift press, switch\n  to live tap count once counting starts\n- Main layer Bottom LEDs: pitch TM cycle progress on Bottom0, length TM\n  cycle progress on Bottom1 (both reset on clock Reset)\n- Scene recall: fix glob_muted not refreshing after LoadScene\n- Remove dead Storage field pitch_length_saved (never read or written)\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>",
+      "tree": {
+        "sha": "9a2b1ccc198b1fa166005b05329a59644c54ffc9",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/9a2b1ccc198b1fa166005b05329a59644c54ffc9"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/edad6f9a54695fa384289e3d63bce01046b75e00",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBpQACgkQWFO14pjh\nCgUVhA/6AoxO1kpqTU9Z1J4Q4FP8ZAD5D1Eg/X9GfrlVNADtbmNovbN69c2/cau0\nJfUHObh25q/9OXNk22Zu08A7VWRXFIYwLAHMIMhMxFzoRbB6gW4KVmn90Ez9QKjR\nRRMsrEZM8x7d5Wyby/mhcm2bci4ih6EoUqZ6ySUk5jhAIDHNb5h/asAdEaQJn6AJ\n7YCh+v4b1iKdyfBKKjEanq4VdwV4Dq1PeyQStAIvzy8+6DcCzIZ+TNrGQyJHWyOx\nneS95BceXJRtDXMcrUArOEkoWIFuzF2wUxLrYUBJ3iCel+7rgpj6lIklce12SHPP\nV1VqRa9G9LPe5VFp+F+TdhKiibOML5LbVStiG2GRXIijDF8sfuPvfB5WOIvQtz8c\nqXWxswVTXMyWsZaopWrdtsCnFQqlW08aXvKiS2h9I8yT9EGwpilv5Gnp4DTMmDBW\njG2oA8tii6vwE4Jl4ACsZkYX1ClmiUSGdQsiWAxlQ9xAHRrV36K9WxWpEqia9hKa\npeoRC4wolcivB0UuKMQGB0a/BcFgC0TeIPROJzVzugN/cibAW7ST7SQ+8eyvwKzj\nkR9xT9MllfYA/G0Wt+wCeSk905Vp5KYzkFKmN0Fw0lnCDGd65HRbcmwC0ZMotYXQ\nzFALpmRcct6jhx2C8tV9ojMsHI4QCSvWq8qUie74mo/oRUEM+as=\n=RIbt\n-----END PGP SIGNATURE-----",
+        "payload": "tree 9a2b1ccc198b1fa166005b05329a59644c54ffc9\nparent ee3dbfbc18498493c5c0b43a6ba4772f2a18fe1e\nauthor ArthurGibert <artgibert@gmail.com> 1780994398 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270164 +0200\n\nrefactor(genseq): redesign button/LED interactions and fix scene recall\n\n- Third layer: activator moves from Btn0 to Btn2; Btn0/Btn1 now purely\n  hold-to-mutate without side effects\n- Mute: moves to Btn2 release, gated by a third_layer_used flag so\n  navigating Third layer faders doesn't accidentally toggle mute\n- Octave indicator: moves from Btn1 Button LED to Btn1 Bottom LED;\n  Btn2 lights High while Third layer is held\n- Alt layer button LEDs: show stored TM length on Shift press, switch\n  to live tap count once counting starts\n- Main layer Bottom LEDs: pitch TM cycle progress on Bottom0, length TM\n  cycle progress on Bottom1 (both reset on clock Reset)\n- Scene recall: fix glob_muted not refreshing after LoadScene\n- Remove dead Storage field pitch_length_saved (never read or written)\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/edad6f9a54695fa384289e3d63bce01046b75e00",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/edad6f9a54695fa384289e3d63bce01046b75e00",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/edad6f9a54695fa384289e3d63bce01046b75e00/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "ee3dbfbc18498493c5c0b43a6ba4772f2a18fe1e",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/ee3dbfbc18498493c5c0b43a6ba4772f2a18fe1e",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/ee3dbfbc18498493c5c0b43a6ba4772f2a18fe1e"
+      }
+    ]
+  },
+  {
+    "sha": "dd47771fed206f926f8a6cea9dbe276fba5b3004",
+    "node_id": "C_kwDOLm7JjtoAKGRkNDc3NzFmZWQyMDZmOTI2ZjhhNmNlYTlkYmUyNzZmYmE1YjMwMDQ",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-06-09T08:57:15Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:16:05Z"
+      },
+      "message": "docs(genseq): update manual to match UI redesign\n\n- Third layer: rename 'Button 1 layer' → 'Button 3 layer' throughout\n  (Btn2/Button 3 is the Third layer activator, not Btn0/Button 1)\n- Octave indicator: 'Ch 2 button color' → 'Ch 2 bottom LED'\n- Mute: 'press' → 'tap (release)' with note that holding for Third\n  layer does not trigger mute\n- Alt layer button LEDs: stored TM length shown first, live count on tap\n- Main layer: add Bottom0 (pitch TM progress) and Bottom1 (length TM\n  progress)\n- Params: add VoltPerOct and Bypass quantizer\n- Storage: remove dead 'Pitch loop length (fader)' field\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>",
+      "tree": {
+        "sha": "806e4d87da206065eef0a5bcfaeefd942553dcde",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/806e4d87da206065eef0a5bcfaeefd942553dcde"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/dd47771fed206f926f8a6cea9dbe276fba5b3004",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBpUACgkQWFO14pjh\nCgWsDQ/+LcYjYoJG3tCWh2LfCANSzS2XCb3eYMqiFeSLMnExAzLytAB1m6YTs+UN\nxUYZMN2jc+uB/lvJE+nq5qRtc1wqnf1xcnD1CSXAKnwMgpVNYaRKdYOp8E8aepJa\np+dl9f3s07UvtiNVETxRA8Qf4edlGniyqDe8MPG575g/j5NV2FhXysrugbC6+tvi\ny6qPUSBKsnwRjWrYrqDG3Ehtf6aYbCzyi8TEJOaqfaWeBUDazsFs7geYqDoNWDIY\nlY1PuQ/Jx8yVeCB0z/u0wsJ02iZPgNgEzq9ky5AOdMT4418jnvybOl06tNWDruMj\ngKpvssghNE0+OeeEPF7mjQYNQM9ivYxgv/UX2xyfjKrHHL8DMEyNfLwYD6nDcBR/\nHCqiADeD7aZ6b7iyR7/M3QDRWBP9vqt8UW3TqKFmkMD6hknIjUm5fRSoVg+mG7XL\nMUWHox6oy+j1CPPTOYMNp7/E+gWSwRKImB72IZ+9Sk/yXyP4SCeCrzMyfuwdhOGT\nOpTS64IurG3Xo2D/NDtmUszIETvrzvbQGfNofhdFyNmILYKwxuyz46sNuQaYILvn\n42eOrmkajs4pjn66FHBLrjZfEEuDnbsnCxEChHzIHIJb7LXjP4KmVP9RmfVm7cxQ\nEBoOxi4lkDB8Om+NU+jcmQBMLDbpZ3tQta/d7PQq56+/RThS9zA=\n=vpYy\n-----END PGP SIGNATURE-----",
+        "payload": "tree 806e4d87da206065eef0a5bcfaeefd942553dcde\nparent edad6f9a54695fa384289e3d63bce01046b75e00\nauthor ArthurGibert <artgibert@gmail.com> 1780995435 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270165 +0200\n\ndocs(genseq): update manual to match UI redesign\n\n- Third layer: rename 'Button 1 layer' → 'Button 3 layer' throughout\n  (Btn2/Button 3 is the Third layer activator, not Btn0/Button 1)\n- Octave indicator: 'Ch 2 button color' → 'Ch 2 bottom LED'\n- Mute: 'press' → 'tap (release)' with note that holding for Third\n  layer does not trigger mute\n- Alt layer button LEDs: stored TM length shown first, live count on tap\n- Main layer: add Bottom0 (pitch TM progress) and Bottom1 (length TM\n  progress)\n- Params: add VoltPerOct and Bypass quantizer\n- Storage: remove dead 'Pitch loop length (fader)' field\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/dd47771fed206f926f8a6cea9dbe276fba5b3004",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/dd47771fed206f926f8a6cea9dbe276fba5b3004",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/dd47771fed206f926f8a6cea9dbe276fba5b3004/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "edad6f9a54695fa384289e3d63bce01046b75e00",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/edad6f9a54695fa384289e3d63bce01046b75e00",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/edad6f9a54695fa384289e3d63bce01046b75e00"
+      }
+    ]
+  },
+  {
+    "sha": "143f882a2d1f24ab94e09b1d767ab8e262efd01f",
+    "node_id": "C_kwDOLm7JjtoAKDE0M2Y4ODJhMmQxZjI0YWI5NGUwOWIxZDc2N2FiOGUyNjJlZmQwMWY",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-06-11T19:07:27Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:16:06Z"
+      },
+      "message": "feat(genseq): curve LUTs, Euclidean progress LED, fix base note and register recall\n\n- Replace isqrt pitch attenuator with Curve::Logarithmic lookup table\n- Apply Curve::Exponential to accent density threshold\n- Lower default base note from MIDI 36 to MIDI 12 (2 octaves)\n- Add Euclidean cycle progress LED on Ch3 Bottom (euclid_step/len globals)\n- Fix register_length recall: save back to storage each cycle and restore\n  on scene load alongside register_pitch; recompute euclid_length immediately",
+      "tree": {
+        "sha": "04e897a0dc6e9fed40344a5168f2885158152123",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/04e897a0dc6e9fed40344a5168f2885158152123"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/143f882a2d1f24ab94e09b1d767ab8e262efd01f",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBpYACgkQWFO14pjh\nCgVeZQ//YwU+sROWcE9sbj8Th+4yDuv/i5h0QrnYK2yewlh6QDvW2WBsM0zslvk8\nD8EnBTJrDwwIy6WAbFaDPDVefn9GVS24FQISBrc52tRmLW48CtalLg67N1eQh1fr\nf3tzwDiTAuYEprbMzpFEZsHul2JbvWFh0xDUapyOAYoPcm+w9bX0FAvPNhzMvP0e\nfkqueH78sF4bMf3XlWkvV+m2edLJxR7mySHHhVx9fOMVBJaq/tvyRk5zC2L3ZBLz\nmS8cVjNuboQA5ned1GLyrKbGnCIPaZUMcuT5qfYTNbkyhHPH+hY0e0YjaBTFceLK\nAJKPqgJzzuVZ0VfgOvl+K/Plyn0Y4gglHV1urMri6nbF+wKD0HL3ARzqhnzXGiSd\n2X7voUbSYzB/YrDAJTBj3Pc4EKmVUwUtE2OSKZEgrhFIbzADP5iIlJvl9gmpEOg3\nvUO1eBPqL4QWJIfZDLJyy0Y1cTwpbJuke3tqJwrZv6KSLjDjUgFkpo0ZPz4nVoKY\nIiM17i9WLkBy+BzkhInDyWTG9JNCN8sw/HPplDKhw2szTe6SaKGel7TnD11+seQ2\nfcguxD3O1lzw8RE4wjZklVogrMLqYfKGGDX+dSIgjF5iJzMvLcW9aH70zvquN7So\nmI6FERkGCP0ebYjUoDsm47Q0SON+qWsJ6nyYOhFW/Wt/Q/XH5JI=\n=k6tj\n-----END PGP SIGNATURE-----",
+        "payload": "tree 04e897a0dc6e9fed40344a5168f2885158152123\nparent dd47771fed206f926f8a6cea9dbe276fba5b3004\nauthor ArthurGibert <artgibert@gmail.com> 1781204847 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270166 +0200\n\nfeat(genseq): curve LUTs, Euclidean progress LED, fix base note and register recall\n\n- Replace isqrt pitch attenuator with Curve::Logarithmic lookup table\n- Apply Curve::Exponential to accent density threshold\n- Lower default base note from MIDI 36 to MIDI 12 (2 octaves)\n- Add Euclidean cycle progress LED on Ch3 Bottom (euclid_step/len globals)\n- Fix register_length recall: save back to storage each cycle and restore\n  on scene load alongside register_pitch; recompute euclid_length immediately\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/143f882a2d1f24ab94e09b1d767ab8e262efd01f",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/143f882a2d1f24ab94e09b1d767ab8e262efd01f",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/143f882a2d1f24ab94e09b1d767ab8e262efd01f/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "dd47771fed206f926f8a6cea9dbe276fba5b3004",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/dd47771fed206f926f8a6cea9dbe276fba5b3004",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/dd47771fed206f926f8a6cea9dbe276fba5b3004"
+      }
+    ]
+  },
+  {
+    "sha": "7703bea9aa3413973dfdceb8d8061d58b0c8213f",
+    "node_id": "C_kwDOLm7JjtoAKDc3MDNiZWE5YWEzNDEzOTczZGZkY2ViOGQ4MDYxZDU4YjBjODIxM2Y",
+    "commit": {
+      "author": {
+        "name": "ArthurGibert",
+        "email": "artgibert@gmail.com",
+        "date": "2026-06-11T19:07:34Z"
+      },
+      "committer": {
+        "name": "Chris Maniewski",
+        "email": "code@chmanie.com",
+        "date": "2026-06-12T13:16:07Z"
+      },
+      "message": "docs(genseq): rewrite manual as prose, trim channel card labels",
+      "tree": {
+        "sha": "ab1dd70ecf9362a170d3a0e41edf084176c477fe",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/ab1dd70ecf9362a170d3a0e41edf084176c477fe"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/7703bea9aa3413973dfdceb8d8061d58b0c8213f",
+      "comment_count": 0,
+      "verification": {
+        "verified": true,
+        "reason": "valid",
+        "signature": "-----BEGIN PGP SIGNATURE-----\n\niQIzBAABCgAdFiEEF9uh8Rrl/LX9cT6mWFO14pjhCgUFAmosBpcACgkQWFO14pjh\nCgXCVxAAiQQ4VhQhJNJPYQ/BLqn5nr7h2vv8ea8XvNxMGSLgk6H2CGaBnmAaHcaZ\nTNqt7swc7Wig2S85g/h6V0dIlFYSEKg0CB5ESsaoHB50u7qNdc4AVaCk2GkI9d4D\n80d6M3aKIgGli+1OrML4ZXdcU9hvXGob6j9mCnlzOjT0qRptZ4QIewYzW5XfRo4J\nRDBgL+Nf03nkibB5yf83EaA+MSI4FJjJs7kNpngqEHETIrYVYIkg6/Z5u1LTMFEy\nFPbPGaENcPl6kxuWQCAno/pi509ticptJ7TmckvGB9RWkTVBeUUCu9SEE+AwXqkl\ntnfdysJUoMXgXcKdr4qhY3hAeuE/EZiuaK5x1FIBLojKqanvYVbzWwnNKY9kW3ll\nTXX1Ukr//qhEaT4/z0GQDOcBl5dWmEy0UljxPpzn/BfQLmyEC18kfjHvDWpNJEvK\n1WEoue9zT4RNfmKe/ZSoLc4QEum50wtccY5XYBPD5RhuYUamFwx4+G72A2Uv7TD7\nmlGPWDvkXQJpbXEktTs9W9suHFgZmJTvP0PixdJXuIRs0UvL0MDRNUilxabd06js\n3ymtpF8LUfBlbis98TTPzqf1x9aV7zZaARyeDsuOjotiVB4UsSbbFgJANZeNG5xP\nbtje4oJdWbw5oKj+nP84F/2xWLuySZuKFGyJwrDTZbSDFb+vVzA=\n=rSrb\n-----END PGP SIGNATURE-----",
+        "payload": "tree ab1dd70ecf9362a170d3a0e41edf084176c477fe\nparent 143f882a2d1f24ab94e09b1d767ab8e262efd01f\nauthor ArthurGibert <artgibert@gmail.com> 1781204854 +0200\ncommitter Chris Maniewski <code@chmanie.com> 1781270167 +0200\n\ndocs(genseq): rewrite manual as prose, trim channel card labels\n",
+        "verified_at": "2026-06-12T13:16:14Z"
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/7703bea9aa3413973dfdceb8d8061d58b0c8213f",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/7703bea9aa3413973dfdceb8d8061d58b0c8213f",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/7703bea9aa3413973dfdceb8d8061d58b0c8213f/comments",
+    "author": {
+      "login": "ArthurGibert",
+      "id": 110692829,
+      "node_id": "U_kgDOBpkJ3Q",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110692829?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ArthurGibert",
+      "html_url": "https://github.com/ArthurGibert",
+      "followers_url": "https://api.github.com/users/ArthurGibert/followers",
+      "following_url": "https://api.github.com/users/ArthurGibert/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ArthurGibert/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ArthurGibert/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ArthurGibert/subscriptions",
+      "organizations_url": "https://api.github.com/users/ArthurGibert/orgs",
+      "repos_url": "https://api.github.com/users/ArthurGibert/repos",
+      "events_url": "https://api.github.com/users/ArthurGibert/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ArthurGibert/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "chmanie",
+      "id": 2174084,
+      "node_id": "MDQ6VXNlcjIxNzQwODQ=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2174084?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/chmanie",
+      "html_url": "https://github.com/chmanie",
+      "followers_url": "https://api.github.com/users/chmanie/followers",
+      "following_url": "https://api.github.com/users/chmanie/following{/other_user}",
+      "gists_url": "https://api.github.com/users/chmanie/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/chmanie/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/chmanie/subscriptions",
+      "organizations_url": "https://api.github.com/users/chmanie/orgs",
+      "repos_url": "https://api.github.com/users/chmanie/repos",
+      "events_url": "https://api.github.com/users/chmanie/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/chmanie/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "143f882a2d1f24ab94e09b1d767ab8e262efd01f",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/143f882a2d1f24ab94e09b1d767ab8e262efd01f",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/143f882a2d1f24ab94e09b1d767ab8e262efd01f"
+      }
+    ]
+  }
+]

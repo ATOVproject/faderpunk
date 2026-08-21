@@ -1,0 +1,3 @@
+[
+  {"filename": "faderpunk/src/apps/new_name.rs", "previous_filename": "faderpunk/src/apps/old_name.rs", "status": "renamed", "additions": 2, "deletions": 2, "patch": "@@ -1,2 +1,2 @@\n-fn old_name() {}\n+fn new_name() {}\n"}
+]

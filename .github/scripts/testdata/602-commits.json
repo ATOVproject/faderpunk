@@ -1,0 +1,986 @@
+[
+  {
+    "sha": "08f49b2e3e699b39a9d0fd9f686b1fd04fd224fc",
+    "node_id": "C_kwDOTeRQitoAKDA4ZjQ5YjJlM2U2OTliMzlhOWQwZmQ5ZjY4NmIxZmQwNGZkMjI0ZmM",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-22T16:22:12Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-22T16:22:12Z"
+      },
+      "message": "Add Faderpunk Preset Editor\n\nLocal preset-bank editor (Node, no build step) that pulls from and\npushes to the device through the Configurator. Includes MIDI CC\ndatabase integration, EN/DE/FR localization, and a printable\ncheatsheet. Lives alongside the configurator as its own tool.",
+      "tree": {
+        "sha": "f1fbe39d2a38d02b4a7856b5383f2b7aeecf5e57",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/f1fbe39d2a38d02b4a7856b5383f2b7aeecf5e57"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/08f49b2e3e699b39a9d0fd9f686b1fd04fd224fc",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/08f49b2e3e699b39a9d0fd9f686b1fd04fd224fc",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/08f49b2e3e699b39a9d0fd9f686b1fd04fd224fc",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/08f49b2e3e699b39a9d0fd9f686b1fd04fd224fc/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "282b99a8f50d433e7e09fe8f372142e42b312100",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/282b99a8f50d433e7e09fe8f372142e42b312100",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/282b99a8f50d433e7e09fe8f372142e42b312100"
+      }
+    ]
+  },
+  {
+    "sha": "6d517407692968d06964839efd1da5cbce368b10",
+    "node_id": "C_kwDOTeRQitoAKDZkNTE3NDA3NjkyOTY4ZDA2OTY0ODM5ZWZkMWRhNWNiY2UzNjhiMTA",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-22T21:22:54Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-22T21:22:54Z"
+      },
+      "message": "Polish preset editor for custom apps and MIDI Out UI.\n\nExpose Super LFO / Golden Gate / Arp / Grooves params, merge Apply to all with clear overrides, and tint group form borders.",
+      "tree": {
+        "sha": "4a74444185d86edcdaeca4d3d9377533e65b9a9a",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/4a74444185d86edcdaeca4d3d9377533e65b9a9a"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/6d517407692968d06964839efd1da5cbce368b10",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/6d517407692968d06964839efd1da5cbce368b10",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/6d517407692968d06964839efd1da5cbce368b10",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/6d517407692968d06964839efd1da5cbce368b10/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "08f49b2e3e699b39a9d0fd9f686b1fd04fd224fc",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/08f49b2e3e699b39a9d0fd9f686b1fd04fd224fc",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/08f49b2e3e699b39a9d0fd9f686b1fd04fd224fc"
+      }
+    ]
+  },
+  {
+    "sha": "121c4b9aea88f3db4189aa4802b4ca258dbc859a",
+    "node_id": "C_kwDOTeRQitoAKDEyMWM0YjlhZWE4OGYzZGI0MTg5YWE0ODAyYjRjYTI1OGRiYzg1OWE",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-22T23:01:47Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-22T23:01:47Z"
+      },
+      "message": "fix(preset-editor): Super LFO Mix balance as 0–100%\n\nUse percent scale with default 50% instead of signed −100…+100, and\nmigrate legacy signed/fader-scale values when loading.",
+      "tree": {
+        "sha": "57360fdfa67817dfcda20e6334d57ab36292406c",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/57360fdfa67817dfcda20e6334d57ab36292406c"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/121c4b9aea88f3db4189aa4802b4ca258dbc859a",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/121c4b9aea88f3db4189aa4802b4ca258dbc859a",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/121c4b9aea88f3db4189aa4802b4ca258dbc859a",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/121c4b9aea88f3db4189aa4802b4ca258dbc859a/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "6d517407692968d06964839efd1da5cbce368b10",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/6d517407692968d06964839efd1da5cbce368b10",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/6d517407692968d06964839efd1da5cbce368b10"
+      }
+    ]
+  },
+  {
+    "sha": "f5cf639489bf8c9f333ca99c3460f6e4a118dc8d",
+    "node_id": "C_kwDOTeRQitoAKGY1Y2Y2Mzk0ODliZjhjOWYzMzNjYTk5YzM0NjBmNmU0YTExOGRjOGQ",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-23T00:26:46Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-23T00:26:46Z"
+      },
+      "message": "feat(preset-editor): schema-driven param UI from firmware catalog\n\nAdd tools/gen-apps-catalog.py to generate apps-catalog.json from\nfirmware CONFIG blocks (same Param defs the configurator gets via\nGetAllApps). The preset editor now builds full param UIs for any app\nfrom this catalog instead of hand-coded per-app cases, fixing Echolot\nand other apps that were missing most of their parameters.\n\nAlso adds a dedicated Flags column for all checkbox-style params\n(bool, MidiNrpn, MidiIn) instead of scattering them across app extras,\nand fixes oversized checkbox padding inherited from the global input\nstyle.",
+      "tree": {
+        "sha": "0bb381e5bf5bc6076f2c5c720455dc0210632314",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/0bb381e5bf5bc6076f2c5c720455dc0210632314"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/f5cf639489bf8c9f333ca99c3460f6e4a118dc8d",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/f5cf639489bf8c9f333ca99c3460f6e4a118dc8d",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/f5cf639489bf8c9f333ca99c3460f6e4a118dc8d",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/f5cf639489bf8c9f333ca99c3460f6e4a118dc8d/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "121c4b9aea88f3db4189aa4802b4ca258dbc859a",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/121c4b9aea88f3db4189aa4802b4ca258dbc859a",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/121c4b9aea88f3db4189aa4802b4ca258dbc859a"
+      }
+    ]
+  },
+  {
+    "sha": "29ca50d3a2203f1b5558b0a0cc56c744caef8495",
+    "node_id": "C_kwDOTeRQitoAKDI5Y2E1MGQzYTIyMDNmMWI1NTU4YjBhMGNjNTZjNzQ0Y2FlZjg0OTU",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-23T14:32:26Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-23T14:32:26Z"
+      },
+      "message": "feat(preset-editor): beta-only target, layout width, package rename\n\nDrop the local/beta/official switch, default push/pull to the hosted beta\nconfigurator, widen the layout for gutter padding, and rename the package\nfrom faderpunk-scenes to faderpunk-preset-editor.",
+      "tree": {
+        "sha": "f2062533baa597c2f6fe3df511a80a4653c994c7",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/f2062533baa597c2f6fe3df511a80a4653c994c7"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/29ca50d3a2203f1b5558b0a0cc56c744caef8495",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/29ca50d3a2203f1b5558b0a0cc56c744caef8495",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/29ca50d3a2203f1b5558b0a0cc56c744caef8495",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/29ca50d3a2203f1b5558b0a0cc56c744caef8495/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "f5cf639489bf8c9f333ca99c3460f6e4a118dc8d",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/f5cf639489bf8c9f333ca99c3460f6e4a118dc8d",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/f5cf639489bf8c9f333ca99c3460f6e4a118dc8d"
+      }
+    ]
+  },
+  {
+    "sha": "0818cd0bf5af250ba6f60a243383d699174e921c",
+    "node_id": "C_kwDOTeRQitoAKDA4MThjZDBiZjVhZjI1MGJhNmY2MGEyNDMzODNkNjk5MTc0ZTkyMWM",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-23T16:39:08Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-23T16:39:08Z"
+      },
+      "message": "Polish preset editor toolbar and localize Push/Pull chrome.\n\nKeep Push/Pull verbs in English while translating surrounding DE/FR copy, and refine FAB spin axis plus Pull/export bar layout.",
+      "tree": {
+        "sha": "689856e3ebaa6858ac697d282496c5a578267f28",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/689856e3ebaa6858ac697d282496c5a578267f28"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/0818cd0bf5af250ba6f60a243383d699174e921c",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/0818cd0bf5af250ba6f60a243383d699174e921c",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/0818cd0bf5af250ba6f60a243383d699174e921c",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/0818cd0bf5af250ba6f60a243383d699174e921c/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "29ca50d3a2203f1b5558b0a0cc56c744caef8495",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/29ca50d3a2203f1b5558b0a0cc56c744caef8495",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/29ca50d3a2203f1b5558b0a0cc56c744caef8495"
+      }
+    ]
+  },
+  {
+    "sha": "0e5ee10a330c450b68d04a669e2e222e0176b1f1",
+    "node_id": "C_kwDOTeRQitoAKDBlNWVlMTBhMzMwYzQ1MGI2OGQwNGE2NjllMmUyMjJlMDE3NmIxZjE",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-24T14:16:39Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-24T14:16:39Z"
+      },
+      "message": "fix(preset-editor): harden CH16 push and sync WIP app catalog params.\n\nClamp MidiChannel to 1–16, simplify the beta CH16 UI follow-up, and align catalog/defaults with playground CV-jack param layouts.",
+      "tree": {
+        "sha": "150c2adcfe7e634a23ce6a2940af46684a8f028d",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/150c2adcfe7e634a23ce6a2940af46684a8f028d"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/0e5ee10a330c450b68d04a669e2e222e0176b1f1",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/0e5ee10a330c450b68d04a669e2e222e0176b1f1",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/0e5ee10a330c450b68d04a669e2e222e0176b1f1",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/0e5ee10a330c450b68d04a669e2e222e0176b1f1/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "0818cd0bf5af250ba6f60a243383d699174e921c",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/0818cd0bf5af250ba6f60a243383d699174e921c",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/0818cd0bf5af250ba6f60a243383d699174e921c"
+      }
+    ]
+  },
+  {
+    "sha": "7c7258dd19274671d5b20a02e87c31970a0608d1",
+    "node_id": "C_kwDOTeRQitoAKDdjNzI1OGRkMTkyNzQ2NzFkNWIyMGEwMmU4N2MzMTk3MGEwNjA4ZDE",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-24T18:31:09Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-24T18:31:09Z"
+      },
+      "message": "feat(preset-editor): param deps, Jack-first extras, Echolot labels",
+      "tree": {
+        "sha": "6feb34d4dad5836b5d8005b69ed49287a24a0779",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/6feb34d4dad5836b5d8005b69ed49287a24a0779"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/7c7258dd19274671d5b20a02e87c31970a0608d1",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/7c7258dd19274671d5b20a02e87c31970a0608d1",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/7c7258dd19274671d5b20a02e87c31970a0608d1",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/7c7258dd19274671d5b20a02e87c31970a0608d1/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "0e5ee10a330c450b68d04a669e2e222e0176b1f1",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/0e5ee10a330c450b68d04a669e2e222e0176b1f1",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/0e5ee10a330c450b68d04a669e2e222e0176b1f1"
+      }
+    ]
+  },
+  {
+    "sha": "1e6ad4abcd33b111d27412026da5cded4751698f",
+    "node_id": "C_kwDOTeRQitoAKDFlNmFkNGFiY2QzM2IxMTFkMjc0MTIwMjZkYTVjZGVkNDc1MTY5OGY",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-24T20:01:01Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-24T20:01:01Z"
+      },
+      "message": "feat(preset-editor): Chord Vamp CV jack, i18n splash, view transitions",
+      "tree": {
+        "sha": "fac0d7c477296c7b32a5f6f4abb15ea787833863",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/fac0d7c477296c7b32a5f6f4abb15ea787833863"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/1e6ad4abcd33b111d27412026da5cded4751698f",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/1e6ad4abcd33b111d27412026da5cded4751698f",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/1e6ad4abcd33b111d27412026da5cded4751698f",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/1e6ad4abcd33b111d27412026da5cded4751698f/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "7c7258dd19274671d5b20a02e87c31970a0608d1",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/7c7258dd19274671d5b20a02e87c31970a0608d1",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/7c7258dd19274671d5b20a02e87c31970a0608d1"
+      }
+    ]
+  },
+  {
+    "sha": "1522a4744973ddc4fb255371441b35427a8e2924",
+    "node_id": "C_kwDOTeRQitoAKDE1MjJhNDc0NDk3M2RkYzRmYjI1NTM3MTQ0MWIzNTQyN2E4ZTI5MjQ",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-24T20:49:30Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-24T20:49:30Z"
+      },
+      "message": "feat(preset-editor): Golden Gate Mode field, speed grid, param deps\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+      "tree": {
+        "sha": "a3adee989ba1729c433f25c766b39180712bd4f7",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/a3adee989ba1729c433f25c766b39180712bd4f7"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/1522a4744973ddc4fb255371441b35427a8e2924",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/1522a4744973ddc4fb255371441b35427a8e2924",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/1522a4744973ddc4fb255371441b35427a8e2924",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/1522a4744973ddc4fb255371441b35427a8e2924/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "1e6ad4abcd33b111d27412026da5cded4751698f",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/1e6ad4abcd33b111d27412026da5cded4751698f",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/1e6ad4abcd33b111d27412026da5cded4751698f"
+      }
+    ]
+  },
+  {
+    "sha": "ab4ddadf831baff67242e2c47b15c2bd5a9dbcb0",
+    "node_id": "C_kwDOTeRQitoAKGFiNGRkYWRmODMxYmFmZjY3MjQyZTJjNDdiMTVjMmJkNWE5ZGJjYjA",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-26T13:31:11Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-26T13:31:11Z"
+      },
+      "message": "refactor(preset-editor): modular MIDI/setup libs and in-tree fp-config\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+      "tree": {
+        "sha": "dd28c9e6f3fee8e252ce088910cba6da3aae57fa",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/dd28c9e6f3fee8e252ce088910cba6da3aae57fa"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/ab4ddadf831baff67242e2c47b15c2bd5a9dbcb0",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/ab4ddadf831baff67242e2c47b15c2bd5a9dbcb0",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/ab4ddadf831baff67242e2c47b15c2bd5a9dbcb0",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/ab4ddadf831baff67242e2c47b15c2bd5a9dbcb0/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "1522a4744973ddc4fb255371441b35427a8e2924",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/1522a4744973ddc4fb255371441b35427a8e2924",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/1522a4744973ddc4fb255371441b35427a8e2924"
+      }
+    ]
+  },
+  {
+    "sha": "6e120ced494df777f6e36bedb7021115972c5e4d",
+    "node_id": "C_kwDOTeRQitoAKDZlMTIwY2VkNDk0ZGY3NzdmNmUzNmJlZGI3MDIxMTE1OTcyYzVlNGQ",
+    "commit": {
+      "author": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-28T12:37:00Z"
+      },
+      "committer": {
+        "name": "kosmar",
+        "email": "kosmar@gmail.com",
+        "date": "2026-07-28T12:37:00Z"
+      },
+      "message": "feat(preset-editor): incremental Full Push under HoldPerfMute, fp-cli MIDI harness, log/ellipsis cleanup\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+      "tree": {
+        "sha": "acbbf25c59f5c52989d51d983c3ff2e140ad76a1",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/trees/acbbf25c59f5c52989d51d983c3ff2e140ad76a1"
+      },
+      "url": "https://api.github.com/repos/ATOVproject/faderpunk/git/commits/6e120ced494df777f6e36bedb7021115972c5e4d",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/6e120ced494df777f6e36bedb7021115972c5e4d",
+    "html_url": "https://github.com/ATOVproject/faderpunk/commit/6e120ced494df777f6e36bedb7021115972c5e4d",
+    "comments_url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/6e120ced494df777f6e36bedb7021115972c5e4d/comments",
+    "author": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "kosmar",
+      "id": 1532381,
+      "node_id": "MDQ6VXNlcjE1MzIzODE=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1532381?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/kosmar",
+      "html_url": "https://github.com/kosmar",
+      "followers_url": "https://api.github.com/users/kosmar/followers",
+      "following_url": "https://api.github.com/users/kosmar/following{/other_user}",
+      "gists_url": "https://api.github.com/users/kosmar/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/kosmar/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/kosmar/subscriptions",
+      "organizations_url": "https://api.github.com/users/kosmar/orgs",
+      "repos_url": "https://api.github.com/users/kosmar/repos",
+      "events_url": "https://api.github.com/users/kosmar/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/kosmar/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "ab4ddadf831baff67242e2c47b15c2bd5a9dbcb0",
+        "url": "https://api.github.com/repos/ATOVproject/faderpunk/commits/ab4ddadf831baff67242e2c47b15c2bd5a9dbcb0",
+        "html_url": "https://github.com/ATOVproject/faderpunk/commit/ab4ddadf831baff67242e2c47b15c2bd5a9dbcb0"
+      }
+    ]
+  }
+]
