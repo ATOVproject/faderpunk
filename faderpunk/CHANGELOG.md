@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.12.0 (2026-08-21)
+
+### Features
+
+- variable PPQN external clock input and phase-correct clock ticks (#579)
+- Curve::Deadzone fader curve + wire into 8 apps (#578)
+- add automated PR scope-check policy (informational only) (#654)
+
+### Fixes
+
+- eliminate false fader events from ADC noise (#556) (#628)
+- reject non-ASCII app names and descriptions (#601)
+- support current Rust toolchains (#632)
+- align .text section start to 8 bytes (#614)
+- never block the clock gatekeeper on a full pubsub (#636)
+
 ## 1.12.0-beta.0 (2026-08-07)
 
 ### Features
