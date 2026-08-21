@@ -1,0 +1,52 @@
+name: PR Scope Check
+
+# Informational-only first-pass filter for external/internal PRs — classifies
+# scope and flags out-of-bounds changes without checking out fork code. See
+# CONTRIBUTING.md "PR Scope Categories" and .github/scripts/pr-scope-check.sh
+# for the actual rules (kept in sync by hand).
+#
+# ENFORCE below is intentionally hardcoded false: this check is informational
+# only until it's been dry-run against the real backlog and proven accurate.
+# Flip it in a dedicated follow-up commit once that's done — do not flip it
+# here as part of an unrelated change.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  ENFORCE: "false"
+
+jobs:
+  pr-scope:
+    name: PR Scope Check
+    runs-on: ubuntu-latest
+    if: ${{ !endsWith(github.actor, '[bot]') }}
+    steps:
+      - name: Checkout (scripts only, no PR code)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/scripts/pr-scope-check.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Fetch changed files and commits via API
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --slurp \
+            | jq 'add' > files.json
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}/commits" --paginate --slurp \
+            | jq 'add' > commits.json
+
+      - name: Run scope check
+        run: |
+          chmod +x .github/scripts/pr-scope-check.sh
+          .github/scripts/pr-scope-check.sh files.json commits.json
