@@ -26,7 +26,7 @@ use crate::{
         clock::{ClockSubscriber, CLOCK_PUBSUB},
         global_config::get_global_config,
         i2c::{I2cLeaderMessage, I2cLeaderSender},
-        leds::{set_led_mode, LedMode, LedMsg},
+        leds::{set_led_mode, LedMsg},
         max::{MaxCmd, MaxSender, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::{
             AppMidiSender, MidiEvent, MidiEventSource, MidiMsg, MidiPubSubChannel,
@@ -38,7 +38,10 @@ use crate::{
 
 pub use crate::{
     storage::{AppParams, AppStorage, Arr, ManagedStorage, ParamStore},
-    tasks::{clock::ClockEvent, leds::Led},
+    tasks::{
+        clock::ClockEvent,
+        leds::{Led, LedMode},
+    },
 };
 
 #[derive(Clone, Copy)]

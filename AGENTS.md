@@ -358,6 +358,7 @@ manually in a Chromium browser with a live device connection.
 7. **Atomic ordering**: Use `Ordering::Relaxed` for non-synchronized state, `Acquire`/`Release` for synchronized.
 8. **Web MIDI requirements**: Browser must support Web MIDI with SysEx (Chromium, Firefox); HTTPS required for non-localhost. The user must grant the MIDI/SysEx permission.
 9. **Commit trailers**: One-line conventional-commit messages; do not add a `Co-authored-by: Claude` trailer.
+10. **App-facing types not re-exported**: if a new `App<N>`/`Leds<N>`/etc. method takes or returns a type from `crate::tasks::*`, add it to `app.rs`'s `pub use crate::{…}` re-export block in the same change — otherwise apps have to reach around the facade with a direct `crate::tasks::` import.
 
 ## File Structure Summary
 
