@@ -17,10 +17,9 @@ use libfp::{
 };
 
 use crate::app::{
-    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Global, Led, ManagedStorage,
+    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Global, Led, LedMode, ManagedStorage,
     ParamStore, SceneEvent,
 };
-use crate::tasks::leds::LedMode;
 
 pub const CHANNELS: usize = 3;
 pub const PARAMS: usize = 4;
@@ -703,7 +702,12 @@ pub async fn run(
             if in_res_mode {
                 // Show resolution index as brightness on Top (0–7 → dim to bright)
                 let res_idx = (res_saved as usize / 512).min(7) as u8;
-                leds.set(0, Led::Top, Color::Cyan, Brightness::Custom(res_idx * 32 + 16));
+                leds.set(
+                    0,
+                    Led::Top,
+                    Color::Cyan,
+                    Brightness::Custom(res_idx * 32 + 16),
+                );
             } else {
                 leds.set(
                     0,
@@ -723,7 +727,11 @@ pub async fn run(
             };
             leds.set(1, Led::Bottom, led_color, Brightness::Custom(progress));
             if gate_active {
-                let gate_color = if slide_active { Color::White } else { led_color };
+                let gate_color = if slide_active {
+                    Color::White
+                } else {
+                    led_color
+                };
                 leds.set(1, Led::Top, gate_color, Brightness::High);
             } else {
                 leds.unset(1, Led::Top);
@@ -732,7 +740,11 @@ pub async fn run(
                 1,
                 Led::Button,
                 led_color,
-                if no_accents { Brightness::Low } else { Brightness::Mid },
+                if no_accents {
+                    Brightness::Low
+                } else {
+                    Brightness::Mid
+                },
             );
 
             // Ch 2: accent on Top, transpose position on Bottom (always visible)
