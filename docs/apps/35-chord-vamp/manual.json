@@ -1,0 +1,110 @@
+{
+  "id": 35,
+  "slug": "chord_vamp",
+  "name": "Chord Vamp",
+  "status": "wip",
+  "tag": "ready",
+  "description": "Chord progressions \u2014 perform, shift+tap capture, or auto vamp",
+  "color": "Violet",
+  "icon": "note-grid",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "MIDI Out",
+    "MIDI Channel",
+    "Root",
+    "Scale",
+    "Genre",
+    "Voicing",
+    "Velocity",
+    "Auto style",
+    "Start mode",
+    "Capture length",
+    "Color",
+    "Jack",
+    "Range",
+    "V/Oct",
+    "CV Att"
+  ],
+  "storage": [
+    "Vamp slots (8-step progression)",
+    "Genre",
+    "Scrub position",
+    "Tension",
+    "Feel (hit length)",
+    "Swing (genre-seeded)",
+    "Mode (Perform/Auto)",
+    "Auto running",
+    "Capture clip"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Modes",
+          "items": [
+            "<strong>Perform</strong> \u2014 scrub a pitch map of the genre\u2019s unique degrees across ~3 octaves; hold the button to sound the chord",
+            "<strong>Auto</strong> \u2014 genre rhythm phrase loops on the clock; harmony <strong>Repeats</strong> or <strong>Meanders</strong>; short press play/pauses",
+            "<strong>Shift + short press</strong> toggles Perform \u2194 Auto; Perform + Shift + short also commits Capture when the ring has chords"
+          ]
+        },
+        {
+          "heading": "Capture",
+          "items": [
+            "Commits the last N bars (Capture length: 16 / 8 / 4 / 2 / 1) into a timed clip; starts snap to the 16th grid",
+            "Empty ring \u2192 Auto runs the genre phrase (no Capture slot)",
+            "Auto long press clears the capture clip and reseeds the genre phrase",
+            "Shift + long press (Auto) \u2014 panic (All Notes Off)"
+          ]
+        },
+        {
+          "heading": "Groove",
+          "items": [
+            "<strong>Feel</strong> (Button + Fader) \u2014 laid back \u2194 advanced hit lengths; Capture playback durations scale too; rests stay genre-driven",
+            "<strong>Swing</strong> (scene storage, genre-seeded) \u2014 delays odd 16ths on Auto hits and Capture playback; resets when you pick/reseed a genre"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "Perform Main \u2014 scrub genre degrees \u00d7 octaves (low \u2192 high)",
+            "Auto Main \u2014 tension (Meander drift; ignored in Repeat)",
+            "Shift + Fader \u2014 genre (Dub \u2192 \u2026 \u2192 Dubstep; rose = Capture clip slot when a clip exists)",
+            "Button + Fader \u2014 Feel (hit length / Capture dur scale)"
+          ]
+        },
+        {
+          "heading": "Jack param",
+          "items": [
+            "CV Out, CV In Macro, or CV In Panic \u2014 Macro modulates scrub (Perform) or tension (Auto); Panic fires All Notes Off from CV"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "CV Out / CV In",
+      "jackDescription": "CV Out: chord root pitch while held/sounding (0V idle). CV In Macro or CV In Panic.",
+      "faderTitle": "Scrub / Tension",
+      "faderDescription": "Perform: pitch map (genre degrees \u00d7 3 octaves). Auto: Meander tension.",
+      "faderPlusShiftTitle": "Genre",
+      "faderPlusShiftDescription": "Cycle genre preset (Capture clip slot when a timed clip exists).",
+      "faderPlusFnTitle": "Feel",
+      "faderPlusFnDescription": "Laid back \u2194 advanced hit length (Capture durs scale too). Rests unchanged.",
+      "fnTitle": "Chord / Play",
+      "fnDescription": "Perform: hold for chord. Auto: short = play/pause. Long (Auto): clear clip / reseed.",
+      "fnPlusShiftTitle": "Mode / Capture / Panic",
+      "fnPlusShiftDescription": "Short: toggle Perform\u2194Auto; Perform+Shift+short = capture. Long (Auto): panic.",
+      "ledTop": "Scrub / phrase / pitch meter",
+      "ledTopPlusShift": "Genre color (rose = capture clip)",
+      "ledTopPlusFn": "Feel / pitch (rose Auto, blue Perform)",
+      "ledBottom": "Meter pair",
+      "ledBottomPlusFn": "Feel / pitch meter"
+    }
+  ]
+}
