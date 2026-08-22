@@ -1,0 +1,91 @@
+{
+  "id": 47,
+  "slug": "dit_dah",
+  "name": "Dit Dah",
+  "status": "wip",
+  "tag": "draft",
+  "description": "ITU Morse phrase player with 16th-quantized note-ons",
+  "color": "Orange",
+  "icon": "SequenceSquare",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "MIDI Out",
+    "MIDI Channel",
+    "Base note",
+    "Interval",
+    "Jack",
+    "V/Oct",
+    "Phrase 1",
+    "Phrase 2",
+    "Phrase 3",
+    "Phrase 4",
+    "Phrase 5",
+    "Phrase 6",
+    "Phrase 7",
+    "Phrase 8",
+    "Phrase 9",
+    "Phrase 10"
+  ],
+  "storage": [
+    "Dit length",
+    "Pitch offset",
+    "Dah interval blend",
+    "Muted"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> — Dit length (maps 30 ms up to four 16ths of the clock)",
+            "<strong>Alt</strong> — Pitch offset ±48 st around the base note",
+            "<strong>Third</strong> — Dah extra interval (deadzone; uses the Interval param)"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Short</strong> — Mute / unmute (phrase keeps its place; notes stay off while muted)",
+            "<strong>Shift + short</strong> — Arm start on the next 16th (clock Reset also arms when idle)",
+            "<strong>Long</strong> — Cancels the short action (no panic)"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Params / LEDs",
+          "items": [
+            "Needs clock. First downbeat / Reset arms; then the phrase loops freely",
+            "Jack: Gate Out · Pitch Out · Gate In (rising edge arms like Shift+short). V/Oct only for Pitch Out. MIDI note-ons always.",
+            "Phrases 1–10 are packed ASCII (default Phrase 1 = SOS)",
+            "Button LED orange when live; Top LED high while a dit/dah sounds"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "Jack",
+      "jackDescription": "Gate Out / Pitch Out (0–10 V V/Oct), or Gate In (±5 V) to arm the phrase on a rising edge. MIDI notes always fire.",
+      "faderTitle": "Dit length",
+      "faderDescription": "Duration of a dit in milliseconds, from 30 ms up to four 16th-notes of the incoming clock. Dah is 3× dit.",
+      "faderPlusShiftTitle": "Pitch offset",
+      "faderPlusShiftDescription": "Bipolar transposition of the whole phrase around Base note, up to ±48 semitones.",
+      "faderPlusFnTitle": "Dah interval",
+      "faderPlusFnDescription": "Adds the Interval param onto dahs only (deadzone around centre). Dits stay on the Alt-offset pitch.",
+      "fnTitle": "Mute / re-arm",
+      "fnDescription": "Short tap mutes MIDI and CV. Shift + short arms playback on the next 16th.",
+      "ledTop": "Orange high while a tone is sounding",
+      "ledBottom": ""
+    }
+  ]
+}
