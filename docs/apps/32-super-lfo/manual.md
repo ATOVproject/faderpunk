@@ -1,0 +1,1 @@
+Super LFO is a morphing dual-oscillator LFO with CV control over form parameters (morph, amp, skew, symmetry, speed, warp). Two channels of faders map to the two oscillators; mix modes include crossfade, min, max, and sum.

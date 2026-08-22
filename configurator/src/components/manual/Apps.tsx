@@ -68,8 +68,7 @@ export const Apps = ({ apps }: Props) => (
         button 2 mutes Output B)
       </li>
       <li>
-        <strong>Long press (no shift)</strong> — AD Envelope, LFO, LFO+, Super
-        LFO (left button mutes CV in, right button mutes CV out)
+        <strong>Long press (no shift)</strong> — AD Envelope, LFO, LFO+
       </li>
       <li>
         <strong>Shift + long press on button 0 / 2 / 4 / 6</strong> — Sequencer

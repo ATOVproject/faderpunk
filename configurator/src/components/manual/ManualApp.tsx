@@ -295,9 +295,9 @@ export const ManualApp = ({ app }: Props) => {
           </List>
         </div>
       ) : null}
-      <div className="mb-4">
+      <p className="mb-4">
         <Md>{app.text}</Md>
-      </div>
+      </p>
       <div
         className="inline-grid"
         style={{

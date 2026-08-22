@@ -404,7 +404,6 @@ pub async fn run(
     let buttons = app.use_buttons();
     let leds = app.use_leds();
     let mut clk = app.use_clock();
-    let ticker = clk.get_ticker();
     let midi = app.use_midi_output(midi_out, midi_chan, nrpn);
 
     let glob_lfo_speed = app.make_global(0.0682);
@@ -413,6 +412,7 @@ pub async fn run(
     let glob_latch_0 = app.make_global(LatchLayer::Main);
     let glob_latch_1 = app.make_global(LatchLayer::Main);
     let glob_tick = app.make_global(false);
+    let glob_clock_tick = app.make_global(0u64);
     let glob_div = app.make_global(24u16);
     let glob_quant_speed = app.make_global(0.07);
     let glob_count = app.make_global(20u32);
@@ -546,7 +546,7 @@ pub async fn run(
 
             if destination == DEST_RESET {
                 if in_val >= 2458 && oldinputval < 2458 {
-                    glob_phase_origin.set(ticker());
+                    glob_phase_origin.set(glob_clock_tick.get());
                     glob_lfo_pos.set(0.0);
                 }
                 oldinputval = in_val;
@@ -933,7 +933,7 @@ pub async fn run(
                     buttons.wait_for_up(1).await;
                     if !long_press_1.get() {
                         // Short: phase reset
-                        glob_phase_origin.set(ticker());
+                        glob_phase_origin.set(glob_clock_tick.get());
                         glob_lfo_pos.set(0.0);
                     } else if !fader_moved_1.get() {
                         // Long without third fader: out mute
@@ -992,7 +992,8 @@ pub async fn run(
     let clock_handler = async {
         loop {
             match clk.wait_for_event(ClockDivision::_1).await {
-                ClockEvent::Tick => {
+                ClockEvent::Tick(tick) => {
+                    glob_clock_tick.set(tick);
                     if storage.query(|s| s.clocked) {
                         glob_clock_held.set(false);
                     }
@@ -1001,7 +1002,7 @@ pub async fn run(
                             (glob_div.get() as u64).saturating_mul(speed_mult as u64);
                         if ticks_per_cycle > 0 {
                             let phase_in_cycle =
-                                ticker().wrapping_sub(glob_phase_origin.get()) % ticks_per_cycle;
+                                tick.wrapping_sub(glob_phase_origin.get()) % ticks_per_cycle;
                             let mut pos = phase_in_cycle as f32 * 4096.0 / ticks_per_cycle as f32;
                             if storage.query(|s| s.reversed) {
                                 pos = (4096.0 - pos) % 4096.0;
