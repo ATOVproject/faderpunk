@@ -1,0 +1,54 @@
+{
+  "id": 29,
+  "slug": "heat_pump",
+  "name": "Heat Pump",
+  "status": "wip",
+  "tag": "ready",
+  "description": "Clock-synced sidechain ducking: hold + log release",
+  "color": "Pink",
+  "icon": "AdEnv",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "Color",
+    "Range",
+    "MIDI Channel",
+    "MIDI CC",
+    "MIDI NRPN",
+    "MIDI Out",
+    "Jack",
+    "CV Dest",
+    "CV Att"
+  ],
+  "storage": ["Release", "Depth", "Division", "Invert", "Muted"],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> — Release speed",
+            "<strong>Alt</strong> — Duck depth (Shift + fader)",
+            "<strong>Third</strong> — Clock division (Button + fader)"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "Jack",
+      "jackDescription": "CV Out = duck envelope; CV In modulates Depth, Release, or triggers Duck.",
+      "faderTitle": "Release",
+      "faderDescription": "Log recovery after hold.",
+      "faderPlusShiftTitle": "Depth",
+      "faderPlusShiftDescription": "Duck amount per division.",
+      "faderPlusFnTitle": "Division",
+      "faderPlusFnDescription": "Button + fader picks clock division.",
+      "fnTitle": "Trigger / mute",
+      "fnDescription": "Short = manual duck; Long = mute; Shift+long = invert.",
+      "ledTop": "Envelope level",
+      "ledBottom": "Division color on Button LED"
+    }
+  ]
+}
