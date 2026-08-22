@@ -1,0 +1,58 @@
+<!-- GROOVES -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 30</span>
+    <h2>Grooves <span class="tag ready">ready</span></h2>
+    <span class="desc">Multi-genre MIDI drum grooves with swing</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Density (extra hits)</li>
+          <li><strong>Alt</strong> — Genre scrub (shared axis with Chord Vamp)</li>
+          <li><strong>Third</strong> — Swing (capped by Swing max %)</li>
+        </ul>
+        <h3>Genres</h3>
+        <ul>
+          <li>Dub → Disco → House → Techno → Trip-Hop → Hip-Hop → Jungle → UK Garage → Dubstep</li>
+          <li>LEDs: continuous open red→yellow→green→cyan→blue spectrum (same as Chord Vamp)</li>
+          <li>Sound morphs continuously between neighboring genres along the axis</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Mute (notes off)</li>
+          <li><strong>Shift+Tap</strong> — Genre fill until next downbeat (break at high density)</li>
+          <li><strong>Shift+Hold</strong> — Drum solo while held: 4-bar phrase (build → busier → peak → turnaround); resolves on release</li>
+          <li><strong>Long</strong> — Reset to downbeat</li>
+        </ul>
+        <h3>Jack params</h3>
+        <ul>
+          <li>Jack: CV Out Any · CV Out Stacked · CV In Density · CV In Feel · CV In Reset</li>
+          <li>Stacked sums families — hats 1, snare 2, kick 4 of 10 units; Open Hat counts as hats, Clap as snare, toms as kick</li>
+          <li>The jack follows the groove, so it still pulses with every note switched off</li>
+          <li>Range, CV Att</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params / LEDs</h3>
+        <ul>
+          <li>Notes: Kick, Snare, Hats, Open Hat, Low Tom, High Tom, Clap — note 0 switches a voice off</li>
+          <li>MIDI Ch is the base for all seven; Ch Map overrides it per voice (7 packed nibbles, 0 = follow base)</li>
+          <li>Groove, Swing max % (negative = reverse swing), GATE %, MIDI Out</li>
+          <li>Groove = pocket: 0 is dead on the grid; up adds per-family ms drift (kick tight → hats loosest), velocity bow and walking ghosts</li>
+          <li>GATE % is per voice — closed hats choke inside their step, open hats and toms may ring past it; CV pulse stays inside the 16th</li>
+          <li><strong>Button</strong> Main: genre hue sat half→full (density) + bar lightness; hit dips kick −50% / snare −30% / hats −10%</li>
+          <li><strong>Button</strong> Third: White→Color→Red (swing); same voice-weighted hit dips</li>
+          <li><strong>Button</strong> Alt: committed genre hue (Top/Bottom = live fader meters; color changes only after latch pickup)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Genre MIDI drums on the global clock, sharing its nine genres with Chord Vamp and Bassment; the genre scrub morphs continuously between neighbours instead of stepping. Groove is the pocket: at zero every voice sits exactly on the grid, so Grooves locks tight against other Faderpunk apps. Turning it up drifts each family by its own few milliseconds — kick tightest, hats widest, scaled by the genre — bows velocity across the bar and walks which ghost hits Density reveals, so repeated bars stop reading identically. At high Density, sparse doubles, flams, triplets and rolls layer onto written kick/snare/hat hits (kick stays conservative; hats genre-typical); sub-strokes land inside the same 16th after swing/microtiming, never re-applying global swing. Shift+Tap plays a genre fill that crescendos toward the bar line independent of Density; above roughly 60 % Density it turns subtractive and the floor drops out for a break, handed back on the one by a late snare pickup. Shift+Hold escalates into a four-bar solo — build, busier bar, peak, turnaround — with accents pinned to the one and the backbeat, so Feel adds jitter instead of randomising the dynamics. Each genre carries three fill, break and solo figures; low Feel locks to one, higher Feel rolls between them. Clap, Open Hat and the toms are optional layers derived from hits already in the groove and stay silent until you give them a note: Open Hat replaces an accented offbeat hat rather than doubling it, and the toms only appear in the back half of a fill, break or solo.</p>
+    </div>
+  </div>
+</section>

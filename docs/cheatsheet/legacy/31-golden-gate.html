@@ -1,0 +1,50 @@
+<!-- GOLDEN GATE -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 31</span>
+    <h2>Golden Gate <span class="tag ready">ready</span></h2>
+    <span class="desc">Fibonacci-spaced gates — ratios → φ</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Fibonacci depth</li>
+          <li><strong>Alt</strong> — Cycle length N</li>
+          <li><strong>Third</strong> — Local speed grid (16th → quarter; center = follow Speed param)</li>
+        </ul>
+        <h3>Jack params</h3>
+        <ul>
+          <li>Jack: CV Out / CV In (In = MIDI-first, no outs)</li>
+          <li>CV Dest: Depth · Cycle · Reset</li>
+          <li>Range, CV Att</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Reset to downbeat</li>
+          <li><strong>Long</strong> — Mute</li>
+          <li><strong>Shift+Short</strong> — Reverse gap direction</li>
+          <li><strong>Shift+Long</strong> — Cycle Mode (Note/CC/Pitch/Phi)</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Mode param</h3>
+        <ul>
+          <li>Note · CC · Pitch (12-TET) · Phi (φ pitch)</li>
+          <li>Button color: default / orange / red / pink</li>
+        </ul>
+        <h3>Params</h3>
+        <ul>
+          <li>MIDI CH/Note/CC, GATE %, Speed, Color, MIDI Out</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Fills cycle length N with Fibonacci gaps; deeper sets approach φ. Mode param selects Note/CC/Pitch/Phi; Shift+Long cycles the same on-device. Third overrides Speed locally. Short resets; Shift+Short reverses travel. Jack=CV In drops CV/gate outs and uses Dest for Depth/Cycle/Reset.</p>
+    </div>
+  </div>
+</section>
+

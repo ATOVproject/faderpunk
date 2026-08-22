@@ -1,0 +1,47 @@
+<!-- ECHOLOT -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 33</span>
+    <h2>Echolot <span class="tag draft">draft</span></h2>
+    <span class="desc">MIDI/CV delay with feedback and pitch shift</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Delay (up = shorter / faster)</li>
+          <li><strong>Alt</strong> — Feedback</li>
+          <li><strong>Third</strong> — Pitch interval (±24 st)</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Mute / ring-out</li>
+          <li><strong>Long</strong> — Panic (clear queue); skipped if Third used this hold</li>
+        </ul>
+        <h3>LEDs</h3>
+        <ul>
+          <li>White flash on MIDI/gate in (~20% when muted)</li>
+          <li>Ping-Pong: Top = Out A · Bottom = Out B</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>I/O: MIDI→MIDI · MIDI→CV · CV→MIDI</li>
+          <li>Delay: ms / Clock · Max delay</li>
+          <li>Interval mode: Fixed / Stack / Bounce</li>
+          <li>Routing: Single / Ping-Pong</li>
+          <li>Signal: Pitch / Gate / CV→CC / Gate→Note</li>
+          <li>MIDI In/Out A, Out Pong, CC, Note, Range, Color</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Delay with feedback and optional pitch intervals. I/O picks MIDI/CV routing; Ping-Pong alternates MIDI Out A/B (MIDI→MIDI and CV→MIDI). Mute = ring-out (block new input; queue plays out). Long Panic clears the trail — Third interval edits never panic that hold. MIDI In always flashes white for diagnosis when muted.</p>
+    </div>
+  </div>
+</section>
+
