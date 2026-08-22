@@ -1,0 +1,89 @@
+{
+  "id": 38,
+  "slug": "loop_de_cay",
+  "name": "Loop de Cay",
+  "status": "wip",
+  "tag": "ready",
+  "description": "Additive overdub loop with level decay",
+  "color": "Violet",
+  "icon": "Sequence",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "Mode",
+    "MIDI Channel",
+    "MIDI In",
+    "MIDI Out",
+    "Base Note",
+    "Span",
+    "Color",
+    "Range",
+    "V/Oct",
+    "Decay Mode"
+  ],
+  "storage": [
+    "Main pitch fader",
+    "Decay strength",
+    "Bars",
+    "Muted",
+    "Armed"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> — Pitch (span from Base Note); spectrum LED meter. In Pitch→MIDI it transposes the CV pitch, so centre = unchanged and an unpatched jack leaves the fader in charge",
+            "<strong>Alt</strong> (Shift+Fader) — Decay strength: bottom = immortal, top ≈ 4 wraps (violet→red)",
+            "<strong>Third</strong> (Btn+Fader; gate modes while muted) — Decay mode zones (IR→UV): Random Rose · Pitch Up Orange · Pitch Down Yellow · Vel+Root Lime · Pitch Root Cyan · Velocity Blue · Gate Violet"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Hold</strong> (gate modes) — Note on; release = off (long notes OK). Hold+Fader = scale-degree glissando toward the fader (like Chord Vamp)",
+            "<strong>Shift+Short</strong> — Cycle loop length 1→2→…→8 bars (amber→cyan flash)",
+            "<strong>Shift+Long</strong> — Mute (red LED; decay pauses)",
+            "<strong>Short while muted</strong> — Unmute (re-arms)",
+            "<strong>Shift+Long while muted</strong> — Erase buffer (white flash)"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Params / LEDs",
+          "items": [
+            "Mode: Pitch→MIDI · Gate→MIDI · MIDI→MIDI · MIDI→CV · Fader→Both",
+            "Decay Mode: Random · Pitch Up · Pitch Down · Vel+Root (default) · Pitch Root · Velocity · Gate",
+            "MIDI CH / In / Out, Base Note, Span (semitones across fader)",
+            "Color, Range, V/Oct",
+            "Capture/playback hit: sharp button 80% dim (~2 PPQN) + Top white; layer meters on Top/Bottom/Button"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "CV / gate",
+      "jackDescription": "Depends on Mode (Pitch→MIDI / Gate→MIDI use CV In; MIDI→CV / Fader→Both use CV Out)",
+      "faderTitle": "Pitch",
+      "faderDescription": "Span around Base Note; quantized to global scale. Pitch→MIDI adds it to the CV pitch as a transpose",
+      "faderPlusShiftTitle": "Decay strength",
+      "faderPlusShiftDescription": "0 = immortal; higher ≈ fewer wraps to silence",
+      "faderPlusFnTitle": "Decay Mode",
+      "faderPlusFnDescription": "Seven zones IR→UV (Btn+Fader; gate modes while muted)",
+      "fnTitle": "Gate / play",
+      "fnDescription": "Hold for note in gate modes; Hold+Fader = glissando; Shift+Short = bars; Shift+Long = mute/erase",
+      "ledTop": "Pitch / decay / mode meters",
+      "ledBottom": "Pitch / decay / mode meters"
+    }
+  ]
+}
