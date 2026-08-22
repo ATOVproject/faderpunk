@@ -1,0 +1,16 @@
+{
+  "id": 33,
+  "slug": "echolot",
+  "name": "Echolot",
+  "status": "wip",
+  "tag": "ready",
+  "description": "MIDI/CV delay with feedback and pitch shift",
+  "color": "Cyan",
+  "icon": "Sine",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": ["I/O", "Delay mode", "Max delay (ms)", "Interval mode", "Routing", "Signal", "Range", "Color", "MIDI Out", "MIDI Channel", "MIDI CC", "MIDI In", "Feedback", "Mix", "Muted"],
+  "storage": ["Delay", "Interval", "Feedback saved", "Mix saved", "Muted"],
+  "columns": [{"sections": [{"heading": "Overview", "items": ["MIDI/CV delay with feedback, mix, and pitch-shifted repeats"]}]}],
+  "channels": [{"jackTitle": "CV", "jackDescription": "Role depends on I/O and Signal params.", "faderTitle": "Delay", "faderDescription": "Delay time or clock division.", "faderPlusShiftTitle": "Interval", "faderPlusShiftDescription": "Pitch shift per repeat.", "faderPlusFnTitle": "Feedback/mix", "faderPlusFnDescription": "Latch layers.", "fnTitle": "Mute", "fnDescription": "Short mute; long clears buffer.", "ledTop": "Input activity", "ledBottom": "Delay level"}]
+}
