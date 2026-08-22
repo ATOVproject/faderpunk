@@ -1,0 +1,96 @@
+{
+  "id": 31,
+  "slug": "golden_gate",
+  "name": "Golden Gate",
+  "status": "wip",
+  "tag": "draft",
+  "description": "Fibonacci-spaced gates — successive ratios approach φ",
+  "color": "Violet",
+  "icon": "SequenceSquare",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "MIDI Channel",
+    "MIDI Note",
+    "MIDI CC",
+    "GATE %",
+    "Speed",
+    "Color",
+    "MIDI Out",
+    "Jack",
+    "Range",
+    "CV Dest",
+    "CV Att",
+    "Mode"
+  ],
+  "storage": [
+    "Fibonacci depth",
+    "Cycle length",
+    "Muted",
+    "Reversed",
+    "Output mode",
+    "Speed override"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Sound",
+          "items": [
+            "Fibonacci gaps (1, 1, 2, 3, 5, 8, 13…) between hits; deeper depth = sparser rhythm",
+            "Reverse plays this cycle’s gaps backwards (not the whole table from max)",
+            "Pitch modes: 1V/oct on the jack; MIDI chromatic Fibonacci or near-φ intervals with pitch bend"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Gestures",
+          "items": [
+            "<strong>Fader</strong> — Fibonacci depth",
+            "<strong>Shift + Fader</strong> — Cycle length N (bar-aligned)",
+            "<strong>Button + Fader</strong> — Speed (Heat Pump grid); overrides Configurator Speed",
+            "<strong>Short</strong> — Reset to downbeat",
+            "<strong>Long</strong> — Mute (no fader move)",
+            "<strong>Shift + short</strong> — Reverse gap order (Button LED white↔off fade)",
+            "<strong>Shift + long</strong> — Cycle output mode: Note → CC → 12-TET pitch → φ pitch"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "LEDs",
+          "items": [
+            "<strong>Top</strong> — Cycle progress (app color); red cycle length while Shift held; speed division while Button held",
+            "<strong>Bottom</strong> — Flash on each hit",
+            "<strong>Button</strong> — Output mode color; white↔off on reverse; off when muted"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "Gate / Pitch Out",
+      "jackDescription": "Note and CC modes: gate pulse. Pitch modes: 1V/oct CV (MIDI note in parallel).",
+      "faderTitle": "Fibonacci depth",
+      "faderDescription": "How far into 1, 1, 2, 3, 5 … 89 the gaps go — shallow = denser, deep = sparser.",
+      "faderPlusShiftTitle": "Cycle length",
+      "faderPlusShiftDescription": "How many steps before the pattern wraps (about 8–128).",
+      "faderPlusFnTitle": "Speed",
+      "faderPlusFnDescription": "Clock division (same as Heat Pump): 1/1, 1/2, 1/4., 1/4, 1/8., 1/4T, 1/8, 1/8T, 1/16, 1/32. Up = faster. Overrides the Speed parameter.",
+      "fnTitle": "Reset / Mute",
+      "fnDescription": "Short press: restart at the downbeat. Long press: mute (do not move the fader).",
+      "fnPlusShiftTitle": "Reverse / Output mode",
+      "fnPlusShiftDescription": "Short: reverse this cycle’s gaps. Long: cycle Note → CC → 12-TET pitch → φ pitch.",
+      "ledTop": "Progress through the cycle (app color)",
+      "ledTopPlusShift": "Cycle length (red) while Shift is held",
+      "ledTopPlusFn": "Speed division: cyan = straight, yellow = dotted, orange = triplet",
+      "ledBottom": "Flash on each hit"
+    }
+  ]
+}
