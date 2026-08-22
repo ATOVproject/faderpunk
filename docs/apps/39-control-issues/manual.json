@@ -1,0 +1,56 @@
+{
+  "id": 39,
+  "slug": "control_issues",
+  "name": "Control Issues",
+  "status": "wip",
+  "tag": "ready",
+  "description": "Shape CV and send it as MIDI control",
+  "color": "Pink",
+  "icon": "Attenuate",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "Input Mode",
+    "Range",
+    "Transfer",
+    "Slew Mode",
+    "Steps",
+    "Output Min",
+    "Output Max",
+    "MIDI Channel",
+    "MIDI CC",
+    "MIDI NRPN",
+    "MIDI Out",
+    "Color"
+  ],
+  "storage": ["Muted", "Bypass"],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Overview",
+          "items": [
+            "CV shaping (linear, log, exp, S-curve, rectify, fold) to MIDI CC or NRPN",
+            "Optional slew and quantization; gate or continuous input"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "CV In / Out",
+      "jackDescription": "Bipolar or unipolar CV in; shaped value as MIDI CC/NRPN.",
+      "faderTitle": "Slew / steps",
+      "faderDescription": "Main fader controls shaping parameters per latch layer.",
+      "faderPlusShiftTitle": "",
+      "faderPlusShiftDescription": "",
+      "faderPlusFnTitle": "",
+      "faderPlusFnDescription": "",
+      "fnTitle": "Mute / bypass",
+      "fnDescription": "Short tap mute; long bypass.",
+      "ledTop": "Output level",
+      "ledBottom": "Downbeat blink when clocked"
+    }
+  ]
+}
