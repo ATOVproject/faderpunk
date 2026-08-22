@@ -1,0 +1,103 @@
+{
+  "id": 34,
+  "slug": "arp_de_levy",
+  "name": "Arp de Levy",
+  "status": "wip",
+  "tag": "draft",
+  "description": "Lévy-flight generative arpeggiator — evolve, texture, and expression",
+  "color": "Rose",
+  "icon": "SoftRandom",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "MIDI Channel",
+    "Base Note",
+    "Color",
+    "MIDI Out",
+    "V/Oct",
+    "Bypass quantizer",
+    "Jack",
+    "Range",
+    "CV Out",
+    "CV Dest",
+    "CV Att",
+    "Follow device tonic"
+  ],
+  "storage": [
+    "Mutation rate",
+    "Texture",
+    "Lévy α",
+    "Expression",
+    "Octave span",
+    "Muted",
+    "Reversed",
+    "Note pool",
+    "Phrase length"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Mutation, texture, flight",
+          "items": [
+            "Persistent note pool walked with <strong>Lévy-flight</strong> steps — mostly small moves, occasional leaps",
+            "CV (1V/oct, quantized unless <strong>Bypass quantizer</strong>) and MIDI fire together on each hit",
+            "<strong>Mutation rate</strong> freezes the pool at the bottom; more Lévy edits at each phrase boundary as you raise it",
+            "<strong>Texture</strong> jointly moves density (rests), phrase length (16 down to 4 steps), and swing",
+            "<strong>Button + Fader</strong> sets Lévy <strong>α</strong> (local ↔ wild jump character)"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Gestures",
+          "items": [
+            "<strong>Fader</strong> — Mutation rate (0 = freeze loop)",
+            "<strong>Shift + Fader</strong> — Texture macro",
+            "<strong>Button + Fader</strong> — Lévy α",
+            "<strong>Short press</strong> — Reroll pool + expression depth; reset phrase",
+            "<strong>Long press</strong> — Mute (no fader move)",
+            "<strong>Shift + short</strong> — Reverse playback (CV Out: cycle Pitch / Gate / Velocity)",
+            "<strong>Shift + long</strong> — Cycle octave span 1→2→3→4"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Expression & LEDs",
+          "items": [
+            "Short press (and CV Dest = Reroll) re-rolls the pool and picks a new <strong>expression depth</strong> for velocity and gate jitter",
+            "<strong>Top LED</strong> — phrase progress (app color); orange for texture; violet for Lévy α",
+            "<strong>Bottom LED</strong> flashes on each hit",
+            "Button LED — octave color; white↔off on reverse; off when muted",
+            "Scenes store the live note pool, phrase length, and expression depth"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "Pitch CV Out / CV In",
+      "jackDescription": "Jack mode selects Pitch CV out or CV in (Evolve / Texture / Reroll). MIDI note fires in parallel unless muted.",
+      "faderTitle": "Mutation rate",
+      "faderDescription": "How strongly the note pool Lévy-walks at each phrase boundary. Bottom = frozen loop.",
+      "faderPlusShiftTitle": "Texture",
+      "faderPlusShiftDescription": "One macro for density (rests), phrase length (from 16 steps down to 4), and swing.",
+      "faderPlusFnTitle": "Lévy α",
+      "faderPlusFnDescription": "Flight character — low = local steps, high = wild jumps.",
+      "fnTitle": "Reroll / Mute",
+      "fnDescription": "Short press: new note pool, new expression depth (vel/gate jitter), restart phrase. Long press: mute.",
+      "fnPlusShiftTitle": "Reverse / Octaves",
+      "fnPlusShiftDescription": "Short: reverse playback. Long: cycle octave span 1–4.",
+      "ledTop": "Phrase position (app color)",
+      "ledTopPlusShift": "Texture amount (orange, brighter = denser/shorter)",
+      "ledTopPlusFn": "Lévy α (violet, brighter = wilder)",
+      "ledBottom": "Flash on each hit"
+    }
+  ]
+}
