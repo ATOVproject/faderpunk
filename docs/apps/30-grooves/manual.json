@@ -1,0 +1,95 @@
+{
+  "id": 30,
+  "slug": "grooves",
+  "name": "Grooves",
+  "status": "wip",
+  "tag": "ready",
+  "description": "Multi-genre MIDI drum grooves with feel",
+  "color": "Orange",
+  "icon": "Die",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "MIDI Note Kick",
+    "MIDI Note Snare",
+    "MIDI Note Hats",
+    "MIDI Note Open Hat",
+    "MIDI Note Low Tom",
+    "MIDI Note High Tom",
+    "MIDI Note Clap",
+    "MIDI Ch",
+    "Ch Map",
+    "Groove",
+    "Swing max %",
+    "GATE %",
+    "MIDI Out",
+    "Jack",
+    "CV Att",
+    "Drummer"
+  ],
+  "storage": [
+    "Feel",
+    "Density",
+    "Muted",
+    "Drummer"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Groove (genre)",
+          "items": [
+            "Configurator Groove or Shift + Fader selects the pattern family",
+            "Dub through Dubstep on the shared genre axis",
+            "Feel attenuates accents, microtiming, and swing bias"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Gestures",
+          "items": [
+            "<strong>Fader</strong> \u2014 Density",
+            "<strong>Shift + Fader</strong> \u2014 Genre scrub",
+            "<strong>Button + Fader</strong> \u2014 Feel",
+            "<strong>Short press</strong> \u2014 Reset; <strong>Long press</strong> \u2014 Mute",
+            "<strong>Shift + short/long</strong> \u2014 Reverse swing / jack mode"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "LEDs",
+          "items": [
+            "Top = bar progress; Bottom flashes on hits",
+            "Alt/Third layers preview genre or Feel in red"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "Jack output",
+      "jackDescription": "Any: velocity-weighted pulse per hit. Stacked: 1 V kick, 2 V snare, 4 V hats.",
+      "faderTitle": "Density",
+      "faderDescription": "Reveals extra drum hits as ghosts.",
+      "faderPlusShiftTitle": "Genre",
+      "faderPlusShiftDescription": "Scrub pattern families.",
+      "faderPlusFnTitle": "Feel",
+      "faderPlusFnDescription": "Attenuates groove character.",
+      "fnTitle": "Reset / Mute",
+      "fnDescription": "Short: downbeat. Long: mute.",
+      "fnPlusShiftTitle": "Reverse / Jack",
+      "fnPlusShiftDescription": "Short: reverse swing. Long: Any vs Stacked.",
+      "ledTop": "Bar position",
+      "ledTopPlusShift": "Genre color",
+      "ledTopPlusFn": "Feel (red)",
+      "ledBottom": "Hit flash"
+    }
+  ]
+}
