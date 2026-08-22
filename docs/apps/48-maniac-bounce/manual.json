@@ -1,0 +1,86 @@
+{
+  "id": 48,
+  "slug": "maniac_bounce",
+  "name": "Maniac Bounce",
+  "status": "wip",
+  "tag": "draft",
+  "description": "Delay with bounce pitch and velocity LFO",
+  "color": "Pink",
+  "icon": "Sine",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "I/O",
+    "Max delay (ms)",
+    "Signal",
+    "Range",
+    "Color",
+    "MIDI In",
+    "MIDI In CH",
+    "MIDI Out",
+    "MIDI Out",
+    "MIDI CC",
+    "MIDI Note"
+  ],
+  "storage": [
+    "Delay / decay",
+    "Bounce interval",
+    "Vel LFO",
+    "Muted"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> — Delay (up = shorter) plus coupled decay (short trails die faster)",
+            "<strong>Alt</strong> — Bounce interval bipolar ±24 st (default ~+6)",
+            "<strong>Third</strong> — Velocity LFO rate + depth (up = faster and deeper)"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Short</strong> — Mute / ring-out (block new input; trail plays out)",
+            "<strong>Long</strong> — Panic (clear queue + NoteOffs); skipped if Third was used this hold"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Params / LEDs",
+          "items": [
+            "I/O: MIDI→MIDI · MIDI→CV · CV→MIDI; Signal Pitch / Gate / CV→CC / Gate→Note",
+            "Free-running ms delay only — no clock sync, no ping-pong",
+            "Poly with same-pitch kill; note length ≈ 50% of frozen delay",
+            "MIDI→CV: Vel LFO shapes gate pulse width; Pitch CV follows bounce",
+            "White flash on input (~20% when muted)"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "Delay I/O",
+      "jackDescription": "MIDI or CV in, MIDI or CV out per I/O mode. Dry through plus bouncing repeats.",
+      "faderTitle": "Delay / decay",
+      "faderDescription": "Repeat spacing. Fader up is shorter and decays faster; down is slower with more hops.",
+      "faderPlusShiftTitle": "Bounce interval",
+      "faderPlusShiftDescription": "Each repeat alternates +interval / −interval, ±24 semitones.",
+      "faderPlusFnTitle": "Velocity LFO",
+      "faderPlusFnDescription": "Rate and depth together on dry hits and repeats. MIDI→CV Gate uses the same LFO for pulse width.",
+      "fnTitle": "Mute / panic",
+      "fnDescription": "Short mute (ring-out). Long panic unless you were editing Third.",
+      "ledTop": "Activity / bounce interval",
+      "ledBottom": "Activity / bounce interval"
+    }
+  ]
+}
