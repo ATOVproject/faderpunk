@@ -1,0 +1,89 @@
+{
+  "id": 37,
+  "slug": "harmonica",
+  "name": "Harmonica",
+  "status": "wip",
+  "tag": "ready",
+  "description": "Monophonic root in → chord MIDI out",
+  "color": "Orange",
+  "icon": "Note",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "I/O",
+    "Range",
+    "Color",
+    "MIDI In",
+    "MIDI In CH",
+    "MIDI Out",
+    "MIDI Out CH",
+    "V/Oct",
+    "Bypass quantizer",
+    "CV Gate",
+    "Strum ms"
+  ],
+  "storage": [
+    "Chord",
+    "Spread / inversion",
+    "Velocity",
+    "Harmony octave",
+    "Muted",
+    "Voicing preset"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> — Chord type (Unison · Power · Min · Maj · Sus4 · Min7 · Dom7 · Maj7 · Min9 · Add9)",
+            "<strong>Alt</strong> — Inversion (0–2) / open (top + octave)",
+            "<strong>Third</strong> — Velocity"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Short</strong> (no fader move) — Mute / unmute all voices",
+            "<strong>Alt+Short</strong> — Cycle harmony octave (−1 / 0 / +1)",
+            "<strong>Alt+Long</strong> — Step voicing preset"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Params / LEDs",
+          "items": [
+            "I/O: MIDI→MIDI · MIDI→CV · CV→MIDI; MIDI In/Out CH",
+            "CV Gate: Sustain · ms · clock divisions",
+            "Strum (ms), Color, Range, V/Oct, Bypass quantizer",
+            "Near-0V CV = rest; unpatched stays silent until stable pitch",
+            "LEDs: IR→UV spectrum per layer; mute = red; preset flash on Alt+Long"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "Root / chord out",
+      "jackDescription": "MIDI or CV root in; up to four MIDI chord voices out (MIDI→CV follows highest)",
+      "faderTitle": "Chord type",
+      "faderDescription": "Unison through Add9 (incl. Maj7 / Min9)",
+      "faderPlusShiftTitle": "Inversion / open",
+      "faderPlusShiftDescription": "Steps 0–2 = root / 1st / 2nd inversion; step 3 = open top",
+      "faderPlusFnTitle": "Velocity",
+      "faderPlusFnDescription": "MIDI velocity for sounding voices",
+      "fnTitle": "Mute / octave / preset",
+      "fnDescription": "Short mute; Alt+Short harmony octave; Alt+Long voicing preset",
+      "ledTop": "Layer spectrum / chord activity",
+      "ledBottom": "Spectrum / mute red"
+    }
+  ]
+}
