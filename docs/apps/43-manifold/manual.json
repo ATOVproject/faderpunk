@@ -1,0 +1,165 @@
+{
+  "id": 43,
+  "slug": "manifold",
+  "name": "Manifold",
+  "status": "wip",
+  "tag": "draft",
+  "description": "One CV in, three shaped outs with comparator modes",
+  "color": "Violet",
+  "icon": "Attenuate",
+  "channels_count": 4,
+  "cv_jack": true,
+  "params": [
+    "Color",
+    "In Range",
+    "Mode B",
+    "Range B",
+    "Mode C",
+    "Range C",
+    "Mode D",
+    "Range D",
+    "LFO Speed",
+    "MIDI Out",
+    "MIDI Channel",
+    "MIDI CC",
+    "MIDI NRPN",
+    "Ch Map",
+    "CC Map",
+    "Mode Map"
+  ],
+  "storage": [
+    "In Trim",
+    "In Offset",
+    "In Slew",
+    "Attenuverter",
+    "Offset",
+    "Slew",
+    "Threshold",
+    "Hysteresis",
+    "Pulse",
+    "Muted",
+    "Morph",
+    "LFO Speed",
+    "Skew",
+    "LFO Clocked"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> \u2014 input trim on channel 0; attenuverter (CV) or threshold (Gate/Trigger) on channels 1\u20133",
+            "<strong>Alt</strong> (Shift) \u2014 input offset on channel 0; output offset (CV) or hysteresis (Gate/Trigger) on channels 1\u20133",
+            "<strong>Third</strong> (Btn hold) \u2014 input slew on channel 0; output slew (CV), minimum gate length (Gate) or pulse length (Trigger) on channels 1\u20133",
+            "<strong>Channel 0 while the internal LFO runs</strong> \u2014 Main = LFO speed, Alt = morph, Third = skew (instead of trim, offset and slew)"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Channel 0 short</strong> \u2014 freeze the conditioned input value",
+            "<strong>Channel 0 Shift + short</strong> \u2014 while the internal LFO runs: free-running or clock-synced (the button flashes when sync engages)",
+            "<strong>Channels 1\u20133 short</strong> \u2014 mute/unmute that output (Shift not held); fader scrub while the button is held cancels the tap",
+            "<strong>Channels 1\u20133 long</strong> \u2014 cycle that out through CV \u2192 Gate \u2192 Trigger on release; fader scrub while held cancels (so Third-layer edits do not change mode); the new mode hue flashes and the configurator follows",
+            "<strong>Channels 1\u20133 Shift + long</strong> \u2014 cycle the output range (\u00b15 V \u2194 0\u201310 V); the button flashes <strong>1\u00d7 for \u00b15 V</strong>, <strong>2\u00d7 for 0\u201310 V</strong>; stored as a parameter, so the configurator follows"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Signal / LEDs",
+          "items": [
+            "One CV input on channel 0, three outputs B/C/D on channels 1\u20133",
+            "Five equidistant hues from blue through violet and red to orange, one per operating mode: channel 0 on CV in, channel 0 on the internal LFO, then CV, Gate and Trigger on the outs",
+            "Channel 0 is blue while CV in is active and one step warmer when the internal LFO runs; each out takes the hue of its current mode, so a mode swap shows up immediately",
+            "With nothing patched into the input, channel 0 becomes an internal morphing LFO that feeds B/C/D once the jack has been still for about 1.2 s; movement on the jack switches back to CV in",
+            "<em>LFO Speed</em> shifts the whole speed range to Slow or Slowest",
+            "CV mode uses the configured Range; Gate and Trigger modes drive the jack as a digital GPO and ignore Range",
+            "Defaults: B = CV, C = Gate, D = Trigger (\u00b15 V on the CV path)",
+            "Channel 0 LEDs dim with the active source amplitude in the source hue",
+            "CV outs dim with the shaped output level; Gate/Trigger meter the conditioned input while low and flash full when high",
+            "Button LEDs use the same mode hues and breathe with their signal level: channel 0 stays bright when frozen; channels 1\u20133 turn off when muted",
+            "MIDI: channel 0 and CV outs always send CC; Gate/Trigger outs can send Note instead via <em>Mode Map</em> (one bit per out) \u2014 pitch from that lane\u2019s <em>CC Map</em> slot; <em>Mode Map</em> 0 keeps all lanes on CC"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "CV In",
+      "jackDescription": "CV input. Set In Range to 0\u201310 V for unipolar sources or \u00b15 V for bipolar sources. With nothing patched, the internal LFO takes over as the source.",
+      "faderTitle": "Input Trim / LFO Speed",
+      "faderDescription": "CV: attenuverter on the input signal \u2014 centre is zero, left inverts, right passes through. Internal LFO: rate, or the clock division when sync is on.",
+      "faderPlusShiftTitle": "Input Offset / Morph",
+      "faderPlusShiftDescription": "CV: shifts the conditioned input up or down before the per-output stages. Internal LFO: morphs the wave from ramp through triangle, sine and square into chaos.",
+      "faderPlusFnTitle": "Input Slew / Skew",
+      "faderPlusFnDescription": "CV: smooths changes on the conditioned input. Internal LFO: skews the wave towards rising or falling.",
+      "fnTitle": "Freeze",
+      "fnDescription": "Short tap holds the conditioned input value; all outputs stop moving.",
+      "fnPlusShiftTitle": "LFO Clock Sync",
+      "fnPlusShiftDescription": "While the internal LFO runs, toggles between free-running and clock-synced. The button flashes when sync engages; a stopped transport parks the wave.",
+      "ledTop": "Input amplitude in the source hue (blue for CV in, one step warmer while the internal LFO runs)",
+      "ledBottom": "Input amplitude in the source hue (blue for CV in, one step warmer while the internal LFO runs)",
+      "ledTopPlusShift": ""
+    },
+    {
+      "jackTitle": "Output B",
+      "jackDescription": "Output B. Mode sets CV, Gate or Trigger; Range only applies in CV mode.",
+      "faderTitle": "Attenuverter / Threshold",
+      "faderDescription": "CV: attenuverter on the conditioned input. Gate/Trigger: comparator threshold.",
+      "faderPlusShiftTitle": "Offset / Hysteresis",
+      "faderPlusShiftDescription": "CV: output offset. Gate/Trigger: hysteresis below the threshold.",
+      "faderPlusFnTitle": "Slew / Gate Length / Pulse",
+      "faderPlusFnDescription": "CV: output slew. Gate: minimum gate length. Trigger: pulse length.",
+      "fnTitle": "Mute / Out Mode",
+      "fnDescription": "Short tap without Shift mutes the output. A long press cycles this out through CV \u2192 Gate \u2192 Trigger; the mode is stored as a parameter, so the configurator follows. Scrubbing the fader while the button is held cancels the tap.",
+      "fnPlusShiftTitle": "Out Range",
+      "fnPlusShiftDescription": "Shift + long press cycles the output range (\u00b15 V \u2194 0\u201310 V). The button flashes once for \u00b15 V and twice for 0\u201310 V. The range is stored as a parameter, so the configurator follows.",
+      "ledTop": "Mode hue \u00d7 amplitude (CV out / Gate\u2013Trigger input or flash)",
+      "ledBottom": "Mode hue \u00d7 amplitude (CV out / Gate\u2013Trigger input or flash)",
+      "ledTopPlusShift": ""
+    },
+    {
+      "jackTitle": "Output C",
+      "jackDescription": "Output C. Mode sets CV, Gate or Trigger; Range only applies in CV mode.",
+      "faderTitle": "Attenuverter / Threshold",
+      "faderDescription": "CV: attenuverter on the conditioned input. Gate/Trigger: comparator threshold.",
+      "faderPlusShiftTitle": "Offset / Hysteresis",
+      "faderPlusShiftDescription": "CV: output offset. Gate/Trigger: hysteresis below the threshold.",
+      "faderPlusFnTitle": "Slew / Gate Length / Pulse",
+      "faderPlusFnDescription": "CV: output slew. Gate: minimum gate length. Trigger: pulse length.",
+      "fnTitle": "Mute / Out Mode",
+      "fnDescription": "Short tap without Shift mutes the output. A long press cycles this out through CV \u2192 Gate \u2192 Trigger; the mode is stored as a parameter, so the configurator follows. Scrubbing the fader while the button is held cancels the tap.",
+      "fnPlusShiftTitle": "Out Range",
+      "fnPlusShiftDescription": "Shift + long press cycles the output range (\u00b15 V \u2194 0\u201310 V). The button flashes once for \u00b15 V and twice for 0\u201310 V. The range is stored as a parameter, so the configurator follows.",
+      "ledTop": "Mode hue \u00d7 amplitude (CV out / Gate\u2013Trigger input or flash)",
+      "ledBottom": "Mode hue \u00d7 amplitude (CV out / Gate\u2013Trigger input or flash)",
+      "ledTopPlusShift": ""
+    },
+    {
+      "jackTitle": "Output D",
+      "jackDescription": "Output D. Mode sets CV, Gate or Trigger; Range only applies in CV mode.",
+      "faderTitle": "Attenuverter / Threshold",
+      "faderDescription": "CV: attenuverter on the conditioned input. Gate/Trigger: comparator threshold.",
+      "faderPlusShiftTitle": "Offset / Hysteresis",
+      "faderPlusShiftDescription": "CV: output offset. Gate/Trigger: hysteresis below the threshold.",
+      "faderPlusFnTitle": "Slew / Gate Length / Pulse",
+      "faderPlusFnDescription": "CV: output slew. Gate: minimum gate length. Trigger: pulse length.",
+      "fnTitle": "Mute / Out Mode",
+      "fnDescription": "Short tap without Shift mutes the output. A long press cycles this out through CV \u2192 Gate \u2192 Trigger; the mode is stored as a parameter, so the configurator follows. Scrubbing the fader while the button is held cancels the tap.",
+      "fnPlusShiftTitle": "Out Range",
+      "fnPlusShiftDescription": "Shift + long press cycles the output range (\u00b15 V \u2194 0\u201310 V). The button flashes once for \u00b15 V and twice for 0\u201310 V. The range is stored as a parameter, so the configurator follows.",
+      "ledTop": "Mode hue \u00d7 amplitude (CV out / Gate\u2013Trigger input or flash)",
+      "ledBottom": "Mode hue \u00d7 amplitude (CV out / Gate\u2013Trigger input or flash)",
+      "ledTopPlusShift": ""
+    }
+  ]
+}
