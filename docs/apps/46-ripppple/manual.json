@@ -1,0 +1,161 @@
+{
+  "id": 46,
+  "slug": "ripppple",
+  "name": "Ripppple",
+  "status": "wip",
+  "tag": "draft",
+  "description": "Root CV or LFO through three cumulative waveshapers",
+  "color": "Cyan",
+  "icon": "Sine",
+  "channels_count": 4,
+  "cv_jack": true,
+  "params": [
+    "Color",
+    "In Range",
+    "Range B",
+    "Range C",
+    "Range D",
+    "Process B",
+    "Process C",
+    "Process D",
+    "LFO Speed",
+    "MIDI Out",
+    "MIDI Channel",
+    "MIDI CC",
+    "MIDI NRPN",
+    "Ch Map",
+    "CC Map"
+  ],
+  "storage": [
+    "Amount",
+    "Offset",
+    "Slew",
+    "Process",
+    "Muted",
+    "LFO Speed",
+    "Morph",
+    "Skew",
+    "LFO Clocked",
+    "In Trim",
+    "In Offset",
+    "In Slew"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Channel 0 (CV in)</strong> \u2014 Main = input trim (attenverter), Alt = offset, Third = slew",
+            "<strong>Channel 0 (internal LFO)</strong> \u2014 Main = speed, Alt = morph, Third = skew (replaces trim/offset/slew after the idle fallback)",
+            "<strong>Channels 1\u20133</strong> \u2014 Main = waveshape amount (0 = thru on Fold, unity gain), Alt = offset, Third = output slew"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Channel 0 short</strong> \u2014 freeze the root value; the whole chain stops moving",
+            "<strong>Channel 0 Shift + short</strong> \u2014 clock sync for the internal LFO; the button flashes when sync engages",
+            "<strong>Channels 1\u20133 short</strong> \u2014 mute/unmute that stage; fader scrub while the button is held cancels the tap",
+            "<strong>Channels 1\u20133 long</strong> \u2014 cycle process through Fold \u2192 Soft \u2192 Rect on release; fader scrub while held cancels (so Third-layer edits do not change process); the channel hue follows and the button LED flashes",
+            "The same three processes are also the params <em>Process B</em>, <em>Process C</em> and <em>Process D</em> in the configurator \u2014 the param sets the start value, a long press changes it live and pushes the new name back",
+            "<strong>Channels 1\u20133 Shift + long</strong> \u2014 cycle the output range (\u00b15 V \u2194 0\u201310 V); the button flashes <strong>1\u00d7 for \u00b15 V</strong>, <strong>2\u00d7 for 0\u201310 V</strong>; stored as a parameter, so the configurator follows"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Signal / LEDs",
+          "items": [
+            "Channel 0 is the root: attenuverted CV in, or an internal morphing LFO when the jack has been static for about 1.2 s",
+            "Channels 1\u20133 have no LFOs \u2014 each stage waveshapes the cumulative output of its predecessor; B \u2192 C \u2192 D",
+            "<em>Fold</em> mirrors and folds around centre; amount scales fold gain from unity at zero",
+            "<em>Soft</em> blends towards an S-curve; <em>Rect</em> blends towards full-wave rectification",
+            "<em>LFO Speed</em> shifts the root LFO range to Slow or Slowest",
+            "Five equidistant hues: channel 0 on CV in vs internal LFO, then Fold / Soft / Rect on the stages",
+            "Top and bottom LEDs are a bipolar meter of each stage\u2019s cumulative output",
+            "Button LEDs on channels 1\u20133 breathe with the stage output even while Shift is held",
+            "Muted channels are heavily dimmed and their button LED goes dark",
+            "All four channels can mirror their level as MIDI CC or NRPN, using the base CC plus the channel offset"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "CV In",
+      "jackDescription": "Root input. Set In Range to 0\u201310 V for unipolar sources or \u00b15 V for bipolar ones. Jack movement switches to CV in; after about 1.2 s of a static signal the internal LFO takes over.",
+      "faderTitle": "Input Trim / LFO Speed",
+      "faderDescription": "CV in: attenuverter on the input \u2014 centre is zero, left inverts, right passes through. Internal LFO: rate, or the clock division when sync is on.",
+      "faderPlusShiftTitle": "Input Offset / Morph",
+      "faderPlusShiftDescription": "CV in: DC offset added after trim. Internal LFO: morphs the root wave from ramp through triangle, sine and square into chaos.",
+      "faderPlusFnTitle": "Input Slew / Skew",
+      "faderPlusFnDescription": "CV in: slew on the conditioned input. Internal LFO: skews the root wave towards rising or falling.",
+      "fnTitle": "Freeze",
+      "fnDescription": "Short tap holds the root value \u2014 the value itself, not just the phase, so stepped morph nodes hold too. The whole chain freezes with it.",
+      "fnPlusShiftTitle": "LFO Clock Sync",
+      "fnPlusShiftDescription": "While the internal LFO runs, toggles between free-running and clock-synced. The button flashes when sync engages; a stopped transport parks the wave.",
+      "ledTop": "Root level in the source hue \u2014 one hue for CV in, another while the internal LFO runs",
+      "ledBottom": "Root level in the source hue \u2014 one hue for CV in, another while the internal LFO runs",
+      "ledTopPlusShift": ""
+    },
+    {
+      "jackTitle": "Output B",
+      "jackDescription": "First waveshaper stage \u2014 shapes the root. Range B sets 0\u201310 V or \u00b15 V, Process B picks Fold, Soft or Rect.",
+      "faderTitle": "Amount",
+      "faderDescription": "How strongly this stage applies its process. At zero, Fold passes through at unity gain; Soft and Rect blend from dry input.",
+      "faderPlusShiftTitle": "Offset",
+      "faderPlusShiftDescription": "DC offset added after waveshaping, before the output slew.",
+      "faderPlusFnTitle": "Slew",
+      "faderPlusFnDescription": "Output slew on the cumulative result leaving this stage.",
+      "fnTitle": "Mute / Process",
+      "fnDescription": "Short tap mutes the output with a click-free ramp. A long press cycles process through Fold \u2192 Soft \u2192 Rect; the channel hue follows and the button flashes. The same choice is the param \u201cProcess B\u201d in the configurator.",
+      "fnPlusShiftTitle": "Out Range",
+      "fnPlusShiftDescription": "Shift + long press cycles the output range (\u00b15 V \u2194 0\u201310 V). The button flashes once for \u00b15 V and twice for 0\u201310 V. The range is stored as a parameter, so the configurator follows.",
+      "ledTop": "Bipolar meter of the cumulative output, hued by the active process",
+      "ledBottom": "Bipolar meter of the cumulative output, hued by the active process",
+      "ledTopPlusShift": ""
+    },
+    {
+      "jackTitle": "Output C",
+      "jackDescription": "Second waveshaper stage \u2014 shapes the output of B. Range C sets 0\u201310 V or \u00b15 V, Process C picks Fold, Soft or Rect.",
+      "faderTitle": "Amount",
+      "faderDescription": "How strongly this stage applies its process to the cumulative signal from B.",
+      "faderPlusShiftTitle": "Offset",
+      "faderPlusShiftDescription": "DC offset added after waveshaping, before the output slew.",
+      "faderPlusFnTitle": "Slew",
+      "faderPlusFnDescription": "Output slew on the cumulative result leaving this stage.",
+      "fnTitle": "Mute / Process",
+      "fnDescription": "Short tap mutes the output. A long press cycles process through Fold \u2192 Soft \u2192 Rect.",
+      "fnPlusShiftTitle": "Out Range",
+      "fnPlusShiftDescription": "Shift + long press cycles the output range (\u00b15 V \u2194 0\u201310 V). The button flashes once for \u00b15 V and twice for 0\u201310 V. The range is stored as a parameter, so the configurator follows.",
+      "ledTop": "Bipolar meter of the cumulative output, hued by the active process",
+      "ledBottom": "Bipolar meter of the cumulative output, hued by the active process",
+      "ledTopPlusShift": ""
+    },
+    {
+      "jackTitle": "Output D",
+      "jackDescription": "Third and last waveshaper stage \u2014 shapes the output of C. Range D sets 0\u201310 V or \u00b15 V, Process D picks Fold, Soft or Rect.",
+      "faderTitle": "Amount",
+      "faderDescription": "How strongly this stage applies its process to the cumulative signal from C.",
+      "faderPlusShiftTitle": "Offset",
+      "faderPlusShiftDescription": "DC offset added after waveshaping, before the output slew.",
+      "faderPlusFnTitle": "Slew",
+      "faderPlusFnDescription": "Output slew on the cumulative result leaving this stage.",
+      "fnTitle": "Mute / Process",
+      "fnDescription": "Short tap mutes the output. A long press cycles process through Fold \u2192 Soft \u2192 Rect.",
+      "fnPlusShiftTitle": "Out Range",
+      "fnPlusShiftDescription": "Shift + long press cycles the output range (\u00b15 V \u2194 0\u201310 V). The button flashes once for \u00b15 V and twice for 0\u201310 V. The range is stored as a parameter, so the configurator follows.",
+      "ledTop": "Bipolar meter of the cumulative output, hued by the active process",
+      "ledBottom": "Bipolar meter of the cumulative output, hued by the active process",
+      "ledTopPlusShift": ""
+    }
+  ]
+}
