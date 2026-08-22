@@ -1,0 +1,66 @@
+{
+  "id": 32,
+  "slug": "super_lfo",
+  "name": "Super LFO",
+  "status": "wip",
+  "tag": "ready",
+  "description": "Morphing dual-osc LFO with CV form control",
+  "color": "Cyan",
+  "icon": "Sine",
+  "channels_count": 2,
+  "cv_jack": true,
+  "params": [
+    "Speed",
+    "Range",
+    "MIDI Channel",
+    "MIDI CC",
+    "Color",
+    "MIDI NRPN",
+    "MIDI Out",
+    "Grid Lock",
+    "Mix Mode",
+    "Osc B",
+    "Mix balance",
+    "Rate-mod depth",
+    "CV Dest"
+  ],
+  "storage": [
+    "Morph",
+    "Amp",
+    "Skew",
+    "Symmetry",
+    "Speed",
+    "Warp",
+    "Out muted"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Channels",
+          "items": [
+            "Ch0: Main=Morph, Alt=Amp, Third=Skew",
+            "Ch1: Main=Symmetry, Alt=Speed, Third=Warp",
+            "Dual oscillators with mix modes and CV destinations for form params"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "CV",
+      "jackDescription": "Bipolar or unipolar LFO output per Range param; CV Dest routes external CV to rate, phase, reset, or form targets.",
+      "faderTitle": "Morph / Symmetry",
+      "faderDescription": "Wave shape continuum on Ch0 Main; duty skew on Ch1 Main.",
+      "faderPlusShiftTitle": "Amp / Speed",
+      "faderPlusShiftDescription": "Level and rate on Alt faders.",
+      "faderPlusFnTitle": "Skew / Warp",
+      "faderPlusFnDescription": "Third-layer form tweaks.",
+      "fnTitle": "Mute / dest",
+      "fnDescription": "Short tap mutes output; Shift cycles CV destination.",
+      "ledTop": "LFO level",
+      "ledBottom": "Button / dest feedback"
+    }
+  ]
+}
