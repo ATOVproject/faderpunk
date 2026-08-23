@@ -289,9 +289,20 @@ export const Configurator = () => (
     <H4 id="settings-i2c">I²C Configuration</H4>
     <p>
       Faderpunk can operate as either a <strong>Leader</strong> or{" "}
-      <strong>Follower</strong> on the I²C bus.
-      <br />
-      You can set this behavior in the Settings tab.
+      <strong>Follower</strong> on the I²C bus. You can set this behavior in the
+      Settings tab; reboot Faderpunk after changing it.
+    </p>
+    <p>
+      Leader mode discovers supported followers once, 10 seconds after startup,
+      and requires pull-up resistors on SDA and SCL. Only apps with an I²C
+      output—currently <strong>Control</strong> and <strong>Panner</strong>—send
+      controller values; faders are not broadcast automatically.
+    </p>
+    <p>
+      To control a disting NT, configure the NT&apos;s follower address as{" "}
+      <code>0x31</code>. Faderpunk then uses the ER-301-compatible{" "}
+      <code>0x11</code> controller message supported by the NT. The NT address
+      is configurable and is not always <code>0x31</code>.
     </p>
 
     <H4 id="settings-aux">AUX Jacks</H4>
