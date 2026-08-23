@@ -11,6 +11,7 @@ use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
     channel::Channel,
     pubsub::{PubSubChannel, Subscriber},
+    signal::Signal,
 };
 use embassy_time::{Duration, Instant, Timer};
 use heapless::Deque;
@@ -33,8 +34,8 @@ use crate::{
 };
 
 const CLOCK_PUBSUB_SIZE: usize = 16;
-// 16 apps + 1 metronome
-const CLOCK_PUBSUB_SUBSCRIBERS: usize = 17;
+// 16 apps. The metronome runs off METRONOME_SIGNAL instead of subscribing here.
+const CLOCK_PUBSUB_SUBSCRIBERS: usize = 16;
 // Only the gatekeeper publishes to CLOCK_PUBSUB
 const CLOCK_PUBSUB_PUBLISHERS: usize = 5;
 // Add a slight delay before the very first tick (to offset it to reset)
@@ -45,6 +46,16 @@ const INTERNAL_PPQN: u8 = 24;
 const METRONOME_HIGH_MS: u64 = 25;
 
 pub static METRONOME_HIGH: AtomicBool = AtomicBool::new(true);
+
+/// Point-to-point notification for the metronome only, fed by the gatekeeper.
+///
+/// A [`CLOCK_PUBSUB`] subscription costs a queue slot and obliges the reader to
+/// keep draining it; `signal()` is a single-slot mailbox that a producer can
+/// never block on, so the gatekeeper can notify the metronome the same way it
+/// publishes to CLOCK_PUBSUB without risking a stall if the metronome is busy
+/// (e.g. mid beat-flash). Overwriting an unread value only costs the metronome
+/// a beat, same tradeoff as CLOCK_PUBSUB's `publish_immediate` for apps.
+static METRONOME_SIGNAL: Signal<CriticalSectionRawMutex, ClockEvent> = Signal::new();
 
 type AuxInputs = (
     Peri<'static, PIN_1>,
@@ -313,12 +324,16 @@ async fn analog_tick_release(ports: heapless::Vec<Port, 4>, trigger_len: u64) {
         .await;
 }
 
+/// Scene LED beat flash — waits on [`METRONOME_SIGNAL`] only.
+///
+/// Must never subscribe to [`CLOCK_PUBSUB`]: awaiting a timer while holding a
+/// subscriber slot lets the shared queue fill, and a gatekeeper that cannot
+/// publish stops the whole device clock. `METRONOME_SIGNAL` is single-slot and
+/// the producer side never awaits, so it can't reintroduce that stall.
 #[embassy_executor::task]
 async fn metronome() {
-    let mut sub = CLOCK_PUBSUB.subscriber().unwrap();
-
     loop {
-        match sub.next_message_pure().await {
+        match METRONOME_SIGNAL.wait().await {
             ClockEvent::Tick(ticks) => {
                 // Fire on the first tick of each quarter note (every 24 ppqn ticks).
                 if ticks.is_multiple_of(24) {
@@ -409,8 +424,10 @@ async fn run_clock_gatekeeper() {
                             // sleeps while holding its slot fills the queue,
                             // and a blocked gatekeeper stops the whole device
                             // clock. Overwriting the oldest tick only costs a
-                            // lagged subscriber a beat.
+                            // lagged subscriber a beat. METRONOME_SIGNAL is a
+                            // single-slot mailbox, so signal() never blocks either.
                             clock_publisher.publish_immediate(ClockEvent::Tick(tick_counter));
+                            METRONOME_SIGNAL.signal(ClockEvent::Tick(tick_counter));
                             send_analog_ticks(&spawner, &config, &mut analog_tick_counters).await;
                         }
                     }
@@ -426,6 +443,7 @@ async fn run_clock_gatekeeper() {
                     ClockInEvent::Continue(_) => {
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Start).await;
+                        METRONOME_SIGNAL.signal(ClockEvent::Start);
                         midi_rt_event = Some(SystemRealtime::Continue);
                     }
                     // (Re-)start the clock. Full phase reset
@@ -434,6 +452,7 @@ async fn run_clock_gatekeeper() {
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
+                        METRONOME_SIGNAL.signal(ClockEvent::Start);
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
                         midi_rt_event = Some(SystemRealtime::Start);
@@ -442,12 +461,14 @@ async fn run_clock_gatekeeper() {
                     ClockInEvent::Stop(_) => {
                         is_running = false;
                         clock_publisher.publish(ClockEvent::Stop).await;
+                        METRONOME_SIGNAL.signal(ClockEvent::Stop);
                         midi_rt_event = Some(SystemRealtime::Stop);
                     }
                     // Reset the phase without affecting the run state
                     ClockInEvent::Reset(_) => {
                         tick_counter = u64::MAX;
                         clock_publisher.publish(ClockEvent::Reset).await;
+                        METRONOME_SIGNAL.signal(ClockEvent::Reset);
                         analog_tick_counters = [0; 3];
                         send_analog_reset(&spawner, &config).await;
                         midi_rt_event = Some(SystemRealtime::Reset);
