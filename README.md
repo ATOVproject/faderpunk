@@ -287,9 +287,12 @@ Apps implement scene save/load by serializing their state with `postcard`.
 - Full MIDI message support via `midly` crate
 
 ### I2C
-- 16n faderbank protocol support
-- Eurorack module integration
-- Configurable addressing
+- External 400 kHz leader bus for Ansible, ER-301-compatible, and TXo devices
+- disting NT controller support when its configurable follower address is set to `0x31`
+- Latest-value delivery for Control and Panner app outputs
+
+See [I²C integration](docs/i2c.md) for wiring requirements, recognized addresses,
+message formats, app behavior, and startup discovery details.
 
 ### WebUSB
 - COBS framing for reliable packet transmission
