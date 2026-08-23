@@ -10,7 +10,7 @@ macro_rules! register_apps {
         };
 
         use libfp::ConfigMeta;
-        use crate::{I2C_LEADER_CHANNEL, MAX_CHANNEL, APP_MIDI_CHANNEL};
+        use crate::{I2C_LEADER_PUBLISHER, MAX_CHANNEL, APP_MIDI_CHANNEL};
         use crate::{app::App, events::EVENT_PUBSUB, tasks::midi::{MIDI_DIN_PUBSUB, MIDI_USB_PUBSUB}};
         use embassy_executor::Spawner;
 
@@ -41,7 +41,7 @@ macro_rules! register_apps {
                             start_channel,
                             layout_id,
                             &EVENT_PUBSUB,
-                            I2C_LEADER_CHANNEL.sender(),
+                            I2C_LEADER_PUBLISHER,
                             MAX_CHANNEL.sender(),
                             APP_MIDI_CHANNEL.sender(),
                             &MIDI_DIN_PUBSUB,
