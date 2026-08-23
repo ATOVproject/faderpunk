@@ -10,6 +10,7 @@ import { H2, List, Link } from "./manual/Shared";
 import { Interface } from "./manual/Interface";
 import { PunkBus } from "./manual/PunkBus";
 import { Configurator } from "./manual/Configurator";
+import { CommunityTools } from "./manual/CommunityTools";
 
 const apps: ManualAppData[] = [
   {
@@ -1729,6 +1730,9 @@ export const ManualTab = () => {
               </li>
             </List>
           </li>
+          <li>
+            <Link to="#community-tools">Community Tools</Link>
+          </li>
         </List>
       </nav>
       <Preface />
@@ -1738,6 +1742,7 @@ export const ManualTab = () => {
       <Apps apps={apps} />
       <UpdateGuide />
       <Troubleshooting />
+      <CommunityTools />
     </>
   );
 };
