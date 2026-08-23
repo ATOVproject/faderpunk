@@ -67,3 +67,79 @@ pub enum ErrorCode {
     InvalidChannel,
     MeasurementFailed,
 }
+
+pub const I2C_FADER_CHANNELS: usize = 16;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FaderUpdate {
+    pub channel: usize,
+    pub value: u16,
+    pub range: Range,
+}
+
+impl FaderUpdate {
+    pub const fn new(channel: usize, value: u16, range: Range) -> Self {
+        Self {
+            channel,
+            value,
+            range,
+        }
+    }
+}
+
+pub struct PendingFaderUpdates {
+    updates: [Option<FaderUpdate>; I2C_FADER_CHANNELS],
+}
+
+impl PendingFaderUpdates {
+    pub const fn new() -> Self {
+        Self {
+            updates: [None; I2C_FADER_CHANNELS],
+        }
+    }
+
+    pub fn publish(&mut self, channel: usize, value: u16, range: Range) {
+        if let Some(slot) = self.updates.get_mut(channel) {
+            *slot = Some(FaderUpdate::new(channel, value, range));
+        }
+    }
+
+    pub fn take_all(&mut self) -> [Option<FaderUpdate>; I2C_FADER_CHANNELS] {
+        core::mem::replace(&mut self.updates, [None; I2C_FADER_CHANNELS])
+    }
+}
+
+impl Default for PendingFaderUpdates {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pending_fader_updates_keep_only_the_latest_value_per_channel() {
+        let mut pending = PendingFaderUpdates::new();
+
+        pending.publish(3, 100, Range::_0_10V);
+        pending.publish(3, 900, Range::_Neg5_5V);
+
+        let updates = pending.take_all();
+        assert_eq!(updates[3], Some(FaderUpdate::new(3, 900, Range::_Neg5_5V)));
+        assert!(pending.take_all().iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn pending_fader_updates_retain_different_channels_independently() {
+        let mut pending = PendingFaderUpdates::new();
+
+        pending.publish(2, 200, Range::_0_10V);
+        pending.publish(11, 1100, Range::_0_5V);
+
+        let updates = pending.take_all();
+        assert_eq!(updates[2], Some(FaderUpdate::new(2, 200, Range::_0_10V)));
+        assert_eq!(updates[11], Some(FaderUpdate::new(11, 1100, Range::_0_5V)));
+    }
+}
