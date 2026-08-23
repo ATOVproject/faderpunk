@@ -125,10 +125,13 @@ fi
 
 is_app_file() { [[ "$1" == faderpunk/src/apps/*.rs && "$1" != faderpunk/src/apps/mod.rs ]]; }
 is_manual_file() {
+  # docs/apps/*/manual.{md,json} is deliberately NOT accepted here — see
+  # faderpunk issue #656: nothing in the configurator actually consumes that
+  # format, so a PR that only touches it still needs the missing-manual-entry
+  # soft-flag below, not a silent pass.
   case "$1" in
     configurator/src/components/ManualTab.tsx|configurator/src/components/manual/Apps.tsx| \
     configurator/src/components/manual/ManualApp.tsx|configurator/src/components/manual/Md.tsx) return 0 ;;
-    docs/apps/*/manual.md|docs/apps/*/manual.json) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -325,7 +328,7 @@ fi
 
 if [[ ${#app_files_new[@]} -gt 0 ]]; then
   [[ "$touches_mod_rs" == false ]] && SOFT_FLAGS+=("New app file added but \`faderpunk/src/apps/mod.rs\` isn't touched — app won't be registered.")
-  [[ "$touches_manual" == false ]] && SOFT_FLAGS+=("New app file added but no manual entry found (neither \`ManualTab.tsx\`/\`manual/Apps.tsx\` nor \`docs/apps/*/manual.*\`).")
+  [[ "$touches_manual" == false ]] && SOFT_FLAGS+=("New app file added but no manual entry found in \`ManualTab.tsx\`/\`manual/Apps.tsx\` — this is the only format the configurator actually renders (see issue #656).")
 fi
 
 total_net=0
