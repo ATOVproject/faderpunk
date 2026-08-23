@@ -115,6 +115,35 @@ impl Default for PendingFaderUpdates {
     }
 }
 
+pub struct OutputChangeTracker<const N: usize> {
+    previous: [Option<u16>; N],
+}
+
+impl<const N: usize> OutputChangeTracker<N> {
+    pub const fn new() -> Self {
+        Self {
+            previous: [None; N],
+        }
+    }
+
+    pub fn changed(&mut self, values: [u16; N]) -> [Option<u16>; N] {
+        core::array::from_fn(|index| {
+            if self.previous[index] == Some(values[index]) {
+                None
+            } else {
+                self.previous[index] = Some(values[index]);
+                Some(values[index])
+            }
+        })
+    }
+}
+
+impl<const N: usize> Default for OutputChangeTracker<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,5 +170,14 @@ mod tests {
         let updates = pending.take_all();
         assert_eq!(updates[2], Some(FaderUpdate::new(2, 200, Range::_0_10V)));
         assert_eq!(updates[11], Some(FaderUpdate::new(11, 1100, Range::_0_5V)));
+    }
+
+    #[test]
+    fn output_change_tracker_reports_both_panner_outputs_and_suppresses_duplicates() {
+        let mut tracker = OutputChangeTracker::<2>::new();
+
+        assert_eq!(tracker.changed([1200, 2800]), [Some(1200), Some(2800)]);
+        assert_eq!(tracker.changed([1200, 2800]), [None, None]);
+        assert_eq!(tracker.changed([1300, 2800]), [Some(1300), None]);
     }
 }

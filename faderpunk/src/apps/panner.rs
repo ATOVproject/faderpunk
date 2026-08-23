@@ -6,6 +6,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
     ext::FromValue,
+    i2c_proto::OutputChangeTracker,
     latch::LatchLayer,
     utils::{attenuate_bipolar, clickless, midi_gate, slew_exp, split_unsigned_value, SlewState},
     AppIcon, Brightness, Color, MidiCc, MidiChannel, MidiOut, Waveform, APP_MAX_PARAMS,
@@ -212,7 +213,6 @@ pub async fn run(
     let i2c = app.use_i2c_output();
 
     let muted_glob = app.make_global(storage.query(|s| s.muted));
-    let output_glob = app.make_global(0);
     let latch_layer_glob = app.make_global(LatchLayer::Main);
     let glob_lfo_speed = app.make_global(0.0682);
 
@@ -249,6 +249,7 @@ pub async fn run(
         let mut out_r = SlewState::new();
         let mut out_l = SlewState::new();
         let mut last_out: [u16; 2] = [u16::MAX, u16::MAX];
+        let mut i2c_changes = OutputChangeTracker::<2>::new();
 
         let mut val_left = 0;
         let mut val_right = 0;
@@ -373,6 +374,16 @@ pub async fn run(
             // Output to jacks
             jacks[0].set_value(out_l_val);
             jacks[1].set_value(out_r_val);
+
+            for (channel, value) in i2c_changes
+                .changed([out_l_val, out_r_val])
+                .into_iter()
+                .enumerate()
+            {
+                if let Some(value) = value {
+                    i2c.send_fader_value(channel, value, range);
+                }
+            }
 
             if midi_out.is_some() {
                 let gate_l = midi_gate(out_l_val, nrpn);
@@ -519,18 +530,9 @@ pub async fn run(
         let mut latch = app.make_latch(faders.get_value_at(1));
         loop {
             let chan = faders.wait_for_any_change().await;
-            if chan == 0 {
-                match latch_layer_glob.get() {
-                    LatchLayer::Main => {
-                        let out = output_glob.get();
-                        i2c.send_fader_value(0, out, range);
-                    }
-                    LatchLayer::Alt => {
-                        // Now we commit to storage
-                        storage.save().await;
-                    }
-                    LatchLayer::Third => {}
-                }
+            if chan == 0 && latch_layer_glob.get() == LatchLayer::Alt {
+                // Now we commit to storage
+                storage.save().await;
             }
             if chan == 1 {
                 let target_value = match latch_layer_glob.get() {
