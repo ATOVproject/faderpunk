@@ -16,7 +16,7 @@ Every PR is automatically classified by what it touches, not by what you say it 
 
 | Category | What it may touch |
 |---|---|
-| **New app** | One new file under `faderpunk/src/apps/`, the one-line registration in `faderpunk/src/apps/mod.rs`, and its manual entry (`configurator/src/components/ManualTab.tsx` / `manual/Apps.tsx`, or `docs/apps/<id>-<name>/manual.{md,json}`) |
+| **New app** | One new file under `faderpunk/src/apps/`, the one-line registration in `faderpunk/src/apps/mod.rs`, and its manual entry (`configurator/src/components/ManualTab.tsx` / `manual/Apps.tsx`) |
 | **App fix** | Only the existing app's own file(s) under `faderpunk/src/apps/` |
 | **Firmware core** | Core firmware files outside `apps/` (e.g. `app.rs`, `layout.rs`, `tasks/*`, `memory.x`, `.cargo/config.toml`) |
 | **Configurator** | Files under `configurator/` |
