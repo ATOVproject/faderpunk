@@ -4,7 +4,8 @@ This is for external human contributors. If you're an AI coding agent (or a huma
 
 ## Before you start
 
-- **Adding a new app or fixing an existing one?** See the README's ["Creating a New App"](README.md) walkthrough for the pattern to follow.
+- **Proposing a brand new, optional app?** That belongs in [`faderpunk-community-apps`](https://github.com/ATOVproject/faderpunk-community-apps), not here — see "Standalone companion tools" below for why, and that repo's own `CONTRIBUTING.md` for its submission format.
+- **Fixing or improving one of the existing official apps?** See the README's ["Creating a New App"](README.md) walkthrough for the pattern to follow, then open a PR against `main` here.
 - **Anything else** (firmware core, configurator, protocol/libfp, docs, CI): open a PR against `main` following the scope rules below.
 - **A standalone tool, not an on-device app** (a preset editor, a diagnostics dashboard, etc.)? See "Standalone companion tools" below before opening a PR — it almost certainly doesn't belong in this repo.
 
@@ -61,7 +62,7 @@ Why this matters: a stacked PR turns merge order into an undocumented dependency
 
 Tools that aren't part of the on-device app system — preset editors, diagnostic dashboards, and similar companion utilities — should be **hosted by their author in their own repository**, not merged into this monorepo. They bring their own dependency/build footprint and ongoing maintenance burden that doesn't belong here. We're happy to link to community tools like these from our docs so they stay discoverable, without taking on their maintenance.
 
-Longer-term, optional/unofficial apps (as opposed to companion tools) may have a dedicated lower-barrier outlet in a separate, linked repo — not live yet; this section will be updated with a pointer once that's decided.
+Optional/unofficial apps (as opposed to companion tools) have their own dedicated, lower-barrier outlet: [`faderpunk-community-apps`](https://github.com/ATOVproject/faderpunk-community-apps). If what you're proposing is a new, optional on-device app rather than a fix to one of the official ones, open your PR there instead of here — same `App<N>` pattern, its own lighter-weight review gate, and a merge doesn't wait on this repo's release schedule. Building a firmware that includes a community app is opt-in, via [`faderpunk-forge`](https://github.com/ATOVproject/faderpunk-forge).
 
 ## Basic PR process
 
