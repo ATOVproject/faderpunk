@@ -1,11 +1,17 @@
+use core::cell::RefCell;
+
 use defmt::{error, info};
 use embassy_executor::Spawner;
 use embassy_rp::i2c::{self, Async};
 use embassy_rp::i2c_slave::{self, Command, I2cSlave};
 use embassy_rp::peripherals::{I2C0, PIN_20, PIN_21};
 use embassy_rp::Peri;
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, ThreadModeRawMutex};
+use embassy_sync::blocking_mutex::{
+    raw::{CriticalSectionRawMutex, ThreadModeRawMutex},
+    Mutex,
+};
 use embassy_sync::channel::{Channel, Receiver, Sender};
+use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use embedded_hal_async::i2c::I2c;
 use max11300::config::{ConfigMode5, ConfigMode7, Mode, Port, AVR, NSAMPLES};
@@ -17,10 +23,11 @@ use portable_atomic::Ordering;
 
 use libfp::{
     i2c_proto::{
-        DeviceStatus, ErrorCode, Response, WriteCommand, WriteReadCommand, MAX_MESSAGE_SIZE,
+        DeviceStatus, ErrorCode, FaderUpdate, PendingFaderUpdates, Response, WriteCommand,
+        WriteReadCommand, MAX_MESSAGE_SIZE,
     },
     types::{RegressionValuesInput, RegressionValuesOutput},
-    I2cMode, Range, I2C_ADDRESS_CALIBRATION,
+    I2cMode, Range, GLOBAL_CHANNELS, I2C_ADDRESS_CALIBRATION,
 };
 use postcard::{from_bytes, to_slice};
 
@@ -42,20 +49,29 @@ pub enum I2cFollowerMessage {
     ChannelUpdate(usize),
 }
 
-pub enum I2cLeaderMessage {
-    FaderValue(usize, u16, Range),
-}
-
-const I2C_LEADER_CHANNEL_SIZE: usize = 16;
 const I2C_FOLLOWER_CHANNEL_SIZE: usize = 8;
 
-pub static I2C_LEADER_CHANNEL: Channel<
-    CriticalSectionRawMutex,
-    I2cLeaderMessage,
-    I2C_LEADER_CHANNEL_SIZE,
-> = Channel::new();
-pub type I2cLeaderSender =
-    Sender<'static, CriticalSectionRawMutex, I2cLeaderMessage, I2C_LEADER_CHANNEL_SIZE>;
+static I2C_PENDING_UPDATES: Mutex<CriticalSectionRawMutex, RefCell<PendingFaderUpdates>> =
+    Mutex::new(RefCell::new(PendingFaderUpdates::new()));
+static I2C_UPDATE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+#[derive(Clone, Copy)]
+pub struct I2cLeaderPublisher;
+
+pub const I2C_LEADER_PUBLISHER: I2cLeaderPublisher = I2cLeaderPublisher;
+
+impl I2cLeaderPublisher {
+    pub fn publish(&self, channel: usize, value: u16, range: Range) {
+        I2C_PENDING_UPDATES.lock(|pending| {
+            pending.borrow_mut().publish(channel, value, range);
+        });
+        I2C_UPDATE_SIGNAL.signal(());
+    }
+}
+
+fn take_pending_updates() -> [Option<FaderUpdate>; GLOBAL_CHANNELS] {
+    I2C_PENDING_UPDATES.lock(|pending| pending.borrow_mut().take_all())
+}
 
 pub static I2C_FOLLOWER_CHANNEL: Channel<
     ThreadModeRawMutex,
@@ -326,7 +342,11 @@ async fn run_i2c_leader(mut i2c: i2c::I2c<'static, I2C0, Async>) {
     let mut compat16n = Compat16N::new(&mut i2c).await;
 
     loop {
-        let I2cLeaderMessage::FaderValue(chan, value, range) = I2C_LEADER_CHANNEL.receive().await;
-        compat16n.handle_fader_update(chan, value, range).await;
+        I2C_UPDATE_SIGNAL.wait().await;
+        for update in take_pending_updates().into_iter().flatten() {
+            compat16n
+                .handle_fader_update(update.channel, update.value, update.range)
+                .await;
+        }
     }
 }

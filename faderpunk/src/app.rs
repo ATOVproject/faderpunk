@@ -25,7 +25,7 @@ use crate::{
         buttons::{is_channel_button_pressed, is_shift_button_pressed},
         clock::{ClockSubscriber, CLOCK_PUBSUB},
         global_config::get_global_config,
-        i2c::{I2cLeaderMessage, I2cLeaderSender},
+        i2c::I2cLeaderPublisher,
         leds::{set_led_mode, LedMsg},
         max::{MaxCmd, MaxSender, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER},
         midi::{
@@ -340,24 +340,22 @@ pub enum SceneEvent {
 
 #[derive(Clone, Copy)]
 pub struct I2cOutput<const N: usize> {
-    i2c_sender: I2cLeaderSender,
+    i2c_publisher: I2cLeaderPublisher,
     start_channel: usize,
 }
 
 impl<const N: usize> I2cOutput<N> {
-    pub fn new(start_channel: usize, i2c_sender: I2cLeaderSender) -> Self {
+    pub fn new(start_channel: usize, i2c_publisher: I2cLeaderPublisher) -> Self {
         Self {
-            i2c_sender,
+            i2c_publisher,
             start_channel,
         }
     }
 
     pub fn send_fader_value(&self, chan: usize, value: u16, range: Range) {
         let chan = chan.clamp(0, N - 1);
-        let msg = I2cLeaderMessage::FaderValue(self.start_channel + chan, value, range);
-        // Use try_send to avoid blocking the caller if the I2C channel is full.
-        // Dropping occasional updates is fine — the next update will send the current value.
-        let _ = self.i2c_sender.try_send(msg);
+        self.i2c_publisher
+            .publish(self.start_channel + chan, value, range);
     }
 }
 
@@ -675,7 +673,7 @@ pub struct App<const N: usize> {
     pub start_channel: usize,
     pub layout_id: u8,
     event_pubsub: &'static EventPubSubChannel,
-    i2c_sender: I2cLeaderSender,
+    i2c_publisher: I2cLeaderPublisher,
     max_sender: MaxSender,
     midi_sender: AppMidiSender,
     midi_din_pubsub: &'static MidiPubSubChannel,
@@ -689,7 +687,7 @@ impl<const N: usize> App<N> {
         start_channel: usize,
         layout_id: u8,
         event_pubsub: &'static EventPubSubChannel,
-        i2c_sender: I2cLeaderSender,
+        i2c_publisher: I2cLeaderPublisher,
         max_sender: MaxSender,
         midi_sender: AppMidiSender,
         midi_din_pubsub: &'static MidiPubSubChannel,
@@ -698,7 +696,7 @@ impl<const N: usize> App<N> {
         Self {
             app_id,
             event_pubsub,
-            i2c_sender,
+            i2c_publisher,
             layout_id,
             max_sender,
             midi_sender,
@@ -827,7 +825,7 @@ impl<const N: usize> App<N> {
     }
 
     pub fn use_i2c_output(&self) -> I2cOutput<N> {
-        I2cOutput::new(self.start_channel, self.i2c_sender)
+        I2cOutput::new(self.start_channel, self.i2c_publisher)
     }
 
     pub async fn wait_for_scene_event(&self) -> SceneEvent {
