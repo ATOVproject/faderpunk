@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     types::{RegressionValuesInput, RegressionValuesOutput},
-    Range,
+    Range, GLOBAL_CHANNELS,
 };
 
 /// Maximum size of a serialized message in bytes.
@@ -68,8 +68,6 @@ pub enum ErrorCode {
     MeasurementFailed,
 }
 
-pub const I2C_FADER_CHANNELS: usize = 16;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FaderUpdate {
     pub channel: usize,
@@ -88,13 +86,13 @@ impl FaderUpdate {
 }
 
 pub struct PendingFaderUpdates {
-    updates: [Option<FaderUpdate>; I2C_FADER_CHANNELS],
+    updates: [Option<FaderUpdate>; GLOBAL_CHANNELS],
 }
 
 impl PendingFaderUpdates {
     pub const fn new() -> Self {
         Self {
-            updates: [None; I2C_FADER_CHANNELS],
+            updates: [None; GLOBAL_CHANNELS],
         }
     }
 
@@ -104,8 +102,8 @@ impl PendingFaderUpdates {
         }
     }
 
-    pub fn take_all(&mut self) -> [Option<FaderUpdate>; I2C_FADER_CHANNELS] {
-        core::mem::replace(&mut self.updates, [None; I2C_FADER_CHANNELS])
+    pub fn take_all(&mut self) -> [Option<FaderUpdate>; GLOBAL_CHANNELS] {
+        core::mem::replace(&mut self.updates, [None; GLOBAL_CHANNELS])
     }
 }
 

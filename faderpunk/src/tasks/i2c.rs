@@ -24,10 +24,10 @@ use portable_atomic::Ordering;
 use libfp::{
     i2c_proto::{
         DeviceStatus, ErrorCode, FaderUpdate, PendingFaderUpdates, Response, WriteCommand,
-        WriteReadCommand, I2C_FADER_CHANNELS, MAX_MESSAGE_SIZE,
+        WriteReadCommand, MAX_MESSAGE_SIZE,
     },
     types::{RegressionValuesInput, RegressionValuesOutput},
-    I2cMode, Range, I2C_ADDRESS_CALIBRATION,
+    I2cMode, Range, GLOBAL_CHANNELS, I2C_ADDRESS_CALIBRATION,
 };
 use postcard::{from_bytes, to_slice};
 
@@ -69,7 +69,7 @@ impl I2cLeaderPublisher {
     }
 }
 
-fn take_pending_updates() -> [Option<FaderUpdate>; I2C_FADER_CHANNELS] {
+fn take_pending_updates() -> [Option<FaderUpdate>; GLOBAL_CHANNELS] {
     I2C_PENDING_UPDATES.lock(|pending| pending.borrow_mut().take_all())
 }
 

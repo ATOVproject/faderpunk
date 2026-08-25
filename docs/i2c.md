@@ -48,8 +48,10 @@ address is configurable: `0x31` is the compatibility setting used here, not an
 address permanently assigned to every NT. Do not place another `0x31` follower
 on the same bus.
 
-Controller numbers are zero-based physical Faderpunk channel numbers. Values
-are scaled from Faderpunk's `0`–`4095` range to `0`–`16383`.
+For the ER-301/TXo path, controller numbers are zero-based physical Faderpunk
+channel numbers, and values are scaled from Faderpunk's `0`–`4095` range to
+`0`–`16383`. Ansible's addressing and value scaling differ and are not yet
+documented here.
 
 ## Apps that produce controller messages
 
