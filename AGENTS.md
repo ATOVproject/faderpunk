@@ -159,7 +159,9 @@ has unit tests (`cargo test --lib -p libfp`) — run them when you touch it.
 - **Command Channels**: Apps send commands to hardware tasks via async channels:
   - `MAX_CHANNEL` - Control CV jacks (ADC/DAC configuration, set values)
   - `APP_MIDI_CHANNEL` - Send MIDI messages
-  - `I2C_LEADER_CHANNEL` - Send I2C messages
+  - `I2C_LEADER_PUBLISHER` - Publish I2C controller values; not a queue — each
+    physical channel keeps only its latest unsent value, so a newer publish
+    overwrites an older one that hasn't gone out yet
 - **Watch Channels**: Global state synchronization:
   - `LAYOUT_WATCH` - Current channel layout
   - `GLOBAL_CONFIG_WATCH` - Device configuration

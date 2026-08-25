@@ -241,7 +241,7 @@ BANNED_PATTERNS=(
   'migrate_fram' 'factory_reset'
   'MAX_CHANNEL' 'MaxCmd' 'MaxSender' 'crate::tasks::max' 'super::tasks::max'
   'APP_MIDI_CHANNEL' 'MIDI_CHANNEL' 'MIDI_USB_PUBSUB' 'MIDI_DIN_PUBSUB' 'crate::tasks::midi'
-  'I2C_LEADER_CHANNEL' 'I2C_FOLLOWER_CHANNEL' 'crate::tasks::i2c'
+  'I2C_LEADER_PUBLISHER' 'I2C_LEADER_CHANNEL' 'I2C_FOLLOWER_CHANNEL' 'crate::tasks::i2c'
   'BUTTON_PRESSED' 'crate::tasks::buttons'
   'CLOCK_PUBSUB' 'TICK_COUNTER' 'CLOCK_IN_CHANNEL' 'TRANSPORT_CMD_CHANNEL' 'SYNC_ENGINE_CHANNEL' 'crate::tasks::clock'
   'GLOBAL_CONFIG_WATCH' 'set_global_config_via_chan' 'crate::tasks::global_config'

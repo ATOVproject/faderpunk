@@ -52,7 +52,7 @@ use tasks::{
     buttons::{is_channel_button_pressed, is_scene_button_pressed},
     fram::MAX_DATA_LEN,
     global_config::GLOBAL_CONFIG_WATCH,
-    i2c::I2C_LEADER_CHANNEL,
+    i2c::I2C_LEADER_PUBLISHER,
     max::MAX_CHANNEL,
     midi::{midi_distributor, APP_MIDI_CHANNEL},
 };
