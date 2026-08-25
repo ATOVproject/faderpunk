@@ -1,0 +1,61 @@
+<!-- CHORD VAMP -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 35</span>
+    <h2>Chord Vamp <span class="tag ready">ready</span></h2>
+    <span class="desc">Chord progressions — perform, capture, auto · MIDI + CV</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main (Perform)</strong> — Scrub genre degrees × 3 octaves (pitch map)</li>
+          <li><strong>Main (Auto)</strong> — Tension (Meander only)</li>
+          <li><strong>Alt</strong> — Genre (+ Capture clip slot if clip exists)</li>
+          <li>Shared axis: Dub → Disco → House → Techno → Trip-Hop → Hip-Hop → Jungle → UK Garage → Dubstep</li>
+          <li><strong>Third (Auto)</strong> — Feel (laid ↔ advanced stab length)</li>
+          <li><strong>Third (Perform)</strong> — Feel still stored; LEDs = blue / chord pitch</li>
+        </ul>
+        <h3>Jack params</h3>
+        <ul>
+          <li>Jack: CV Out · CV In Macro · CV In Panic</li>
+          <li>One enum — a CV In destination and CV Out were never live at once, and the freed slot is what lets Vamp grow</li>
+          <li>Range, V/Oct, CV Att</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Perform hold</strong> — Chord on; release = off (blue LEDs track pitch)</li>
+          <li><strong>Auto short</strong> — Play / pause</li>
+          <li><strong>Shift+Short (Perform)</strong> — Capture last N bars → Auto+Play</li>
+          <li><strong>Shift+Short (Auto)</strong> — Return to Perform</li>
+          <li><strong>Auto Long</strong> — Clear clip, reseed genre phrase</li>
+          <li><strong>Shift+Long</strong> — Panic (both modes)</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params</h3>
+        <ul>
+          <li>Root, Scale, Genre, Voicing, Velocity</li>
+          <li>Follow device tonic (default on)</li>
+          <li>Auto style: Repeat / Meander</li>
+          <li>Start mode: Perform / Auto</li>
+          <li>Capture: 16 / 8 / 4 / 2 / 1 bars</li>
+          <li>LED: Perform = app color; Auto = orange; Hold Auto = rose (phrase pos)</li>
+        </ul>
+        <h3>Scene storage</h3>
+        <ul>
+          <li>8-slot vamp + Capture clip</li>
+          <li><strong>Swing</strong> 0–100 — genre-seeded; odd-16th delay (no Configurator param)</li>
+          <li>Feel, scrub, tension, mode, play/pause</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> MIDI chord vamp with optional CV jack. Shared 9-genre axis with Grooves (Dub→…→Jungle→…→Dubstep). <strong>Perform</strong>: fader = genre-unique degrees ascending across ~3 octaves; hold plays the chord (blue = pitch). <strong>Shift+Short</strong> captures recent harmony (starts quantized to 16ths, lead-in cropped to first hit; hold lengths free) into a timed clip and arms Auto. <strong>Auto</strong>: genre rhythm phrase loops — multi-chord statement (~1–2 bars) then multi-bar rest; harmony Repeat or Meander; Feel sets short stab gate (rests fixed); Swing (scene, genre-seeded) delays odd 16ths on Auto + Capture. Short = play/pause; Long clears clip / reseeds; Shift+Short → Perform; Shift+Long = Panic in either mode. Alt = genre (+ Capture slot). CV Macro = scrub/tension; Panic from CV optional. <strong>Follow device tonic</strong> (default on) turns the device Tonic into a live transpose — hold the Scene button, move Fader 5, and the harmony moves with Bassment, Contura, Venn and Arp de Levy; the pitch class comes from the device, the octave stays with Root, and it lands on the next chord. There is no scale-follow counterpart: Scale defines the progressions, and Vamp sits at the 16-param ceiling.</p>
+    </div>
+  </div>
+</section>
+

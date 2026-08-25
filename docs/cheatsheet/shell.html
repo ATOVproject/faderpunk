@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Faderpunk WIP Apps — UX Cheatsheet</title>
+<style>
+  @page { size: A4; margin: 9mm 10mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 8pt;
+    line-height: 1.25;
+    color: #111;
+    margin: 0;
+  }
+  h1 { font-size: 14pt; margin: 0 0 2pt; letter-spacing: -0.02em; }
+  .sub { font-size: 7.5pt; color: #444; margin: 0 0 6pt; }
+  .legend {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 3pt 8pt;
+    border: 1px solid #222;
+    padding: 4pt 6pt;
+    margin-bottom: 6pt;
+    background: #f6f6f4;
+  }
+  .jack-note {
+    border: 1px solid #222;
+    padding: 4pt 6pt;
+    margin-bottom: 6pt;
+    background: #eef3f7;
+  }
+  .app {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1.4px solid #111;
+    margin: 0 0 5.5pt;
+  }
+  .app-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6pt;
+    padding: 3pt 6pt;
+    border-bottom: 1px solid #111;
+    background: #111;
+    color: #fff;
+  }
+  .app-head h2 { font-size: 10pt; margin: 0; flex: 1; }
+  .app-head .id { font-size: 7.5pt; opacity: 0.75; }
+  .app-head .desc { font-size: 7.5pt; font-weight: 400; opacity: 0.92; max-width: 48%; text-align: right; }
+  .app-body { padding: 4pt 6pt 5pt; }
+  .cols {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 1.05fr;
+    gap: 4pt 8pt;
+  }
+  h3 {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 1.5pt;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 1pt;
+  }
+  ul { margin: 0; padding-left: 10pt; }
+  li { margin: 0 0 0.5pt; }
+  .manual {
+    margin-top: 3.5pt;
+    padding-top: 3pt;
+    border-top: 1px dashed #999;
+    font-size: 7.5pt;
+  }
+  .manual p { margin: 0 0 2pt; }
+  .tag {
+    display: inline-block;
+    font-size: 6.5pt;
+    border: 1px solid currentColor;
+    padding: 0 2.5pt;
+    margin-left: 3pt;
+    vertical-align: middle;
+  }
+  .draft { color: #fc6; border-color: #fc6; }
+  .ready { color: #8d8; border-color: #8d8; }
+  footer { margin-top: 4pt; font-size: 7pt; color: #555; }
+  code { font-family: "IBM Plex Mono", Menlo, monospace; font-size: 7pt; }
+</style>
+</head>
+<body>
+
+<h1>Faderpunk WIP Apps — UX Cheatsheet</h1>
+<p class="sub">Synced to <code>test/playground</code> (IDs 29–40) · 6 Aug 2026 · A4 print</p>
+
+<div class="legend">
+  <div><strong>Main</strong> — Fader alone</div>
+  <div><strong>Alt</strong> — Shift + Fader</div>
+  <div><strong>Third</strong> — Channel button held + Fader</div>
+  <div><strong>Short</strong> — Tap button</div>
+  <div><strong>Long</strong> — Hold button (long-press)</div>
+  <div><strong>Shift+…</strong> — Global Shift + gesture</div>
+</div>
+
+<div class="jack-note">
+  <strong>Jack CV Out / CV In</strong> (Heat Pump, Grooves, Golden Gate, Arp de Levy, Chord Vamp, Echolot, Loop de Cay; Super LFO is 2-ch with CV on Ch0):
+  <strong>CV Out</strong> = app drives the jack · <strong>CV In</strong> = jack modulates a <strong>CV Dest</strong> (attenuated by <strong>CV Att</strong> 0–100% where present).
+  Device-cycle Dest: Heat Pump &amp; Super LFO via <strong>Shift+Short</strong> (Grooves: Configurator only).
+  Golden Gate + Jack=CV In → MIDI-first (no CV/gate outs).
+</div>
+
