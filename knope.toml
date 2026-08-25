@@ -1,5 +1,4 @@
 [packages.faderpunk]
-scopes = ["faderpunk"]
 versioned_files = [
   "faderpunk/Cargo.toml",
   { path = "Cargo.lock", dependency = "faderpunk" },
