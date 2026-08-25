@@ -59,6 +59,17 @@ pub static APP_PARAM_CHANNEL: Channel<
     GLOBAL_CHANNELS,
 > = Channel::new();
 
+/// Unsolicited app→host param updates, e.g. a gesture that picks a genre on
+/// the device. Forwarded as `AppState` while the config loop is idle so hosts
+/// track on-device edits live. Kept separate from [`APP_PARAM_CHANNEL`], which
+/// carries request/response replies only — a push queued there would be
+/// drained as a stale reply and never reach the host.
+pub static APP_PARAM_PUSH_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    (u8, Vec<Value, APP_MAX_PARAMS>),
+    4,
+> = Channel::new();
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
 pub enum ProtocolError {
     BufferTooSmall,
@@ -76,10 +87,18 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
     let mut layout = layout_receiver.get().await;
     let mut pending_voct_eviction: Option<(u8, EvictedApp)> = None;
     loop {
-        let msg = match proto.read_msg().await {
-            Ok(msg) => msg,
-            Err(err) => {
+        // Cancel-safe: read_msg awaits on the frame channel, so no partial
+        // frame state is lost when the select flips to a push.
+        let msg = match select(proto.read_msg(), APP_PARAM_PUSH_CHANNEL.receive()).await {
+            Either::First(Ok(msg)) => msg,
+            Either::First(Err(err)) => {
                 defmt::warn!("Dropping invalid config frame: {}", err);
+                continue;
+            }
+            Either::Second((id, values)) => {
+                if let Err(err) = proto.send_msg(ConfigMsgOut::AppState(id, &values)).await {
+                    defmt::warn!("Failed to push AppState({}): {}", id, err);
+                }
                 continue;
             }
         };
