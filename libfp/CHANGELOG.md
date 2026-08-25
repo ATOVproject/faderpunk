@@ -16,6 +16,9 @@
 - never block the clock gatekeeper on a full pubsub (#636)
 - keep the metronome off the clock pubsub (#638)
 - drop unconsumed docs/apps manual-entry format from PR scope policy (#657)
+- [i2c] coalesce controller updates instead of queuing stale values (#659)
+- [panner] publish processed outputs over I2C (#659)
+- [i2c] reuse GLOBAL_CHANNELS instead of a duplicate constant (#659)
 
 ## 0.10.6-beta.0 (2026-08-07)
 
