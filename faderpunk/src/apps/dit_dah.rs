@@ -9,11 +9,9 @@ use midly::num::u7;
 use serde::{Deserialize, Serialize};
 
 use libfp::{
-    ext::FromValue,
-    latch::LatchLayer,
-    quantizer::Pitch,
-    AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiChannel, MidiNote, MidiOut,
-    Note, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    ext::FromValue, latch::LatchLayer, quantizer::Pitch, AppIcon, Brightness, ClockDivision, Color,
+    Config, Curve, MidiChannel, MidiNote, MidiOut, Note, Param, Range, Value, VoltPerOct,
+    APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -36,6 +34,9 @@ const GATE_IN_THRESH: u16 = 2450;
 const JACK_GATE_OUT: usize = 0;
 const JACK_PITCH_OUT: usize = 1;
 const JACK_GATE_IN: usize = 2;
+const JACK_CV_MAIN: usize = 3;
+const JACK_CV_ALT: usize = 4;
+const JACK_CV_THIRD: usize = 5;
 
 /// Default phrase pack 1 encodes `SOS` (`0x534F53` LE); remaining packs are zero (empty).
 const DEFAULT_PHRASE_0: i32 = i32::from_le_bytes(*b"SOS\0");
@@ -58,7 +59,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 })
 .add_param(Param::Enum {
     name: "Jack",
-    variants: &["Gate Out", "Pitch Out", "Gate In"],
+    variants: &[
+        "CV Out Gate",
+        "CV Out Pitch",
+        "CV In Gate",
+        "CV In Dit length",
+        "CV In Pitch offset",
+        "CV In Dah interval",
+    ],
 })
 .add_param(Param::VoltPerOct)
 .add_param(Param::i32 {
@@ -136,7 +144,7 @@ impl AppParams for Params {
             midi_channel: MidiChannel::from_value(values[1]),
             base_note: MidiNote::from_value(values[2]),
             interval: i32::from_value(values[3]).clamp(0, 24),
-            jack_mode: usize::from_value(values[4]).min(2),
+            jack_mode: usize::from_value(values[4]).min(5),
             vpo: VoltPerOct::from_value(values[5]),
             phrase,
         })
@@ -287,6 +295,10 @@ fn dah_semitone_offset(third_fader: u16, interval: i32) -> i32 {
     ((centered as i64 * interval as i64) / 2048) as i32
 }
 
+fn mix_bipolar(saved: u16, cv: u16) -> u16 {
+    (saved as i32 + (cv as i32 - 2047)).clamp(0, 4095) as u16
+}
+
 fn note_for_element(
     dah: bool,
     base: MidiNote,
@@ -393,7 +405,7 @@ pub async fn run(
     } else {
         None
     };
-    let in_jack = if jack_mode == JACK_GATE_IN {
+    let in_jack = if jack_mode >= JACK_GATE_IN {
         Some(app.make_in_jack(0, IN_RANGE).await)
     } else {
         None
@@ -403,7 +415,9 @@ pub async fn run(
     let glob_latch_layer = app.make_global(LatchLayer::Main);
     let start_armed = app.make_global(false);
     let long_press_fired = app.make_global(false);
-    let glob_ticks = app.make_global(0u64);
+    // u64::MAX = no tick yet. Analog clocks start at tick 0, which must
+    // be distinguishable from this sentinel or the first downbeat is dropped.
+    let glob_ticks = app.make_global(u64::MAX);
     let glob_clock_reset = app.make_global(false);
     let glob_clock_stop = app.make_global(false);
 
@@ -412,20 +426,18 @@ pub async fn run(
     } else {
         leds.set(0, Led::Button, Color::Orange, LED_BRIGHTNESS);
     }
-
     let clock_drain = async {
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
                 ClockEvent::Tick(tick) => {
                     glob_ticks.set(tick);
                 }
-                ClockEvent::Reset => {
+                ClockEvent::Reset | ClockEvent::Start => {
                     glob_clock_reset.set(true);
                 }
                 ClockEvent::Stop => {
                     glob_clock_stop.set(true);
                 }
-                _ => {}
             }
         }
     };
@@ -433,7 +445,7 @@ pub async fn run(
     let phrase_handler = async {
         let mut last_tick_at: Option<Instant> = None;
         let mut tick_interval_ms: u32 = 21;
-        let mut last_processed_tick: u64 = 0;
+        let mut last_processed_tick: u64 = u64::MAX;
         let mut event_idx: usize = 0;
         let mut silence_ms_left: u32 = 0;
         let mut pending_dah: Option<bool> = None;
@@ -505,13 +517,16 @@ pub async fn run(
                 continue;
             }
             if let Some(prev) = last_tick_at {
-                tick_interval_ms = now
-                    .duration_since(prev)
-                    .as_millis()
-                    .max(1) as u32;
+                tick_interval_ms = now.duration_since(prev).as_millis().max(1) as u32;
             }
             last_tick_at = Some(now);
             last_processed_tick = tick;
+
+            // Analog clock (Atom/Meteor/Cube) has no Start/Reset — pulses
+            // *are* the transport. Arm idle playback on the first real tick.
+            if !playing {
+                start_armed.set(true);
+            }
 
             if start_armed.get() && tick.is_multiple_of(6) {
                 start_armed.set(false);
@@ -555,11 +570,34 @@ pub async fn run(
                 continue;
             }
 
-            let main_fader = storage.query(|s| s.main_saved);
-            let alt_fader = storage.query(|s| s.alt_saved);
-            let third_fader = storage.query(|s| s.third_saved);
-            let dit = dit_ms(main_fader, tick_interval_ms);
-            let alt = alt_semitones(alt_fader);
+            let main_saved = storage.query(|s| s.main_saved);
+            let alt_saved = storage.query(|s| s.alt_saved);
+            let third_saved = storage.query(|s| s.third_saved);
+            let (main_eff, alt_eff, third_eff) = if let Some(jack) = &in_jack {
+                let cv = jack.get_value();
+                match jack_mode {
+                    JACK_CV_MAIN => (
+                        mix_bipolar(main_saved, cv),
+                        alt_saved,
+                        third_saved,
+                    ),
+                    JACK_CV_ALT => (
+                        main_saved,
+                        mix_bipolar(alt_saved, cv),
+                        third_saved,
+                    ),
+                    JACK_CV_THIRD => (
+                        main_saved,
+                        alt_saved,
+                        mix_bipolar(third_saved, cv),
+                    ),
+                    _ => (main_saved, alt_saved, third_saved),
+                }
+            } else {
+                (main_saved, alt_saved, third_saved)
+            };
+            let dit = dit_ms(main_eff, tick_interval_ms);
+            let alt = alt_semitones(alt_eff);
 
             if sounding {
                 continue;
@@ -605,7 +643,7 @@ pub async fn run(
             }
 
             pending_dah = None;
-            current_note = note_for_element(dah, base_note, alt, third_fader, interval);
+            current_note = note_for_element(dah, base_note, alt, third_eff, interval);
             let velocity = 4095u16;
             midi.send_note_on(current_note, velocity).await;
             sounding = true;
@@ -688,6 +726,10 @@ pub async fn run(
     };
 
     let cv_in_handler = async {
+        if jack_mode != JACK_GATE_IN {
+            core::future::pending::<()>().await;
+            return;
+        }
         let Some(jack) = in_jack.as_ref() else {
             core::future::pending::<()>().await;
             return;

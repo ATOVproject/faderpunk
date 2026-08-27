@@ -63,8 +63,8 @@
         {
           "heading": "Params / LEDs",
           "items": [
-            "Needs clock. First downbeat / Reset arms; then the phrase loops freely",
-            "Jack: Gate Out · Pitch Out · Gate In (rising edge arms like Shift+short). V/Oct only for Pitch Out. MIDI note-ons always.",
+            "Needs clock. MIDI Start/Reset or the first 16th after ticks appear arms (analog Atom/Meteor/Cube has no Reset); then the phrase loops freely",
+            "Jack: CV Out Gate · CV Out Pitch · CV In Gate · CV In Dit length · CV In Pitch offset · CV In Dah interval. CV In Gate rising edge arms like Shift+short. CV In dests add ±5 V bipolar on top of the saved fader at playback (not stored). V/Oct only for CV Out Pitch. MIDI note-ons always.",
             "Phrases 1–10 are packed ASCII (default Phrase 1 = SOS)",
             "Button LED orange when live; Top LED high while a dit/dah sounds"
           ]
@@ -75,7 +75,7 @@
   "channels": [
     {
       "jackTitle": "Jack",
-      "jackDescription": "Gate Out / Pitch Out (0–10 V V/Oct), or Gate In (±5 V) to arm the phrase on a rising edge. MIDI notes always fire.",
+      "jackDescription": "CV Out Gate / CV Out Pitch (0–10 V V/Oct), CV In Gate (±5 V rising edge arms), or CV In Dit length / Pitch offset / Dah interval (±5 V bipolar add at playback only). MIDI notes always fire.",
       "faderTitle": "Dit length",
       "faderDescription": "Duration of a dit in milliseconds, from 30 ms up to four 16th-notes of the incoming clock. Dah is 3× dit.",
       "faderPlusShiftTitle": "Pitch offset",
