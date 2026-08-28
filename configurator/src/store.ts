@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { Value, type GlobalConfig } from "@atov/fp-config";
 
-import type { AllApps, AppLayout, AppSlot, ParamValues } from "./utils/types";
+import type {
+  AllApps,
+  App,
+  AppLayout,
+  AppSlot,
+  ParamValues,
+} from "./utils/types";
 import {
   connectToFaderPunk,
   getDeviceVersion,
@@ -72,6 +78,9 @@ interface State {
   isSimulator: boolean;
   layout: AppLayout | undefined;
   params: ParamValues | undefined;
+  refreshApps: () => Promise<void>;
+  addSimulatorApp: (app: App) => void;
+  removeSimulatorApp: (appId: number) => void;
   setConfig: (config: GlobalConfig) => void;
   setLayout: (layout: AppLayout) => void;
   setParams: (id: number, newParams: Value[]) => void;
@@ -163,6 +172,22 @@ export const useStore = create<State>((set, get) => ({
     // The dedicated simulator build has no connect page to return to, so
     // drop straight back into a simulator session.
     if (IS_SIMULATOR_BUILD) get().connectSimulator();
+  },
+  refreshApps: async () => {
+    const { device } = get();
+    if (!device) return;
+    const apps = await getAllApps(device);
+    const layout = await getLayout(device, apps);
+    set({ apps, layout });
+  },
+  addSimulatorApp: (app) => {
+    const apps = new Map(get().apps).set(app.appId, app);
+    set({ apps });
+  },
+  removeSimulatorApp: (appId) => {
+    const apps = new Map(get().apps);
+    apps.delete(appId);
+    set({ apps });
   },
   setConfig: (config) => {
     set({ config });

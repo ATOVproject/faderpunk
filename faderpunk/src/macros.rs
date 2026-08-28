@@ -52,7 +52,16 @@ macro_rules! register_apps {
                     },
                 )*
                 _ => {
-                    // Do nothing if app_id isn't valid
+                    if let Some(descriptor) = crate::fpapps::runtime_descriptor(app_id) {
+                        spawner
+                            .spawn(crate::fpapp_runtime::run_fpapp(
+                                descriptor,
+                                start_channel,
+                                layout_id,
+                                &exit_signals[start_channel],
+                            ))
+                            .unwrap();
+                    }
                 }
             }
         }
@@ -62,7 +71,7 @@ macro_rules! register_apps {
                 $(
                     $id => Some($app_mod::CHANNELS),
                 )*
-                _ => None,
+                _ => crate::fpapps::get_channels(app_id),
             }
         }
 

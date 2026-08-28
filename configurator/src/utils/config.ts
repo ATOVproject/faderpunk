@@ -23,6 +23,7 @@ import {
   type FpMidiDevice,
 } from "../utils/midi-protocol";
 import { getFixedLengthParamArray } from "./utils";
+import { mergeInstalledFpAppConfigs } from "./fpapp";
 import {
   parseParamValueFromFile,
   parseGlobalConfigFromFile,
@@ -76,7 +77,7 @@ export const getAllApps = async (dev: FpMidiDevice) => {
       parsedApps.set(appConfig.appId, appConfig);
     });
 
-  return parsedApps;
+  return mergeInstalledFpAppConfigs(dev, parsedApps);
 };
 
 export const getAppParams = async (dev: FpMidiDevice, layoutId: number) => {

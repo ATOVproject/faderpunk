@@ -11,11 +11,15 @@ use libfp::sysex::{
     pack_7bit, unpack_7bit, MAX_PLAIN_SIZE, MAX_SYSEX_FRAME, SYSEX_EOX, SYSEX_HEADER, SYSEX_START,
 };
 use libfp::{
-    AuxJackMode, ConfigMsgIn, ConfigMsgOut, Layout, Value, APP_MAX_PARAMS, GLOBAL_CHANNELS,
+    fpapp_store::{StoreError, MAX_PACKAGE_SIZE, SLOT_COUNT},
+    AppIcon, AuxJackMode, Color, ConfigMsgIn, ConfigMsgOut, FpAppSection, FpAppStatus, Layout,
+    Param, Value, APP_MAX_PARAMS, FPAPP_CHUNK_BLOCKS, FPAPP_CHUNK_BLOCK_SIZE, FPAPP_CHUNK_SIZE,
+    GLOBAL_CHANNELS,
 };
 use max11300::config::{ConfigMode0, ConfigMode3, ConfigMode5, Mode, Port, DACRANGE};
 
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
+use crate::fpapps::FPAPP_STORE;
 use crate::layout::{EvictionCmd, LAYOUT_EVICTION_REQ, LAYOUT_EVICTION_RES, LAYOUT_WATCH};
 use crate::storage::factory_reset;
 use crate::tasks::global_config::{get_global_config, GLOBAL_CONFIG_WATCH};
@@ -23,6 +27,7 @@ use crate::tasks::max::{MaxCmd, MAX_CHANNEL, MAX_VALUES_DAC};
 use crate::tasks::midi::{SharedUsbSender, CONFIG_CABLE};
 use crate::tasks::voct_freq::{VOCT_MEASURE_REQ, VOCT_MEASURE_RES};
 use crate::version::FIRMWARE_VERSION;
+use crate::version::FPAPP_FIRMWARE_ABI;
 
 use super::transport::USB_MAX_PACKET_SIZE;
 
@@ -97,8 +102,14 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
             }
             ConfigMsgIn::GetAllApps => {
                 let configs = REGISTERED_APP_IDS.map(get_config);
+                let dynamic_count = {
+                    let store = FPAPP_STORE.get().await.lock().await;
+                    (0..SLOT_COUNT)
+                        .filter(|slot| store.installed(*slot).ok().flatten().is_some())
+                        .count()
+                };
                 let mut res = proto
-                    .send_msg(ConfigMsgOut::BatchMsgStart(configs.len()))
+                    .send_msg(ConfigMsgOut::BatchMsgStart(configs.len() + dynamic_count))
                     .await;
                 for (app_id, channels, config_meta) in configs.into_iter().flatten() {
                     if res.is_err() {
@@ -107,6 +118,35 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                     res = proto
                         .send_msg(ConfigMsgOut::AppConfig(app_id, channels, config_meta))
                         .await;
+                }
+                if res.is_ok() {
+                    let store = FPAPP_STORE.get().await.lock().await;
+                    for slot in 0..SLOT_COUNT {
+                        let Ok(Some(package)) = store.package(slot) else {
+                            continue;
+                        };
+                        let manifest = package.manifest;
+                        let color = fpapp_color(manifest.color_rgb);
+                        let icon = fpapp_icon(manifest.icon);
+                        let params: &[Param] = &[];
+                        res = proto
+                            .send_msg(ConfigMsgOut::AppConfig(
+                                manifest.app_id,
+                                manifest.channels as usize,
+                                (
+                                    usize::from(manifest.parameter_count),
+                                    manifest.name,
+                                    manifest.description,
+                                    color,
+                                    icon,
+                                    params,
+                                ),
+                            ))
+                            .await;
+                        if res.is_err() {
+                            break;
+                        }
+                    }
                 }
                 if res.is_ok() {
                     res = proto.send_msg(ConfigMsgOut::BatchMsgEnd).await;
@@ -232,11 +272,246 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 handle_release_voct_output(&mut proto, &mut pending_voct_eviction, output_jack)
                     .await
             }
+            ConfigMsgIn::GetFpAppSupport => {
+                proto
+                    .send_msg(ConfigMsgOut::FpAppSupport {
+                        firmware_abi: FPAPP_FIRMWARE_ABI,
+                        slots: SLOT_COUNT as u8,
+                        max_package_len: MAX_PACKAGE_SIZE as u32,
+                        chunk_size: FPAPP_CHUNK_SIZE as u16,
+                    })
+                    .await
+            }
+            ConfigMsgIn::GetFpAppSlots => send_fpapp_slots(&mut proto).await,
+            ConfigMsgIn::BeginFpAppInstall { slot, total_len } => {
+                let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
+                    layout.iter().map(|(app_id, _, _, _)| app_id).collect();
+                let mut store = FPAPP_STORE.get().await.lock().await;
+                let status = store
+                    .begin_install(slot as usize, total_len as usize, &active_app_ids)
+                    .map(|_| FpAppStatus::Ok)
+                    .unwrap_or_else(fpapp_status);
+                proto.send_msg(ConfigMsgOut::FpAppResult(status)).await
+            }
+            ConfigMsgIn::WriteFpAppChunk { offset, len, data } => {
+                let status = if len as usize > FPAPP_CHUNK_SIZE {
+                    FpAppStatus::ChunkTooLarge
+                } else {
+                    let mut chunk = [0u8; FPAPP_CHUNK_SIZE];
+                    for (index, block) in data.iter().enumerate() {
+                        let start = index * FPAPP_CHUNK_BLOCK_SIZE;
+                        chunk[start..start + FPAPP_CHUNK_BLOCK_SIZE].copy_from_slice(block);
+                    }
+                    let mut store = FPAPP_STORE.get().await.lock().await;
+                    store
+                        .write_chunk(offset as usize, &chunk[..len as usize])
+                        .map(|_| FpAppStatus::Ok)
+                        .unwrap_or_else(fpapp_status)
+                };
+                proto.send_msg(ConfigMsgOut::FpAppResult(status)).await
+            }
+            ConfigMsgIn::CommitFpAppInstall => {
+                let mut store = FPAPP_STORE.get().await.lock().await;
+                let status = match store.commit() {
+                    Ok(_) => {
+                        crate::fpapps::refresh_catalog(&store);
+                        FpAppStatus::Ok
+                    }
+                    Err(error) => fpapp_status(error),
+                };
+                proto.send_msg(ConfigMsgOut::FpAppResult(status)).await
+            }
+            ConfigMsgIn::AbortFpAppInstall => {
+                let mut store = FPAPP_STORE.get().await.lock().await;
+                let status = store
+                    .abort()
+                    .map(|_| FpAppStatus::Ok)
+                    .unwrap_or_else(fpapp_status);
+                proto.send_msg(ConfigMsgOut::FpAppResult(status)).await
+            }
+            ConfigMsgIn::RemoveFpApp { slot } => {
+                let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
+                    layout.iter().map(|(app_id, _, _, _)| app_id).collect();
+                let mut store = FPAPP_STORE.get().await.lock().await;
+                let status = match store.remove(slot as usize, &active_app_ids) {
+                    Ok(()) => {
+                        crate::fpapps::refresh_catalog(&store);
+                        FpAppStatus::Ok
+                    }
+                    Err(error) => fpapp_status(error),
+                };
+                proto.send_msg(ConfigMsgOut::FpAppResult(status)).await
+            }
+            ConfigMsgIn::ReadFpAppSection {
+                slot,
+                section,
+                offset,
+            } => send_fpapp_section(&mut proto, slot, section, offset).await,
         };
         if let Err(err) = res {
             defmt::warn!("Failed to send config response: {}", err);
         }
     }
+}
+
+fn fpapp_color(rgb: u32) -> Color {
+    let target = (
+        ((rgb >> 16) & 0xff) as i32,
+        ((rgb >> 8) & 0xff) as i32,
+        (rgb & 0xff) as i32,
+    );
+    [
+        Color::White,
+        Color::Yellow,
+        Color::Orange,
+        Color::Red,
+        Color::Lime,
+        Color::Green,
+        Color::Cyan,
+        Color::SkyBlue,
+        Color::Blue,
+        Color::Violet,
+        Color::Pink,
+        Color::PaleGreen,
+        Color::Sand,
+        Color::Rose,
+        Color::Salmon,
+        Color::LightBlue,
+    ]
+    .into_iter()
+    .min_by_key(|color| {
+        let value: smart_leds::RGB8 = (*color).into();
+        let red = target.0 - value.r as i32;
+        let green = target.1 - value.g as i32;
+        let blue = target.2 - value.b as i32;
+        red * red + green * green + blue * blue
+    })
+    .unwrap_or(Color::White)
+}
+
+fn fpapp_icon(icon: u8) -> AppIcon {
+    match icon {
+        1 => AppIcon::AdEnv,
+        2 => AppIcon::Random,
+        3 => AppIcon::Euclid,
+        4 => AppIcon::Attenuate,
+        5 => AppIcon::Die,
+        6 => AppIcon::Quantize,
+        7 => AppIcon::Sequence,
+        8 => AppIcon::Note,
+        9 => AppIcon::EnvFollower,
+        10 => AppIcon::SoftRandom,
+        11 => AppIcon::Sine,
+        12 => AppIcon::NoteBox,
+        13 => AppIcon::SequenceSquare,
+        14 => AppIcon::NoteGrid,
+        15 => AppIcon::KnobRound,
+        16 => AppIcon::Stereo,
+        _ => AppIcon::Fader,
+    }
+}
+
+fn fpapp_status(error: StoreError<embassy_rp::flash::Error>) -> FpAppStatus {
+    match error {
+        StoreError::InvalidSlot => FpAppStatus::InvalidSlot,
+        StoreError::Busy => FpAppStatus::Busy,
+        StoreError::NoInstall => FpAppStatus::NoInstall,
+        StoreError::EmptyPackage => FpAppStatus::EmptyPackage,
+        StoreError::PackageTooLarge => FpAppStatus::PackageTooLarge,
+        StoreError::UnexpectedOffset { .. } => FpAppStatus::UnexpectedOffset,
+        StoreError::ChunkTooLarge => FpAppStatus::ChunkTooLarge,
+        StoreError::Incomplete => FpAppStatus::Incomplete,
+        StoreError::ActiveApp => FpAppStatus::ActiveApp,
+        StoreError::IncompatibleFirmware => FpAppStatus::IncompatibleFirmware,
+        StoreError::DuplicateAppId => FpAppStatus::DuplicateAppId,
+        StoreError::Package(_) => FpAppStatus::InvalidPackage,
+        StoreError::Flash(_) | StoreError::RegionTooSmall => FpAppStatus::FlashError,
+    }
+}
+
+async fn send_fpapp_slots(proto: &mut ConfigTransport<'_>) -> Result<(), ProtocolError> {
+    let store = FPAPP_STORE.get().await.lock().await;
+    proto
+        .send_msg(ConfigMsgOut::BatchMsgStart(SLOT_COUNT))
+        .await?;
+    for slot in 0..SLOT_COUNT {
+        match store.package(slot) {
+            Ok(Some(package)) => {
+                let manifest = package.manifest;
+                proto
+                    .send_msg(ConfigMsgOut::FpAppSlot {
+                        slot: slot as u8,
+                        app_id: manifest.app_id,
+                        version_major: manifest.version.major,
+                        version_minor: manifest.version.minor,
+                        version_patch: manifest.version.patch,
+                        channels: manifest.channels,
+                        name: manifest.name,
+                        description: manifest.description,
+                        author: manifest.author,
+                        has_manual: package.manual.is_some(),
+                        has_setup: package.setup.is_some(),
+                        has_settings: package.settings.is_some(),
+                        signed: package.signing.is_some(),
+                    })
+                    .await?;
+            }
+            _ => {
+                proto
+                    .send_msg(ConfigMsgOut::FpAppSlotEmpty { slot: slot as u8 })
+                    .await?;
+            }
+        }
+    }
+    proto.send_msg(ConfigMsgOut::BatchMsgEnd).await
+}
+
+async fn send_fpapp_section(
+    proto: &mut ConfigTransport<'_>,
+    slot: u8,
+    section: FpAppSection,
+    offset: u32,
+) -> Result<(), ProtocolError> {
+    let store = FPAPP_STORE.get().await.lock().await;
+    let Ok(Some(package)) = store.package(slot as usize) else {
+        return proto
+            .send_msg(ConfigMsgOut::FpAppResult(FpAppStatus::InvalidSlot))
+            .await;
+    };
+    let contents = match section {
+        FpAppSection::Manual => package.manual.map(str::as_bytes),
+        FpAppSection::Setup => package.setup.map(str::as_bytes),
+        FpAppSection::Settings => package.settings.map(str::as_bytes),
+    };
+    let Some(contents) = contents else {
+        return proto
+            .send_msg(ConfigMsgOut::FpAppResult(FpAppStatus::InvalidPackage))
+            .await;
+    };
+    let offset = offset as usize;
+    if offset > contents.len() {
+        return proto
+            .send_msg(ConfigMsgOut::FpAppResult(FpAppStatus::UnexpectedOffset))
+            .await;
+    }
+    let len = (contents.len() - offset).min(FPAPP_CHUNK_SIZE);
+    let mut flat = [0u8; FPAPP_CHUNK_SIZE];
+    flat[..len].copy_from_slice(&contents[offset..offset + len]);
+    let mut data = [[0u8; FPAPP_CHUNK_BLOCK_SIZE]; FPAPP_CHUNK_BLOCKS];
+    for (index, block) in data.iter_mut().enumerate() {
+        let start = index * FPAPP_CHUNK_BLOCK_SIZE;
+        block.copy_from_slice(&flat[start..start + FPAPP_CHUNK_BLOCK_SIZE]);
+    }
+    proto
+        .send_msg(ConfigMsgOut::FpAppSectionChunk {
+            slot,
+            section,
+            offset: offset as u32,
+            total_len: contents.len() as u32,
+            len: len as u16,
+            data,
+        })
+        .await
 }
 
 /// Config protocol transport: reads reassembled SysEx frame bodies from

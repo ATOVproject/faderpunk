@@ -7,6 +7,9 @@ mod macros;
 mod app;
 mod apps;
 mod events;
+#[path = "fpapp_runtime_services.rs"]
+mod fpapp_runtime;
+mod fpapps;
 mod layout;
 mod state;
 mod storage;
@@ -148,6 +151,10 @@ async fn main(spawner: Spawner) {
     config.clocks.core_voltage = CoreVoltage::V1_15;
 
     let p = embassy_rp::init(config);
+
+    // The final 512 KiB of physical flash is outside the firmware linker
+    // region and belongs to the four installable FPApp slots.
+    fpapps::init(p.FLASH);
 
     // SPI0 (MAX11300)
     let mut spi0_config = spi::Config::default();

@@ -72,6 +72,10 @@ pub async fn start_transports(
 }
 
 #[embassy_executor::task]
+// Config transport owns a fixed 512-byte protocol buffer and its largest enum
+// variant. Embassy stores this future in the static task arena; there is no
+// allocator available to apply Clippy's Box::pin suggestion.
+#[allow(clippy::large_futures)]
 async fn run_transports(
     usb_driver: usb::Driver<'static, USB>,
     uart0_tx: UartTx<'static, Async>,
