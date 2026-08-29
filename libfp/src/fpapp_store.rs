@@ -176,6 +176,47 @@ impl<F: SlotFlash> SlotStore<F> {
 
     pub fn commit(&mut self) -> Result<InstalledApp, StoreError<F::Error>> {
         let staging = self.staging.ok_or(StoreError::NoInstall)?;
+        let (app_id, version, package_crc) = {
+            let package = self.staged_package()?;
+            let package_bytes = self
+                .flash
+                .mapped(package_offset(staging.slot), staging.total_len)
+                .map_err(StoreError::Flash)?;
+            (
+                package.manifest.app_id,
+                package.manifest.version,
+                crc32(package_bytes),
+            )
+        };
+
+        let installed = InstalledApp {
+            slot: staging.slot as u8,
+            app_id,
+            version,
+            package_len: staging.total_len as u32,
+        };
+        let entry = SlotEntry {
+            app_id: installed.app_id,
+            version: installed.version,
+            package_len: installed.package_len,
+            package_crc,
+        };
+
+        let control = encode_control(staging.slot, entry);
+        self.flash
+            .write(slot_offset(staging.slot), &control)
+            .map_err(StoreError::Flash)?;
+
+        self.entries[staging.slot] = Some(entry);
+        self.staging = None;
+        Ok(installed)
+    }
+
+    /// Return the fully validated staging package without publishing its slot.
+    /// Firmware uses this seam for target-specific runtime checks which cannot
+    /// live in the allocation-free, hardware-independent store.
+    pub fn staged_package(&self) -> Result<Package<'_>, StoreError<F::Error>> {
+        let staging = self.staging.ok_or(StoreError::NoInstall)?;
         if staging.received != staging.total_len {
             return Err(StoreError::Incomplete);
         }
@@ -195,28 +236,7 @@ impl<F: SlotFlash> SlotStore<F> {
         }) {
             return Err(StoreError::DuplicateAppId);
         }
-
-        let installed = InstalledApp {
-            slot: staging.slot as u8,
-            app_id: package.manifest.app_id,
-            version: package.manifest.version,
-            package_len: staging.total_len as u32,
-        };
-        let entry = SlotEntry {
-            app_id: installed.app_id,
-            version: installed.version,
-            package_len: installed.package_len,
-            package_crc: crc32(package_bytes),
-        };
-
-        let control = encode_control(staging.slot, entry);
-        self.flash
-            .write(slot_offset(staging.slot), &control)
-            .map_err(StoreError::Flash)?;
-
-        self.entries[staging.slot] = Some(entry);
-        self.staging = None;
-        Ok(installed)
+        Ok(package)
     }
 
     pub fn abort(&mut self) -> Result<(), StoreError<F::Error>> {
@@ -515,6 +535,19 @@ mod tests {
                 .image,
             &[0x22; 16]
         );
+    }
+
+    #[test]
+    fn fully_uploaded_package_can_be_checked_before_it_is_published() {
+        let bytes = package(Version::new(1, 2, 3), 0x22);
+        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        store.begin_install(0, bytes.len(), &[]).unwrap();
+        store.write_chunk(0, &bytes).unwrap();
+
+        let staged = store.staged_package().unwrap();
+        assert_eq!(staged.manifest.app_id, 102);
+        assert_eq!(staged.manifest.version, Version::new(1, 2, 3));
+        assert_eq!(store.installed(0).unwrap(), None);
     }
 
     #[test]

@@ -1,9 +1,13 @@
 import type {
+  AppIcon,
+  Color,
   ConfigMsgOut,
   FpAppSection,
   FpAppStatus,
   FixedLengthArray,
+  Param,
 } from "@atov/fp-config";
+import { serialize } from "@atov/fp-config";
 
 import {
   sendAndReceive,
@@ -41,6 +45,45 @@ const MANUAL_COLORS = new Set<AllColors>([
   "LightBlue",
   "Black",
   "Custom",
+]);
+const APP_COLORS = new Set<Color["tag"]>([
+  "White",
+  "Yellow",
+  "Orange",
+  "Red",
+  "Lime",
+  "Green",
+  "Cyan",
+  "SkyBlue",
+  "Blue",
+  "Violet",
+  "Pink",
+  "PaleGreen",
+  "Sand",
+  "Rose",
+  "Salmon",
+  "LightBlue",
+  "Custom",
+]);
+const APP_ICONS = new Set<AppIcon["tag"]>([
+  "Fader",
+  "AdEnv",
+  "Random",
+  "Euclid",
+  "Attenuate",
+  "Die",
+  "Quantize",
+  "Sequence",
+  "Note",
+  "EnvFollower",
+  "SoftRandom",
+  "Sine",
+  "NoteBox",
+  "SequenceSquare",
+  "NoteGrid",
+  "KnobRound",
+  "Stereo",
+  "Sift",
 ]);
 
 export const FPAPP_MANUALS_UPDATED_EVENT = "fpapp-manuals-updated";
@@ -201,13 +244,26 @@ export async function parseFpApp(file: File): Promise<ParsedFpApp> {
   }
   if (
     programSection.bytes.length < 28 ||
-    !matches(programSection.bytes.subarray(0, 4), NATIVE_MAGIC) ||
-    new DataView(
-      programSection.bytes.buffer,
-      programSection.bytes.byteOffset,
-      programSection.bytes.byteLength,
-    ).getUint32(24, true) !==
-      programSection.bytes.length - 28
+    !matches(programSection.bytes.subarray(0, 4), NATIVE_MAGIC)
+  ) {
+    throw new Error("The .fpapp native image header is invalid.");
+  }
+  const nativeView = new DataView(
+    programSection.bytes.buffer,
+    programSection.bytes.byteOffset,
+    programSection.bytes.byteLength,
+  );
+  const nativeImageLength = programSection.bytes.length - 28;
+  const entrypoints = [8, 12, 16, 20].map((offset) =>
+    nativeView.getUint32(offset, true),
+  );
+  if (
+    nativeView.getUint16(4, true) !== 0 ||
+    nativeView.getUint16(6, true) !== 28 ||
+    nativeView.getUint32(24, true) !== nativeImageLength ||
+    entrypoints.some(
+      (entrypoint) => entrypoint >= nativeImageLength || entrypoint % 2 !== 0,
+    )
   ) {
     throw new Error("The .fpapp native image header is invalid.");
   }
@@ -233,7 +289,7 @@ export async function parseFpApp(file: File): Promise<ParsedFpApp> {
     setup: decodeText(4),
     settings,
     signed: sections.has(6),
-    nativeImageBytes: programSection.bytes.length - 28,
+    nativeImageBytes: nativeImageLength,
     appConfig: settings ? parseAppConfig(settings) : undefined,
   };
 }
@@ -443,20 +499,32 @@ function parseAppConfig(
   try {
     const parsed = JSON.parse(contents) as {
       format?: string;
-      app?: Pick<App, "color" | "icon" | "params">;
+      app?: { color?: unknown; icon?: unknown; params?: unknown };
     };
     if (
       parsed.format !== "faderpunk-app-config-v1" ||
       !parsed.app ||
       typeof parsed.app.color !== "string" ||
+      !APP_COLORS.has(parsed.app.color as Color["tag"]) ||
       typeof parsed.app.icon !== "string" ||
-      !Array.isArray(parsed.app.params)
+      !APP_ICONS.has(parsed.app.icon as AppIcon["tag"]) ||
+      !Array.isArray(parsed.app.params) ||
+      !parsed.app.params.every(isParam)
     ) {
       return undefined;
     }
-    return parsed.app;
+    return parsed.app as Pick<App, "color" | "icon" | "params">;
   } catch {
     return undefined;
+  }
+}
+
+function isParam(value: unknown): value is Param {
+  try {
+    serialize("Param", value as Param);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -611,6 +679,8 @@ function statusMessage(status: FpAppStatus) {
     IncompatibleFirmware: "This FPApp was compiled for different firmware.",
     DuplicateAppId: "This FPApp is already installed in another slot.",
     InvalidPackage: "The device rejected the FPApp package.",
+    RuntimeTooLarge:
+      "This app needs more runtime memory than the firmware can provide.",
     FlashError: "The device could not write its FPApp flash region.",
   };
   return messages[status.tag];

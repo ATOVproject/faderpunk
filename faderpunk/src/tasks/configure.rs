@@ -288,7 +288,15 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                     layout.iter().map(|(app_id, _, _, _)| app_id).collect();
                 let begin_result = {
                     let mut store = FPAPP_STORE.get().await.lock().await;
-                    store.begin_install(slot as usize, total_len as usize, &active_app_ids)
+                    let result =
+                        store.begin_install(slot as usize, total_len as usize, &active_app_ids);
+                    // begin_install invalidates the old control record before
+                    // touching package bytes. Clear any matching XIP runtime
+                    // descriptor immediately, including on a later erase
+                    // failure, so an interrupted replacement cannot respawn
+                    // code from the invalidated slot.
+                    crate::fpapps::refresh_catalog(&store);
+                    result
                 };
                 let status = match begin_result {
                     Ok(()) => FpAppStatus::Ok,
@@ -306,10 +314,13 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                             let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
                                 layout.iter().map(|(app_id, _, _, _)| app_id).collect();
                             let mut store = FPAPP_STORE.get().await.lock().await;
-                            store
-                                .begin_install(slot as usize, total_len as usize, &active_app_ids)
-                                .map(|_| FpAppStatus::Ok)
-                                .unwrap_or_else(fpapp_status)
+                            let result = store.begin_install(
+                                slot as usize,
+                                total_len as usize,
+                                &active_app_ids,
+                            );
+                            crate::fpapps::refresh_catalog(&store);
+                            result.map(|_| FpAppStatus::Ok).unwrap_or_else(fpapp_status)
                         } else {
                             FpAppStatus::ActiveApp
                         }
@@ -337,11 +348,22 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
             }
             ConfigMsgIn::CommitFpAppInstall => {
                 let mut store = FPAPP_STORE.get().await.lock().await;
-                let status = match store.commit() {
-                    Ok(_) => {
-                        crate::fpapps::refresh_catalog(&store);
-                        FpAppStatus::Ok
-                    }
+                let status = match store.staged_package() {
+                    Ok(package) => match crate::fpapp_runtime::validate_runtime_package(&package) {
+                        Ok(()) => match store.commit() {
+                            Ok(_) => {
+                                crate::fpapps::refresh_catalog(&store);
+                                FpAppStatus::Ok
+                            }
+                            Err(error) => fpapp_status(error),
+                        },
+                        Err(crate::fpapp_runtime::RuntimePackageError::InstanceTooLarge) => {
+                            FpAppStatus::RuntimeTooLarge
+                        }
+                        Err(crate::fpapp_runtime::RuntimePackageError::InvalidPackage) => {
+                            FpAppStatus::InvalidPackage
+                        }
+                    },
                     Err(error) => fpapp_status(error),
                 };
                 proto.send_msg(ConfigMsgOut::FpAppResult(status)).await

@@ -1269,6 +1269,7 @@ pub enum FpAppStatus {
     IncompatibleFirmware,
     DuplicateAppId,
     InvalidPackage,
+    RuntimeTooLarge,
     FlashError,
 }
 

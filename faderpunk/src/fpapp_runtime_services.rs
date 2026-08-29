@@ -13,7 +13,10 @@ use fpapp_sdk::{
 use heapless::Deque;
 use libfp::latch::TakeoverMode;
 use libfp::quantizer::{Quantizer, QuantizerState};
-use libfp::{Brightness, Color, MidiCc, MidiChannel, MidiNote, MidiOut, Range, Value, VoltPerOct};
+use libfp::{
+    fpapp::{sequence_is_after, Package},
+    Brightness, Color, MidiCc, MidiChannel, MidiNote, MidiOut, Range, Value, VoltPerOct,
+};
 use max11300::config::{
     ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, Port, ADCRANGE, AVR, DACRANGE,
     NSAMPLES,
@@ -46,6 +49,40 @@ type DropFn = unsafe extern "C" fn(*mut u8) -> u32;
 
 #[repr(C, align(8))]
 struct InstanceStorage([u8; MAX_INSTANCE_BYTES]);
+
+struct CompletionGuard(&'static Signal<NoopRawMutex, ()>);
+
+impl Drop for CompletionGuard {
+    fn drop(&mut self) {
+        self.0.signal(());
+    }
+}
+
+/// Validate the firmware-specific part of a fully uploaded package before its
+/// slot becomes visible. Container validation proves the entrypoint offset is
+/// in the image; this call executes the tiny size export and enforces the
+/// fixed per-instance arena bound used by `run_fpapp`.
+pub fn validate_runtime_package(package: &Package<'_>) -> Result<(), RuntimePackageError> {
+    let native = package
+        .native_program()
+        .map_err(|_| RuntimePackageError::InvalidPackage)?;
+    let required_bytes: RequiredBytesFn = unsafe {
+        transmute(native_address(
+            native.image.as_ptr() as u32,
+            native.entrypoints.required_bytes,
+        ))
+    };
+    let required = unsafe { required_bytes() } as usize;
+    if required > MAX_INSTANCE_BYTES {
+        return Err(RuntimePackageError::InstanceTooLarge);
+    }
+    Ok(())
+}
+
+pub enum RuntimePackageError {
+    InvalidPackage,
+    InstanceTooLarge,
+}
 
 struct BlobCache {
     kind: u8,
@@ -256,7 +293,7 @@ unsafe extern "C" fn read_event_after(
     let Some(event) = context
         .events
         .iter()
-        .find(|event| event.sequence > sequence)
+        .find(|event| sequence_is_after(event.sequence, sequence))
         .copied()
     else {
         return false;
@@ -438,7 +475,9 @@ pub async fn run_fpapp(
     start_channel: usize,
     layout_id: u8,
     exit_signal: &'static Signal<NoopRawMutex, bool>,
+    completion_signal: &'static Signal<NoopRawMutex, ()>,
 ) {
+    let _completion = CompletionGuard(completion_signal);
     let channels = descriptor.channels as usize;
     if channels == 0 || start_channel + channels > 16 {
         return;

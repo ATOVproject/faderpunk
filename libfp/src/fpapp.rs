@@ -12,6 +12,14 @@ pub const NATIVE_PROGRAM_MAGIC: [u8; 4] = *b"FPN0";
 pub const NATIVE_PROGRAM_VERSION: u16 = 0;
 pub const NATIVE_PROGRAM_HEADER_LEN: usize = 28;
 
+/// Compare wrapping 32-bit event sequence numbers using serial-number
+/// arithmetic. A runtime queue contains far fewer than half the sequence
+/// space, so values in the forward half are unambiguously newer.
+pub const fn sequence_is_after(candidate: u32, cursor: u32) -> bool {
+    let distance = candidate.wrapping_sub(cursor);
+    distance != 0 && distance < (1 << 31)
+}
+
 const FIXED_HEADER_LEN: usize = 24;
 const SECTION_DESCRIPTOR_LEN: usize = 12;
 const SECTION_MANIFEST: u16 = 1;
@@ -765,6 +773,14 @@ fn parse_hex_nibble(value: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn event_sequence_comparison_survives_wraparound() {
+        assert!(sequence_is_after(1, u32::MAX));
+        assert!(sequence_is_after(2, u32::MAX));
+        assert!(!sequence_is_after(u32::MAX, 1));
+        assert!(!sequence_is_after(7, 7));
+    }
 
     // Hand-authored from the container-v0/runtime-v1 layout in
     // docs/fpapp-native-rfc.md. Keeping

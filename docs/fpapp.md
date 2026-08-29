@@ -255,7 +255,8 @@ Installation is intentionally one-way and recoverable:
 5. Accept strictly sequential chunks of at most 256 bytes.
 6. Reparse the complete package directly from mapped flash.
 7. Validate container, CRC, manifest, native envelope, entrypoint offsets,
-   exact firmware identity, and duplicate app ID.
+   exact firmware identity, duplicate app ID, and the 8 KiB runtime-state
+   bound. A package that cannot launch never enters the catalogue.
 8. Write the CRC-protected control record last and refresh the catalogue.
 
 A reset during steps 3-7 exposes an empty slot after reboot. No partial package
@@ -307,7 +308,7 @@ The CBOR map has integer keys so firmware can parse it without allocation.
 | 6 | channels | `1..=16` |
 | 7 | display color | 24-bit RGB in `u32` |
 | 8 | icon | Faderpunk icon discriminant |
-| 9 | parameter entries | at most `APP_MAX_PARAMS` |
+| 9 | parameter count placeholders | an array of CBOR `null` values, at most `APP_MAX_PARAMS`; parameter definitions live in section 5 |
 | 10 | requested persistent bytes | reserved for policy/inspection |
 | 11 | execution units per event | reserved for future policy |
 | 12 | capability bitmap | reserved for declaration/display policy |
@@ -389,6 +390,18 @@ those defaults intact. `GetAppParams` then reads the live values from the
 running app, and subsequent edits are saved with the same layout-ID and app-ID
 guards used by built-ins.
 
+### Configurator screenshots
+
+These screenshots are from the live hardware acceptance session. Installed
+apps join the normal catalogue and documentation rather than creating a
+second, parallel user interface.
+
+![Sift in the normal two-channel app catalogue](images/fpapp/apps-catalog.jpg)
+
+![Sift installed in slot 1](images/fpapp/installed-apps.jpg)
+
+![Sift manual rendered with the normal app-manual layout](images/fpapp/sift-manual.jpg)
+
 The UI avoids exposing flash sizes, ABI hashes, native envelope details, or
 transaction internals in normal help text. A mismatch is presented as the
 actionable sentence “This app needs a different firmware version.”
@@ -450,18 +463,28 @@ static RAM (100,876 bytes free). Static RAM includes the 256 KiB Embassy task
 arena; active FPApp futures allocate their bounded instance state from that
 arena.
 
-Physical-device acceptance was run on 2026-08-28 with firmware identity
-`64df50f3159a31f9e46fb2d19759382daaf7f3edbb02bda0155cbf6f03ab050a`.
-The matching release UF2 had SHA-256
-`819ff7bbaa905d59221fa888e908b79972138094e172de563e10d50d8d606533`.
+Physical-device acceptance was completed on 2026-08-28 against feature commit
+`82d03d08e2d88ed7d7334bf558259e709ba04754`, with firmware identity
+`82d03d08e2d88ed7d7334bf558259e709ba04754655f1e5ff36f1928493e10b1`.
+The flashed UF2 had SHA-256
+`a0067fa8265629b8839544341d4759cdbd657d4357ad080b5ede4ca954577ee6`.
+The matching packages had these SHA-256 values:
+
+- Grooves: `f061ff020eb9aac2b4a8cec4d9f8b8969b456598740e17861f6d6adf0eae7ade`;
+- Heat Pump: `b99508f8ab97c5c2971e670440653b8f301edf5fe14b511101fad67edeb0565a`;
+- Sift: `3120b52d5dd6d2234681dcc350c373889b00374ef64f23fa21f2e57c7af14142`.
+
 The device rebooted and enumerated after flashing, and the exact-match verifier
 accepted all three packages before upload. Sift, Grooves, and Heat Pump were
-installed independently in slots 1, 2, and 3, then added to one mixed layout on
-channels 1-2, 3, and 4. The Configurator read each app's live parameter values
-through the normal Device page and displayed its manual and setup content in
-the normal Manual page. The device remained responsive after Grooves and Heat
-Pump started their 1 ms timer loops, and the same layout and app metadata were
-re-read successfully after a full Configurator reload.
+installed independently, added to layouts, configured through the normal
+settings controls, and read through the normal Manual page. Install, replace,
+remove, and Clear All Apps were repeated with active apps. Replacement and
+removal automatically cleared the affected layout entries, stopped output,
+and left the LEDs dark instead of asking the player to edit the layout first.
+The device remained responsive after Grooves and Heat Pump started their 1 ms
+timer loops, and the same layout and app metadata were re-read successfully
+after a full Configurator reload. The final photographed state has Sift
+installed in slot 1.
 
 That run exposed and fixed two hardware-only failures: a package-local
 `RawWakerVTable` containing absolute function addresses, and an immediate wake
@@ -471,6 +494,12 @@ and timer requests retain only the earliest deadline without signalling the
 currently polling task. External CV, clock, MIDI, and I2C timing stress remains
 useful release validation; it is separate from the completed install,
 enumeration, configuration, timer, and reconnect acceptance pass.
+
+The final code-review pass after that flash replaced the native-task grace
+delay with an explicit completion acknowledgement, rejects over-budget runtime
+state before publishing a slot, validates the complete native envelope in the
+Configurator, and made event cursors wrap-aware. These changes tighten the
+same tested boundaries; they do not alter the app-facing ABI.
 
 ## Risks and follow-up decisions
 
