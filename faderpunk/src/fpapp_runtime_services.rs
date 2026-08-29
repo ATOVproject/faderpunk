@@ -870,6 +870,9 @@ fn native_address(code_base: u32, offset: u32) -> usize {
 
 async fn reset_channels(start_channel: usize, channels: usize) {
     for channel in start_channel..start_channel + channels {
+        for position in [Led::Top, Led::Bottom, Led::Button] {
+            set_led_mode(channel, position, LedMsg::Reset);
+        }
         configure_port(channel, Mode::Mode0(ConfigMode0), None).await;
     }
 }
