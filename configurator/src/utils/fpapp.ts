@@ -6,8 +6,8 @@ import type {
 } from "@atov/fp-config";
 
 import {
-  receiveBatchMessages,
   sendAndReceive,
+  sendAndReceiveBatch,
   type FpMidiDevice,
 } from "./midi-protocol";
 import type { AllColors, App, AllApps } from "./types";
@@ -473,11 +473,12 @@ export async function getFpAppSupport(
 export async function getFpAppSlots(
   device: FpMidiDevice,
 ): Promise<FpAppSlot[]> {
-  const start = await sendAndReceive(device, { tag: "GetFpAppSlots" });
+  const { start, messages } = await sendAndReceiveBatch(device, {
+    tag: "GetFpAppSlots",
+  });
   if (start.tag !== "BatchMsgStart") {
     throw new Error(`Expected FPApp slot batch, received ${start.tag}.`);
   }
-  const messages = await receiveBatchMessages(device, start.value);
   return messages.map((message) => {
     if (message.tag === "FpAppSlot") {
       return { slot: message.value.slot, app: message.value };
@@ -534,7 +535,7 @@ export async function installFpApp(
       onProgress((offset + chunk.length) / app.bytes.length);
     }
     await expectOk(
-      await sendAndReceive(device, { tag: "CommitFpAppInstall" }, 10_000),
+      await sendAndReceive(device, { tag: "CommitFpAppInstall" }, 30_000),
     );
   } catch (error) {
     try {

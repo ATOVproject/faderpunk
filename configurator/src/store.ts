@@ -42,6 +42,11 @@ const makeEmptyLayout = (): AppLayout =>
 // thus one localStorage, so the key is namespaced by deploy path.
 const SIMULATOR_STORAGE_KEY = `fp-simulator-state:${import.meta.env.BASE_URL}`;
 
+// React Strict Mode deliberately replays mount effects in development. Keep
+// device discovery single-flight so a replay cannot attach a second receiver
+// and interleave catalog, slot, or version responses on the config cable.
+let autoConnectInFlight: Promise<boolean> | undefined;
+
 const persistSimulatorState = (
   layout: AppLayout,
   params: ParamValues,
@@ -108,23 +113,34 @@ const initialState = {
 export const useStore = create<State>((set, get) => ({
   ...initialState,
   autoConnect: async () => {
+    if (autoConnectInFlight) return autoConnectInFlight;
+
+    const attempt = (async () => {
+      try {
+        const device = await tryAutoConnect();
+        if (!device) return false;
+
+        const deviceVersion = getDeviceVersion(device);
+        set({ deviceVersion });
+
+        const apps = await getAllApps(device);
+        const params = await getAllAppParams(device);
+        const layout = await getLayout(device, apps);
+        const config = await getGlobalConfig(device);
+
+        set({ apps, config, deviceVersion, layout, params, device });
+        return true;
+      } catch (error) {
+        console.error("Auto-connect failed:", error);
+        return false;
+      }
+    })();
+    autoConnectInFlight = attempt;
+
     try {
-      const device = await tryAutoConnect();
-      if (!device) return false;
-
-      const deviceVersion = getDeviceVersion(device);
-      set({ deviceVersion });
-
-      const apps = await getAllApps(device);
-      const params = await getAllAppParams(device);
-      const layout = await getLayout(device, apps);
-      const config = await getGlobalConfig(device);
-
-      set({ apps, config, deviceVersion, layout, params, device });
-      return true;
-    } catch (error) {
-      console.error("Auto-connect failed:", error);
-      return false;
+      return await attempt;
+    } finally {
+      if (autoConnectInFlight === attempt) autoConnectInFlight = undefined;
     }
   },
   connect: async () => {
