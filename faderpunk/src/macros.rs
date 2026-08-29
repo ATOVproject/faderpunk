@@ -34,10 +34,6 @@ macro_rules! register_apps {
             exit_signals: &'static [Signal<NoopRawMutex, bool>; 16],
             completion_signals: &'static [Signal<NoopRawMutex, ()>; 16],
         ) {
-            // A task that completed by itself may leave an unconsumed exit
-            // value behind. Every new instance starts with a clean lifecycle
-            // signal so it cannot immediately cancel itself.
-            exit_signals[start_channel].reset();
             match app_id {
                 $(
                     $id => {

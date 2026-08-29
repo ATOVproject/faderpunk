@@ -82,6 +82,10 @@ impl LayoutManager {
             self.exit_signals[start_channel].signal(true);
             if is_fpapp {
                 self.completion_signals[start_channel].wait().await;
+                // A native task may have finished by itself before the exit
+                // request was sent. Completion proves that no task can still
+                // need the request, so it is now safe to clear a stale value.
+                self.exit_signals[start_channel].reset();
             } else {
                 // Factory tasks predate completion acknowledgements. Their
                 // exit handlers contain only bounded host cleanup, so retain

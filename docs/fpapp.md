@@ -457,9 +457,9 @@ Automated evidence in this prototype includes:
 - cross-compilation of firmware and all current community apps;
 - package verification for Heat Pump, Grooves, and Sift.
 
-The current release link uses 1,011,384 bytes of the 1,572,864-byte firmware
-flash partition (561,480 bytes free) and 423,412 bytes of 524,288 bytes of
-static RAM (100,876 bytes free). Static RAM includes the 256 KiB Embassy task
+The current release link uses 1,014,388 bytes of the 1,572,864-byte firmware
+flash partition (558,476 bytes free) and 419,480 bytes of 524,288 bytes of
+static RAM (104,808 bytes free). Static RAM includes the 256 KiB Embassy task
 arena; active FPApp futures allocate their bounded instance state from that
 arena.
 
