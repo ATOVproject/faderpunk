@@ -1038,6 +1038,7 @@ pub enum AppIcon {
     NoteGrid,
     KnobRound,
     Stereo,
+    Sift,
 }
 
 #[allow(non_camel_case_types)]

@@ -407,6 +407,7 @@ fn fpapp_icon(icon: u8) -> AppIcon {
         14 => AppIcon::NoteGrid,
         15 => AppIcon::KnobRound,
         16 => AppIcon::Stereo,
+        17 => AppIcon::Sift,
         _ => AppIcon::Fader,
     }
 }

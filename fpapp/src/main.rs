@@ -519,6 +519,7 @@ fn icon_id(icon: &str) -> Result<u8, String> {
         "note-grid" => Ok(14),
         "knob-round" => Ok(15),
         "stereo" => Ok(16),
+        "sift" => Ok(17),
         other => Err(format!("unsupported community app icon {other:?}")),
     }
 }
@@ -1039,7 +1040,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
             "appId": 102,
             "title": "Sift",
             "description": "Two-channel sequencer",
-            "icon": "sequence-square",
+            "icon": "sift",
             "color": "Rose",
             "text": "Manual body",
             "params": ["CV Steps"],
@@ -1060,5 +1061,11 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         assert_eq!(document["format"], "faderpunk-manual-v1");
         assert_eq!(document["app"], source);
         assert_eq!(document["app"]["channels"][0]["jackTitle"], "Gate");
+    }
+
+    #[test]
+    fn sift_icon_keeps_its_appended_discriminant() {
+        assert_eq!(icon_id("sift"), Ok(17));
+        assert_eq!(icon_pascal("sift"), "Sift");
     }
 }
