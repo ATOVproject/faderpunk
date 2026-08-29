@@ -31,7 +31,9 @@
     "Dit length",
     "Pitch offset",
     "Dah interval blend",
-    "Muted"
+    "Muted",
+    "Inverted",
+    "Texture"
   ],
   "columns": [
     {
@@ -39,9 +41,9 @@
         {
           "heading": "Faders",
           "items": [
-            "<strong>Main</strong> — Dit length (maps 30 ms up to four 16ths of the clock)",
-            "<strong>Alt</strong> — Pitch offset ±48 st around the base note",
-            "<strong>Third</strong> — Dah extra interval (deadzone; uses the Interval param)"
+            "<strong>Main</strong> \u2014 Dit length (maps 30 ms up to four 16ths of the clock)",
+            "<strong>Alt</strong> \u2014 Pitch offset \u00b148 st around the base note",
+            "<strong>Third</strong> \u2014 Dah extra interval (deadzone; uses the Interval param). Main/Alt/Third mappings flip at playback when inverted"
           ]
         }
       ]
@@ -51,9 +53,10 @@
         {
           "heading": "Buttons",
           "items": [
-            "<strong>Short</strong> — Mute / unmute (phrase keeps its place; notes stay off while muted)",
-            "<strong>Shift + short</strong> — Arm start on the next 16th (clock Reset also arms when idle)",
-            "<strong>Long</strong> — Cancels the short action (no panic)"
+            "<strong>Short</strong> \u2014 Mute / unmute (phrase keeps its place; Button LED off when muted, orange when live+normal, white when live+inverted)",
+            "<strong>Shift + short</strong> \u2014 Toggle texture: random MIDI velocity and swing on odd 16ths (Bottom LED white when on)",
+            "<strong>Long</strong> \u2014 Arm / retrigger on the next 16th (clock Reset also arms when idle)",
+            "<strong>Shift + long</strong> \u2014 Toggle invert: swap dit\u2194dah lengths and flip Main/Alt/Third fader mappings at playback"
           ]
         }
       ]
@@ -64,9 +67,10 @@
           "heading": "Params / LEDs",
           "items": [
             "Needs clock. MIDI Start/Reset or the first 16th after ticks appear arms (analog Atom/Meteor/Cube has no Reset); then the phrase loops freely",
-            "Jack: CV Out Gate · CV Out Pitch · CV In Gate · CV In Dit length · CV In Pitch offset · CV In Dah interval. CV In Gate rising edge arms like Shift+short. CV In dests add ±5 V bipolar on top of the saved fader at playback (not stored). V/Oct only for CV Out Pitch. MIDI note-ons always.",
-            "Phrases 1–10 are packed ASCII (default Phrase 1 = SOS)",
-            "Button LED orange when live; Top LED high while a dit/dah sounds"
+            "Jack: CV Out Gate \u00b7 CV Out Pitch \u00b7 CV In Gate \u00b7 CV In Dit length \u00b7 CV In Pitch offset \u00b7 CV In Dah interval. CV In Gate rising edge arms like long press. CV In dests add \u00b15 V bipolar on top of the saved fader at playback (not stored). V/Oct only for CV Out Pitch. MIDI note-ons always.",
+            "Invert swaps dit\u2194dah lengths and flips Main/Alt/Third fader mappings at playback. Texture adds random MIDI velocity and swing on odd 16ths.",
+            "Button LED off when muted; orange when live+normal; white when live+inverted. Bottom LED white when texture is on. Top LED high while a dit/dah sounds. Long press arms the next 16th.",
+            "Phrases 1\u201310 are packed ASCII (default Phrase 1 = SOS)"
           ]
         }
       ]
@@ -75,17 +79,19 @@
   "channels": [
     {
       "jackTitle": "Jack",
-      "jackDescription": "CV Out Gate / CV Out Pitch (0–10 V V/Oct), CV In Gate (±5 V rising edge arms), or CV In Dit length / Pitch offset / Dah interval (±5 V bipolar add at playback only). MIDI notes always fire.",
+      "jackDescription": "CV Out Gate / CV Out Pitch (0\u201310 V V/Oct), CV In Gate (\u00b15 V rising edge arms like long press), or CV In Dit length / Pitch offset / Dah interval (\u00b15 V bipolar add at playback only). MIDI notes always fire.",
       "faderTitle": "Dit length",
-      "faderDescription": "Duration of a dit in milliseconds, from 30 ms up to four 16th-notes of the incoming clock. Dah is 3× dit.",
+      "faderDescription": "Duration of a dit in milliseconds, from 30 ms up to four 16th-notes of the incoming clock. Dah is 3\u00d7 dit.",
       "faderPlusShiftTitle": "Pitch offset",
-      "faderPlusShiftDescription": "Bipolar transposition of the whole phrase around Base note, up to ±48 semitones.",
+      "faderPlusShiftDescription": "Bipolar transposition of the whole phrase around Base note, up to \u00b148 semitones.",
       "faderPlusFnTitle": "Dah interval",
       "faderPlusFnDescription": "Adds the Interval param onto dahs only (deadzone around centre). Dits stay on the Alt-offset pitch.",
-      "fnTitle": "Mute / re-arm",
-      "fnDescription": "Short tap mutes MIDI and CV. Shift + short arms playback on the next 16th.",
+      "fnTitle": "Mute / long = re-arm",
+      "fnDescription": "Short tap mutes MIDI and CV. Long press arms playback on the next 16th.",
+      "fnPlusShiftTitle": "Texture / invert",
+      "fnPlusShiftDescription": "Shift+short toggles texture (random MIDI velocity + odd-16th swing). Shift+long inverts dit\u2194dah and flips speed/pitch at playback.",
       "ledTop": "Orange high while a tone is sounding",
-      "ledBottom": ""
+      "ledBottom": "White when texture is on; off when texture is off"
     }
   ]
 }
