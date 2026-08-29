@@ -21,7 +21,7 @@ use max11300::config::{ConfigMode0, ConfigMode3, ConfigMode5, Mode, Port, DACRAN
 use crate::apps::{get_channels, get_config, REGISTERED_APP_IDS};
 use crate::fpapps::FPAPP_STORE;
 use crate::layout::{EvictionCmd, LAYOUT_EVICTION_REQ, LAYOUT_EVICTION_RES, LAYOUT_WATCH};
-use crate::storage::factory_reset;
+use crate::storage::{factory_reset, store_layout};
 use crate::tasks::global_config::{get_global_config, GLOBAL_CONFIG_WATCH};
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL, MAX_VALUES_DAC};
 use crate::tasks::midi::{SharedUsbSender, CONFIG_CABLE};
@@ -286,11 +286,36 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
             ConfigMsgIn::BeginFpAppInstall { slot, total_len } => {
                 let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
                     layout.iter().map(|(app_id, _, _, _)| app_id).collect();
-                let mut store = FPAPP_STORE.get().await.lock().await;
-                let status = store
-                    .begin_install(slot as usize, total_len as usize, &active_app_ids)
-                    .map(|_| FpAppStatus::Ok)
-                    .unwrap_or_else(fpapp_status);
+                let begin_result = {
+                    let mut store = FPAPP_STORE.get().await.lock().await;
+                    store.begin_install(slot as usize, total_len as usize, &active_app_ids)
+                };
+                let status = match begin_result {
+                    Ok(()) => FpAppStatus::Ok,
+                    Err(StoreError::ActiveApp) => {
+                        let app_id = {
+                            let store = FPAPP_STORE.get().await.lock().await;
+                            store
+                                .installed(slot as usize)
+                                .ok()
+                                .flatten()
+                                .map(|app| app.app_id)
+                        };
+                        if let Some(app_id) = app_id {
+                            deactivate_fpapp(&mut layout, app_id).await;
+                            let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
+                                layout.iter().map(|(app_id, _, _, _)| app_id).collect();
+                            let mut store = FPAPP_STORE.get().await.lock().await;
+                            store
+                                .begin_install(slot as usize, total_len as usize, &active_app_ids)
+                                .map(|_| FpAppStatus::Ok)
+                                .unwrap_or_else(fpapp_status)
+                        } else {
+                            FpAppStatus::ActiveApp
+                        }
+                    }
+                    Err(error) => fpapp_status(error),
+                };
                 proto.send_msg(ConfigMsgOut::FpAppResult(status)).await
             }
             ConfigMsgIn::WriteFpAppChunk { offset, len, data } => {
@@ -332,11 +357,40 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
             ConfigMsgIn::RemoveFpApp { slot } => {
                 let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
                     layout.iter().map(|(app_id, _, _, _)| app_id).collect();
-                let mut store = FPAPP_STORE.get().await.lock().await;
-                let status = match store.remove(slot as usize, &active_app_ids) {
+                let remove_result = {
+                    let mut store = FPAPP_STORE.get().await.lock().await;
+                    store.remove(slot as usize, &active_app_ids)
+                };
+                let status = match remove_result {
                     Ok(()) => {
+                        let store = FPAPP_STORE.get().await.lock().await;
                         crate::fpapps::refresh_catalog(&store);
                         FpAppStatus::Ok
+                    }
+                    Err(StoreError::ActiveApp) => {
+                        let app_id = {
+                            let store = FPAPP_STORE.get().await.lock().await;
+                            store
+                                .installed(slot as usize)
+                                .ok()
+                                .flatten()
+                                .map(|app| app.app_id)
+                        };
+                        if let Some(app_id) = app_id {
+                            deactivate_fpapp(&mut layout, app_id).await;
+                            let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
+                                layout.iter().map(|(app_id, _, _, _)| app_id).collect();
+                            let mut store = FPAPP_STORE.get().await.lock().await;
+                            match store.remove(slot as usize, &active_app_ids) {
+                                Ok(()) => {
+                                    crate::fpapps::refresh_catalog(&store);
+                                    FpAppStatus::Ok
+                                }
+                                Err(error) => fpapp_status(error),
+                            }
+                        } else {
+                            FpAppStatus::ActiveApp
+                        }
                     }
                     Err(error) => fpapp_status(error),
                 };
@@ -351,6 +405,37 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
         if let Err(err) = res {
             defmt::warn!("Failed to send config response: {}", err);
         }
+    }
+}
+
+/// Stop every running instance of one installed FPApp before its flash slot is
+/// changed. The layout-manager acknowledgement is the safety seam: code is not
+/// erased until the native tasks have exited and released their hardware.
+async fn deactivate_fpapp(layout: &mut Layout, app_id: u8) {
+    let mut start_channels: Vec<usize, GLOBAL_CHANNELS> = Vec::new();
+    for (active_app_id, start_channel, _, _) in layout.iter() {
+        if active_app_id == app_id {
+            let _ = start_channels.push(start_channel);
+        }
+    }
+    if start_channels.is_empty() {
+        return;
+    }
+
+    for &start_channel in start_channels.iter() {
+        LAYOUT_EVICTION_REQ.signal(EvictionCmd::Evict(start_channel));
+        LAYOUT_EVICTION_RES.wait().await;
+        layout.0[start_channel] = None;
+    }
+
+    // Keep the desired, persisted, and actually running layouts in agreement
+    // before the package is invalidated by begin_install.
+    store_layout(layout).await;
+    LAYOUT_WATCH.sender().send(layout.clone());
+
+    for start_channel in start_channels {
+        LAYOUT_EVICTION_REQ.signal(EvictionCmd::Release(start_channel));
+        LAYOUT_EVICTION_RES.wait().await;
     }
 }
 

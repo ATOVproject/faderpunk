@@ -606,7 +606,8 @@ function statusMessage(status: FpAppStatus) {
     UnexpectedOffset: "An FPApp upload chunk arrived out of order.",
     ChunkTooLarge: "An FPApp upload chunk is too large.",
     Incomplete: "The FPApp upload did not finish.",
-    ActiveApp: "Stop this FPApp in the current layout before replacing it.",
+    ActiveApp:
+      "The installed app is active in the channel layout. Remove it from the layout, then try again.",
     IncompatibleFirmware: "This FPApp was compiled for different firmware.",
     DuplicateAppId: "This FPApp is already installed in another slot.",
     InvalidPackage: "The device rejected the FPApp package.",

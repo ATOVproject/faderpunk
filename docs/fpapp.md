@@ -40,8 +40,8 @@ but it is no longer part of the normal app workflow.
 2. Connect Faderpunk to the Configurator normally.
 3. Open **Apps** and scroll to **Installed Apps**.
 4. Choose an empty slot and select a `.fpapp` file.
-5. Review the app name, author, description, and setup notes, then confirm that
-   the app and its source are trusted.
+5. Review the app name, author, and description, then confirm that the app and
+   its source are trusted.
 6. Install it. The Configurator refreshes the app catalogue automatically.
 7. Add the app to a layout and configure it exactly like a built-in app.
 
@@ -50,8 +50,9 @@ must support Web MIDI with SysEx permission (Chrome and other Chromium-based
 browsers do).
 
 There are four independent slots. An interrupted upload leaves only its chosen
-slot empty; the player can select the file and install it again. A slot may be
-replaced or removed only while its app is absent from the active layout.
+slot empty; the player can select the file and install it again. Replacing or
+removing an app automatically stops all of its running instances and removes
+them from the saved channel layout before changing the slot.
 
 There is intentionally no separate FPApps tab. Slots are installation
 management, while installed applications are ordinary applications.
@@ -245,17 +246,19 @@ image cannot overlap package storage.
 
 Installation is intentionally one-way and recoverable:
 
-1. Reject invalid slot, zero length, oversize package, busy installer, or an
-   active app replacement.
-2. Erase the chosen control sector first, making the slot empty.
-3. Erase enough package sectors for the declared length.
-4. Accept strictly sequential chunks of at most 256 bytes.
-5. Reparse the complete package directly from mapped flash.
-6. Validate container, CRC, manifest, native envelope, entrypoint offsets,
+1. Reject an invalid slot, zero length, oversize package, or busy installer.
+2. If the installed app is active, stop every layout instance and wait for the
+   layout manager to acknowledge that its task has exited and released its
+   hardware. Persist the cleared layout.
+3. Erase the chosen control sector first, making the slot empty.
+4. Erase enough package sectors for the declared length.
+5. Accept strictly sequential chunks of at most 256 bytes.
+6. Reparse the complete package directly from mapped flash.
+7. Validate container, CRC, manifest, native envelope, entrypoint offsets,
    exact firmware identity, and duplicate app ID.
-7. Write the CRC-protected control record last and refresh the catalogue.
+8. Write the CRC-protected control record last and refresh the catalogue.
 
-A reset during steps 2-6 exposes an empty slot after reboot. No partial package
+A reset during steps 3-7 exposes an empty slot after reboot. No partial package
 is considered installed. Removing an app erases only its control sector.
 
 ## `.fpapp` container v0
@@ -430,7 +433,8 @@ Automated evidence in this prototype includes:
   duplicate section, unknown required section, and native envelope checks;
 - explicit firmware identity parsing and exact-match rejection;
 - fixed-slot tests for interrupted install, reopen, sequential chunks,
-  replacement, removal, duplicate IDs, active-app protection, and size limits;
+  replacement, removal, duplicate IDs, store-level active-app protection, and
+  size limits;
 - host-driven async future initialization, polling, drop, and state retention;
 - independent event-reader fanout so concurrent app tasks do not steal events;
 - persistent clock subscription and 64-bit tick regression coverage;

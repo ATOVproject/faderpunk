@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Checkbox } from "@heroui/checkbox";
-import ReactMarkdown from "react-markdown";
 
 import { useStore } from "../store";
 import {
@@ -96,6 +95,9 @@ export const InstalledApps = () => {
         ? selection.app.firmwareAbi === firmwareAbi
         : Boolean(selection && isSimulator),
     [firmwareAbi, isSimulator, selection],
+  );
+  const isReplacing = Boolean(
+    selection && slots.find((slot) => slot.slot === selection.slot)?.app,
   );
 
   const chooseFile = async (file: File, slot: number) => {
@@ -230,7 +232,7 @@ export const InstalledApps = () => {
           Installed Apps
         </h2>
         <div className="min-h-6 text-sm leading-6">
-          {error ? (
+          {error && !selection ? (
             <p className="text-red-300" role="alert">
               {error}
             </p>
@@ -362,8 +364,29 @@ export const InstalledApps = () => {
                 </div>
 
                 {selection?.slot === slot.slot && (
-                  <div className="bg-zinc-950 px-5 py-6 md:pl-25">
-                    <div className="max-w-3xl">
+                  <div className="bg-zinc-950 px-5 pb-6 md:pl-25">
+                    <div
+                      className="flex items-center gap-3 py-4 text-gray-500"
+                      aria-hidden="true"
+                    >
+                      <span className="h-px flex-1 bg-white/10" />
+                      <svg
+                        className="text-yellow-fp h-5 w-5 shrink-0"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <path
+                          d="M12 4v14m0 0 5-5m-5 5-5-5"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span className="h-px flex-1 bg-white/10" />
+                    </div>
+
+                    <div className="max-w-3xl pt-1">
                       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                         <h3 className="text-lg font-bold text-white">
                           {selection.app.name}
@@ -372,19 +395,24 @@ export const InstalledApps = () => {
                           v{selection.app.version} by {selection.app.author}
                         </span>
                       </div>
-                      <p className="mt-2 text-sm leading-6 text-gray-300">
-                        {selection.app.description}
-                      </p>
-                      {selection.app.setup && (
-                        <div className="prose prose-invert prose-sm mt-5 text-gray-200">
-                          <ReactMarkdown>{selection.app.setup}</ReactMarkdown>
-                        </div>
-                      )}
-                      {!isCompatible && (
-                        <p className="mt-5 text-sm text-red-300" role="alert">
-                          This app needs a different firmware version.
-                        </p>
-                      )}
+                      <div className="mt-2 min-h-12 text-sm leading-6">
+                        {error ? (
+                          <p className="text-red-300" role="alert">
+                            {error}
+                          </p>
+                        ) : (
+                          <>
+                            <p className="text-gray-300">
+                              {selection.app.description}
+                            </p>
+                            {!isCompatible && (
+                              <p className="mt-2 text-red-300" role="alert">
+                                This app needs a different firmware version.
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     <div className="mt-6 max-w-3xl border-t border-white/10 pt-5">
@@ -406,13 +434,14 @@ export const InstalledApps = () => {
                         >
                           {busy && progress !== undefined
                             ? `Installing · ${Math.round(progress * 100)}%`
-                            : `Install in slot ${selection.slot + 1}`}
+                            : `${isReplacing ? "Replace" : "Install"} in slot ${selection.slot + 1}`}
                         </ButtonPrimary>
                         <ButtonSecondary
                           isDisabled={busy}
                           onPress={() => {
                             setSelection(undefined);
                             setTrusted(false);
+                            setError(undefined);
                           }}
                         >
                           Cancel

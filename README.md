@@ -131,8 +131,10 @@ The Faderpunk Configurator is a React/TypeScript web application that communicat
 
 FPApp-capable firmware can install `.fpapp` files without entering BOOTSEL or
 replacing the firmware image. Connect normally, open **Apps**, scroll to
-**Installed Apps**, and install a trusted package in an empty slot. It then
-appears in the normal app catalogue and layout editor.
+**Installed Apps**, and install a trusted package in any of the four slots. If
+the replaced app is running, firmware safely removes its instances from the
+channel layout first. The installed app then appears in the normal app
+catalogue and layout editor.
 
 Installation uses the USB MIDI configuration cable and requires a Chromium
 browser with Web MIDI/SysEx permission.

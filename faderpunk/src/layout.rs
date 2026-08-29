@@ -21,14 +21,17 @@ pub static LAYOUT_WATCH: Watch<CriticalSectionRawMutex, Layout, LAYOUT_WATCH_SUB
 /// Signal to force respawn all apps
 pub static FORCE_RESPAWN_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
-/// A scoped, non-persisting request to evict or restore a single channel's
-/// app, used by the V/Oct calibration wizard to temporarily free a jack an
-/// app is using without touching the persisted layout.
+/// A request for the layout manager to stop or restore one app and acknowledge
+/// when the task is no longer running. V/Oct calibration uses the held
+/// evict/restore pair; FPApp replacement holds channels until the cleared
+/// layout is persisted, then releases them before erasing code.
 pub enum EvictionCmd {
     /// Exit whatever app is running on this start_channel, if any.
     Evict(usize),
-    /// Respawn (app_id, channels, layout_id) on this start_channel.
+    /// Respawn (app_id, channels, layout_id) and release this held channel.
     Restore(usize, u8, usize, u8),
+    /// Release a held channel without respawning its previous app.
+    Release(usize),
 }
 
 pub static LAYOUT_EVICTION_REQ: Signal<CriticalSectionRawMutex, EvictionCmd> = Signal::new();

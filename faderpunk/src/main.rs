@@ -137,6 +137,9 @@ async fn main_core1(spawner: Spawner) {
                             .await;
                         lm.set_held(start_channel, false).await;
                     }
+                    EvictionCmd::Release(start_channel) => {
+                        lm.set_held(start_channel, false).await;
+                    }
                 }
                 LAYOUT_EVICTION_RES.signal(());
             }

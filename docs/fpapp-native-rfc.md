@@ -30,19 +30,21 @@ timers, and quantization before Sift can run unchanged as an FPApp.
 ## User experience
 
 1. Connect Faderpunk to the Configurator.
-2. Open **FPApps** and choose a `.fpapp` file.
+2. Open **Apps**, scroll to **Installed Apps**, and choose a `.fpapp` file.
 3. The Configurator parses the package locally and shows its identity,
-   firmware match, setup guide, manual, settings schema, and signature status.
+   firmware match, and signature status.
 4. Confirm that the package contains trusted native code with hardware-level
    access.
-5. Choose an empty slot, or replace an inactive app in a used slot.
+5. Choose any slot. If its installed app is in the channel layout, firmware
+   stops every running instance and removes those instances from the saved
+   layout before changing flash.
 6. The Configurator uploads sequential 256-byte chunks and asks the device to
    commit the package.
 7. Only a completely written, structurally valid package for the exact running
    firmware becomes installed. It then joins the normal app catalog and may be
    placed in a layout.
-8. Installed documentation and settings metadata remain available from the
-   device. An inactive app may be removed from the same screen.
+8. Installed documentation and settings metadata remain available from their
+   normal app surfaces. An installed app may be removed from the same screen.
 
 If upload is interrupted or validation fails, the selected slot is empty. The
 user chooses the file and uploads it again. Other slots are unaffected.
@@ -73,8 +75,11 @@ pair and no automatic rollback:
 - reset or power loss before commit therefore leaves that slot empty;
 - the recovery operation is simply to upload again.
 
-Replacing or removing an app that is present in the active layout is rejected.
-This prevents a running layout from retaining a pointer into erased flash.
+Replacing or removing an app that is present in the active layout first asks
+the layout manager to stop every instance. Firmware waits for acknowledgement,
+persists the cleared layout, and only then changes the flash slot. This keeps a
+running task from retaining a pointer into erased flash without making the
+player edit the layout manually.
 
 ### Explicit trust, not implied isolation
 
