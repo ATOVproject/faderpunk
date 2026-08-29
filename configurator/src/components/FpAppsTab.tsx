@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Checkbox } from "@heroui/checkbox";
 import ReactMarkdown from "react-markdown";
 
@@ -45,13 +45,15 @@ export const InstalledApps = () => {
   const [loading, setLoading] = useState(Boolean(device));
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [removalSlot, setRemovalSlot] = useState<number>();
   const [simulatorPackages, setSimulatorPackages] = useState(
     new Map<number, ParsedFpApp>(),
   );
+  const sectionRef = useRef<HTMLDivElement>(null);
 
-  const refresh = async () => {
+  const refresh = async (showLoading = true) => {
     if (!device) return;
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       // The config transport supports one in-flight receive per MIDI device.
       // Keep these queries sequential so the slot batch cannot consume the
@@ -64,8 +66,21 @@ export const InstalledApps = () => {
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
+  };
+
+  const preserveSectionPosition = async (
+    update: () => void | Promise<void>,
+  ) => {
+    const previousTop = sectionRef.current?.getBoundingClientRect().top;
+    await update();
+    requestAnimationFrame(() => {
+      if (previousTop === undefined || !sectionRef.current) return;
+      const shift =
+        sectionRef.current.getBoundingClientRect().top - previousTop;
+      if (Math.abs(shift) > 0.5) window.scrollBy(0, shift);
+    });
   };
 
   useEffect(() => {
@@ -87,6 +102,7 @@ export const InstalledApps = () => {
     setError(undefined);
     setNotice(undefined);
     setTrusted(false);
+    setRemovalSlot(undefined);
     try {
       const app = await parseFpApp(file);
       setSelection({ app, slot });
@@ -112,8 +128,8 @@ export const InstalledApps = () => {
           support,
           setProgress,
         );
-        await refresh();
-        await refreshApps();
+        await refresh(false);
+        await preserveSectionPosition(refreshApps);
       } else if (isSimulator) {
         const nextPackages = new Map(simulatorPackages).set(
           selection.slot,
@@ -121,16 +137,18 @@ export const InstalledApps = () => {
         );
         setSimulatorPackages(nextPackages);
         cacheFpAppManual(selection.app);
-        addSimulatorApp({
-          appId: selection.app.appId,
-          channels: BigInt(selection.app.channels),
-          paramCount: BigInt(selection.app.appConfig?.params.length ?? 0),
-          name: selection.app.name,
-          description: selection.app.description,
-          color: selection.app.appConfig?.color ?? "White",
-          icon: selection.app.appConfig?.icon ?? "Fader",
-          params: selection.app.appConfig?.params ?? [],
-        });
+        await preserveSectionPosition(() =>
+          addSimulatorApp({
+            appId: selection.app.appId,
+            channels: BigInt(selection.app.channels),
+            paramCount: BigInt(selection.app.appConfig?.params.length ?? 0),
+            name: selection.app.name,
+            description: selection.app.description,
+            color: selection.app.appConfig?.color ?? "White",
+            icon: selection.app.appConfig?.icon ?? "Fader",
+            params: selection.app.appConfig?.params ?? [],
+          }),
+        );
         setSlots((current) =>
           current.map((slot) =>
             slot.slot === selection.slot
@@ -173,23 +191,18 @@ export const InstalledApps = () => {
 
   const remove = async (slot: FpAppSlot) => {
     if (!slot.app) return;
-    if (
-      !window.confirm(
-        `Remove ${slot.app.name} from slot ${slot.slot + 1}? You can install it again later.`,
-      )
-    ) {
-      return;
-    }
     setBusy(true);
     setError(undefined);
     setSuspendHealthCheck(true);
     try {
       if (device) {
         await removeFpApp(device, slot.slot);
-        await refresh();
-        await refreshApps();
+        await refresh(false);
+        await preserveSectionPosition(refreshApps);
       } else {
-        removeSimulatorApp(slot.app.app_id);
+        await preserveSectionPosition(() =>
+          removeSimulatorApp(slot.app!.app_id),
+        );
         setSlots((current) =>
           current.map((item) =>
             item.slot === slot.slot ? { slot: item.slot } : item,
@@ -204,49 +217,45 @@ export const InstalledApps = () => {
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
+      setRemovalSlot(undefined);
       setSuspendHealthCheck(false);
       setBusy(false);
     }
   };
 
   return (
-    <div className="border-t border-white/10 pt-10 pb-12">
-      <div className="mb-6 max-w-2xl">
+    <div className="border-t border-white/10 pt-10 pb-12" ref={sectionRef}>
+      <div className="mb-6 max-w-3xl">
         <h2 className="text-yellow-fp mb-2 text-xl font-bold">
           Installed Apps
         </h2>
-        <p className="text-sm leading-6 text-gray-300">
-          Install a community app in any empty slot.
-        </p>
+        <div className="min-h-6 text-sm leading-6">
+          {error ? (
+            <p className="text-red-300" role="alert">
+              {error}
+            </p>
+          ) : notice ? (
+            <p className="text-green-300" role="status">
+              {notice}
+            </p>
+          ) : (
+            <p className="text-gray-300">
+              Install a community app in any empty slot.
+            </p>
+          )}
+        </div>
       </div>
-
-      {error && (
-        <div
-          className="mb-6 rounded-sm bg-red-950 px-4 py-3 text-sm text-red-100"
-          role="alert"
-        >
-          {error}
-        </div>
-      )}
-      {notice && (
-        <div
-          className="mb-6 rounded-sm bg-green-950 px-4 py-3 text-sm text-green-100"
-          role="status"
-        >
-          {notice}
-        </div>
-      )}
 
       <div className="overflow-hidden rounded-sm bg-black">
         <div className="hidden grid-cols-[5rem_1fr_auto] border-b border-white/10 px-5 py-3 text-xs font-bold text-gray-400 uppercase md:grid">
           <span>Slot</span>
           <span>Installed app</span>
-          <span>Actions</span>
+          <span className="min-w-64 text-right">Actions</span>
         </div>
         {loading
           ? Array.from({ length: 4 }, (_, index) => (
               <div
-                className="grid min-h-24 animate-pulse grid-cols-[4rem_1fr] items-center gap-4 border-b border-white/10 px-5 py-4 last:border-b-0"
+                className="grid min-h-28 animate-pulse grid-cols-[4rem_1fr] items-center gap-4 border-b border-white/10 px-5 py-4 last:border-b-0"
                 key={index}
               >
                 <div className="h-8 w-8 rounded-sm bg-white/10" />
@@ -258,7 +267,7 @@ export const InstalledApps = () => {
                 className="border-b border-white/10 last:border-b-0"
                 key={slot.slot}
               >
-                <div className="grid gap-4 px-5 py-5 md:grid-cols-[5rem_1fr_auto] md:items-center">
+                <div className="grid gap-4 px-5 py-5 md:min-h-28 md:grid-cols-[5rem_1fr_auto] md:items-center">
                   <div className="flex items-center gap-3">
                     <span className="text-yellow-fp text-lg font-bold tabular-nums">
                       {slot.slot + 1}
@@ -289,33 +298,65 @@ export const InstalledApps = () => {
                   ) : (
                     <h3 className="font-bold text-gray-400">Empty</h3>
                   )}
-                  <div className="flex flex-wrap gap-2 md:justify-end">
-                    <label
-                      className="bg-primary hover:bg-primary-400 focus-within:ring-primary cursor-pointer rounded-sm px-4 py-2 text-sm font-semibold text-black focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-black"
-                      htmlFor={`fpapp-slot-${slot.slot}`}
-                    >
-                      {slot.app ? "Replace" : "Install"}
-                    </label>
-                    <input
-                      className="sr-only"
-                      id={`fpapp-slot-${slot.slot}`}
-                      type="file"
-                      accept=".fpapp,application/octet-stream"
-                      disabled={busy}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) void chooseFile(file, slot.slot);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                    {slot.app && (
-                      <ButtonSecondary
-                        size="sm"
-                        isDisabled={busy}
-                        onPress={() => void remove(slot)}
+                  <div className="flex flex-wrap gap-2 md:min-w-64 md:justify-end">
+                    {removalSlot === slot.slot && slot.app ? (
+                      <div
+                        className="flex flex-wrap items-center justify-end gap-2"
+                        role="group"
+                        aria-label={`Remove ${slot.app.name} from slot ${slot.slot + 1}?`}
                       >
-                        Remove
-                      </ButtonSecondary>
+                        <ButtonSecondary
+                          size="sm"
+                          isDisabled={busy}
+                          onPress={() => setRemovalSlot(undefined)}
+                        >
+                          Keep
+                        </ButtonSecondary>
+                        <ButtonPrimary
+                          className="min-w-36 text-white"
+                          color="danger"
+                          size="sm"
+                          isDisabled={busy}
+                          isLoading={busy}
+                          onPress={() => void remove(slot)}
+                        >
+                          Confirm remove
+                        </ButtonPrimary>
+                      </div>
+                    ) : (
+                      <>
+                        <label
+                          className="bg-primary hover:bg-primary-400 focus-within:ring-primary cursor-pointer rounded-sm px-4 py-2 text-sm font-semibold text-black focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-black"
+                          htmlFor={`fpapp-slot-${slot.slot}`}
+                        >
+                          {slot.app ? "Replace" : "Install"}
+                        </label>
+                        <input
+                          className="sr-only"
+                          id={`fpapp-slot-${slot.slot}`}
+                          type="file"
+                          accept=".fpapp,application/octet-stream"
+                          disabled={busy}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) void chooseFile(file, slot.slot);
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                        {slot.app && (
+                          <ButtonSecondary
+                            size="sm"
+                            isDisabled={busy}
+                            onPress={() => {
+                              setSelection(undefined);
+                              setTrusted(false);
+                              setRemovalSlot(slot.slot);
+                            }}
+                          >
+                            Remove
+                          </ButtonSecondary>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -356,27 +397,16 @@ export const InstalledApps = () => {
                       >
                         I trust this app and its source.
                       </Checkbox>
-                      {progress !== undefined && (
-                        <div className="mt-4" aria-live="polite">
-                          <div className="mb-2 flex justify-between text-xs text-gray-400">
-                            <span>Uploading to slot {selection.slot + 1}</span>
-                            <span>{Math.round(progress * 100)}%</span>
-                          </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                            <div
-                              className="bg-yellow-fp h-full transition-[width] duration-200"
-                              style={{ width: `${progress * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      )}
                       <div className="mt-5 flex flex-wrap gap-3">
                         <ButtonPrimary
+                          className="min-w-48"
                           isDisabled={!trusted || !isCompatible || busy}
                           isLoading={busy}
                           onPress={() => void install()}
                         >
-                          Install in slot {selection.slot + 1}
+                          {busy && progress !== undefined
+                            ? `Installing · ${Math.round(progress * 100)}%`
+                            : `Install in slot ${selection.slot + 1}`}
                         </ButtonPrimary>
                         <ButtonSecondary
                           isDisabled={busy}
@@ -387,6 +417,29 @@ export const InstalledApps = () => {
                         >
                           Cancel
                         </ButtonSecondary>
+                      </div>
+                      <div
+                        className="mt-3 h-1 overflow-hidden rounded-full bg-white/10"
+                        aria-label={
+                          progress === undefined
+                            ? undefined
+                            : `Uploading to slot ${selection.slot + 1}: ${Math.round(progress * 100)}%`
+                        }
+                        aria-valuemin={progress === undefined ? undefined : 0}
+                        aria-valuemax={progress === undefined ? undefined : 100}
+                        aria-valuenow={
+                          progress === undefined
+                            ? undefined
+                            : Math.round(progress * 100)
+                        }
+                        role={
+                          progress === undefined ? undefined : "progressbar"
+                        }
+                      >
+                        <div
+                          className={`bg-yellow-fp h-full transition-[width,opacity] duration-200 motion-reduce:transition-none ${progress === undefined ? "opacity-0" : "opacity-100"}`}
+                          style={{ width: `${(progress ?? 0) * 100}%` }}
+                        />
                       </div>
                     </div>
                   </div>
