@@ -39,6 +39,7 @@ CASES=(
   "synthetic-mixed-commits 0 =0"
   "synthetic-nested-use-bypass 1 =1"
   "synthetic-rename 0 =0"
+  "synthetic-fpapp-directories 0 =0"
 )
 
 for case_line in "${CASES[@]}"; do

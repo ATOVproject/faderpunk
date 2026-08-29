@@ -21,9 +21,9 @@ Every PR is automatically classified by what it touches, not by what you say it 
 | **App fix** | Only the existing app's own file(s) under `faderpunk/src/apps/` |
 | **Firmware core** | Core firmware files outside `apps/` (e.g. `app.rs`, `layout.rs`, `tasks/*`, `memory.x`, `.cargo/config.toml`) |
 | **Configurator** | Files under `configurator/` |
-| **Protocol / libfp** | Shared `libfp/` types and generated bindings — always flagged for a manual look, since these ripple into both firmware and configurator |
+| **Protocol / libfp** | Shared `libfp/` types, the `fpapp-sdk/` ABI facade, and generated bindings — always flagged for a manual look, since these ripple into both firmware and configurator |
 | **Docs** | README, docs folder, etc. |
-| **CI / tooling** | Workflow and build-tooling files — legitimate on their own, but not bundled with feature work |
+| **CI / tooling** | Workflow and build-tooling files, including the `fpapp/` package builder — legitimate on their own, but not bundled with feature work |
 
 **Automatically rejected** (once enforcement is on — see "Rollout status" below):
 - Touching a file outside all the categories above — this usually means an unrelated standalone project got bundled into the PR.
