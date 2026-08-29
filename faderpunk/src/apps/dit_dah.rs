@@ -15,7 +15,7 @@ use libfp::{
 };
 
 use crate::app::{
-    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Led, ManagedStorage, ParamStore,
+    pitch_as_counts, App, AppParams, AppStorage, ClockEvent, Led, Leds, ManagedStorage, ParamStore,
     SceneEvent,
 };
 
@@ -171,6 +171,10 @@ pub struct Storage {
     alt_saved: u16,
     third_saved: u16,
     muted: bool,
+    #[serde(default)]
+    inverted: bool,
+    #[serde(default)]
+    texture: bool,
 }
 
 impl Default for Storage {
@@ -180,6 +184,8 @@ impl Default for Storage {
             alt_saved: 2048,
             third_saved: 2048,
             muted: false,
+            inverted: false,
+            texture: false,
         }
     }
 }
@@ -323,6 +329,24 @@ fn pitch_for_note(note: MidiNote) -> Pitch {
     }
 }
 
+fn refresh_button_led(leds: Leds<CHANNELS>, muted: bool, inverted: bool) {
+    if muted {
+        leds.unset(0, Led::Button);
+    } else if inverted {
+        leds.set(0, Led::Button, Color::White, LED_BRIGHTNESS);
+    } else {
+        leds.set(0, Led::Button, Color::Orange, LED_BRIGHTNESS);
+    }
+}
+
+fn refresh_texture_led(leds: Leds<CHANNELS>, texture: bool) {
+    if texture {
+        leds.set(0, Led::Bottom, Color::White, LED_BRIGHTNESS);
+    } else {
+        leds.unset(0, Led::Bottom);
+    }
+}
+
 #[embassy_executor::task(pool_size = 16 / CHANNELS)]
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     let mut phrase = [0i32; PHRASE_PACKS];
@@ -383,6 +407,7 @@ pub async fn run(
     let buttons = app.use_buttons();
     let fader = app.use_faders();
     let leds = app.use_leds();
+    let die = app.use_die();
     let mut clock = app.use_clock();
     let midi = app.use_midi_output(midi_out, midi_chan, false);
 
@@ -412,6 +437,8 @@ pub async fn run(
     };
 
     let glob_muted = app.make_global(storage.query(|s| s.muted));
+    let glob_inverted = app.make_global(storage.query(|s| s.inverted));
+    let glob_texture = app.make_global(storage.query(|s| s.texture));
     let glob_latch_layer = app.make_global(LatchLayer::Main);
     let start_armed = app.make_global(false);
     let long_press_fired = app.make_global(false);
@@ -421,11 +448,8 @@ pub async fn run(
     let glob_clock_reset = app.make_global(false);
     let glob_clock_stop = app.make_global(false);
 
-    if glob_muted.get() {
-        leds.unset(0, Led::Button);
-    } else {
-        leds.set(0, Led::Button, Color::Orange, LED_BRIGHTNESS);
-    }
+    refresh_button_led(leds, glob_muted.get(), glob_inverted.get());
+    refresh_texture_led(leds, glob_texture.get());
     let clock_drain = async {
         loop {
             match clock.wait_for_event(ClockDivision::_1).await {
@@ -448,6 +472,7 @@ pub async fn run(
         let mut last_processed_tick: u64 = u64::MAX;
         let mut event_idx: usize = 0;
         let mut silence_ms_left: u32 = 0;
+        let mut swing_ms_left: u32 = 0;
         let mut pending_dah: Option<bool> = None;
         let mut sounding = false;
         let mut current_note = MidiNote::default();
@@ -468,6 +493,7 @@ pub async fn run(
                     sounding = false;
                     pending_dah = None;
                     silence_ms_left = 0;
+                    swing_ms_left = 0;
                     off_at = None;
                     event_idx = 0;
                     midi.send_note_off(current_note).await;
@@ -487,6 +513,7 @@ pub async fn run(
                 sounding = false;
                 pending_dah = None;
                 silence_ms_left = 0;
+                swing_ms_left = 0;
                 off_at = None;
                 midi.send_note_off(current_note).await;
                 if let Some(jack) = &gate_jack {
@@ -543,6 +570,7 @@ pub async fn run(
                 playing = true;
                 event_idx = 0;
                 silence_ms_left = 0;
+                swing_ms_left = 0;
                 pending_dah = None;
                 sounding = false;
                 off_at = None;
@@ -596,6 +624,15 @@ pub async fn run(
             } else {
                 (main_saved, alt_saved, third_saved)
             };
+            let (main_eff, alt_eff, third_eff) = if glob_inverted.get() {
+                (
+                    4095 - main_eff,
+                    4095 - alt_eff,
+                    4095 - third_eff,
+                )
+            } else {
+                (main_eff, alt_eff, third_eff)
+            };
             let dit = dit_ms(main_eff, tick_interval_ms);
             let alt = alt_semitones(alt_eff);
 
@@ -622,7 +659,8 @@ pub async fn run(
                     }
                     MorseEvent::Tone { dah } => {
                         event_idx += 1;
-                        pending_dah = Some(dah);
+                        let eff_dah = if glob_inverted.get() { !dah } else { dah };
+                        pending_dah = Some(eff_dah);
                     }
                 }
             }
@@ -630,6 +668,11 @@ pub async fn run(
             let Some(dah) = pending_dah else {
                 continue;
             };
+
+            if swing_ms_left > 0 {
+                swing_ms_left = swing_ms_left.saturating_sub(tick_interval_ms);
+                continue;
+            }
 
             if !tick.is_multiple_of(6) {
                 continue;
@@ -642,9 +685,18 @@ pub async fn run(
                 continue;
             }
 
+            if glob_texture.get() && (tick / 6) % 2 == 1 {
+                swing_ms_left = (dit / 6).max(1);
+                continue;
+            }
+
             pending_dah = None;
             current_note = note_for_element(dah, base_note, alt, third_eff, interval);
-            let velocity = 4095u16;
+            let velocity = if glob_texture.get() {
+                die.roll()
+            } else {
+                4095u16
+            };
             midi.send_note_on(current_note, velocity).await;
             sounding = true;
             off_at = Some(
@@ -671,23 +723,28 @@ pub async fn run(
                 continue;
             }
             if down_shift {
-                start_armed.set(true);
+                let texture = glob_texture.toggle();
+                storage.modify_and_save(|s| s.texture = texture);
+                refresh_texture_led(leds, texture);
             } else {
                 let muted = glob_muted.toggle();
                 storage.modify_and_save(|s| s.muted = muted);
-                if muted {
-                    leds.unset(0, Led::Button);
-                } else {
-                    leds.set(0, Led::Button, Color::Orange, LED_BRIGHTNESS);
-                }
+                refresh_button_led(leds, muted, glob_inverted.get());
             }
         }
     };
 
     let long_press_handler = async {
         loop {
-            let _ = buttons.wait_for_any_long_press().await;
+            let (_, shift) = buttons.wait_for_any_long_press().await;
             long_press_fired.set(true);
+            if shift {
+                let inverted = glob_inverted.toggle();
+                storage.modify_and_save(|s| s.inverted = inverted);
+                refresh_button_led(leds, glob_muted.get(), inverted);
+            } else {
+                start_armed.set(true);
+            }
         }
     };
 
@@ -750,13 +807,13 @@ pub async fn run(
             match app.wait_for_scene_event().await {
                 SceneEvent::LoadScene(scene) => {
                     storage.load_from_scene(scene).await;
-                    let muted = storage.query(|s| s.muted);
+                    let (muted, inverted, texture) =
+                        storage.query(|s| (s.muted, s.inverted, s.texture));
                     glob_muted.set(muted);
-                    if muted {
-                        leds.unset(0, Led::Button);
-                    } else {
-                        leds.set(0, Led::Button, Color::Orange, LED_BRIGHTNESS);
-                    }
+                    glob_inverted.set(inverted);
+                    glob_texture.set(texture);
+                    refresh_button_led(leds, muted, inverted);
+                    refresh_texture_led(leds, texture);
                 }
                 SceneEvent::SaveScene(scene) => {
                     storage.save_to_scene(scene).await;
