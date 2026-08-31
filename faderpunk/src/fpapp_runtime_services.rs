@@ -799,15 +799,20 @@ async fn process_blob_write(context: &mut RuntimeContext, write: &BlobWrite) {
         return;
     }
     let address: u32 = match write.kind {
-        blob_kind::STORAGE => AppStorageAddress::new(
-            context.layout_id,
-            if write.index == 0 {
-                None
-            } else {
-                Some(write.index - 1)
-            },
-        )
-        .into(),
+        blob_kind::STORAGE => {
+            if write.index > crate::storage::SCENES_PER_APP as u8 {
+                return;
+            }
+            AppStorageAddress::new(
+                context.layout_id,
+                if write.index == 0 {
+                    None
+                } else {
+                    Some(write.index - 1)
+                },
+            )
+            .into()
+        }
         blob_kind::PARAMS => AppParamsAddress::new(context.layout_id).into(),
         _ => return,
     };

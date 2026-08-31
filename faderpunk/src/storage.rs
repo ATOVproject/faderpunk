@@ -36,7 +36,7 @@ const SCHEMA_HEADER_RANGE: Range<u32> = 131_056..131_072;
 
 const APP_STORAGE_MAX_BYTES: u32 = 400;
 const APP_PARAMS_MAX_BYTES: u32 = 128;
-const SCENES_PER_APP: u32 = 16;
+pub const SCENES_PER_APP: u32 = 16;
 
 /// Magic bytes identifying a valid `SchemaHeader` (FaderPunk Schema Version).
 const SCHEMA_MAGIC: [u8; 4] = *b"FPSV";
