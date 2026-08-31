@@ -63,9 +63,16 @@ impl Drop for CompletionGuard {
 /// in the image; this call executes the tiny size export and enforces the
 /// fixed per-instance arena bound used by `run_fpapp`.
 pub fn validate_runtime_package(package: &Package<'_>) -> Result<(), RuntimePackageError> {
+    if package.manifest.firmware_abi != crate::version::FPAPP_FIRMWARE_ABI {
+        return Err(RuntimePackageError::InvalidPackage);
+    }
     let native = package
         .native_program()
         .map_err(|_| RuntimePackageError::InvalidPackage)?;
+    let required_offset = native.entrypoints.required_bytes as usize;
+    if required_offset >= native.image.len() {
+        return Err(RuntimePackageError::InvalidPackage);
+    }
     let required_bytes: RequiredBytesFn = unsafe {
         transmute(native_address(
             native.image.as_ptr() as u32,
