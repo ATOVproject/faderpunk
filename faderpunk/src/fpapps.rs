@@ -15,6 +15,12 @@ use crate::version::FPAPP_FIRMWARE_ABI;
 
 const PHYSICAL_FLASH_SIZE: usize = 2 * 1024 * 1024;
 const REGION_BASE: usize = PHYSICAL_FLASH_SIZE - FPAPP_REGION_SIZE;
+
+// Ensure FPApp region base address does not overlap main firmware FLASH allocation in memory.x (1536 KiB)
+const _: () = assert!(
+    REGION_BASE >= 1536 * 1024,
+    "FPApp region base conflicts with memory.x FLASH size!"
+);
 #[derive(Clone, Copy)]
 pub struct RuntimeDescriptor {
     pub app_id: u8,
