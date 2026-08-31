@@ -264,8 +264,7 @@ impl<'a> PackageBuilder<'a> {
                 .map(|value| (SECTION_SETTINGS, value.as_bytes())),
             self.signing.map(|value| (SECTION_SIGNING, value)),
         ];
-        let mut descriptor_index = 2;
-        for (kind, data) in optional_sections.into_iter().flatten() {
+        for (descriptor_index, (kind, data)) in (2..).zip(optional_sections.into_iter().flatten()) {
             let section_offset = align4(next_offset).ok_or(PackageError::BufferTooSmall)?;
             let section_end = section_offset
                 .checked_add(data.len())
@@ -283,7 +282,6 @@ impl<'a> PackageBuilder<'a> {
                 section_offset,
                 data.len(),
             )?;
-            descriptor_index += 1;
             next_offset = section_end;
         }
         let total_len = next_offset;
