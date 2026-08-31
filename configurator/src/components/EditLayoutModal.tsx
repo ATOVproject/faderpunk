@@ -73,6 +73,24 @@ interface NewAppDetailsProps {
   app: App;
 }
 
+const paramDisplayName = (param: App["params"][number]) => {
+  if ("value" in param) return param.value.name;
+  switch (param.tag) {
+    case "MidiIn":
+      return "MIDI In";
+    case "MidiMode":
+      return "MIDI Mode";
+    case "MidiOut":
+      return "MIDI Out";
+    case "MidiNrpn":
+      return "NRPN";
+    case "VoltPerOct":
+      return "1V/Oct";
+    default:
+      return "";
+  }
+};
+
 const NewAppDetails = ({ app }: NewAppDetailsProps) => (
   <div className="mb-12 flex items-start gap-x-4">
     <div className={classNames("rounded-sm p-2", COLORS_CLASSES[app.color].bg)}>
@@ -97,10 +115,7 @@ const NewAppDetails = ({ app }: NewAppDetailsProps) => (
         })}
       >
         {app.params.map((param, idx) => (
-          <li key={idx}>
-            {param.tag !== "None" &&
-              ("value" in param ? param.value.name : param.tag)}
-          </li>
+          <li key={idx}>{paramDisplayName(param)}</li>
         ))}
       </ul>
     </div>
@@ -276,7 +291,12 @@ export const EditLayoutModal = ({
             initialLayout.filter((s) => s.app).map((s) => s.id),
           );
           const newIds = layout
-            .filter((slot) => slot.app && !existingIds.has(slot.id))
+            .filter(
+              (slot) =>
+                slot.app &&
+                slot.app.paramCount > 0 &&
+                !existingIds.has(slot.id),
+            )
             .map((slot) => slot.id);
           if (newIds.length > 0) {
             // Wait 500ms for the new app(s) to spawn before reading params

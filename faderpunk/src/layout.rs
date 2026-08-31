@@ -21,14 +21,17 @@ pub static LAYOUT_WATCH: Watch<CriticalSectionRawMutex, Layout, LAYOUT_WATCH_SUB
 /// Signal to force respawn all apps
 pub static FORCE_RESPAWN_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
-/// A scoped, non-persisting request to evict or restore a single channel's
-/// app, used by the V/Oct calibration wizard to temporarily free a jack an
-/// app is using without touching the persisted layout.
+/// A request for the layout manager to stop or restore one app and acknowledge
+/// when the task is no longer running. V/Oct calibration uses the held
+/// evict/restore pair; FPApp replacement holds channels until the cleared
+/// layout is persisted, then releases them before erasing code.
 pub enum EvictionCmd {
     /// Exit whatever app is running on this start_channel, if any.
     Evict(usize),
-    /// Respawn (app_id, channels, layout_id) on this start_channel.
+    /// Respawn (app_id, channels, layout_id) and release this held channel.
     Restore(usize, u8, usize, u8),
+    /// Release a held channel without respawning its previous app.
+    Release(usize),
 }
 
 pub static LAYOUT_EVICTION_REQ: Signal<CriticalSectionRawMutex, EvictionCmd> = Signal::new();
@@ -38,6 +41,10 @@ pub static LAYOUT_MANAGER: StaticCell<LayoutManager> = StaticCell::new();
 
 pub struct LayoutManager {
     exit_signals: [Signal<NoopRawMutex, bool>; GLOBAL_CHANNELS],
+    /// Native FPApp tasks signal these only after their drop hook, queued host
+    /// services, LEDs, and jacks have all been cleaned up. Flash replacement
+    /// waits on this acknowledgement instead of guessing with a delay.
+    completion_signals: [Signal<NoopRawMutex, ()>; GLOBAL_CHANNELS],
     layout: Mutex<NoopRawMutex, InnerLayout>,
     /// Channels currently on loan for V/Oct calibration (see `EvictionCmd`).
     /// `spawn_layout`'s reconciliation pass must not spawn into a held
@@ -51,6 +58,7 @@ impl LayoutManager {
     pub fn new(spawner: Spawner) -> Self {
         Self {
             exit_signals: [const { Signal::new() }; GLOBAL_CHANNELS],
+            completion_signals: [const { Signal::new() }; GLOBAL_CHANNELS],
             layout: Mutex::new([None; GLOBAL_CHANNELS]),
             held: Mutex::new([false; GLOBAL_CHANNELS]),
             spawner,
@@ -66,12 +74,24 @@ impl LayoutManager {
 
     pub(crate) async fn exit_app(&self, start_channel: usize) {
         let mut layout = self.layout.lock().await;
-        if layout[start_channel].is_some() {
+        if let Some((app_id, _, _)) = layout[start_channel] {
+            let is_fpapp = crate::fpapps::runtime_descriptor(app_id).is_some();
             layout[start_channel] = None;
             drop(layout);
 
             self.exit_signals[start_channel].signal(true);
-            Timer::after_millis(10).await;
+            if is_fpapp {
+                self.completion_signals[start_channel].wait().await;
+                // A native task may have finished by itself before the exit
+                // request was sent. Completion proves that no task can still
+                // need the request, so it is now safe to clear a stale value.
+                self.exit_signals[start_channel].reset();
+            } else {
+                // Factory tasks predate completion acknowledgements. Their
+                // exit handlers contain only bounded host cleanup, so retain
+                // the existing scheduling grace period for those tasks.
+                Timer::after_millis(10).await;
+            }
         }
     }
 
@@ -105,6 +125,7 @@ impl LayoutManager {
                 layout_id,
                 self.spawner,
                 &self.exit_signals,
+                &self.completion_signals,
             );
             current_layout[start_channel] = Some((app_id, channels, layout_id));
         }
@@ -151,6 +172,7 @@ impl LayoutManager {
                         layout_id,
                         self.spawner,
                         &self.exit_signals,
+                        &self.completion_signals,
                     );
                     let mut current_layout = self.layout.lock().await;
                     current_layout[start_channel] = Some((app_id, channels, layout_id));

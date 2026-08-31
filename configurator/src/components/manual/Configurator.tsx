@@ -456,10 +456,8 @@ export const Configurator = () => (
       recalling your Faderpunk setup. Keep in mind that scenes are currently{" "}
       <strong>not</strong> saved with the setup.
     </p>
-    <p>
-      <H5>Saving a Setup</H5>
-      To save your current configuration:
-    </p>
+    <H5>Saving a Setup</H5>
+    <p>To save your current configuration:</p>
     <List>
       <li>
         Enter a name for your setup in the File name field (defaults to
@@ -498,10 +496,8 @@ export const Configurator = () => (
       <li>Sharing complete configurations between devices</li>
       <li>Switching between different creative workflows</li>
     </List>
-    <p>
-      <H5>Recalling a Setup</H5>
-      To recall a previously saved setup:
-    </p>
+    <H5>Recalling a Setup</H5>
+    <p>To recall a previously saved setup:</p>
     <List>
       <li>
         Click <strong>Choose Setup file</strong> and select a .json setup file
