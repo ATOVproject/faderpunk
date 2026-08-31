@@ -625,17 +625,25 @@ pub async fn run_fpapp(
     reset_channels(start_channel, channels).await;
 }
 
+const MAX_POLL_PER_TURN: usize = 128;
+
 async fn drive_app(
     context: &mut RuntimeContext,
     storage: &mut InstanceStorage,
     host: &HostV1,
     poll: PollFn,
 ) -> bool {
+    let mut turns = 0;
     loop {
         if unsafe { poll(storage.0.as_mut_ptr(), host) } != export_status::OK {
             return false;
         }
         if !process_services(context).await {
+            return true;
+        }
+        turns += 1;
+        if turns >= MAX_POLL_PER_TURN {
+            defmt::warn!("FPApp exceeded max poll iterations per turn");
             return true;
         }
     }
