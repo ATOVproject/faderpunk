@@ -446,7 +446,7 @@ async fn deactivate_fpapp(layout: &mut Layout, app_id: u8) {
 
     for &start_channel in start_channels.iter() {
         LAYOUT_EVICTION_REQ.signal(EvictionCmd::Evict(start_channel));
-        LAYOUT_EVICTION_RES.wait().await;
+        let _ = with_timeout(Duration::from_millis(1000), LAYOUT_EVICTION_RES.wait()).await;
         layout.0[start_channel] = None;
     }
 
@@ -457,7 +457,7 @@ async fn deactivate_fpapp(layout: &mut Layout, app_id: u8) {
 
     for start_channel in start_channels {
         LAYOUT_EVICTION_REQ.signal(EvictionCmd::Release(start_channel));
-        LAYOUT_EVICTION_RES.wait().await;
+        let _ = with_timeout(Duration::from_millis(1000), LAYOUT_EVICTION_RES.wait()).await;
     }
 }
 
@@ -651,7 +651,7 @@ async fn evict_jack_owner(layout: &Layout, jack: u8) -> Option<EvictedApp> {
     let owner = find_jack_owner(layout, jack)?;
     let (_, start_channel, _, _) = owner;
     LAYOUT_EVICTION_REQ.signal(EvictionCmd::Evict(start_channel));
-    LAYOUT_EVICTION_RES.wait().await;
+    let _ = with_timeout(Duration::from_millis(1000), LAYOUT_EVICTION_RES.wait()).await;
     Some(owner)
 }
 
@@ -664,7 +664,7 @@ async fn restore_jack_owner(evicted: EvictedApp) {
         channels,
         layout_id,
     ));
-    LAYOUT_EVICTION_RES.wait().await;
+    let _ = with_timeout(Duration::from_millis(1000), LAYOUT_EVICTION_RES.wait()).await;
 }
 
 /// Set the output jack to 0-10V DAC mode, write `dac_counts`, signal the
