@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Value, type GlobalConfig } from "@atov/fp-config";
+import { Value, type GlobalConfig, type routing } from "@atov/fp-config";
 
 import type { AllApps, AppLayout, AppSlot, ParamValues } from "./utils/types";
 import {
@@ -13,6 +13,8 @@ import {
   getAllApps,
   getGlobalConfig,
   getLayout,
+  getRouting,
+  setRoutingConfig as sendRoutingConfig,
   saveLayout,
   recoverLayout,
   serializeLayout,
@@ -67,12 +69,14 @@ interface State {
   connect: () => Promise<void>;
   connectSimulator: () => void;
   config: GlobalConfig | undefined;
+  routing: routing.RoutingConfig | undefined;
   disconnect: () => void;
   deviceVersion: string | undefined;
   isSimulator: boolean;
   layout: AppLayout | undefined;
   params: ParamValues | undefined;
   setConfig: (config: GlobalConfig) => void;
+  setRouting: (routing: routing.RoutingConfig) => void;
   setLayout: (layout: AppLayout) => void;
   setParams: (id: number, newParams: Value[]) => void;
   setAllParams: (newParams: ParamValues) => void;
@@ -88,6 +92,7 @@ interface State {
 const initialState = {
   apps: undefined,
   config: undefined,
+  routing: undefined,
   deviceVersion: undefined,
   isSimulator: false,
   layout: undefined,
@@ -110,8 +115,24 @@ export const useStore = create<State>((set, get) => ({
       const params = await getAllAppParams(device);
       const layout = await getLayout(device, apps);
       const config = await getGlobalConfig(device);
+      let routingState: routing.RoutingConfig | undefined;
+      try {
+        routingState = await getRouting(device);
+      } catch {
+        routingState = {
+          routes: new Array(32).fill(undefined),
+        } as unknown as routing.RoutingConfig;
+      }
 
-      set({ apps, config, deviceVersion, layout, params, device });
+      set({
+        apps,
+        config,
+        routing: routingState,
+        deviceVersion,
+        layout,
+        params,
+        device,
+      });
       return true;
     } catch (error) {
       console.error("Auto-connect failed:", error);
@@ -129,7 +150,23 @@ export const useStore = create<State>((set, get) => ({
       const params = await getAllAppParams(device);
       const layout = await getLayout(device, apps);
       const config = await getGlobalConfig(device);
-      set({ apps, config, deviceVersion, layout, params, device });
+      let routingState: routing.RoutingConfig | undefined;
+      try {
+        routingState = await getRouting(device);
+      } catch {
+        routingState = {
+          routes: new Array(32).fill(undefined),
+        } as unknown as routing.RoutingConfig;
+      }
+      set({
+        apps,
+        config,
+        routing: routingState,
+        deviceVersion,
+        layout,
+        params,
+        device,
+      });
     } catch (error) {
       console.error("Failed to connect to device:", error);
       // Reset state on failure
@@ -169,6 +206,15 @@ export const useStore = create<State>((set, get) => ({
     const { isSimulator, layout, params } = get();
     if (isSimulator && layout && params)
       persistSimulatorState(layout, params, config);
+  },
+  setRouting: (routing) => {
+    set({ routing });
+    const { device } = get();
+    if (device) {
+      sendRoutingConfig(device, routing).catch((err) =>
+        console.error("Failed to send routing config:", err),
+      );
+    }
   },
   setLayout: (layout) => {
     set({ layout });

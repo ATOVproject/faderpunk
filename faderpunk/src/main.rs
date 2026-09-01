@@ -8,6 +8,7 @@ mod app;
 mod apps;
 mod events;
 mod layout;
+mod routing_engine;
 mod state;
 mod storage;
 mod tasks;
@@ -224,6 +225,8 @@ async fn main(spawner: Spawner) {
 
     let calibration_data = load_calibration_data().await;
     let mut global_config = load_global_config().await;
+    let routing_config = storage::load_routing().await;
+    routing_engine::set_routing_config(routing_config).await;
 
     if is_channel_button_pressed(0) && is_channel_button_pressed(1) {
         return factory_reset().await;

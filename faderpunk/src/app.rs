@@ -12,7 +12,7 @@ use midly::{live::LiveEvent, num::u4, MidiMessage, PitchBend};
 use portable_atomic::Ordering;
 
 use libfp::{
-    latch::AnalogLatch,
+    latch::{AnalogLatch, LatchLayer},
     quantizer::{Pitch, QuantizerState},
     utils::{scale_bits_12_7, scale_bits_14_12},
     Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn, MidiNote, MidiOut, Note,
@@ -101,10 +101,76 @@ impl InJack {
 
     pub fn get_value(&self) -> u16 {
         let val = MAX_VALUES_ADC[self.channel].load(Ordering::Relaxed);
+        let raw = match self.range {
+            Range::_0_5V => val.saturating_mul(2),
+            _ => val,
+        };
+        crate::routing_engine::get_input_value_sync(self.channel, raw)
+    }
+
+    #[allow(dead_code)]
+    pub fn get_physical_adc(&self) -> u16 {
+        let val = MAX_VALUES_ADC[self.channel].load(Ordering::Relaxed);
         match self.range {
             Range::_0_5V => val.saturating_mul(2),
             _ => val,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_routed(&self) -> bool {
+        crate::routing_engine::is_input_routed_sync(self.channel)
+    }
+}
+
+pub struct VirtualInJack {
+    channel: usize,
+}
+
+impl VirtualInJack {
+    #[allow(dead_code)]
+    pub fn get_value(&self) -> u16 {
+        crate::routing_engine::get_input_value_sync(self.channel, 0)
+    }
+}
+
+pub struct VirtualOutJack {
+    channel: usize,
+}
+
+impl VirtualOutJack {
+    #[allow(dead_code)]
+    pub fn set_value(&self, value: u16) {
+        crate::routing_engine::set_virtual_output(self.channel, value);
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Routing<const N: usize> {
+    start_channel: usize,
+}
+
+impl<const N: usize> Routing<N> {
+    pub fn new(start_channel: usize) -> Self {
+        Self { start_channel }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_input_routed(&self, chan: usize) -> bool {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        crate::routing_engine::is_input_routed_sync(channel)
+    }
+
+    #[allow(dead_code)]
+    pub fn read_channel_output(&self, source_channel: usize) -> u16 {
+        let channel = source_channel.clamp(0, 15);
+        crate::routing_engine::get_virtual_output(channel)
+    }
+
+    #[allow(dead_code)]
+    pub fn set_virtual_output(&self, chan: usize, value: u16) {
+        let channel = self.start_channel + chan.clamp(0, N - 1);
+        crate::routing_engine::set_virtual_output(channel, value);
     }
 }
 
@@ -144,6 +210,7 @@ impl OutJack {
             _ => value,
         };
         MAX_VALUES_DAC[self.channel].store(val, Ordering::Relaxed);
+        crate::routing_engine::set_virtual_output(self.channel, value);
     }
 }
 
@@ -281,7 +348,22 @@ impl<const N: usize> Faders<N> {
 
     pub fn get_value_at(&self, chan: usize) -> u16 {
         let chan = chan.clamp(0, N - 1);
+        let physical = MAX_VALUES_FADER[self.start_channel + chan].load(Ordering::Relaxed);
+        let offset = crate::routing_engine::get_fader_offset_sync(self.start_channel + chan);
+        (physical as i32 + offset as i32).clamp(0, 4095) as u16
+    }
+
+    #[allow(dead_code)]
+    pub fn get_physical_value_at(&self, chan: usize) -> u16 {
+        let chan = chan.clamp(0, N - 1);
         MAX_VALUES_FADER[self.start_channel + chan].load(Ordering::Relaxed)
+    }
+
+    pub fn get_value_at_for_layer(&self, chan: usize, layer: LatchLayer) -> u16 {
+        match layer {
+            LatchLayer::Main => self.get_value_at(chan),
+            _ => self.get_physical_value_at(chan),
+        }
     }
 
     #[allow(dead_code)]
@@ -296,7 +378,14 @@ impl<const N: usize> Faders<N> {
 
 impl Faders<1> {
     pub fn get_value(&self) -> u16 {
-        MAX_VALUES_FADER[self.start_channel].load(Ordering::Relaxed)
+        self.get_value_at(0)
+    }
+
+    pub fn get_value_for_layer(&self, layer: LatchLayer) -> u16 {
+        match layer {
+            LatchLayer::Main => self.get_value_at(0),
+            _ => self.get_physical_value_at(0),
+        }
     }
 
     pub async fn wait_for_change(&self) {
@@ -826,6 +915,25 @@ impl<const N: usize> App<N> {
 
     pub fn use_i2c_output(&self) -> I2cOutput<N> {
         I2cOutput::new(self.start_channel, self.i2c_publisher)
+    }
+
+    #[allow(dead_code)]
+    pub fn use_routing(&self) -> Routing<N> {
+        Routing::new(self.start_channel)
+    }
+
+    #[allow(dead_code)]
+    pub fn make_virtual_in_jack(&self, chan: usize) -> VirtualInJack {
+        VirtualInJack {
+            channel: self.start_channel + chan.clamp(0, N - 1),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn make_virtual_out_jack(&self, chan: usize) -> VirtualOutJack {
+        VirtualOutJack {
+            channel: self.start_channel + chan.clamp(0, N - 1),
+        }
     }
 
     pub async fn wait_for_scene_event(&self) -> SceneEvent {
