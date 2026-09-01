@@ -158,6 +158,26 @@ impl AnalogLatch {
     ///   the active layer.
     /// * `None` if no change should occur (e.g., the fader is moving but has not yet
     ///   reached the target value, or movement is within jitter tolerance).
+    pub fn update_modulated(
+        &mut self,
+        value: u16,
+        new_active_layer: LatchLayer,
+        active_layer_target_value: u16,
+        is_modulated: bool,
+    ) -> Option<u16> {
+        if is_modulated && new_active_layer == LatchLayer::Main {
+            self.active_layer = new_active_layer;
+            self.is_latched = true;
+            self.prev_target = value;
+            if value != self.last_emitted_value {
+                self.last_emitted_value = value;
+                return Some(value);
+            }
+            return None;
+        }
+        self.update(value, new_active_layer, active_layer_target_value)
+    }
+
     pub fn update(
         &mut self,
         value: u16,

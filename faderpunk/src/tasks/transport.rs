@@ -147,5 +147,6 @@ async fn run_transports(
     let midi_in_fut = midi_in_task(usb_rx, uart1_rx);
     let config_fut = start_config_loop(&usb_tx);
 
+    #[allow(clippy::large_futures)]
     join4(usb.run(), midi_in_fut, midi_out_fut, config_fut).await;
 }

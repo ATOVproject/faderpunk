@@ -286,7 +286,9 @@ async fn process_channel_values(
             let mut max = max_driver.lock().await;
             match max.get_mode(port) {
                 Mode::Mode5(config) => {
-                    let target_dac_value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
+                    let raw_dac_value = MAX_VALUES_DAC[i].load(Ordering::Relaxed);
+                    let target_dac_value =
+                        crate::routing_engine::get_dac_value_sync(i, raw_dac_value);
                     let calibrated_value = if target_dac_value == 0 {
                         // If the target is 0, the output MUST be 0
                         0

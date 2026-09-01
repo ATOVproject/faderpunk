@@ -277,8 +277,9 @@ pub async fn run(
                 LatchLayer::Third => 0,
             };
 
+            let fader_val = fader.get_value_for_layer(latch_active_layer);
             if let Some(new_value) =
-                latch.update(fader.get_value(), latch_active_layer, latch_target_value)
+                latch.update(fader_val, latch_active_layer, latch_target_value)
             {
                 match latch_active_layer {
                     LatchLayer::Main => {

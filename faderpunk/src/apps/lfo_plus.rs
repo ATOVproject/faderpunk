@@ -408,8 +408,9 @@ pub async fn run(
                     LatchLayer::Third => 0,
                 };
 
+                let fader_val = fader.get_value_at_for_layer(chan, latch_layer);
                 if let Some(new_value) =
-                    latch[chan].update(fader.get_value_at(chan), latch_layer, target_value)
+                    latch[chan].update(fader_val, latch_layer, target_value)
                 {
                     match latch_layer {
                         LatchLayer::Main => {
@@ -427,8 +428,9 @@ pub async fn run(
                     LatchLayer::Third => 0,
                 };
 
+                let fader_val = fader.get_value_at_for_layer(chan, latch_layer);
                 if let Some(new_value) =
-                    latch[chan].update(fader.get_value_at(chan), latch_layer, target_value)
+                    latch[chan].update(fader_val, latch_layer, target_value)
                 {
                     match latch_layer {
                         LatchLayer::Main => {

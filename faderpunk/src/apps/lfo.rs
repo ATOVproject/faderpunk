@@ -304,7 +304,8 @@ pub async fn run(
                 LatchLayer::Third => 0,
             };
 
-            if let Some(new_value) = latch.update(fader.get_value(), latch_layer, target_value) {
+            let fader_val = fader.get_value_for_layer(latch_layer);
+            if let Some(new_value) = latch.update(fader_val, latch_layer, target_value) {
                 match latch_layer {
                     LatchLayer::Main => {
                         storage.modify_and_save(|s| s.layer_speed = new_value);

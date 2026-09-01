@@ -4,6 +4,7 @@ import type {
   Value,
   FixedLengthArray,
   ConfigMsgOut,
+  routing,
 } from "@atov/fp-config";
 
 import type {
@@ -29,6 +30,40 @@ import {
 } from "./validators";
 
 const LAYOUT_VERSION = 1;
+
+export const getRouting = async (
+  dev: FpMidiDevice,
+): Promise<routing.RoutingConfig> => {
+  const response = await sendAndReceive(dev, {
+    tag: "GetRouting",
+  });
+
+  if (response.tag !== "RoutingState") {
+    throw new Error(
+      `Could not fetch routing state. Unexpected response tag: ${response.tag}`,
+    );
+  }
+
+  return response.value;
+};
+
+export const setRoutingConfig = async (
+  dev: FpMidiDevice,
+  routingState: routing.RoutingConfig,
+) => {
+  const response = await sendAndReceive(dev, {
+    tag: "SetRouting",
+    value: routingState,
+  });
+
+  if (response.tag !== "RoutingState") {
+    throw new Error(
+      `Could not set routing state. Unexpected response tag: ${response.tag}`,
+    );
+  }
+
+  return response.value;
+};
 
 export const setGlobalConfig = async (
   dev: FpMidiDevice,

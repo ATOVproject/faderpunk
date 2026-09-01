@@ -11,7 +11,7 @@ use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializ
 use libfp::{
     types::{CalibFile, MaxCalibration, MaxCalibrationV1},
     AuxJackMode, ClockConfig, ClockSrc, GlobalConfig, I2cMode, Layout, MidiConfig, QuantizerConfig,
-    ResetSrc, TakeoverMode, Value, APP_MAX_PARAMS, CALIB_FILE_MAGIC,
+    ResetSrc, RoutingConfig, TakeoverMode, Value, APP_MAX_PARAMS, CALIB_FILE_MAGIC,
 };
 
 use crate::{
@@ -27,7 +27,9 @@ const GLOBAL_CONFIG_RANGE: Range<u32> = 0..320;
 const RUNTIME_STATE_RANGE: Range<u32> = GLOBAL_CONFIG_RANGE.end..384;
 const LAYOUT_RANGE: Range<u32> = RUNTIME_STATE_RANGE.end..512;
 const CALIBRATION_RANGE: Range<u32> = LAYOUT_RANGE.end..1024;
-const APP_STORAGE_RANGE: Range<u32> = CALIBRATION_RANGE.end..122_880;
+const ROUTING_RANGE: Range<u32> = CALIBRATION_RANGE.end..1536;
+const APP_STORAGE_RANGE: Range<u32> = ROUTING_RANGE.end..122_880;
+
 const APP_PARAM_RANGE: Range<u32> = APP_STORAGE_RANGE.end..SCHEMA_HEADER_RANGE.start;
 /// Reserved region at the very end of FRAM holding `SchemaHeader`. Everything
 /// before it is data laid out by the firmware version that wrote it; this
@@ -242,6 +244,29 @@ pub async fn load_layout() -> Layout {
     let layout = Layout::default();
     store_layout(&layout).await;
     layout
+}
+
+pub async fn store_routing(config: &RoutingConfig) {
+    let res = write_with(ROUTING_RANGE.start, |buf| {
+        Ok(to_slice(config, &mut *buf)?.len())
+    })
+    .await;
+
+    if res.is_err() {
+        defmt::error!("Could not save RoutingConfig");
+    }
+}
+
+pub async fn load_routing() -> RoutingConfig {
+    if let Ok(guard) = read_data(ROUTING_RANGE.start).await {
+        let data = guard.data();
+        if !data.is_empty() {
+            if let Ok(config) = from_bytes::<RoutingConfig>(data) {
+                return config;
+            }
+        }
+    }
+    RoutingConfig::default()
 }
 
 pub async fn store_calibration_data(data: &MaxCalibration) {

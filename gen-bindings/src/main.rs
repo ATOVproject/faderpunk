@@ -50,7 +50,12 @@ fn main() {
             libfp::TakeoverMode,
             libfp::Value,
             libfp::VoltPerOct,
-            libfp::Waveform
+            libfp::Waveform,
+            libfp::RoutingConfig,
+            libfp::Route,
+            libfp::RouteSource,
+            libfp::RouteDestination,
+            libfp::CombineMode
         ),
     )
     .unwrap();
