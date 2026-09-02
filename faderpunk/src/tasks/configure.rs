@@ -232,6 +232,17 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 handle_release_voct_output(&mut proto, &mut pending_voct_eviction, output_jack)
                     .await
             }
+            ConfigMsgIn::GetRouting => {
+                let routing = crate::routing_engine::get_routing_config().await;
+                proto.send_msg(ConfigMsgOut::RoutingState(routing)).await
+            }
+            ConfigMsgIn::SetRouting(new_routing) => {
+                crate::routing_engine::set_routing_config(new_routing).await;
+                crate::storage::store_routing(&new_routing).await;
+                proto
+                    .send_msg(ConfigMsgOut::RoutingState(new_routing))
+                    .await
+            }
         };
         if let Err(err) = res {
             defmt::warn!("Failed to send config response: {}", err);

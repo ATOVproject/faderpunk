@@ -15,6 +15,8 @@ import { SettingsTab } from "./SettingsTab";
 import { EditLayoutModal } from "./EditLayoutModal";
 import { ManualTab } from "./ManualTab";
 
+import { PatchbayTab } from "./PatchbayTab";
+
 const ConfiguratorPageContent = () => {
   const { apps, config, setLayout, layout, device, isSimulator } = useStore();
   const { modalConfig, setModalConfig } = useModalContext();
@@ -69,6 +71,9 @@ const ConfiguratorPageContent = () => {
         >
           <Tab key="device" title="Device">
             <DeviceTab layout={layout} />
+          </Tab>
+          <Tab key="patchbay" title="Patchbay">
+            <PatchbayTab />
           </Tab>
           <Tab key="apps" title="Apps">
             <AppsTab apps={apps} layout={layout} />

@@ -158,6 +158,30 @@ impl AnalogLatch {
     ///   the active layer.
     /// * `None` if no change should occur (e.g., the fader is moving but has not yet
     ///   reached the target value, or movement is within jitter tolerance).
+    pub fn update_modulated(
+        &mut self,
+        value: u16,
+        new_active_layer: LatchLayer,
+        active_layer_target_value: u16,
+        is_modulated: bool,
+    ) -> Option<u16> {
+        if is_modulated {
+            if new_active_layer == LatchLayer::Main {
+                self.active_layer = new_active_layer;
+                self.is_latched = true;
+                self.prev_target = value;
+                if value != self.last_emitted_value {
+                    self.last_emitted_value = value;
+                    return Some(value);
+                }
+                return None;
+            } else if self.active_layer == LatchLayer::Main {
+                self.last_emitted_value = active_layer_target_value;
+            }
+        }
+        self.update(value, new_active_layer, active_layer_target_value)
+    }
+
     pub fn update(
         &mut self,
         value: u16,
@@ -165,7 +189,8 @@ impl AnalogLatch {
         active_layer_target_value: u16,
     ) -> Option<u16> {
         // Did the user switch layers?
-        if new_active_layer != self.active_layer {
+        let layer_switched = new_active_layer != self.active_layer;
+        if layer_switched {
             self.active_layer = new_active_layer;
             // For Jump mode, always latch immediately on layer switch
             // For other modes, unlatch unless fader is already at target (tight zone)
@@ -174,6 +199,9 @@ impl AnalogLatch {
                 _ => self.in_jitter_zone(value, active_layer_target_value),
             };
             self.prev_target = active_layer_target_value;
+            if !self.is_latched {
+                self.last_emitted_value = active_layer_target_value;
+            }
         } else if self.is_latched {
             // If we are latched but the target has changed externally, check if we should unlatch.
             // This happens if the target value is changed by something other than this fader.
@@ -200,7 +228,7 @@ impl AnalogLatch {
 
         let mut new_value = None;
 
-        let is_absolute_edge = value == 0 || value == 4095;
+        let is_absolute_edge = !layer_switched && (value == 0 || value == 4095);
         if is_absolute_edge && value != self.last_emitted_value {
             self.is_latched = true;
             new_value = Some(value);

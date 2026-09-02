@@ -163,6 +163,7 @@ async function findDevice(access: MIDIAccess): Promise<FpMidiDevice | null> {
       if (version === null) continue;
 
       const rx = attachInput(input);
+      rx.queue = [];
       const device: FpMidiDevice = { access, input, output, version, rx };
       access.onstatechange = (event: MIDIConnectionEvent) => {
         const port = event.port;

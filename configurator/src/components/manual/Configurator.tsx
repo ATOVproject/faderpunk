@@ -43,7 +43,7 @@ export const Configurator = () => (
     </p>
     <p>
       Once connected, you'll be greeted by the Configurator interface, which
-      consists of <strong>three tabs</strong>:
+      consists of <strong>four tabs</strong>:
     </p>
     <List>
       <li>
@@ -52,6 +52,11 @@ export const Configurator = () => (
       </li>
       <li>
         <strong>Apps Tab</strong> – Choose which apps to include in your layout.
+      </li>
+      <li>
+        <strong>Patchbay Tab</strong> – Interconnect channels digitally,
+        modulate faders, and sum CV signals internally without physical patch
+        cables.
       </li>
       <li>
         <strong>Settings Tab</strong> – Modify global configurations of the
@@ -161,6 +166,138 @@ export const Configurator = () => (
       Edit Layout pop-up.
     </p>
 
+    <H3 id="patchbay-tab">Patchbay Tab</H3>
+    <p>
+      The <strong>Patchbay tab</strong> introduces an internal virtual routing
+      matrix for Faderpunk. It allows you to digitally interconnect channels,
+      route LFOs/CV outputs to other apps, perform digital fader modulation, and
+      sum CV signals together—all internally inside the device without using
+      physical patch cables.
+    </p>
+
+    <H4>Routing Matrix Structure</H4>
+    <p>The patchbay is organized as an interactive grid connecting:</p>
+    <List>
+      <li>
+        <strong>Sources (Rows)</strong>:
+        <List>
+          <li>
+            <strong>App Outputs</strong> – Live internal CV, gate, or waveform
+            outputs produced by loaded apps (LFOs, Turing Machines, Sequencers,
+            etc.).
+          </li>
+          <li>
+            <strong>Physical CV Inputs</strong> – Hardware analog input signals
+            coming from external patch cables connected to physical input jacks
+            1–16.
+          </li>
+          <li>
+            <strong>Constant DC Voltage</strong> – Fixed DC offset voltage
+            generator.
+          </li>
+        </List>
+      </li>
+      <li>
+        <strong>Destinations (Columns)</strong>:
+        <List>
+          <li>
+            <strong>Physical CV Outputs</strong> – Physical DAC output jacks on
+            Channels 1–16.
+          </li>
+          <li>
+            <strong>App Software Inputs</strong> – Virtual software inputs for
+            input-capable apps (Quantizer, Slew, Follower, Panner, Mixer, etc.).
+          </li>
+          <li>
+            <strong>Fader Modulation</strong> – Modulate another channel's main
+            fader digitally.
+          </li>
+        </List>
+      </li>
+    </List>
+
+    <H4>Dynamic Matrix Filtering</H4>
+    <p>To keep the matrix clean and easy to navigate:</p>
+    <List>
+      <li>
+        Unassigned or empty channel slots are automatically hidden from matrix
+        rows and columns.
+      </li>
+      <li>
+        The <strong>App Software Inputs</strong> section dynamically lists only
+        apps capable of receiving virtual inputs.
+      </li>
+      <li>
+        Direct self-routing (e.g. Channel 1 → Channel 1) is disabled to prevent
+        accidental feedback loops.
+      </li>
+      <li>
+        You can use the <strong>Show All 16 Channels</strong> toggle at the top
+        of the tab to expand the matrix to all 16 physical channels at any time.
+      </li>
+    </List>
+
+    <H4>Combine Modes & Signal Processing</H4>
+    <p>
+      When routing a signal to a destination that is already active (or when
+      routing multiple sources to the same destination), you can select how the
+      signals combine:
+    </p>
+    <List>
+      <li>
+        <strong>Sum (Default)</strong> – Adds the incoming routed signal to the
+        destination's existing value (e.g. summing LFO 1 onto LFO 8's physical
+        output, or combining multiple LFOs together).
+      </li>
+      <li>
+        <strong>Replace</strong> – Overrides and replaces the destination's
+        signal entirely with the routed source.
+      </li>
+      <li>
+        <strong>Average</strong> – Computes the arithmetic average of all active
+        sources and the destination's default value.
+      </li>
+      <li>
+        <strong>Max / Min</strong> – Outputs the highest or lowest voltage among
+        all active sources.
+      </li>
+      <li>
+        <strong>Logic (OR / AND / XOR)</strong> – Performs digital gate/trigger
+        logic operations between signals.
+      </li>
+    </List>
+
+    <H4>Per-Route Fine Tuning</H4>
+    <p>
+      Clicking on any active patch point node in the grid opens a pop-up menu
+      allowing you to:
+    </p>
+    <List>
+      <li>
+        Adjust <strong>Attenuation</strong> (0% to 100%).
+      </li>
+      <li>
+        Apply a <strong>DC Voltage Offset</strong> (-2048 to +2047 / -5V to
+        +5V).
+      </li>
+      <li>
+        <strong>Invert</strong> signal polarity.
+      </li>
+      <li>
+        <strong>Enable/Disable</strong> the route without deleting it.
+      </li>
+    </List>
+
+    <H4>Continuous Background Fader Modulation</H4>
+    <p>
+      When a route targets <strong>Fader Modulation</strong>, the modulation is
+      applied continuously in the background on the channel's{" "}
+      <strong>Main layer</strong>. Holding <strong>Shift</strong> allows you to
+      adjust secondary parameters (Alt layer) with 100% layer
+      isolation—releasing Shift seamlessly resumes main-layer fader modulation
+      without parameter dropouts or jumping.
+    </p>
+
     <H3 id="settings-tab">Settings Tab</H3>
 
     <img
@@ -191,9 +328,9 @@ export const Configurator = () => (
       </li>
     </List>
     <p>
-      ⚠️ Currently, the only supported analog clock input resolution is{" "}
-      <strong>24 PPQN</strong>. We're actively working on supporting additional
-      resolutions.
+      <strong>Note:</strong> Currently, the only supported analog clock input
+      resolution is <strong>24 PPQN</strong>. We're actively working on
+      supporting additional resolutions.
     </p>
     <List>
       <li>

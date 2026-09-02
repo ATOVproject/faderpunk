@@ -18,12 +18,14 @@ pub mod fp_grids_lib;
 pub mod i2c_proto;
 pub mod latch;
 pub mod quantizer;
+pub mod routing;
 pub mod sysex;
 pub mod types;
 pub mod utils;
 
-// Re-export commonly used latch types
+// Re-export commonly used latch & routing types
 pub use latch::{AnalogLatch, LatchLayer, TakeoverMode};
+pub use routing::*;
 
 use constants::{
     CURVE_EXP, CURVE_LOG, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE, WAVEFORM_SQUARE,
@@ -1086,6 +1088,10 @@ pub enum Param {
     MidiOut,
     MidiNrpn,
     VoltPerOct,
+    CombineMode {
+        name: &'static str,
+        variants: &'static [CombineMode],
+    },
 }
 
 impl Param {
@@ -1100,11 +1106,6 @@ impl Param {
             Self::i32 { name, .. }
             | Self::f32 { name, .. }
             | Self::bool { name }
-            | Self::Curve { name, .. }
-            | Self::Waveform { name, .. }
-            | Self::Color { name, .. }
-            | Self::Range { name, .. }
-            | Self::Note { name, .. }
             | Self::MidiCc { name }
             | Self::MidiChannel { name }
             | Self::MidiNote { name } => name.is_ascii(),
@@ -1121,6 +1122,12 @@ impl Param {
                 }
                 true
             }
+            Self::Curve { name, .. }
+            | Self::Waveform { name, .. }
+            | Self::Color { name, .. }
+            | Self::Range { name, .. }
+            | Self::Note { name, .. }
+            | Self::CombineMode { name, .. } => name.is_ascii(),
         }
     }
 }
@@ -1276,6 +1283,8 @@ pub enum ConfigMsgIn {
     ReleaseVoOctOutput {
         output_jack: u8,
     },
+    GetRouting,
+    SetRouting(RoutingConfig),
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]
@@ -1286,6 +1295,7 @@ pub enum ConfigMsgOut<'a> {
     BatchMsgEnd,
     GlobalConfig(GlobalConfig),
     Layout(Layout),
+    RoutingState(RoutingConfig),
     AppConfig(u8, usize, ConfigMeta<'a>),
     AppState(u8, &'a [Value]),
     Version {
