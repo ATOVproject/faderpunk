@@ -11,41 +11,9 @@ pub static ROUTING_CONFIG: Mutex<CriticalSectionRawMutex, RefCell<RoutingConfig>
     Mutex::new(RefCell::new(RoutingConfig::new()));
 pub static IS_ROUTING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-fn notify_modulated_destinations(source_channel: usize) {
-    let src_chan = source_channel as u8;
-    ROUTING_CONFIG.lock(|cell| {
-        let config = cell.borrow();
-        for r in config.routes.iter().flatten() {
-            if r.enabled
-                && matches!(r.source, RouteSource::AppOutput { channel } if channel == src_chan)
-            {
-                match r.destination {
-                    RouteDestination::AppFader { channel }
-                    | RouteDestination::AppInput { channel } => {
-                        let target_chan = channel as usize;
-                        if !crate::tasks::buttons::is_shift_button_pressed()
-                            && !crate::tasks::buttons::is_channel_button_pressed(target_chan)
-                        {
-                            crate::events::EVENT_PUBSUB
-                                .immediate_publisher()
-                                .publish_immediate(crate::events::InputEvent::FaderChange(
-                                    target_chan,
-                                ));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    });
-}
-
 pub fn set_virtual_output(channel: usize, value: u16) {
     if channel < 16 {
-        let old = VIRTUAL_APP_OUTPUTS[channel].swap(value, Ordering::Relaxed);
-        if old != value && IS_ROUTING_ACTIVE.load(Ordering::Relaxed) {
-            notify_modulated_destinations(channel);
-        }
+        VIRTUAL_APP_OUTPUTS[channel].store(value, Ordering::Relaxed);
     }
 }
 
@@ -166,12 +134,6 @@ pub fn get_fader_offset_sync(channel: usize) -> i16 {
         return 0;
     }
 
-    if crate::tasks::buttons::is_shift_button_pressed()
-        || crate::tasks::buttons::is_channel_button_pressed(channel)
-    {
-        return 0;
-    }
-
     let target_chan = channel as u8;
     ROUTING_CONFIG.lock(|cell| {
         let config = cell.borrow();
@@ -217,6 +179,26 @@ pub async fn get_dac_value(channel: usize, default_dac: u16) -> u16 {
     get_dac_value_sync(channel, default_dac)
 }
 
+/// Check if any active route targets fader modulation on `channel`
+#[allow(dead_code)]
+pub fn is_fader_modulated_sync(channel: usize) -> bool {
+    if !IS_ROUTING_ACTIVE.load(Ordering::Relaxed) {
+        return false;
+    }
+
+    let target_chan = channel as u8;
+    ROUTING_CONFIG.lock(|cell| {
+        let config = cell.borrow();
+        config.routes.iter().flatten().any(|r| {
+            r.enabled
+                && matches!(
+                    r.destination,
+                    RouteDestination::AppFader { channel } if channel == target_chan
+                )
+        })
+    })
+}
+
 /// Returns the CV fader modulation offset for `channel` (-2048..2047)
 #[allow(dead_code)]
 pub async fn get_fader_offset(channel: usize) -> i16 {
@@ -238,7 +220,7 @@ fn evaluate_matching_routes(routes: &[&libfp::Route], default_val: u16) -> u16 {
             apply_attenuation_and_offset(src, last_route.attenuation_percent, last_route.offset)
         }
         CombineMode::Sum => {
-            let mut sum: i32 = 0;
+            let mut sum: i32 = default_val as i32;
             for r in routes {
                 let src = evaluate_source_value(r.source);
                 let val = apply_attenuation_and_offset(src, r.attenuation_percent, r.offset);
@@ -247,16 +229,16 @@ fn evaluate_matching_routes(routes: &[&libfp::Route], default_val: u16) -> u16 {
             sum.clamp(0, 4095) as u16
         }
         CombineMode::Average => {
-            let mut sum: i32 = 0;
+            let mut sum: i32 = default_val as i32;
             for r in routes {
                 let src = evaluate_source_value(r.source);
                 let val = apply_attenuation_and_offset(src, r.attenuation_percent, r.offset);
                 sum += val as i32;
             }
-            (sum / routes.len() as i32).clamp(0, 4095) as u16
+            (sum / (routes.len() + 1) as i32).clamp(0, 4095) as u16
         }
         CombineMode::Max => {
-            let mut max_val: u16 = 0;
+            let mut max_val: u16 = default_val;
             for r in routes {
                 let src = evaluate_source_value(r.source);
                 let val = apply_attenuation_and_offset(src, r.attenuation_percent, r.offset);
@@ -267,7 +249,7 @@ fn evaluate_matching_routes(routes: &[&libfp::Route], default_val: u16) -> u16 {
             max_val
         }
         CombineMode::Min => {
-            let mut min_val: u16 = 4095;
+            let mut min_val: u16 = default_val;
             for r in routes {
                 let src = evaluate_source_value(r.source);
                 let val = apply_attenuation_and_offset(src, r.attenuation_percent, r.offset);

@@ -12,6 +12,7 @@ import { Slider } from "@heroui/slider";
 import { Switch } from "@heroui/switch";
 import { Tabs, Tab } from "@heroui/tabs";
 import { useStore } from "../store";
+import type { AppSlot } from "../utils/types";
 import { routing } from "@atov/fp-config";
 
 type DestCategory = "PhysicalDac" | "AppInput" | "AppFader";
@@ -28,9 +29,13 @@ const COMBINE_MODES: { label: string; modeTag: routing.CombineMode["tag"] }[] =
     { label: "Replace / Override", modeTag: "Replace" },
   ];
 
+// App IDs known to process software CV/gate input signals
+const INPUT_CAPABLE_APP_IDS = [1, 5, 6, 14, 18, 21, 22, 23, 24, 28, 29, 30];
+
 export const PatchbayTab = () => {
   const { routing: routingState, setRouting, layout } = useStore();
   const [destCategory, setDestCategory] = useState<DestCategory>("PhysicalDac");
+  const [showAllChannels, setShowAllChannels] = useState<boolean>(false);
   const [selectedRouteIdx, setSelectedRouteIdx] = useState<number | null>(null);
   const [editingRoute, setEditingRoute] = useState<routing.Route | null>(null);
 
@@ -39,12 +44,66 @@ export const PatchbayTab = () => {
     | undefined
   )[];
 
+  const getSlotForChannel = (channel: number): AppSlot | undefined => {
+    if (!layout) return undefined;
+    return layout.find(
+      (s) =>
+        s.startChannel <= channel &&
+        channel < s.startChannel + Number(s.app?.channels ?? 1),
+    );
+  };
+
   const getAppName = (channel: number) => {
-    if (!layout) return `Ch ${channel + 1}`;
-    const slot = layout.find((s) => s.startChannel === channel);
+    const slot = getSlotForChannel(channel);
     return slot?.app
       ? `${slot.app.name} (Ch ${channel + 1})`
       : `Ch ${channel + 1}`;
+  };
+
+  const appHasVirtualInput = (channel: number) => {
+    const slot = getSlotForChannel(channel);
+    if (!slot?.app) return false;
+    return INPUT_CAPABLE_APP_IDS.includes(slot.app.appId);
+  };
+
+  const getActiveSourceChannels = (): number[] => {
+    if (showAllChannels || !layout)
+      return Array.from({ length: 16 }, (_, i) => i);
+    return Array.from({ length: 16 }, (_, i) => i).filter((ch) => {
+      const slot = getSlotForChannel(ch);
+      return Boolean(slot?.app);
+    });
+  };
+
+  const getActiveDestChannels = (category: DestCategory): number[] => {
+    if (category === "PhysicalDac") {
+      // Physical CV Out jacks 1..16 are always available
+      return Array.from({ length: 16 }, (_, i) => i);
+    }
+    if (showAllChannels || !layout)
+      return Array.from({ length: 16 }, (_, i) => i);
+
+    return Array.from({ length: 16 }, (_, i) => i).filter((ch) => {
+      const slot = getSlotForChannel(ch);
+      if (!slot?.app) return false;
+      if (category === "AppInput") {
+        return appHasVirtualInput(ch);
+      }
+      return true; // AppFader (Fader Mod) is available for all occupied app channels
+    });
+  };
+
+  const isForbiddenRoute = (
+    src: routing.RouteSource,
+    dest: routing.RouteDestination,
+  ) => {
+    if (
+      src.tag === "AppOutput" &&
+      (dest.tag === "AppInput" || dest.tag === "AppFader")
+    ) {
+      return src.value.channel === dest.value.channel;
+    }
+    return false;
   };
 
   const isSameSource = (a: routing.RouteSource, b: routing.RouteSource) => {
@@ -78,6 +137,8 @@ export const PatchbayTab = () => {
     src: routing.RouteSource,
     dest: routing.RouteDestination,
   ) => {
+    if (isForbiddenRoute(src, dest)) return;
+
     const existingIdx = routeList.findIndex(
       (r) =>
         r && isSameSource(r.source, src) && isSameDest(r.destination, dest),
@@ -151,7 +212,7 @@ export const PatchbayTab = () => {
   const getColHeaderLabel = (category: DestCategory, destChan: number) => {
     switch (category) {
       case "PhysicalDac":
-        return `CV Out ${destChan + 1}`;
+        return `Jack ${destChan + 1}`;
       case "AppInput":
         return `App ${destChan + 1} In`;
       case "AppFader":
@@ -159,6 +220,8 @@ export const PatchbayTab = () => {
     }
   };
 
+  const activeSourceChannels = getActiveSourceChannels();
+  const activeDestChannels = getActiveDestChannels(destCategory);
   const activeCount = routeList.filter((r) => Boolean(r)).length;
 
   return (
@@ -173,18 +236,29 @@ export const PatchbayTab = () => {
             physical CV outputs, and faders.
           </p>
         </div>
-        <Button
-          color="danger"
-          variant="flat"
-          size="sm"
-          onPress={() =>
-            setRouting({
-              routes: new Array(32).fill(undefined) as unknown,
-            } as routing.RoutingConfig)
-          }
-        >
-          Clear All Routes
-        </Button>
+        <div className="flex items-center gap-4">
+          <Switch
+            size="sm"
+            isSelected={showAllChannels}
+            onValueChange={setShowAllChannels}
+          >
+            <span className="text-xs text-neutral-400">
+              Show All 16 Channels
+            </span>
+          </Switch>
+          <Button
+            color="danger"
+            variant="flat"
+            size="sm"
+            onPress={() =>
+              setRouting({
+                routes: new Array(32).fill(undefined) as unknown,
+              } as routing.RoutingConfig)
+            }
+          >
+            Clear All Routes
+          </Button>
+        </div>
       </div>
 
       {/* Target Category Selector Tabs */}
@@ -213,19 +287,27 @@ export const PatchbayTab = () => {
 
         {/* Matrix Grid */}
         <div className="overflow-x-auto pt-2">
-          <div className="min-w-[750px]">
+          <div className="min-w-[650px]">
             {/* Header row */}
-            <div className="grid grid-cols-[180px_repeat(16,minmax(32px,1fr))] gap-1 border-b border-neutral-800 pb-2 text-center text-[11px] font-semibold text-neutral-300">
+            <div
+              className="grid gap-1 border-b border-neutral-800 pb-2 text-center text-[11px] font-semibold text-neutral-300"
+              style={{
+                gridTemplateColumns: `180px repeat(${activeDestChannels.length}, minmax(36px, 1fr))`,
+              }}
+            >
               <div className="pl-2 text-left">Signal Source \ Target</div>
-              {Array.from({ length: 16 }, (_, i) => (
-                <div key={i} title={getColHeaderLabel(destCategory, i)}>
-                  {getColHeaderLabel(destCategory, i)}
+              {activeDestChannels.map((destChan) => (
+                <div
+                  key={destChan}
+                  title={getColHeaderLabel(destCategory, destChan)}
+                >
+                  {getColHeaderLabel(destCategory, destChan)}
                 </div>
               ))}
             </div>
 
             {/* Source Rows */}
-            {Array.from({ length: 16 }, (_, srcChan) => {
+            {activeSourceChannels.map((srcChan) => {
               const src: routing.RouteSource = {
                 tag: "AppOutput",
                 value: { channel: srcChan },
@@ -233,7 +315,10 @@ export const PatchbayTab = () => {
               return (
                 <div
                   key={srcChan}
-                  className="grid grid-cols-[180px_repeat(16,minmax(32px,1fr))] items-center gap-1 rounded-sm py-1 hover:bg-neutral-800/40"
+                  className="grid items-center gap-1 rounded-sm py-1 hover:bg-neutral-800/40"
+                  style={{
+                    gridTemplateColumns: `180px repeat(${activeDestChannels.length}, minmax(36px, 1fr))`,
+                  }}
                 >
                   <div
                     className="truncate pl-2 text-xs font-medium text-neutral-300"
@@ -241,8 +326,9 @@ export const PatchbayTab = () => {
                   >
                     {srcChan + 1}. {getAppName(srcChan)}
                   </div>
-                  {Array.from({ length: 16 }, (_, destChan) => {
+                  {activeDestChannels.map((destChan) => {
                     const dest = createDestForCategory(destCategory, destChan);
+                    const forbidden = isForbiddenRoute(src, dest);
                     const activeRoute = routeList.find(
                       (r) =>
                         r &&
@@ -250,6 +336,18 @@ export const PatchbayTab = () => {
                         isSameSource(r.source, src) &&
                         isSameDest(r.destination, dest),
                     );
+
+                    if (forbidden) {
+                      return (
+                        <div
+                          key={destChan}
+                          className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded border border-neutral-900 bg-neutral-950/80 text-[10px] text-neutral-800"
+                          title="Self-routing (Ch X → Ch X) is disabled to prevent feedback loops"
+                        >
+                          ×
+                        </div>
+                      );
+                    }
 
                     return (
                       <button
@@ -273,6 +371,14 @@ export const PatchbayTab = () => {
                 </div>
               );
             })}
+
+            {activeSourceChannels.length === 0 && (
+              <div className="py-8 text-center text-sm text-neutral-500">
+                No active app channels in layout. Install apps on channels in
+                the Layout Editor or enable &quot;Show All 16 Channels&quot;
+                above.
+              </div>
+            )}
           </div>
         </div>
       </div>
