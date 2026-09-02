@@ -299,6 +299,7 @@ export const PatchbayTab = () => {
               {activeDestChannels.map((destChan) => (
                 <div
                   key={destChan}
+                  className="flex items-center justify-center text-center"
                   title={getColHeaderLabel(destCategory, destChan)}
                 >
                   {getColHeaderLabel(destCategory, destChan)}
@@ -337,35 +338,36 @@ export const PatchbayTab = () => {
                         isSameDest(r.destination, dest),
                     );
 
-                    if (forbidden) {
-                      return (
-                        <div
-                          key={destChan}
-                          className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded border border-neutral-900 bg-neutral-950/80 text-[10px] text-neutral-800"
-                          title="Self-routing (Ch X → Ch X) is disabled to prevent feedback loops"
-                        >
-                          ×
-                        </div>
-                      );
-                    }
-
                     return (
-                      <button
+                      <div
                         key={destChan}
-                        onClick={() => handleCellClick(src, dest)}
-                        className={`flex h-7 w-7 items-center justify-center rounded border text-[10px] font-bold transition-all ${
-                          activeRoute
-                            ? "border-cyan-400 bg-cyan-500/30 text-cyan-200 shadow-[0_0_8px_rgba(6,182,212,0.4)]"
-                            : "border-neutral-800 bg-neutral-950/40 text-neutral-600 hover:border-neutral-600 hover:text-neutral-300"
-                        }`}
-                        title={
-                          activeRoute
-                            ? `Route Active: ${formatSourceLabel(src)} → ${formatDestLabel(dest)} (${activeRoute.mode.tag})`
-                            : `Connect ${formatSourceLabel(src)} to ${formatDestLabel(dest)}`
-                        }
+                        className="flex items-center justify-center"
                       >
-                        {activeRoute ? "●" : "+"}
-                      </button>
+                        {forbidden ? (
+                          <div
+                            className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded border border-neutral-900 bg-neutral-950/80 text-[10px] text-neutral-800"
+                            title="Self-routing (Ch X → Ch X) is disabled to prevent feedback loops"
+                          >
+                            ×
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleCellClick(src, dest)}
+                            className={`flex h-7 w-7 items-center justify-center rounded border text-[10px] font-bold transition-all ${
+                              activeRoute
+                                ? "border-cyan-400 bg-cyan-500/30 text-cyan-200 shadow-[0_0_8px_rgba(6,182,212,0.4)]"
+                                : "border-neutral-800 bg-neutral-950/40 text-neutral-600 hover:border-neutral-600 hover:text-neutral-300"
+                            }`}
+                            title={
+                              activeRoute
+                                ? `Route Active: ${formatSourceLabel(src)} → ${formatDestLabel(dest)} (${activeRoute.mode.tag})`
+                                : `Connect ${formatSourceLabel(src)} to ${formatDestLabel(dest)}`
+                            }
+                          >
+                            {activeRoute ? "●" : "+"}
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
