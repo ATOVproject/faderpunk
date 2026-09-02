@@ -182,17 +182,18 @@ export const Configurator = () => (
         <strong>Sources (Rows)</strong>:
         <List>
           <li>
-            <strong>Physical CV Inputs (🔌)</strong> – Hardware input jacks on
-            Channels 1–16.
+            <strong>App Outputs (🌊)</strong> – Live internal CV, gate, or
+            waveform outputs produced by loaded apps (LFOs, Turing Machines,
+            Sequencers, etc.).
           </li>
           <li>
-            <strong>App Outputs (🌊)</strong> – Live internal CV/waveform
-            outputs produced by loaded apps (LFOs, Turing Machines, Sequencers,
-            etc.).
+            <strong>Physical CV Inputs (🔌)</strong> – Hardware analog input
+            signals coming from external patch cables connected to physical
+            input jacks 1–16.
           </li>
           <li>
-            <strong>Physical Fader Position (🎚️)</strong> – The physical
-            position of faders on Channels 1–16.
+            <strong>Constant DC Voltage (⚡)</strong> – Fixed DC offset voltage
+            generator.
           </li>
         </List>
       </li>
