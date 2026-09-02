@@ -14,7 +14,7 @@ pub const CHANNELS: usize = 1;
 pub const PARAMS: usize = 2;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
-    "Combiner / Mixer",
+    "Combiner / Mixer (TODO)",
     "Combine and mix internal routes onto output",
     Color::Cyan,
     AppIcon::Attenuate,
