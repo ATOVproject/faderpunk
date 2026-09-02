@@ -1666,6 +1666,9 @@ export const ManualTab = () => {
                 <Link to="#apps-tab">Apps Tab</Link>
               </li>
               <li>
+                <Link to="#patchbay-tab">Patchbay Tab</Link>
+              </li>
+              <li>
                 <Link to="#settings-tab">Settings Tab</Link>
                 <List>
                   <li>

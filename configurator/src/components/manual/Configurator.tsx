@@ -182,17 +182,17 @@ export const Configurator = () => (
         <strong>Sources (Rows)</strong>:
         <List>
           <li>
-            <strong>App Outputs (🌊)</strong> – Live internal CV, gate, or
-            waveform outputs produced by loaded apps (LFOs, Turing Machines,
-            Sequencers, etc.).
+            <strong>App Outputs</strong> – Live internal CV, gate, or waveform
+            outputs produced by loaded apps (LFOs, Turing Machines, Sequencers,
+            etc.).
           </li>
           <li>
-            <strong>Physical CV Inputs (🔌)</strong> – Hardware analog input
-            signals coming from external patch cables connected to physical
-            input jacks 1–16.
+            <strong>Physical CV Inputs</strong> – Hardware analog input signals
+            coming from external patch cables connected to physical input jacks
+            1–16.
           </li>
           <li>
-            <strong>Constant DC Voltage (⚡)</strong> – Fixed DC offset voltage
+            <strong>Constant DC Voltage</strong> – Fixed DC offset voltage
             generator.
           </li>
         </List>
@@ -201,17 +201,16 @@ export const Configurator = () => (
         <strong>Destinations (Columns)</strong>:
         <List>
           <li>
-            <strong>Physical CV Outputs (⚡)</strong> – Physical DAC output
-            jacks on Channels 1–16.
+            <strong>Physical CV Outputs</strong> – Physical DAC output jacks on
+            Channels 1–16.
           </li>
           <li>
-            <strong>App Software Inputs (🎛️)</strong> – Virtual software inputs
-            for input-capable apps (Quantizer, Slew, Follower, Panner, Mixer,
-            etc.).
+            <strong>App Software Inputs</strong> – Virtual software inputs for
+            input-capable apps (Quantizer, Slew, Follower, Panner, Mixer, etc.).
           </li>
           <li>
-            <strong>Fader Modulation (🎚️)</strong> – Modulate another channel's
-            main fader digitally.
+            <strong>Fader Modulation</strong> – Modulate another channel's main
+            fader digitally.
           </li>
         </List>
       </li>
@@ -329,9 +328,9 @@ export const Configurator = () => (
       </li>
     </List>
     <p>
-      ⚠️ Currently, the only supported analog clock input resolution is{" "}
-      <strong>24 PPQN</strong>. We're actively working on supporting additional
-      resolutions.
+      <strong>Note:</strong> Currently, the only supported analog clock input
+      resolution is <strong>24 PPQN</strong>. We're actively working on
+      supporting additional resolutions.
     </p>
     <List>
       <li>
