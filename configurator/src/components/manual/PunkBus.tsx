@@ -28,7 +28,7 @@ export const PunkBus = () => (
     <H3>Introduction</H3>
     <p>PunkBus connects all 19 Faderpunk jacks with a single cable.</p>
 
-    <H3>⚠️ Warning</H3>
+    <H3>Warning</H3>
     <p>
       The HDMI connector carries CV/gate signals, not video. Never connect
       PunkBus or Faderpunk to a TV, monitor, or other HDMI video equipment —
