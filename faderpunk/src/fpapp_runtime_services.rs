@@ -29,7 +29,7 @@ use crate::events::{InputEvent, EVENT_PUBSUB};
 use crate::fpapps::RuntimeDescriptor;
 use crate::storage::{AppParamsAddress, AppStorageAddress};
 use crate::tasks::buttons::{is_channel_button_pressed, is_shift_button_pressed};
-use crate::tasks::clock::CLOCK_PUBSUB;
+use crate::tasks::clock::{CLOCK_PUBSUB, CLOCK_RUNNING, CURRENT_TICK};
 use crate::tasks::configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS};
 use crate::tasks::fram::{read_data, write_with, MAX_DATA_LEN};
 use crate::tasks::global_config::get_global_config;
@@ -336,6 +336,9 @@ unsafe extern "C" fn read_value(context: *mut (), kind: u8, index: u8) -> u32 {
             u32::from(u16::from_le_bytes([RoscRng::next_u8(), RoscRng::next_u8()]))
         }
         value_kind::GLOBAL_SWING => get_global_config().clock.swing_amount as u32,
+        value_kind::CURRENT_TICK_LOW => (CURRENT_TICK.load(Ordering::Relaxed) & 0xFFFF_FFFF) as u32,
+        value_kind::CURRENT_TICK_HIGH => (CURRENT_TICK.load(Ordering::Relaxed) >> 32) as u32,
+        value_kind::CLOCK_RUNNING => u32::from(CLOCK_RUNNING.load(Ordering::Relaxed)),
         value_kind::TAKEOVER_MODE => match get_global_config().takeover_mode {
             TakeoverMode::Pickup => 0,
             TakeoverMode::Jump => 1,
@@ -756,7 +759,10 @@ async fn process_command(context: &RuntimeContext, command: CommandV1) {
                 })
                 .await;
         }
-        command_kind::MIDI_CC | command_kind::MIDI_NOTE_ON | command_kind::MIDI_NOTE_OFF => {
+        command_kind::MIDI_CC
+        | command_kind::MIDI_NOTE_ON
+        | command_kind::MIDI_NOTE_OFF
+        | command_kind::MIDI_PITCH_BEND => {
             let midi = MidiOutput::new(
                 decode_midi_out(command.flags),
                 context.start_channel,
@@ -772,6 +778,9 @@ async fn process_command(context: &RuntimeContext, command: CommandV1) {
                 command_kind::MIDI_NOTE_ON => {
                     midi.send_note_on(MidiNote::from(command.arg1 as u8), command.arg2 as u16)
                         .await;
+                }
+                command_kind::MIDI_PITCH_BEND => {
+                    midi.send_pitch_bend(command.arg1 as u16).await;
                 }
                 _ => midi.send_note_off(MidiNote::from(command.arg1 as u8)).await,
             }

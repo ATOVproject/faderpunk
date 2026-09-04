@@ -39,6 +39,13 @@ pub mod value_kind {
     pub const LAYOUT_ID: u8 = 10;
     pub const GLOBAL_KEY: u8 = 11;
     pub const GLOBAL_TONIC: u8 = 12;
+    /// Low/high 32 bits of the absolute tick counter (see `App::current_tick`).
+    /// Split across two reads because `read_value` returns `u32`; `u64::MAX` in
+    /// both halves is the "no tick yet" sentinel, matching the host's own
+    /// `CURRENT_TICK` atomic.
+    pub const CURRENT_TICK_LOW: u8 = 13;
+    pub const CURRENT_TICK_HIGH: u8 = 14;
+    pub const CLOCK_RUNNING: u8 = 15;
 }
 
 pub mod command_kind {
@@ -53,6 +60,7 @@ pub mod command_kind {
     pub const MIDI_NOTE_ON: u8 = 9;
     pub const MIDI_NOTE_OFF: u8 = 10;
     pub const I2C_FADER: u8 = 11;
+    pub const MIDI_PITCH_BEND: u8 = 12;
 }
 
 pub mod blob_kind {
@@ -426,6 +434,32 @@ pub mod compat {
                     swing_amount: read_value(self.host, value_kind::GLOBAL_SWING, 0) as i8,
                 },
             }
+        }
+
+        /// Current global swing amount ([-35, 35], 0 = straight), as dialed in
+        /// by the user. Apps that add their own swing/groove should read this
+        /// to avoid fighting the user's setting. Mirrors `App::global_swing`
+        /// on the real firmware-side `App<N>`.
+        pub fn global_swing(&self) -> i8 {
+            read_value(self.host, value_kind::GLOBAL_SWING, 0) as i8
+        }
+
+        /// Synchronous snapshot of the absolute tick count (24 PPQN) since the
+        /// last clock reset/start. `None` means no tick has occurred yet since
+        /// the last reset/startup. Mirrors `App::current_tick` on the real
+        /// firmware-side `App<N>`.
+        pub fn current_tick(&self) -> Option<u64> {
+            let lo = u64::from(read_value(self.host, value_kind::CURRENT_TICK_LOW, 0));
+            let hi = u64::from(read_value(self.host, value_kind::CURRENT_TICK_HIGH, 0));
+            let tick = (hi << 32) | lo;
+            (tick != u64::MAX).then_some(tick)
+        }
+
+        /// Synchronous, real-time read of whether the clock is currently
+        /// running. Mirrors `App::is_clock_running` on the real firmware-side
+        /// `App<N>`.
+        pub fn is_clock_running(&self) -> bool {
+            read_value(self.host, value_kind::CLOCK_RUNNING, 0) != 0
         }
 
         pub const fn use_faders(&self) -> Faders<N> {
@@ -1088,6 +1122,23 @@ pub mod compat {
                     arg0: u32::from(u4::from(self.midi_channel).as_int()),
                     arg1: u32::from(u7::from(note).as_int()),
                     arg2: u32::from(velocity),
+                    ..CommandV1::default()
+                },
+            )
+            .await;
+        }
+
+        /// Sends a MIDI PitchBend message. `bend` is a value between 0 and
+        /// 16,383. Mirrors `MidiOutput::send_pitch_bend` on the real
+        /// firmware-side `MidiOutput`.
+        pub async fn send_pitch_bend(&self, bend: u16) {
+            submit(
+                self.host,
+                CommandV1 {
+                    kind: command_kind::MIDI_PITCH_BEND,
+                    flags: midi_flags(self.midi_out, false),
+                    arg0: u32::from(u4::from(self.midi_channel).as_int()),
+                    arg1: u32::from(bend),
                     ..CommandV1::default()
                 },
             )
