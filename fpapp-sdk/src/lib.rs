@@ -449,10 +449,22 @@ pub mod compat {
         /// the last reset/startup. Mirrors `App::current_tick` on the real
         /// firmware-side `App<N>`.
         pub fn current_tick(&self) -> Option<u64> {
-            let lo = u64::from(read_value(self.host, value_kind::CURRENT_TICK_LOW, 0));
-            let hi = u64::from(read_value(self.host, value_kind::CURRENT_TICK_HIGH, 0));
-            let tick = (hi << 32) | lo;
-            (tick != u64::MAX).then_some(tick)
+            // The host holds one u64 but exposes it through two 32-bit reads, so
+            // a tick landing between them composes a value that never existed.
+            // That is worst at the u64::MAX "not started" sentinel, which every
+            // clock start crosses: a tear there reads as a huge tick rather than
+            // None. Re-read the high half to detect a straddle and retry.
+            let mut hi = u64::from(read_value(self.host, value_kind::CURRENT_TICK_HIGH, 0));
+            for _ in 0..4 {
+                let lo = u64::from(read_value(self.host, value_kind::CURRENT_TICK_LOW, 0));
+                let hi_again = u64::from(read_value(self.host, value_kind::CURRENT_TICK_HIGH, 0));
+                if hi == hi_again {
+                    let tick = (hi << 32) | lo;
+                    return (tick != u64::MAX).then_some(tick);
+                }
+                hi = hi_again;
+            }
+            None
         }
 
         /// Synchronous, real-time read of whether the clock is currently
