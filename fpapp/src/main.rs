@@ -207,6 +207,16 @@ fn build_community(options: BTreeMap<String, String>) -> Result<(), String> {
     let staging = workspace.join("target/fpapp-community-build");
     fs::create_dir_all(&staging)
         .map_err(|error| format!("could not create {}: {error}", staging.display()))?;
+    // Every app gets its own `[workspace]` crate (see write_metadata_crate /
+    // write_native_crate) so a stray Cargo.toml in one app's staging dir can't
+    // pull in another's — but that also means dependency compilation (midly,
+    // libm, embassy-*, ...) would otherwise happen from scratch per app, once
+    // per catalog entry. Pointing every build at one shared target dir lets
+    // Cargo's own artifact cache (keyed by package+features+version, not by
+    // which workspace asked for it) amortize that across the whole catalog.
+    let cargo_target_dir = staging.join("cargo-target");
+    fs::create_dir_all(&cargo_target_dir)
+        .map_err(|error| format!("could not create {}: {error}", cargo_target_dir.display()))?;
     fs::create_dir_all(&output_dir)
         .map_err(|error| format!("could not create {}: {error}", output_dir.display()))?;
 
@@ -238,9 +248,9 @@ fn build_community(options: BTreeMap<String, String>) -> Result<(), String> {
         let metadata_root = app_root.join("metadata");
         let native_root = app_root.join("native");
         write_metadata_crate(&metadata_root, &transformed, &sdk, &libfp)?;
-        let params = run_metadata_helper(&metadata_root)?;
+        let params = run_metadata_helper(&metadata_root, &cargo_target_dir)?;
         write_native_crate(&native_root, &transformed, &sdk, &libfp)?;
-        build_native_crate(&native_root, &linker)?;
+        build_native_crate(&native_root, &linker, &cargo_target_dir)?;
 
         let manual_path = app_root.join("manual.json");
         let setup_path = app_root.join("setup.md");
@@ -264,8 +274,8 @@ fn build_community(options: BTreeMap<String, String>) -> Result<(), String> {
         .map_err(|error| format!("could not write {}: {error}", settings_path.display()))?;
 
         let binary_name = format!("fpapp_{}", entry.module);
-        let elf = native_root
-            .join("target/thumbv8m.main-none-eabihf/release")
+        let elf = cargo_target_dir
+            .join("thumbv8m.main-none-eabihf/release")
             .join(&binary_name);
         let output = output_dir.join(format!("{}.fpapp", entry.module.replace('_', "-")));
         let mut pack_options = BTreeMap::from([
@@ -345,16 +355,21 @@ fn write_metadata_crate(root: &Path, source: &str, sdk: &Path, libfp: &Path) -> 
             r#"[package]
 name = "fpapp-community-metadata"
 version = "0.0.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 embassy-futures = "0.1"
 embassy-sync = "0.7"
+embassy-time = "0.4.0"
 fpapp-sdk = {{ path = "{}" }}
 heapless = {{ version = "0.7.17", features = ["serde"] }}
 libfp = {{ path = "{}" }}
+libm = "0.2.16"
+midly = {{ version = "0.5.3", default-features = false }}
+portable-atomic = {{ version = "1.13.1", features = ["critical-section"] }}
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
+smart-leds = "0.4.0"
 
 [workspace]
 "#,
@@ -386,15 +401,20 @@ fn write_native_crate(root: &Path, source: &str, sdk: &Path, libfp: &Path) -> Re
             r#"[package]
 name = "{binary_name}"
 version = "0.0.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 embassy-futures = "0.1"
 embassy-sync = "0.7"
+embassy-time = "0.4.0"
 fpapp-sdk = {{ path = "{}" }}
 heapless = {{ version = "0.7.17", features = ["serde"] }}
 libfp = {{ path = "{}" }}
+libm = "0.2.16"
+midly = {{ version = "0.5.3", default-features = false }}
+portable-atomic = {{ version = "1.13.1", features = ["critical-section"] }}
 serde = {{ version = "1", default-features = false, features = ["derive"] }}
+smart-leds = "0.4.0"
 
 [profile.release]
 codegen-units = 1
@@ -414,9 +434,10 @@ panic = "abort"
     Ok(())
 }
 
-fn run_metadata_helper(root: &Path) -> Result<JsonValue, String> {
+fn run_metadata_helper(root: &Path, cargo_target_dir: &Path) -> Result<JsonValue, String> {
     let output = Command::new("cargo")
         .args(["run", "--quiet", "--release"])
+        .env("CARGO_TARGET_DIR", cargo_target_dir)
         .current_dir(root)
         .output()
         .map_err(|error| format!("could not run community metadata helper: {error}"))?;
@@ -430,7 +451,7 @@ fn run_metadata_helper(root: &Path) -> Result<JsonValue, String> {
         .map_err(|error| format!("community metadata helper returned invalid JSON: {error}"))
 }
 
-fn build_native_crate(root: &Path, linker: &Path) -> Result<(), String> {
+fn build_native_crate(root: &Path, linker: &Path, cargo_target_dir: &Path) -> Result<(), String> {
     let output = Command::new("cargo")
         .arg("+nightly")
         .args([
@@ -446,6 +467,7 @@ fn build_native_crate(root: &Path, linker: &Path) -> Result<(), String> {
                 linker.display()
             ),
         )
+        .env("CARGO_TARGET_DIR", cargo_target_dir)
         .current_dir(root)
         .output()
         .map_err(|error| format!("could not compile community FPApp: {error}"))?;
