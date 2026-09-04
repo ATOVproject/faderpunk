@@ -257,6 +257,12 @@ async fn main(spawner: Spawner) {
     let mut global_config = load_global_config().await;
 
     if is_channel_button_pressed(0) && is_channel_button_pressed(1) {
+        // This is the user asking to forget everything, quarantine included —
+        // and it is the recovery path of last resort, so it has to actually
+        // work. scratch0 survives the `sys_reset` that ends a factory reset, so
+        // drop any pending marker here; otherwise the next boot re-quarantines
+        // the very slot they just reset to get back.
+        watchdog::clear_slot();
         return factory_reset().await;
     }
 

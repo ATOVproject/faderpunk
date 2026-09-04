@@ -140,7 +140,9 @@ impl SlotFlash for RpFpAppFlash<'_> {
         // that is merely installing an app. Walk it a sector at a time instead
         // and feed in between, which keeps every blind spot down to a single
         // sector erase and lets the watchdog stay armed at its normal period
-        // throughout an install.
+        // throughout an install. The step must stay aligned to embassy's own
+        // `flash::ERASE_SIZE` or its `check_erase` rejects the range; the two
+        // constants agree at 4096.
         let mut sector = start;
         while sector < end {
             let sector_end = sector.saturating_add(ERASE_SIZE).min(end);

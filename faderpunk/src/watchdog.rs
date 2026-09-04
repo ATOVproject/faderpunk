@@ -93,9 +93,17 @@ pub fn guarding<T>(slot: u8, call: impl FnOnce() -> T) -> T {
 /// the caller clears it once the quarantine is safely persisted, so a failure
 /// in between still leaves evidence for the next boot.
 pub fn timed_out_slot(watchdog: &mut Watchdog) -> Option<u8> {
-    if watchdog.reset_reason() != Some(ResetReason::TimedOut) {
-        return None;
-    }
     let raw = watchdog.get_scratch(0);
-    ((raw & SLOT_TAG_MASK) == SLOT_TAG_MAGIC).then_some((raw & 0xF) as u8)
+    let slot = (watchdog.reset_reason() == Some(ResetReason::TimedOut)
+        && (raw & SLOT_TAG_MASK) == SLOT_TAG_MAGIC)
+        .then_some((raw & 0xF) as u8);
+    if slot.is_none() {
+        // Nothing actionable to hold on to, and neither scratch0 nor the reason
+        // register is reliably cleared by a soft reset — pico-sdk's
+        // `watchdog_enable_caused_reboot` has to check a scratch magic for
+        // exactly that reason. Drop a stale tag now so it can't be paired with
+        // some later, unrelated timeout and blame the wrong slot.
+        clear_slot();
+    }
+    slot
 }
