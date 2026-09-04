@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.12.0 (2026-09-01)
+
+### Features
+
+- MIDI out CC/NRPN from envelope output (#575)
+- default clock to running on factory-fresh boot (#610)
+- variable PPQN external clock input and phase-correct clock ticks (#579)
+- automated gain calibration wizard with AUX frequency measurement (#574)
+- Curve::Deadzone fader curve + wire into 8 apps (#578)
+- add sample & hold CV destination mode (#584)
+- add automated PR scope-check policy (informational only) (#654)
+
+### Fixes
+
+- eliminate false fader events from ADC noise (#556) (#628)
+- reject non-ASCII app names and descriptions (#601)
+- support current Rust toolchains (#632)
+- prioritize realtime output (#631)
+- align .text section start to 8 bytes (#614)
+- run boot animation at a fixed brightness (#645)
+- yield between SharedMax lock cycles to prevent gate jitter (#651)
+- never block the clock gatekeeper on a full pubsub (#636)
+- keep the metronome off the clock pubsub (#638)
+- drop unconsumed docs/apps manual-entry format from PR scope policy (#657)
+- coalesce controller updates
+- publish processed outputs over i2c
+- reuse GLOBAL_CHANNELS instead of a duplicate constant
+- turing mute ignores gate/MIDI outputs (#668)
+
 ## 1.12.0-beta.1 (2026-08-25)
 
 ### Features
