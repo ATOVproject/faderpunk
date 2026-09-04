@@ -170,6 +170,9 @@ export const InstalledApps = () => {
                     has_setup: Boolean(selection.app.setup),
                     has_settings: Boolean(selection.app.settings),
                     signed: selection.app.signed,
+                    // A successful install clears the slot's quarantine
+                    // device-side, so the freshly installed app starts clean.
+                    quarantined: false,
                   },
                 }
               : slot,
@@ -275,8 +278,14 @@ export const InstalledApps = () => {
                       {slot.slot + 1}
                     </span>
                     <span
-                      className={`h-2 w-2 rounded-full ${slot.app ? "bg-green-400" : "bg-gray-600"}`}
-                      aria-label={slot.app ? "Installed" : "Empty"}
+                      className={`h-2 w-2 rounded-full ${slot.app?.quarantined ? "bg-red-400" : slot.app ? "bg-green-400" : "bg-gray-600"}`}
+                      aria-label={
+                        slot.app?.quarantined
+                          ? "Stopped"
+                          : slot.app
+                            ? "Installed"
+                            : "Empty"
+                      }
                     />
                   </div>
                   {slot.app ? (
@@ -289,10 +298,22 @@ export const InstalledApps = () => {
                           v{slot.app.version_major}.{slot.app.version_minor}.
                           {slot.app.version_patch}
                         </span>
+                        {slot.app.quarantined && (
+                          <span className="rounded-sm bg-red-500/20 px-1.5 py-0.5 text-xs font-bold text-red-300">
+                            Stopped
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1 text-sm text-gray-300">
                         {slot.app.description}
                       </p>
+                      {slot.app.quarantined && (
+                        <p className="mt-1 text-xs text-red-300">
+                          This app stopped responding and locked up the device,
+                          so it is being held back from running. Replace it with
+                          a working version, or remove it, to clear this.
+                        </p>
+                      )}
                       <p className="mt-1 text-xs text-gray-400">
                         by {slot.app.author}
                       </p>
