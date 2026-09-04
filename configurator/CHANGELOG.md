@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.12.1 (2026-09-04)
+
+### Fixes
+
+- recognize FPApp tooling in scope checks (#665)
+
 ## 1.12.0 (2026-09-01)
 
 ### Features

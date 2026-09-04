@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.13.0 (2026-09-04)
+
+### Features
+
+- add App accessors for global swing, current tick, and clock-running state (#671)
+
+### Fixes
+
+- recognize FPApp tooling in scope checks (#665)
+
 ## 1.12.0 (2026-09-01)
 
 ### Features
