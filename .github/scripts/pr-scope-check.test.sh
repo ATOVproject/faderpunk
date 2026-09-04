@@ -19,30 +19,37 @@ trap 'rm -rf "$TMP"' EXIT
 pass=0
 fail=0
 
-# name : expect_exit : expect_hard_fail_count (or "any">=1 style via -ge marker) : note
-# Format per line: "<fixture> <expected_exit> <expected_hardfail_op><n>"
+# name : expect_exit : expect_hard_fail_count (or "any">=1 style via -ge marker) : required substrings
+# Format per line: "<fixture> <expected_exit> <expected_hardfail_op><n> <substring_spec>"
 #   expected_hardfail_op is "=" or ">="
+#   substring_spec is "-" (no content check) or a literal substring (may
+#   contain spaces — it's the rest of the line) that must appear somewhere in
+#   the summary markdown (covers both the "**Category**: ..." line and
+#   SOFT_FLAGS bullets) — catches a regression that keeps the hard-fail count
+#   right but silently drops or changes the category/soft-flag content the
+#   fixture exists to protect.
 CASES=(
-  "573 0 =0"
-  "602 1 >=1"
-  "612 1 >=1"
-  "529 0 =0"
-  "629 1 =2"
-  "521 1 =1"
-  "607 1 =2"
-  "603 1 =1"
-  "474 1 =1"
-  "637 1 =1"
-  "645 0 =0"
-  "601 0 =0"
-  "614 0 =0"
-  "synthetic-mixed-commits 0 =0"
-  "synthetic-nested-use-bypass 1 =1"
-  "synthetic-rename 0 =0"
+  "573 0 =0 -"
+  "602 1 >=1 -"
+  "612 1 >=1 -"
+  "529 0 =0 -"
+  "629 1 =2 -"
+  "521 1 =1 -"
+  "607 1 =2 -"
+  "603 1 =1 -"
+  "474 1 =1 -"
+  "637 1 =1 -"
+  "645 0 =0 -"
+  "601 0 =0 -"
+  "614 0 =0 -"
+  "synthetic-mixed-commits 0 =0 -"
+  "synthetic-nested-use-bypass 1 =1 -"
+  "synthetic-rename 0 =0 -"
+  "synthetic-fpapp-directories 0 =0 Touches \`libfp/src/**\`/\`fpapp-sdk/**\`"
 )
 
 for case_line in "${CASES[@]}"; do
-  read -r name expect_exit hf_spec <<<"$case_line"
+  read -r name expect_exit hf_spec expect_substr <<<"$case_line"
   files="$DATA/$name-files.json"
   commits="$DATA/$name-commits.json"
   if [[ ! -f "$files" || ! -f "$commits" ]]; then
@@ -77,6 +84,9 @@ for case_line in "${CASES[@]}"; do
   status="ok"
   [[ "$actual_exit" -ne "$expect_exit" ]] && status="FAIL(exit: got $actual_exit want $expect_exit)"
   [[ "$hf_ok" == "no" ]] && status="$status FAIL(hardfails: got $hf_count want $hf_desc)"
+  if [[ "$expect_substr" != "-" && "$expect_substr" != "" ]]; then
+    grep -qF -- "$expect_substr" "$summary" || status="$status FAIL(missing content: \"$expect_substr\")"
+  fi
 
   if [[ "$status" == "ok" ]]; then
     echo "PASS  $name  (exit=$actual_exit, hard-fails=$hf_count)"

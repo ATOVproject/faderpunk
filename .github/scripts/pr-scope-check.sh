@@ -47,7 +47,7 @@ SOFT_FLAGS=()
 # Known top-level allow-list
 # ---------------------------------------------------------------------------
 
-ALLOWED_TOP_DIRS=(faderpunk libfp configurator gen-bindings docs .github)
+ALLOWED_TOP_DIRS=(faderpunk libfp fpapp fpapp-sdk configurator gen-bindings docs .github)
 ALLOWED_ROOT_FILES=(
   README.md CONTRIBUTING.md AGENTS.md CLAUDE.md CODE_OF_CONDUCT.md LICENSE
   Cargo.toml Cargo.lock knope.toml devenv.nix devenv.yaml devenv.lock
@@ -154,8 +154,10 @@ for i in "${!FILENAMES[@]}"; do
     touches_manual=true
   elif [[ "$f" == faderpunk/src/tasks/midi.rs || "$f" == faderpunk/src/storage.rs ]]; then
     : # legitimate common companion touches for app PRs, not counted against any category
-  elif [[ "$f" == libfp/src/* || "$f" == "libfp/Cargo.toml" ]]; then
+  elif [[ "$f" == libfp/src/* || "$f" == "libfp/Cargo.toml" || "$f" == fpapp-sdk/* ]]; then
     touches_libfp=true
+  elif [[ "$f" == fpapp/* ]]; then
+    touches_ci_tooling=true
   elif [[ "$f" == gen-bindings/* ]]; then
     touches_gen_bindings=true
   elif [[ "$f" == configurator/* ]]; then
@@ -320,6 +322,8 @@ fi
 
 if [[ "$is_app_category" == true && "$touches_libfp" == true ]]; then
   SOFT_FLAGS+=("App PR also touches \`libfp/src/**\` — legitimate before (e.g. GenSeq's shared slide utility), but worth a look.")
+elif [[ "$touches_libfp" == true ]]; then
+  SOFT_FLAGS+=("Touches \`libfp/src/**\`/\`fpapp-sdk/**\` — shared protocol/ABI surface that ripples into both firmware and configurator, always worth a manual look (see CONTRIBUTING.md's Protocol / libfp row).")
 fi
 
 if [[ ${#other_apps_touched[@]} -gt 0 ]]; then
