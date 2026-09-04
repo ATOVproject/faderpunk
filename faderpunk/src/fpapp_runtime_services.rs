@@ -37,6 +37,7 @@ use crate::tasks::i2c::I2C_LEADER_PUBLISHER;
 use crate::tasks::leds::{set_led_mode, LedMsg};
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL, MAX_VALUES_ADC, MAX_VALUES_DAC, MAX_VALUES_FADER};
 use crate::tasks::midi::{MidiEvent, APP_MIDI_CHANNEL, MIDI_DIN_PUBSUB, MIDI_USB_PUBSUB};
+use crate::watchdog;
 
 const MAX_INSTANCE_BYTES: usize = 8 * 1024;
 const EVENT_QUEUE_LEN: usize = 64;
@@ -504,7 +505,7 @@ pub async fn run_fpapp(
     let drop_app: DropFn =
         unsafe { transmute(native_address(descriptor.code_base, descriptor.drop)) };
 
-    let required = unsafe { required_bytes() } as usize;
+    let required = watchdog::guarding(descriptor.slot, || unsafe { required_bytes() }) as usize;
     if required > MAX_INSTANCE_BYTES {
         reset_channels(start_channel, channels).await;
         return;
@@ -527,20 +528,22 @@ pub async fn run_fpapp(
     host.quantize = quantize;
 
     let mut storage = InstanceStorage([0; MAX_INSTANCE_BYTES]);
-    if unsafe {
+    if watchdog::guarding(descriptor.slot, || unsafe {
         init(
             storage.0.as_mut_ptr(),
             storage.0.len(),
             &host as *const HostV1,
         )
-    } != export_status::OK
+    }) != export_status::OK
     {
         reset_channels(start_channel, channels).await;
         return;
     }
     APP_PARAM_SIGNALS[layout_id as usize].reset();
-    if !drive_app(&mut context, &mut storage, &host, poll).await {
-        let _ = unsafe { drop_app(storage.0.as_mut_ptr()) };
+    if !drive_app(&mut context, &mut storage, &host, poll, descriptor.slot).await {
+        let _ = watchdog::guarding(descriptor.slot, || unsafe {
+            drop_app(storage.0.as_mut_ptr())
+        });
         reset_channels(start_channel, channels).await;
         return;
     }
@@ -551,8 +554,10 @@ pub async fn run_fpapp(
             MAX_VALUES_FADER[start_channel + channel].load(Ordering::Relaxed),
         ));
     }
-    if !drive_app(&mut context, &mut storage, &host, poll).await {
-        let _ = unsafe { drop_app(storage.0.as_mut_ptr()) };
+    if !drive_app(&mut context, &mut storage, &host, poll, descriptor.slot).await {
+        let _ = watchdog::guarding(descriptor.slot, || unsafe {
+            drop_app(storage.0.as_mut_ptr())
+        });
         reset_channels(start_channel, channels).await;
         return;
     }
@@ -625,12 +630,14 @@ pub async fn run_fpapp(
                 }
             }
         }
-        if !drive_app(&mut context, &mut storage, &host, poll).await {
+        if !drive_app(&mut context, &mut storage, &host, poll, descriptor.slot).await {
             break;
         }
     }
 
-    let _ = unsafe { drop_app(storage.0.as_mut_ptr()) };
+    let _ = watchdog::guarding(descriptor.slot, || unsafe {
+        drop_app(storage.0.as_mut_ptr())
+    });
     while process_services(&mut context).await {}
     reset_channels(start_channel, channels).await;
 }
@@ -642,10 +649,12 @@ async fn drive_app(
     storage: &mut InstanceStorage,
     host: &HostV1,
     poll: PollFn,
+    slot: u8,
 ) -> bool {
     let mut turns = 0;
     loop {
-        if unsafe { poll(storage.0.as_mut_ptr(), host) } != export_status::OK {
+        let status = watchdog::guarding(slot, || unsafe { poll(storage.0.as_mut_ptr(), host) });
+        if status != export_status::OK {
             return false;
         }
         if !process_services(context).await {

@@ -8,10 +8,11 @@ use embassy_rp::Peri;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::once_lock::OnceLock;
-use libfp::fpapp_store::{SlotFlash, SlotStore, FPAPP_REGION_SIZE};
+use libfp::fpapp_store::{SlotFlash, SlotStore, ERASE_SIZE, FPAPP_REGION_SIZE};
 use portable_atomic::{AtomicU32, AtomicU8, Ordering};
 
 use crate::version::FPAPP_FIRMWARE_ABI;
+use crate::watchdog;
 
 const PHYSICAL_FLASH_SIZE: usize = 2 * 1024 * 1024;
 const REGION_BASE: usize = PHYSICAL_FLASH_SIZE - FPAPP_REGION_SIZE;
@@ -23,6 +24,9 @@ const _: () = assert!(
 );
 #[derive(Clone, Copy)]
 pub struct RuntimeDescriptor {
+    /// Which slot this came from. Carried so the runtime can name the culprit
+    /// in the watchdog marker before handing control to its native code.
+    pub slot: u8,
     pub app_id: u8,
     pub channels: u8,
     pub code_base: u32,
@@ -74,11 +78,12 @@ impl CachedDescriptor {
         self.app_id.store(descriptor.app_id, Ordering::Release);
     }
 
-    fn get(&self, app_id: u8) -> Option<RuntimeDescriptor> {
+    fn get(&self, slot: usize, app_id: u8) -> Option<RuntimeDescriptor> {
         if self.app_id.load(Ordering::Acquire) != app_id {
             return None;
         }
         Some(RuntimeDescriptor {
+            slot: slot as u8,
             app_id,
             channels: self.channels.load(Ordering::Relaxed),
             code_base: self.code_base.load(Ordering::Relaxed),
@@ -128,7 +133,23 @@ impl SlotFlash for RpFpAppFlash<'_> {
         if end > PHYSICAL_FLASH_SIZE {
             return Err(Error::OutOfBounds);
         }
-        self.flash.blocking_erase(start as u32, end as u32)
+        // `blocking_erase` runs the whole range inside one `in_ram` call, which
+        // pauses Core 1 *and* holds a critical section on Core 0 — so for its
+        // full duration neither core can feed the watchdog. Erasing a slot in
+        // one call would be a multi-second blind spot and would reset a device
+        // that is merely installing an app. Walk it a sector at a time instead
+        // and feed in between, which keeps every blind spot down to a single
+        // sector erase and lets the watchdog stay armed at its normal period
+        // throughout an install.
+        let mut sector = start;
+        while sector < end {
+            let sector_end = sector.saturating_add(ERASE_SIZE).min(end);
+            self.flash
+                .blocking_erase(sector as u32, sector_end as u32)?;
+            watchdog::feed();
+            sector = sector_end;
+        }
+        Ok(())
     }
 
     fn write(&mut self, offset: usize, data: &[u8]) -> Result<(), Self::Error> {
@@ -155,11 +176,57 @@ pub fn init(peripheral: Peri<'static, FLASH>) {
         .unwrap_or_else(|_| panic!("FPApp store initialized twice"));
 }
 
+/// Slots whose app hung the device badly enough to trip the watchdog. Held in
+/// RAM so enforcement does not depend on FRAM being readable, and mirrored from
+/// `RuntimeState` at boot so it survives a power cycle.
+static QUARANTINED_SLOTS: AtomicU8 = AtomicU8::new(0);
+
+pub fn quarantined_slots() -> u8 {
+    QUARANTINED_SLOTS.load(Ordering::Relaxed)
+}
+
+/// Install the quarantine mask and rebuild the catalog under it.
+///
+/// `init` runs before the persisted state is loaded, so the first catalog is
+/// necessarily built without this. Boot calls it once the mask is known and
+/// before the layout ships to Core 1, so a quarantined app never gets spawned.
+pub async fn apply_quarantine(mask: u8) {
+    QUARANTINED_SLOTS.store(mask, Ordering::Relaxed);
+    let store = FPAPP_STORE.get().await;
+    refresh_catalog(&*store.lock().await);
+}
+
+/// Lift a slot's quarantine because its contents changed — whatever hung the
+/// device is no longer what lives there. Call before refreshing the catalog so
+/// the refresh republishes the slot. A no-op if it wasn't quarantined.
+pub async fn clear_quarantine(slot: usize) {
+    let previous = QUARANTINED_SLOTS.load(Ordering::Relaxed);
+    let mask = previous & !(1u8 << slot);
+    if mask == previous {
+        return;
+    }
+    QUARANTINED_SLOTS.store(mask, Ordering::Relaxed);
+    crate::state::update_state(|state| {
+        state.quarantined_slots = mask;
+        true
+    })
+    .await;
+}
+
 pub fn refresh_catalog(store: &SlotStore<RpFpAppFlash<'static>>) {
+    let quarantined = QUARANTINED_SLOTS.load(Ordering::Relaxed);
     for (slot, cached) in RUNTIME_DESCRIPTORS.iter().enumerate() {
+        // Leaving a quarantined slot's descriptor cleared is the whole
+        // enforcement mechanism: `runtime_descriptor` then misses on its app id
+        // and the layout silently declines to spawn it.
+        if quarantined & (1 << slot) != 0 {
+            cached.clear();
+            continue;
+        }
         let descriptor = store.package(slot).ok().flatten().and_then(|package| {
             let native = package.native_program().ok()?;
             Some(RuntimeDescriptor {
+                slot: slot as u8,
                 app_id: package.manifest.app_id,
                 channels: package.manifest.channels,
                 code_base: native.image.as_ptr() as u32,
@@ -180,7 +247,8 @@ pub fn refresh_catalog(store: &SlotStore<RpFpAppFlash<'static>>) {
 pub fn runtime_descriptor(app_id: u8) -> Option<RuntimeDescriptor> {
     RUNTIME_DESCRIPTORS
         .iter()
-        .find_map(|descriptor| descriptor.get(app_id))
+        .enumerate()
+        .find_map(|(slot, cached)| cached.get(slot, app_id))
 }
 
 pub fn get_channels(app_id: u8) -> Option<usize> {

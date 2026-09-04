@@ -1378,6 +1378,9 @@ pub enum ConfigMsgOut<'a> {
         has_setup: bool,
         has_settings: bool,
         signed: bool,
+        /// This app hung the device and has been held back from running. It
+        /// stays installed and visible so the user can see which one it was.
+        quarantined: bool,
     },
     FpAppSlotEmpty {
         slot: u8,

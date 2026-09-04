@@ -351,7 +351,8 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 let status = match store.staged_package() {
                     Ok(package) => match crate::fpapp_runtime::validate_runtime_package(&package) {
                         Ok(()) => match store.commit() {
-                            Ok(_) => {
+                            Ok(installed) => {
+                                crate::fpapps::clear_quarantine(installed.slot as usize).await;
                                 crate::fpapps::refresh_catalog(&store);
                                 FpAppStatus::Ok
                             }
@@ -385,6 +386,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 };
                 let status = match remove_result {
                     Ok(()) => {
+                        crate::fpapps::clear_quarantine(slot as usize).await;
                         let store = FPAPP_STORE.get().await.lock().await;
                         crate::fpapps::refresh_catalog(&store);
                         FpAppStatus::Ok
@@ -405,6 +407,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                             let mut store = FPAPP_STORE.get().await.lock().await;
                             match store.remove(slot as usize, &active_app_ids) {
                                 Ok(()) => {
+                                    crate::fpapps::clear_quarantine(slot as usize).await;
                                     crate::fpapps::refresh_catalog(&store);
                                     FpAppStatus::Ok
                                 }
@@ -561,6 +564,7 @@ async fn send_fpapp_slots(proto: &mut ConfigTransport<'_>) -> Result<(), Protoco
                         has_setup: package.setup.is_some(),
                         has_settings: package.settings.is_some(),
                         signed: package.signing.is_some(),
+                        quarantined: crate::fpapps::quarantined_slots() & (1 << slot) != 0,
                     })
                     .await?;
             }
