@@ -314,49 +314,52 @@ pub async fn run(
                             * curve.at(storage.query(|s| s.att_saved)) as u32)
                             / 4095) as u16;
 
+                        let muted = glob_muted.get();
                         if gate_out {
-                            let gate_fires = if storage.query(|s| s.gate_threshold_mode) {
-                                register_scaled < storage.query(|s| s.att_saved)
-                            } else {
-                                gate_bit
-                            };
-                            if gate_fires {
-                                gate_jack.as_ref().unwrap().set_high().await;
-                                leds.set(0, Led::Top, led_color, Brightness::High);
-                            } else {
+                            if muted {
                                 gate_jack.as_ref().unwrap().set_low().await;
                                 leds.set(0, Led::Top, led_color, Brightness::Off);
-                            }
-                            match midi_mode {
-                                MidiMode::Note => {
-                                    if gate_fires {
-                                        let note = midi_note.set(base_note);
-                                        midi.send_note_on(note, 4095).await;
-                                    }
+                            } else {
+                                let gate_fires = if storage.query(|s| s.gate_threshold_mode) {
+                                    register_scaled < storage.query(|s| s.att_saved)
+                                } else {
+                                    gate_bit
+                                };
+                                if gate_fires {
+                                    gate_jack.as_ref().unwrap().set_high().await;
+                                    leds.set(0, Led::Top, led_color, Brightness::High);
+                                } else {
+                                    gate_jack.as_ref().unwrap().set_low().await;
+                                    leds.set(0, Led::Top, led_color, Brightness::Off);
                                 }
-                                MidiMode::Cc => {
-                                    midi.send_cc(midi_cc, att_reg).await;
-                                }
-                            }
-                        } else {
-                            let out = quantizer.get_quantized_note(att_reg).await;
-                            let muted = glob_muted.get();
-                            if !muted {
-                                cv_jack.as_ref().unwrap().set_value(pitch_as_counts(out, range, vpo));
-                                leds.set(
-                                    0,
-                                    Led::Top,
-                                    led_color,
-                                    Brightness::Custom((register_scaled / 16) as u8),
-                                );
                                 match midi_mode {
                                     MidiMode::Note => {
-                                        let note = midi_note.set(out.as_midi() + base_note);
-                                        midi.send_note_on(note, 4095).await;
+                                        if gate_fires {
+                                            let note = midi_note.set(base_note);
+                                            midi.send_note_on(note, 4095).await;
+                                        }
                                     }
                                     MidiMode::Cc => {
                                         midi.send_cc(midi_cc, att_reg).await;
                                     }
+                                }
+                            }
+                        } else if !muted {
+                            let out = quantizer.get_quantized_note(att_reg).await;
+                            cv_jack.as_ref().unwrap().set_value(pitch_as_counts(out, range, vpo));
+                            leds.set(
+                                0,
+                                Led::Top,
+                                led_color,
+                                Brightness::Custom((register_scaled / 16) as u8),
+                            );
+                            match midi_mode {
+                                MidiMode::Note => {
+                                    let note = midi_note.set(out.as_midi() + base_note);
+                                    midi.send_note_on(note, 4095).await;
+                                }
+                                MidiMode::Cc => {
+                                    midi.send_cc(midi_cc, att_reg).await;
                                 }
                             }
                         }
@@ -448,6 +451,13 @@ pub async fn run(
                     });
                     if muted {
                         leds.unset(0, Led::Button);
+                        if gate_out {
+                            gate_jack.as_ref().unwrap().set_low().await;
+                            leds.set(0, Led::Top, led_color, Brightness::Off);
+                        }
+                        if midi_mode == MidiMode::Note {
+                            midi.send_note_off(midi_note.get()).await;
+                        }
                     } else {
                         leds.set(0, Led::Button, led_color, Brightness::Mid);
                     }
