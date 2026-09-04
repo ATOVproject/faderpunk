@@ -243,10 +243,9 @@ pub async fn run(
                     * curve.at(storage.query(|s| s.att_saved)) as u32
                     / 4095) as u16;
 
-                let out = quantizer.get_quantized_note(att_reg).await;
-
                 let muted = glob_muted.get();
                 if !muted {
+                    let out = quantizer.get_quantized_note(att_reg).await;
                     output.set_value(pitch_as_counts(out, range, vpo));
                     leds.set(
                         0,
@@ -342,6 +341,9 @@ pub async fn run(
                     });
                     if muted {
                         leds.unset(1, Led::Button);
+                        if midi_mode == MidiMode::Note {
+                            midi.send_note_off(midi_note.get()).await;
+                        }
                     } else {
                         leds.set(1, Led::Button, led_color, Brightness::Mid);
                     }
