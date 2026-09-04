@@ -16,7 +16,7 @@ use embassy_sync::{
 use embassy_time::{Duration, Instant, Timer};
 use heapless::Deque;
 use midly::live::SystemRealtime;
-use portable_atomic::{AtomicBool, Ordering};
+use portable_atomic::{AtomicBool, AtomicI8, AtomicU64, Ordering};
 
 use libfp::{
     utils::bpm_to_clock_duration, AuxJackMode, ClockSrc, GlobalConfig, MidiOut, MidiOutConfig,
@@ -78,6 +78,30 @@ pub static CLOCK_PUBSUB: PubSubChannel<
     CLOCK_PUBSUB_SUBSCRIBERS,
     CLOCK_PUBSUB_PUBLISHERS,
 > = PubSubChannel::new();
+
+/// Current global swing amount ([-35, 35], 0 = straight), mirrored from
+/// `GlobalConfig.clock.swing_amount` by `global_config_change()` so reads
+/// don't require copying the whole `GlobalConfig` struct.
+pub static GLOBAL_SWING: AtomicI8 = AtomicI8::new(0);
+
+/// Absolute tick count (24 PPQN) since the last clock reset/start, mirrored
+/// from `run_clock_gatekeeper`'s local `tick_counter` for apps that need a
+/// synchronous read without awaiting `Clock::wait_for_event`. `u64::MAX`
+/// means "no tick yet since the last reset" — same sentinel the task-local
+/// counter uses; exposed to callers as `None` instead (see `App::current_tick`).
+pub static CURRENT_TICK: AtomicU64 = AtomicU64::new(u64::MAX);
+
+/// Whether the clock is currently running (Start/Continue vs Stop, or an
+/// actively-pulsing analog source), mirrored from
+/// `run_unified_clock_engine`'s local `is_running` for apps that need a
+/// synchronous read without awaiting `ClockEvent::Start`/`Stop`. Note: on
+/// analog clock sources this can become `true` without any preceding
+/// `ClockEvent::Start` ever being published — pulses *are* the transport.
+///
+/// Distinct from `state::is_clock_running()`, which reads the persisted
+/// power-on-restore flag; that flag is not updated on every transport
+/// source (MIDI/ext-pin) and must not be used for real-time queries.
+pub static CLOCK_RUNNING: AtomicBool = AtomicBool::new(true);
 
 pub static CLOCK_IN_CHANNEL: Channel<ThreadModeRawMutex, ClockInEvent, 16> = Channel::new();
 pub static TRANSPORT_CMD_CHANNEL: Channel<ThreadModeRawMutex, TransportCmd, 8> = Channel::new();
@@ -420,6 +444,7 @@ async fn run_clock_gatekeeper() {
                             || matches!(source, ClockSrc::Atom | ClockSrc::Meteor | ClockSrc::Cube)
                         {
                             tick_counter = tick_counter.wrapping_add(1);
+                            CURRENT_TICK.store(tick_counter, Ordering::Relaxed);
                             // Never await on the tick path: a subscriber that
                             // sleeps while holding its slot fills the queue,
                             // and a blocked gatekeeper stops the whole device
@@ -449,6 +474,7 @@ async fn run_clock_gatekeeper() {
                     // (Re-)start the clock. Full phase reset
                     ClockInEvent::Start(_) => {
                         tick_counter = u64::MAX;
+                        CURRENT_TICK.store(tick_counter, Ordering::Relaxed);
                         is_running = true;
                         clock_publisher.publish(ClockEvent::Reset).await;
                         clock_publisher.publish(ClockEvent::Start).await;
@@ -467,6 +493,7 @@ async fn run_clock_gatekeeper() {
                     // Reset the phase without affecting the run state
                     ClockInEvent::Reset(_) => {
                         tick_counter = u64::MAX;
+                        CURRENT_TICK.store(tick_counter, Ordering::Relaxed);
                         clock_publisher.publish(ClockEvent::Reset).await;
                         METRONOME_SIGNAL.signal(ClockEvent::Reset);
                         analog_tick_counters = [0; 3];
@@ -517,6 +544,12 @@ async fn store_clock_running(is_running: bool) {
     .await;
 }
 
+/// Sets `is_running` and keeps `CLOCK_RUNNING` in sync in one place.
+fn set_running(is_running: &mut bool, val: bool) {
+    *is_running = val;
+    CLOCK_RUNNING.store(val, Ordering::Relaxed);
+}
+
 async fn run_unified_clock_engine() {
     let mut config_receiver = GLOBAL_CONFIG_WATCH.receiver().unwrap();
     let clock_in_sender = CLOCK_IN_CHANNEL.sender();
@@ -525,7 +558,8 @@ async fn run_unified_clock_engine() {
     let spawner = Spawner::for_current_executor().await;
 
     let config = config_receiver.get().await;
-    let mut is_running = is_clock_running().await;
+    let mut is_running = false;
+    set_running(&mut is_running, is_clock_running().await);
     let mut current_tick_duration = bpm_to_clock_duration(config.clock.internal_bpm, INTERNAL_PPQN);
     // `window_start_at` is the (unswung) time of tick 0 of the current swing
     // window. For internal, it replaces the old per-tick `last_tick_at` — the
@@ -617,7 +651,7 @@ async fn run_unified_clock_engine() {
                     // Drop transport state to match the gatekeeper's behavior,
                     // which also resets is_running on source change.
                     if is_running {
-                        is_running = false;
+                        set_running(&mut is_running, false);
                         spawner.spawn(store_clock_running(false)).ok();
                     }
 
@@ -688,7 +722,7 @@ async fn run_unified_clock_engine() {
                             .send(ClockInEvent::Stop(ClockSrc::Internal))
                             .await;
                     }
-                    is_running = next_is_running;
+                    set_running(&mut is_running, next_is_running);
                     spawner.spawn(store_clock_running(is_running)).ok();
                 }
             }
@@ -703,7 +737,7 @@ async fn run_unified_clock_engine() {
                     clock_in_sender.send(event).await;
                     match event {
                         ClockInEvent::Start(_) => {
-                            is_running = true;
+                            set_running(&mut is_running, true);
                             // Fresh downbeat: drop any stale scheduled emissions
                             // and re-anchor the phase on the next pulse.
                             pending_emissions.clear();
@@ -717,12 +751,12 @@ async fn run_unified_clock_engine() {
                             ext_pulse_div_count = 0;
                         }
                         ClockInEvent::Continue(_) => {
-                            is_running = true;
+                            set_running(&mut is_running, true);
                             // Same watchdog re-arm as Start.
                             next_tick_at = Instant::now() + watchdog_duration(measured_ext_period);
                         }
                         ClockInEvent::Stop(_) => {
-                            is_running = false;
+                            set_running(&mut is_running, false);
                             pending_emissions.clear();
                             ext_pulse_div_count = 0;
                         }
@@ -767,7 +801,7 @@ async fn run_unified_clock_engine() {
                         // state (and with it the watchdog and emission timer)
                         // when pulses appear or resume after a watchdog stop.
                         if !is_running {
-                            is_running = true;
+                            set_running(&mut is_running, true);
                             spawner.spawn(store_clock_running(true)).ok();
                         }
                     }
@@ -1010,7 +1044,7 @@ async fn run_unified_clock_engine() {
                             .send(ClockInEvent::Stop(config.clock.clock_src))
                             .await;
                         last_pulse = None;
-                        is_running = false;
+                        set_running(&mut is_running, false);
                         pending_emissions.clear();
                         tick_in_window = 0;
                         ext_pulse_div_count = 0;
