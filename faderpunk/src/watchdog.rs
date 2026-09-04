@@ -94,9 +94,13 @@ pub fn guarding<T>(slot: u8, call: impl FnOnce() -> T) -> T {
 /// in between still leaves evidence for the next boot.
 pub fn timed_out_slot(watchdog: &mut Watchdog) -> Option<u8> {
     let raw = watchdog.get_scratch(0);
-    let slot = (watchdog.reset_reason() == Some(ResetReason::TimedOut)
-        && (raw & SLOT_TAG_MASK) == SLOT_TAG_MAGIC)
-        .then_some((raw & 0xF) as u8);
+    let timed_out = watchdog.reset_reason() == Some(ResetReason::TimedOut);
+    defmt::info!(
+        "boot: watchdog timeout={} scratch0={:#010x}",
+        timed_out,
+        raw
+    );
+    let slot = (timed_out && (raw & SLOT_TAG_MASK) == SLOT_TAG_MAGIC).then_some((raw & 0xF) as u8);
     if slot.is_none() {
         // Nothing actionable to hold on to, and neither scratch0 nor the reason
         // register is reliably cleared by a soft reset — pico-sdk's
