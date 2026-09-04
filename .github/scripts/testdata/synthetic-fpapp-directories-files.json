@@ -1,0 +1,16 @@
+[
+  {
+    "filename": "fpapp/src/main.rs",
+    "status": "added",
+    "additions": 20,
+    "deletions": 0,
+    "patch": "@@ -0,0 +1,1 @@\n+fn main() {}"
+  },
+  {
+    "filename": "fpapp-sdk/src/lib.rs",
+    "status": "added",
+    "additions": 20,
+    "deletions": 0,
+    "patch": "@@ -0,0 +1,1 @@\n+pub fn host_abi() {}"
+  }
+]
