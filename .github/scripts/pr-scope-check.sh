@@ -322,6 +322,8 @@ fi
 
 if [[ "$is_app_category" == true && "$touches_libfp" == true ]]; then
   SOFT_FLAGS+=("App PR also touches \`libfp/src/**\` — legitimate before (e.g. GenSeq's shared slide utility), but worth a look.")
+elif [[ "$touches_libfp" == true ]]; then
+  SOFT_FLAGS+=("Touches \`libfp/src/**\`/\`fpapp-sdk/**\` — shared protocol/ABI surface that ripples into both firmware and configurator, always worth a manual look (see CONTRIBUTING.md's Protocol / libfp row).")
 fi
 
 if [[ ${#other_apps_touched[@]} -gt 0 ]]; then
