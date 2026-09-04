@@ -12,6 +12,7 @@ use portable_atomic::Ordering;
 use crate::layout::FORCE_RESPAWN_SIGNAL;
 use crate::storage::store_global_config;
 use crate::tasks::buttons::is_scene_button_pressed;
+use crate::tasks::clock::GLOBAL_SWING;
 use crate::tasks::input_handlers::{show_config_top_leds, show_scale_keyboard};
 use crate::tasks::leds::LED_BRIGHTNESS;
 use crate::tasks::max::{MaxCmd, MAX_CHANNEL};
@@ -206,6 +207,9 @@ async fn global_config_change() {
     // Initialize leds with loaded config
     LED_BRIGHTNESS.store(old.led_brightness, Ordering::Relaxed);
 
+    // Initialize the App-facing swing mirror with loaded config
+    GLOBAL_SWING.store(old.clock.swing_amount, Ordering::Relaxed);
+
     // Initialize quantizer with loaded config
     let mut quantizer = QUANTIZER.get().lock().await;
     quantizer.set_scale(old.quantizer.key, old.quantizer.tonic);
@@ -232,8 +236,11 @@ async fn global_config_change() {
                 show_config_top_leds(&config).await;
             }
         }
-        if config.clock.swing_amount != old.clock.swing_amount && is_scene_button_pressed() {
-            show_config_top_leds(&config).await;
+        if config.clock.swing_amount != old.clock.swing_amount {
+            GLOBAL_SWING.store(config.clock.swing_amount, Ordering::Relaxed);
+            if is_scene_button_pressed() {
+                show_config_top_leds(&config).await;
+            }
         }
         if config.led_brightness != old.led_brightness {
             LED_BRIGHTNESS.store(config.led_brightness, Ordering::Relaxed);
