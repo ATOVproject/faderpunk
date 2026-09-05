@@ -98,46 +98,40 @@ static BUF_FRAM_WRITE: StaticCell<[u8; MAX_DATA_LEN]> = StaticCell::new();
 pub static QUANTIZER: LazyLock<Mutex<CriticalSectionRawMutex, Quantizer>> =
     LazyLock::new(|| Mutex::new(Quantizer::default()));
 
-/// Core 1's proof of life. It runs on the same executor as every FPApp, so a
-/// native `poll()` that never returns stops this task too — which is exactly
-/// how a hung app becomes a watchdog reset instead of a dead device.
-#[embassy_executor::task]
-async fn watchdog_heartbeat() {
-    loop {
-        Timer::after(watchdog::FEED_INTERVAL).await;
-        watchdog::feed();
-    }
-}
-
 #[embassy_executor::task]
 async fn main_core1(spawner: Spawner) {
-    use embassy_futures::select::{select3, Either3};
+    use embassy_futures::select::{select4, Either4};
 
-    spawner.spawn(watchdog_heartbeat()).unwrap();
     spawner.spawn(midi_distributor()).unwrap();
     let lm = LAYOUT_MANAGER.init(LayoutManager::new(spawner));
     let mut receiver = LAYOUT_WATCH.receiver().unwrap();
     loop {
-        match select3(
+        // The timer arm is Core 1's proof of life: this loop shares an executor
+        // with every FPApp, so a native `poll()` that never returns stops it
+        // dead, the feed below stops with it, and the watchdog resets us. Feeding
+        // after the match rather than only on the timer arm means a steady
+        // stream of layout changes can't starve the feed by outpacing the timer.
+        match select4(
             receiver.changed(),
             FORCE_RESPAWN_SIGNAL.wait(),
             LAYOUT_EVICTION_REQ.wait(),
+            Timer::after(watchdog::FEED_INTERVAL),
         )
         .await
         {
-            Either3::First(layout) => {
+            Either4::First(layout) => {
                 // Normal layout change
                 if lm.spawn_layout(&layout).await {
                     // Store new layout if it changed
                     store_layout(&layout).await;
                 }
             }
-            Either3::Second(_) => {
+            Either4::Second(_) => {
                 // Force respawn requested
                 let layout = receiver.get().await;
                 lm.respawn_all(&layout).await;
             }
-            Either3::Third(cmd) => {
+            Either4::Third(cmd) => {
                 // Scoped, non-persisting eviction/restore for calibration.
                 // The channel is held for the whole evict..restore window so
                 // an unrelated SetLayout/FORCE_RESPAWN_SIGNAL reconciliation
@@ -158,7 +152,9 @@ async fn main_core1(spawner: Spawner) {
                 }
                 LAYOUT_EVICTION_RES.signal(());
             }
+            Either4::Fourth(_) => {}
         }
+        watchdog::feed();
     }
 }
 
