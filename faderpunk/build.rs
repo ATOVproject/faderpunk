@@ -11,7 +11,7 @@
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
@@ -23,6 +23,8 @@ fn main() {
         .write_all(include_bytes!("memory.x"))
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
+
+    emit_flash_layout(out);
 
     // By default, Cargo will re-run a build script whenever
     // any file in the project changes. By specifying `memory.x`
@@ -53,6 +55,41 @@ fn main() {
     println!("cargo:rustc-link-arg-bins=--nmagic");
     println!("cargo:rustc-link-arg-bins=-Tlink.x");
     println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
+}
+
+/// Emit the linker's FLASH length so `fpapps.rs` can assert against the real
+/// value instead of a third hand-maintained copy of it. Without this, raising
+/// `memory.x`'s LENGTH lets the firmware grow into the region reserved for
+/// installable apps while the guard still passes.
+fn emit_flash_layout(out: &Path) {
+    println!("cargo:rerun-if-changed=memory.x");
+    let text = include_str!("memory.x");
+    let length = parse_flash_length(text)
+        .expect("memory.x must declare a FLASH region with a LENGTH the build can parse");
+    File::create(out.join("flash_layout.rs"))
+        .unwrap()
+        .write_all(format!("pub const LINKER_FLASH_LEN: usize = {length};\n").as_bytes())
+        .unwrap();
+}
+
+/// Pull the byte count out of `FLASH : ORIGIN = .., LENGTH = 1536K`.
+fn parse_flash_length(text: &str) -> Option<usize> {
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("FLASH") && line.contains("LENGTH"))?;
+    let raw = line
+        .rsplit_once("LENGTH")?
+        .1
+        .trim_start_matches(['=', ' '])
+        .trim();
+    let raw = raw.split(',').next()?.trim();
+    let (digits, scale) = match raw.chars().last()? {
+        'K' | 'k' => (&raw[..raw.len() - 1], 1024),
+        'M' | 'm' => (&raw[..raw.len() - 1], 1024 * 1024),
+        _ => (raw, 1),
+    };
+    digits.trim().parse::<usize>().ok().map(|n| n * scale)
 }
 
 fn fpapp_firmware_abi() -> [u8; 32] {

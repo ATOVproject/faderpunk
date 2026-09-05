@@ -17,10 +17,17 @@ use crate::watchdog;
 const PHYSICAL_FLASH_SIZE: usize = 2 * 1024 * 1024;
 const REGION_BASE: usize = PHYSICAL_FLASH_SIZE - FPAPP_REGION_SIZE;
 
-// Ensure FPApp region base address does not overlap main firmware FLASH allocation in memory.x (1536 KiB)
+/// `LINKER_FLASH_LEN`, parsed out of `memory.x` by build.rs. Deriving it beats
+/// repeating the number here: the firmware image and this region only stay
+/// disjoint while the two agree, and a hand-copied constant silently stops
+/// catching that the moment someone edits the linker script.
+mod flash_layout {
+    include!(concat!(env!("OUT_DIR"), "/flash_layout.rs"));
+}
+
 const _: () = assert!(
-    REGION_BASE >= 1536 * 1024,
-    "FPApp region base conflicts with memory.x FLASH size!"
+    REGION_BASE >= flash_layout::LINKER_FLASH_LEN,
+    "FPApp region overlaps the firmware FLASH region declared in memory.x"
 );
 #[derive(Clone, Copy)]
 pub struct RuntimeDescriptor {
