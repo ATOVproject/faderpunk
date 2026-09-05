@@ -16,6 +16,7 @@ use libfp::quantizer::{Quantizer, QuantizerState};
 use libfp::{
     fpapp::{sequence_is_after, Package},
     Brightness, Color, MidiCc, MidiChannel, MidiNote, MidiOut, Range, Value, VoltPerOct,
+    GLOBAL_CHANNELS,
 };
 use max11300::config::{
     ConfigMode0, ConfigMode3, ConfigMode5, ConfigMode7, Mode, Port, ADCRANGE, AVR, DACRANGE,
@@ -480,7 +481,11 @@ unsafe extern "C" fn schedule_poll(context: *mut ()) {
     }
 }
 
-#[embassy_executor::task(pool_size = 16)]
+// One instance per channel is the ceiling, since the narrowest FPApp claims a
+// single channel. Derived from GLOBAL_CHANNELS rather than a literal so the
+// pool tracks the platform's channel count instead of over-reserving an arena
+// it can never use — each instance carries an 8 KiB arena, so this isn't free.
+#[embassy_executor::task(pool_size = GLOBAL_CHANNELS)]
 pub async fn run_fpapp(
     descriptor: RuntimeDescriptor,
     start_channel: usize,
