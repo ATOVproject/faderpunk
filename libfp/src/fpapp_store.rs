@@ -6,6 +6,11 @@ pub const FPAPP_REGION_SIZE: usize = 512 * 1024;
 pub const SLOT_COUNT: usize = 4;
 pub const SLOT_SIZE: usize = FPAPP_REGION_SIZE / SLOT_COUNT;
 pub const ERASE_SIZE: usize = 4096;
+/// How long a half-finished upload keeps its slot reserved. Staging lives only
+/// in RAM, so an uploader that goes away mid-transfer (browser closed, cable
+/// pulled) would otherwise hold `Busy` until the next power cycle, blocking
+/// both installs and removals with no way out from the UI.
+pub const STAGING_TIMEOUT_MS: u64 = 30_000;
 pub const PACKAGE_OFFSET: usize = ERASE_SIZE;
 pub const MAX_PACKAGE_SIZE: usize = SLOT_SIZE - PACKAGE_OFFSET;
 
@@ -71,6 +76,8 @@ struct Staging {
     slot: usize,
     total_len: usize,
     received: usize,
+    /// Caller-supplied clock reading from the last `begin_install`/`write_chunk`.
+    last_activity_ms: u64,
 }
 
 pub struct SlotStore<F: SlotFlash> {
@@ -115,9 +122,16 @@ impl<F: SlotFlash> SlotStore<F> {
         slot: usize,
         total_len: usize,
         active_app_ids: &[u8],
+        now_ms: u64,
     ) -> Result<(), StoreError<F::Error>> {
-        if self.staging.is_some() {
-            return Err(StoreError::Busy);
+        if let Some(staging) = self.staging {
+            if now_ms.saturating_sub(staging.last_activity_ms) < STAGING_TIMEOUT_MS {
+                return Err(StoreError::Busy);
+            }
+            // The previous uploader stopped talking to us. Its bytes were never
+            // committed, so dropping the reservation loses nothing and lets the
+            // user retry instead of power-cycling.
+            self.staging = None;
         }
         if slot >= SLOT_COUNT {
             return Err(StoreError::InvalidSlot);
@@ -150,11 +164,17 @@ impl<F: SlotFlash> SlotStore<F> {
             slot,
             total_len,
             received: 0,
+            last_activity_ms: now_ms,
         });
         Ok(())
     }
 
-    pub fn write_chunk(&mut self, offset: usize, data: &[u8]) -> Result<(), StoreError<F::Error>> {
+    pub fn write_chunk(
+        &mut self,
+        offset: usize,
+        data: &[u8],
+        now_ms: u64,
+    ) -> Result<(), StoreError<F::Error>> {
         let staging = self.staging.as_mut().ok_or(StoreError::NoInstall)?;
         if offset != staging.received {
             return Err(StoreError::UnexpectedOffset {
@@ -171,6 +191,7 @@ impl<F: SlotFlash> SlotStore<F> {
             .write(package_offset(staging.slot) + offset, data)
             .map_err(StoreError::Flash)?;
         staging.received = end;
+        staging.last_activity_ms = now_ms;
         Ok(())
     }
 
@@ -494,8 +515,8 @@ mod tests {
     }
 
     fn install(store: &mut SlotStore<VecFlash>, slot: usize, bytes: &[u8]) -> InstalledApp {
-        store.begin_install(slot, bytes.len(), &[]).unwrap();
-        store.write_chunk(0, bytes).unwrap();
+        store.begin_install(slot, bytes.len(), &[], 0).unwrap();
+        store.write_chunk(0, bytes, 0).unwrap();
         store.commit().unwrap()
     }
 
@@ -508,8 +529,8 @@ mod tests {
         install(&mut store, 0, &version_one);
         install(&mut store, 1, &other);
 
-        store.begin_install(0, version_two.len(), &[]).unwrap();
-        store.write_chunk(0, &version_two[..32]).unwrap();
+        store.begin_install(0, version_two.len(), &[], 0).unwrap();
+        store.write_chunk(0, &version_two[..32], 0).unwrap();
         let reopened = SlotStore::open(store.into_flash(), ABI).unwrap();
 
         assert_eq!(reopened.installed(0).unwrap(), None);
@@ -541,8 +562,8 @@ mod tests {
     fn fully_uploaded_package_can_be_checked_before_it_is_published() {
         let bytes = package(Version::new(1, 2, 3), 0x22);
         let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
-        store.begin_install(0, bytes.len(), &[]).unwrap();
-        store.write_chunk(0, &bytes).unwrap();
+        store.begin_install(0, bytes.len(), &[], 0).unwrap();
+        store.write_chunk(0, &bytes, 0).unwrap();
 
         let staged = store.staged_package().unwrap();
         assert_eq!(staged.manifest.app_id, 102);
@@ -554,8 +575,8 @@ mod tests {
     fn incompatible_package_never_becomes_installed() {
         let bytes = package_for(102, [0x99; 32], Version::new(1, 0, 0), 0x11);
         let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
-        store.begin_install(0, bytes.len(), &[]).unwrap();
-        store.write_chunk(0, &bytes).unwrap();
+        store.begin_install(0, bytes.len(), &[], 0).unwrap();
+        store.write_chunk(0, &bytes, 0).unwrap();
 
         assert_eq!(store.commit(), Err(StoreError::IncompatibleFirmware));
         store.abort().unwrap();
@@ -570,7 +591,7 @@ mod tests {
         install(&mut store, 0, &bytes);
 
         assert_eq!(
-            store.begin_install(0, bytes.len(), &[102]),
+            store.begin_install(0, bytes.len(), &[102], 0),
             Err(StoreError::ActiveApp)
         );
         assert_eq!(store.remove(0, &[102]), Err(StoreError::ActiveApp));
@@ -578,15 +599,61 @@ mod tests {
     }
 
     #[test]
+    fn abandoned_staging_expires_instead_of_wedging_the_slot() {
+        let bytes = package(Version::new(1, 0, 0), 0x11);
+        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+
+        // An upload starts and then the uploader vanishes part-way through.
+        store.begin_install(0, bytes.len(), &[], 1_000).unwrap();
+        store.write_chunk(0, &bytes[..4], 1_100).unwrap();
+
+        // While it still looks live, the slot stays reserved.
+        assert_eq!(
+            store.begin_install(0, bytes.len(), &[], 1_100 + STAGING_TIMEOUT_MS - 1),
+            Err(StoreError::Busy)
+        );
+
+        // Past the timeout a fresh install supersedes it rather than being
+        // locked out until the next power cycle.
+        store
+            .begin_install(0, bytes.len(), &[], 1_100 + STAGING_TIMEOUT_MS)
+            .unwrap();
+        store.write_chunk(0, &bytes, 2_000).unwrap();
+        store.commit().unwrap();
+        assert!(store.installed(0).unwrap().is_some());
+    }
+
+    #[test]
+    fn staging_timeout_is_measured_from_the_last_chunk() {
+        let bytes = package(Version::new(1, 0, 0), 0x11);
+        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        store.begin_install(0, bytes.len(), &[], 0).unwrap();
+
+        // A slow but live upload keeps refreshing the deadline, so it must not
+        // be evicted just because it started long ago.
+        let mut now = 0;
+        for chunk in 0..4 {
+            now = chunk * (STAGING_TIMEOUT_MS - 1);
+            store
+                .write_chunk(chunk as usize * 4, &bytes[chunk as usize * 4..][..4], now)
+                .unwrap();
+        }
+        assert_eq!(
+            store.begin_install(0, bytes.len(), &[], now + 1),
+            Err(StoreError::Busy)
+        );
+    }
+
+    #[test]
     fn chunks_are_sequential_and_removal_survives_reopen() {
         let bytes = package(Version::new(1, 0, 0), 0x11);
         let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
-        store.begin_install(2, bytes.len(), &[]).unwrap();
+        store.begin_install(2, bytes.len(), &[], 0).unwrap();
         assert_eq!(
-            store.write_chunk(1, &bytes[..4]),
+            store.write_chunk(1, &bytes[..4], 0),
             Err(StoreError::UnexpectedOffset { expected: 0 })
         );
-        store.write_chunk(0, &bytes).unwrap();
+        store.write_chunk(0, &bytes, 0).unwrap();
         store.commit().unwrap();
         store.remove(2, &[]).unwrap();
 

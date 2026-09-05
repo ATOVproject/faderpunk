@@ -75,6 +75,12 @@ pub enum ProtocolError {
     NotConnected,
 }
 
+/// Monotonic milliseconds for the FPApp store's staging timeout. Only ever
+/// compared against itself, so the arbitrary boot-relative epoch is fine.
+fn now_ms() -> u64 {
+    embassy_time::Instant::now().as_millis()
+}
+
 pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
     let mut proto = ConfigTransport::new(usb_tx);
     let mut layout_receiver = LAYOUT_WATCH.receiver().unwrap();
@@ -288,8 +294,12 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                     layout.iter().map(|(app_id, _, _, _)| app_id).collect();
                 let begin_result = {
                     let mut store = FPAPP_STORE.get().await.lock().await;
-                    let result =
-                        store.begin_install(slot as usize, total_len as usize, &active_app_ids);
+                    let result = store.begin_install(
+                        slot as usize,
+                        total_len as usize,
+                        &active_app_ids,
+                        now_ms(),
+                    );
                     // begin_install invalidates the old control record before
                     // touching package bytes. Clear any matching XIP runtime
                     // descriptor immediately, including on a later erase
@@ -318,6 +328,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                                 slot as usize,
                                 total_len as usize,
                                 &active_app_ids,
+                                now_ms(),
                             );
                             crate::fpapps::refresh_catalog(&store);
                             result.map(|_| FpAppStatus::Ok).unwrap_or_else(fpapp_status)
@@ -340,7 +351,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                     }
                     let mut store = FPAPP_STORE.get().await.lock().await;
                     store
-                        .write_chunk(offset as usize, &chunk[..len as usize])
+                        .write_chunk(offset as usize, &chunk[..len as usize], now_ms())
                         .map(|_| FpAppStatus::Ok)
                         .unwrap_or_else(fpapp_status)
                 };
