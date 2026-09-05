@@ -7,3 +7,7 @@
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
+8:55:06 AM [vite] (client) hmr update /src/components/manual/Troubleshooting.tsx, /src/index.css
+8:55:21 AM [vite] (client) hmr update /src/App.tsx, /src/components/ConnectPage.tsx, /src/components/ConfiguratorPage.tsx, /src/components/SettingsTab.tsx, /src/components/EditLayoutModal.tsx, /src/components/ActiveApps.tsx, /src/components/FpAppsTab.tsx, /src/components/SaveLoadSetup.tsx, /src/components/settings/FactoryReset.tsx, /src/components/settings/VoOctCurvesSettings.tsx, /src/components/ActiveApp.tsx, /src/components/input/ParamMidiOut.tsx, /src/components/ManualTab.tsx, /src/index.css
+8:55:40 AM [vite] (client) hmr update /src/components/FpAppsTab.tsx, /src/index.css
+8:55:51 AM [vite] (client) hmr update /src/components/FpAppsTab.tsx, /src/index.css

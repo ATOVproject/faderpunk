@@ -110,10 +110,20 @@ export const Troubleshooting = () => (
       <li>Reset all app configurations to their defaults</li>
       <li>Clear all saved scenes</li>
       <li>Reset global settings (MIDI channels, I²C mode, etc.)</li>
+      <li>Remove any installed community apps from their slots</li>
       <li>
         <strong>Note:</strong> Calibration data will be preserved
       </li>
     </List>
+
+    <p className="mt-4">
+      A factory reset is also the way to recover if an installed community app
+      stops the device responding. The device detects this on its own and marks
+      the offending app <strong>Stopped</strong> so it won't run again, which
+      normally leaves the Configurator usable — you can then replace or remove
+      that app. A factory reset is the fallback for when you can't reach the
+      Configurator at all, because it works entirely from the device.
+    </p>
 
     <p className="mt-4 font-bold">How to perform a factory reset:</p>
     <ol className="mb-4 list-inside list-decimal space-y-2">

@@ -100,6 +100,21 @@ uncommitted development firmware. It lets hardware tests bind packages to the
 exact test binary without pretending the dirty tree is its parent commit.
 Distributed releases should use the clean commit-derived identity.
 
+In practice this means **every local firmware rebuild after a new commit
+invalidates every previously built `.fpapp`**, because the identity follows
+`HEAD`. The symptom is not obvious from the UI: the Configurator simply refuses
+to enable the install button. When developing an app, pass the same
+`FPAPP_FIRMWARE_ABI` value to both the firmware build and
+`fpapp build-community`, and keep passing it — dropping it on a later rebuild
+silently moves the firmware's identity while the packages keep the old one.
+
+If a community app misbehaves badly enough to stop the device responding, the
+firmware quarantines it automatically and the Configurator marks the slot
+Stopped; a hardware factory reset (channel buttons 1+2 held at power-on) clears
+installed apps entirely and is the recovery path when the Configurator cannot
+be reached. See the Configurator manual's Troubleshooting → Factory Reset
+section.
+
 This choice is intentionally simple: the host table may evolve without
 promising a stable Rust compiler ABI, and stale packages cannot execute after a
 firmware change. The tradeoff is that packages must be rebuilt and reinstalled

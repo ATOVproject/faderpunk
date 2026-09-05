@@ -88,6 +88,20 @@ export const InstalledApps = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device]);
 
+  // Navigating away mid-upload drops the MIDI connection with the slot already
+  // erased and only partly rewritten, so the app is gone and the slot holds
+  // nothing installable. The device releases the reservation on its own after
+  // about 30 seconds, but the user still has to start over — worth a warning.
+  useEffect(() => {
+    if (progress === undefined) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [progress]);
+
   const firmwareAbi = support ? abiHex(support.firmware_abi) : undefined;
   const isCompatible = useMemo(
     () =>
@@ -328,6 +342,9 @@ export const InstalledApps = () => {
                         role="group"
                         aria-label={`Remove ${slot.app.name} from slot ${slot.slot + 1}?`}
                       >
+                        <span className="w-full text-right text-xs text-gray-400 md:w-auto md:text-left">
+                          Also removes it from any channel using it.
+                        </span>
                         <ButtonSecondary
                           size="sm"
                           isDisabled={busy}

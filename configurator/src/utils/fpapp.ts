@@ -667,16 +667,18 @@ function statusMessage(status: FpAppStatus) {
   const messages: Record<FpAppStatus["tag"], string> = {
     Ok: "The FPApp operation completed.",
     InvalidSlot: "That FPApp slot does not exist.",
-    Busy: "Another FPApp upload is already in progress.",
+    Busy: "Another FPApp upload is already in progress. An abandoned upload releases the slot about 30 seconds after its last activity, so wait a moment and try again.",
     NoInstall: "There is no FPApp upload in progress.",
     EmptyPackage: "The selected FPApp is empty.",
     PackageTooLarge: "The selected FPApp is too large for one slot.",
     UnexpectedOffset: "An FPApp upload chunk arrived out of order.",
     ChunkTooLarge: "An FPApp upload chunk is too large.",
-    Incomplete: "The FPApp upload did not finish.",
+    Incomplete:
+      "The FPApp upload did not finish. Nothing was installed — start the upload again.",
     ActiveApp:
       "The installed app is active in the channel layout. Remove it from the layout, then try again.",
-    IncompatibleFirmware: "This FPApp was compiled for different firmware.",
+    IncompatibleFirmware:
+      "This FPApp was built against a different firmware version. Install a build of the app that matches the firmware on your device.",
     DuplicateAppId: "This FPApp is already installed in another slot.",
     InvalidPackage: "The device rejected the FPApp package.",
     RuntimeTooLarge:
