@@ -42,7 +42,12 @@ use crate::watchdog;
 
 const MAX_INSTANCE_BYTES: usize = 8 * 1024;
 const EVENT_QUEUE_LEN: usize = 64;
-const COMMAND_QUEUE_LEN: usize = 32;
+/// Must exceed the largest burst an app can submit inside one `poll()`, since
+/// the queue is only drained after `poll` returns — a synchronous SDK call like
+/// `Leds::unset_all` cannot retry and simply loses whatever does not fit. The
+/// worst documented burst is `unset_all` on a full-width app: three LED
+/// positions per channel across every channel.
+const COMMAND_QUEUE_LEN: usize = 3 * GLOBAL_CHANNELS + 16;
 
 type RequiredBytesFn = unsafe extern "C" fn() -> u32;
 type InitFn = unsafe extern "C" fn(*mut u8, usize, *const HostV1) -> u32;
@@ -360,7 +365,18 @@ unsafe extern "C" fn submit_command(context: *mut (), command: *const CommandV1)
         return false;
     }
     let context = unsafe { &mut *context.cast::<RuntimeContext>() };
-    context.commands.push_back(unsafe { *command }).is_ok()
+    let accepted = context.commands.push_back(unsafe { *command }).is_ok();
+    if !accepted {
+        // The async SDK helpers treat this as back-pressure and retry, but the
+        // synchronous ones (LEDs, I2C) have no way to — so say so rather than
+        // let the command vanish silently.
+        defmt::warn!(
+            "FPApp {} command queue full; dropped command kind {}",
+            context.app_id,
+            unsafe { (*command).kind }
+        );
+    }
+    accepted
 }
 
 unsafe extern "C" fn read_blob(
