@@ -474,6 +474,11 @@ pub async fn factory_reset() {
     erase_range(APP_PARAM_RANGE).await;
     erase_range(SCHEMA_HEADER_RANGE).await;
     write_schema_header(SCHEMA_VERSION).await;
+    // After the FRAM wipe, so the quarantine bits this clears are already gone.
+    // Without this the two-button recovery leaves a misbehaving community app
+    // resident in flash, and the only way to remove it is a working
+    // configurator — which is exactly what the user may not have.
+    crate::fpapps::erase_all_slots().await;
     // Wait a bit
     Timer::after_millis(100).await;
     // Then restart the unit

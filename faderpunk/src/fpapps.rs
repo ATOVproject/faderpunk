@@ -8,7 +8,7 @@ use embassy_rp::Peri;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::once_lock::OnceLock;
-use libfp::fpapp_store::{SlotFlash, SlotStore, ERASE_SIZE, FPAPP_REGION_SIZE};
+use libfp::fpapp_store::{SlotFlash, SlotStore, ERASE_SIZE, FPAPP_REGION_SIZE, SLOT_COUNT};
 use portable_atomic::{AtomicU32, AtomicU8, Ordering};
 
 use crate::version::FPAPP_FIRMWARE_ABI;
@@ -230,6 +230,27 @@ pub async fn clear_quarantine(slot: usize) {
         true
     })
     .await;
+}
+
+/// Forget every installed app, as part of a factory reset.
+///
+/// Only the 4 KiB control record per slot is erased, not the ~124 KiB of
+/// package bytes behind it: a slot whose control record is gone already reads
+/// as empty and is fully overwritten by the next install, so erasing the
+/// payload too would add seconds of flash erase to a recovery path the user is
+/// probably already frustrated to be using.
+pub async fn erase_all_slots() {
+    let store = FPAPP_STORE.get().await;
+    let mut store = store.lock().await;
+    for slot in 0..SLOT_COUNT {
+        // No app can be active: the caller is about to wipe the layout and
+        // reset, so nothing is left to conflict with.
+        if let Err(error) = store.remove(slot, &[]) {
+            defmt::warn!("factory reset: could not clear FPApp slot {}", slot);
+            let _ = error;
+        }
+    }
+    refresh_catalog(&store);
 }
 
 pub fn refresh_catalog(store: &SlotStore<RpFpAppFlash<'static>>) {
