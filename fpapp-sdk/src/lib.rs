@@ -1426,6 +1426,7 @@ pub mod compat {
                             output: &mut bytes,
                         }
                         .await;
+                        let mut applied = false;
                         if let Ok(updates) =
                             postcard::from_bytes::<[Option<Value>; APP_MAX_PARAMS]>(&bytes[..len])
                         {
@@ -1443,10 +1444,20 @@ pub mod compat {
                             if changed && let Some(params) = P::from_values(&values) {
                                 *self.inner.borrow_mut() = params;
                                 self.save().await;
+                                applied = true;
                             }
                         }
                         self.send_values().await;
-                        return;
+                        // Returning restarts the app's `run()` future. Only do
+                        // that when an update actually landed, matching the
+                        // firmware's `ParamStore`, which breaks only on an
+                        // applied change. Returning unconditionally would let a
+                        // no-op param message — the configurator echoing back
+                        // current values — silently discard everything `run()`
+                        // holds, like sequencer position or LFO phase.
+                        if applied {
+                            return;
+                        }
                     }
                     event_kind::PARAM_REQUEST => self.send_values().await,
                     _ => {}
