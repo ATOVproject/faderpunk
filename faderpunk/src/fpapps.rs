@@ -183,6 +183,16 @@ pub fn init(peripheral: Peri<'static, FLASH>) {
 /// `RuntimeState` at boot so it survives a power cycle.
 static QUARANTINED_SLOTS: AtomicU8 = AtomicU8::new(0);
 
+/// True if any slot holds an app that is actually allowed to run. Empty and
+/// quarantined slots both answer no, since neither can put native code on
+/// Core 1 — so a unit whose only app is quarantined needs no watchdog, and
+/// becomes reflashable over SWD again straight after a hang.
+pub fn has_runnable_app() -> bool {
+    RUNTIME_DESCRIPTORS
+        .iter()
+        .any(|cached| cached.app_id.load(Ordering::Acquire) != 0)
+}
+
 pub fn quarantined_slots() -> u8 {
     QUARANTINED_SLOTS.load(Ordering::Relaxed)
 }

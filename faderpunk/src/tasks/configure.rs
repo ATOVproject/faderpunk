@@ -354,6 +354,9 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                             Ok(installed) => {
                                 crate::fpapps::clear_quarantine(installed.slot as usize).await;
                                 crate::fpapps::refresh_catalog(&store);
+                                // This unit now has runnable community code, so
+                                // guard it without waiting for a reboot.
+                                crate::watchdog::arm().await;
                                 FpAppStatus::Ok
                             }
                             Err(error) => fpapp_status(error),

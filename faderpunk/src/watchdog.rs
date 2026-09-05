@@ -11,6 +11,8 @@
 
 use embassy_rp::pac;
 use embassy_rp::watchdog::{ResetReason, Watchdog};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use embassy_time::Duration;
 use portable_atomic::{AtomicU32, Ordering};
 
@@ -36,16 +38,36 @@ static LOAD_VALUE: AtomicU32 = AtomicU32::new(0);
 const SLOT_TAG_MAGIC: u32 = 0xFA51_0000;
 const SLOT_TAG_MASK: u32 = 0xFFFF_FFF0;
 
-/// Start the watchdog and enable `feed()`.
+/// Hand the peripheral over so `arm` can reach it later. Boot keeps the
+/// `Watchdog` itself long enough to read the reset reason and clear the marker.
+static WATCHDOG: Mutex<CriticalSectionRawMutex, Option<Watchdog>> = Mutex::new(None);
+
+pub async fn install(watchdog: Watchdog) {
+    *WATCHDOG.lock().await = Some(watchdog);
+}
+
+/// Start the watchdog and enable `feed()`. Idempotent.
 ///
 /// Deliberately called late in boot, once the slow one-time init is done: a
 /// stall in firmware setup is not the hazard this guards against, and arming
 /// early would only risk resetting a device mid-initialization.
-pub fn arm(watchdog: &mut Watchdog) {
-    watchdog.start(NORMAL_TIMEOUT);
-    // Mirrors what `Watchdog::start` loaded, so `feed()` can reload the counter
-    // from any core without owning the peripheral.
-    LOAD_VALUE.store(NORMAL_TIMEOUT.as_micros() as u32, Ordering::Relaxed);
+///
+/// Only armed on units that actually run community code (see
+/// `fpapps::has_runnable_app`). Everywhere else this stays off, so the reset
+/// behaviour is unchanged for units that never install an FPApp — and they stay
+/// flashable over SWD, since `probe-rs` runs its erase algorithm on the target
+/// core with nothing feeding the watchdog, and an armed one resets the chip
+/// part-way through the erase.
+pub async fn arm() {
+    if LOAD_VALUE.load(Ordering::Relaxed) != 0 {
+        return;
+    }
+    if let Some(watchdog) = WATCHDOG.lock().await.as_mut() {
+        watchdog.start(NORMAL_TIMEOUT);
+        // Mirrors what `Watchdog::start` loaded, so `feed()` can reload the
+        // counter from any core without owning the peripheral.
+        LOAD_VALUE.store(NORMAL_TIMEOUT.as_micros() as u32, Ordering::Relaxed);
+    }
 }
 
 /// Reload the counter. Callable from either core: it is a single idempotent

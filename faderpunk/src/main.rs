@@ -309,8 +309,13 @@ async fn main(spawner: Spawner) {
     tasks::global_config::start_global_config(&spawner).await;
 
     // Armed last, so none of the one-time init above can trip it. From here on
-    // Core 1's heartbeat is what keeps the device alive.
-    watchdog::arm(&mut hw_watchdog);
+    // Core 1's heartbeat is what keeps the device alive. Skipped entirely when
+    // no installed app can run: there is no untrusted code to guard, and an
+    // armed watchdog would only cost this unit its SWD reflashing.
+    watchdog::install(hw_watchdog).await;
+    if fpapps::has_runnable_app() {
+        watchdog::arm().await;
+    }
 
     spawn_core1(
         p.CORE1,
