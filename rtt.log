@@ -1,0 +1,11 @@
+     Finished in 40.90s
+Firmware exited unexpectedly: Exception
+[31mERROR[0m [2mprobe_rs_debug::debug_info[0m[2m:[0m Other("UNWIND: Tried to unwind `RegisterRule` at CFA = None.")
+Core 0
+    Frame 0: {"package":"defmt","tag":"defmt_write","data":"{}..{}","disambiguator":"17369488927866778855","crate_name":"defmt"} @ 0x00000088> : ERROR: UNWIND: Tried to unwind `RegisterRule` at CFA = None. @ 0x0000000000000088
+
+Core 1
+    Frame 0: {"package":"defmt","tag":"defmt_write","data":"{}..{}","disambiguator":"17369488927866778855","crate_name":"defmt"} @ 0x00000102> @ 0x0000000000000102
+
+    Frame 1: defmt_rtt::BUFFER @ 0xfa050000> @ 0x00000000fa050000
+

@@ -813,11 +813,22 @@ async fn process_blob_read(context: &mut RuntimeContext, kind: u8, index: u8) {
         return;
     }
     let address: u32 = match kind {
-        blob_kind::STORAGE => AppStorageAddress::new(
-            context.layout_id,
-            if index == 0 { None } else { Some(index - 1) },
-        )
-        .into(),
+        blob_kind::STORAGE => {
+            // Same bound the write path applies. Unclamped, the address is
+            // `layout_id * 17 * MAX + (index + 1) * MAX`, so an app asking for
+            // scene 255 reads ~100 KB past its own block — other apps' scenes,
+            // the param region, the schema header. Answer empty rather than
+            // returning, so an app waiting on the blob still gets a result.
+            if index > crate::storage::SCENES_PER_APP as u8 {
+                context.blob_cache.store(kind, index, &[]);
+                return;
+            }
+            AppStorageAddress::new(
+                context.layout_id,
+                if index == 0 { None } else { Some(index - 1) },
+            )
+            .into()
+        }
         blob_kind::PARAMS => AppParamsAddress::new(context.layout_id).into(),
         _ => return,
     };
