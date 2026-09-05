@@ -15,6 +15,8 @@ pub mod colors;
 pub mod constants;
 pub mod ext;
 pub mod fp_grids_lib;
+pub mod fpapp;
+pub mod fpapp_store;
 pub mod i2c_proto;
 pub mod latch;
 pub mod quantizer;
@@ -46,6 +48,13 @@ pub const I2C_ADDRESS_CALIBRATION: u16 = 0x57;
 
 /// Maximum number of params per app
 pub const APP_MAX_PARAMS: usize = 16;
+
+/// Payload bytes per FPApp upload/read request. This stays comfortably below
+/// the 512-byte config protocol limit after postcard and SysEx framing.
+pub const FPAPP_CHUNK_SIZE: usize = 256;
+pub const FPAPP_CHUNK_BLOCK_SIZE: usize = 32;
+pub const FPAPP_CHUNK_BLOCKS: usize = FPAPP_CHUNK_SIZE / FPAPP_CHUNK_BLOCK_SIZE;
+pub type FpAppChunk = [[u8; FPAPP_CHUNK_BLOCK_SIZE]; FPAPP_CHUNK_BLOCKS];
 
 /// Length of the startup animation
 pub const STARTUP_ANIMATION_DURATION: Duration = Duration::from_secs(2);
@@ -1029,6 +1038,7 @@ pub enum AppIcon {
     NoteGrid,
     KnobRound,
     Stereo,
+    Sift,
 }
 
 #[allow(non_camel_case_types)]
@@ -1237,7 +1247,33 @@ impl From<usize> for Value {
     }
 }
 
-#[derive(Deserialize, PostcardBindings)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, PostcardBindings)]
+pub enum FpAppSection {
+    Manual,
+    Setup,
+    Settings,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, PostcardBindings)]
+pub enum FpAppStatus {
+    Ok,
+    InvalidSlot,
+    Busy,
+    NoInstall,
+    EmptyPackage,
+    PackageTooLarge,
+    UnexpectedOffset,
+    ChunkTooLarge,
+    Incomplete,
+    ActiveApp,
+    IncompatibleFirmware,
+    DuplicateAppId,
+    InvalidPackage,
+    RuntimeTooLarge,
+    FlashError,
+}
+
+#[derive(Serialize, Deserialize, PostcardBindings)]
 pub enum ConfigMsgIn {
     Ping,
     GetAllApps,
@@ -1276,6 +1312,27 @@ pub enum ConfigMsgIn {
     ReleaseVoOctOutput {
         output_jack: u8,
     },
+    GetFpAppSupport,
+    GetFpAppSlots,
+    BeginFpAppInstall {
+        slot: u8,
+        total_len: u32,
+    },
+    WriteFpAppChunk {
+        offset: u32,
+        len: u16,
+        data: FpAppChunk,
+    },
+    CommitFpAppInstall,
+    AbortFpAppInstall,
+    RemoveFpApp {
+        slot: u8,
+    },
+    ReadFpAppSection {
+        slot: u8,
+        section: FpAppSection,
+        offset: u32,
+    },
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]
@@ -1301,6 +1358,42 @@ pub enum ConfigMsgOut<'a> {
     VoOctCalError,
     /// Acknowledges `SetVoOctOutput` / `ReleaseVoOctOutput`.
     VoOctOutputSet,
+    FpAppSupport {
+        firmware_abi: [u8; 32],
+        slots: u8,
+        max_package_len: u32,
+        chunk_size: u16,
+    },
+    FpAppSlot {
+        slot: u8,
+        app_id: u8,
+        version_major: u16,
+        version_minor: u16,
+        version_patch: u16,
+        channels: u8,
+        name: &'a str,
+        description: &'a str,
+        author: &'a str,
+        has_manual: bool,
+        has_setup: bool,
+        has_settings: bool,
+        signed: bool,
+        /// This app hung the device and has been held back from running. It
+        /// stays installed and visible so the user can see which one it was.
+        quarantined: bool,
+    },
+    FpAppSlotEmpty {
+        slot: u8,
+    },
+    FpAppSectionChunk {
+        slot: u8,
+        section: FpAppSection,
+        offset: u32,
+        total_len: u32,
+        len: u16,
+        data: FpAppChunk,
+    },
+    FpAppResult(FpAppStatus),
 }
 
 pub struct Config<const N: usize> {
@@ -1614,7 +1707,9 @@ impl MidiOut {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppIcon, Color, Config, CustomVoOctCurve, Layout, Param, VoltPerOct, GLOBAL_CHANNELS,
+        AppIcon, Color, Config, ConfigMsgIn, ConfigMsgOut, CustomVoOctCurve, FpAppSection, Layout,
+        Param, VoltPerOct, FPAPP_CHUNK_BLOCKS, FPAPP_CHUNK_BLOCK_SIZE, FPAPP_CHUNK_SIZE,
+        GLOBAL_CHANNELS,
     };
     use heapless::Vec;
 
@@ -2191,5 +2286,44 @@ mod tests {
                 "raw={raw} warped={warped} recovered={recovered}"
             );
         }
+    }
+
+    #[test]
+    fn fpapp_chunk_messages_fit_config_protocol_and_round_trip() {
+        let data = [[0xa5; FPAPP_CHUNK_BLOCK_SIZE]; FPAPP_CHUNK_BLOCKS];
+        let mut request_buf = [0u8; crate::sysex::MAX_PAYLOAD_SIZE];
+        let request = ConfigMsgIn::WriteFpAppChunk {
+            offset: 123,
+            len: FPAPP_CHUNK_SIZE as u16,
+            data,
+        };
+        let encoded = postcard::to_slice(&request, &mut request_buf).unwrap();
+        assert!(encoded.len() <= crate::sysex::MAX_PAYLOAD_SIZE);
+
+        let decoded: ConfigMsgIn = postcard::from_bytes(encoded).unwrap();
+        match decoded {
+            ConfigMsgIn::WriteFpAppChunk { offset, len, data } => {
+                assert_eq!(offset, 123);
+                assert_eq!(len, FPAPP_CHUNK_SIZE as u16);
+                assert_eq!(data, [[0xa5; FPAPP_CHUNK_BLOCK_SIZE]; FPAPP_CHUNK_BLOCKS]);
+            }
+            _ => panic!("decoded the wrong request variant"),
+        }
+
+        let mut response_buf = [0u8; crate::sysex::MAX_PAYLOAD_SIZE];
+        let response = ConfigMsgOut::FpAppSectionChunk {
+            slot: 2,
+            section: FpAppSection::Manual,
+            offset: 456,
+            total_len: 789,
+            len: FPAPP_CHUNK_SIZE as u16,
+            data,
+        };
+        let encoded = postcard::to_slice(&response, &mut response_buf).unwrap();
+        assert!(encoded.len() <= crate::sysex::MAX_PAYLOAD_SIZE);
+
+        // Responses borrow app metadata and therefore intentionally serialize
+        // only. Encoding the largest response proves its wire size fits the
+        // same 512-byte transport envelope.
     }
 }

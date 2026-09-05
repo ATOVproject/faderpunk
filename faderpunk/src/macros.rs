@@ -31,7 +31,8 @@ macro_rules! register_apps {
             start_channel: usize,
             layout_id: u8,
             spawner: Spawner,
-            exit_signals: &'static [Signal<NoopRawMutex, bool>; 16]
+            exit_signals: &'static [Signal<NoopRawMutex, bool>; 16],
+            completion_signals: &'static [Signal<NoopRawMutex, ()>; 16],
         ) {
             match app_id {
                 $(
@@ -52,7 +53,18 @@ macro_rules! register_apps {
                     },
                 )*
                 _ => {
-                    // Do nothing if app_id isn't valid
+                    if let Some(descriptor) = crate::fpapps::runtime_descriptor(app_id) {
+                        completion_signals[start_channel].reset();
+                        spawner
+                            .spawn(crate::fpapp_runtime::run_fpapp(
+                                descriptor,
+                                start_channel,
+                                layout_id,
+                                &exit_signals[start_channel],
+                                &completion_signals[start_channel],
+                            ))
+                            .unwrap();
+                    }
                 }
             }
         }
@@ -62,7 +74,7 @@ macro_rules! register_apps {
                 $(
                     $id => Some($app_mod::CHANNELS),
                 )*
-                _ => None,
+                _ => crate::fpapps::get_channels(app_id),
             }
         }
 
