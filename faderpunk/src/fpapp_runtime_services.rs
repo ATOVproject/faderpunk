@@ -1,6 +1,22 @@
 //! Fixed Embassy task that adapts the firmware app services to native FPApps.
+//!
+//! # Context aliasing invariant
+//!
+//! `RuntimeContext` is shared with untrusted native code: the `HostV1` table
+//! carries a pointer to it, and the host callbacks below reconstruct references
+//! from that pointer. App code can re-enter only through the two entrypoints
+//! that receive the table — `InitFn` and `PollFn`. (`DropFn` takes only the
+//! instance arena and `RequiredBytesFn` takes nothing, so neither can call
+//! back.)
+//!
+//! The rule that keeps this sound: **no firmware-side borrow of the context may
+//! be live across `init` or `poll`.** Everywhere else the app is not running, so
+//! a `&mut` is fine. The context therefore lives in an `UnsafeCell` and is
+//! reached only through the raw pointer taken from it, so firmware borrows and
+//! callback borrows share one provenance — deriving the pointer from a `&mut`
+//! instead would let any later direct field access invalidate it.
 
-use core::{mem::transmute, slice};
+use core::{cell::UnsafeCell, mem::transmute, slice};
 
 use embassy_futures::select::{select, select6, Either, Either6};
 use embassy_rp::clocks::RoscRng;
@@ -532,9 +548,20 @@ pub async fn run_fpapp(
         return;
     }
 
-    let mut context = RuntimeContext::new(descriptor.app_id, start_channel, channels, layout_id);
+    // Held in an `UnsafeCell` and only ever reached through `ctx` so that the
+    // firmware's borrows and the host callbacks' share one provenance. Taking
+    // the pointer from a `&mut` instead would let any later `context.field`
+    // access pop that pointer's tag off the borrow stack, invalidating every
+    // callback that came after it.
+    let cell = UnsafeCell::new(RuntimeContext::new(
+        descriptor.app_id,
+        start_channel,
+        channels,
+        layout_id,
+    ));
+    let ctx: *mut RuntimeContext = cell.get();
     let mut host = HostV1::new(
-        (&mut context as *mut RuntimeContext).cast(),
+        ctx.cast(),
         event_cursor,
         read_event_after,
         set_output,
@@ -561,7 +588,7 @@ pub async fn run_fpapp(
         return;
     }
     APP_PARAM_SIGNALS[layout_id as usize].reset();
-    if !drive_app(&mut context, &mut storage, &host, poll, descriptor.slot).await {
+    if !drive_app(ctx, &mut storage, &host, poll, descriptor.slot).await {
         let _ = watchdog::guarding(descriptor.slot, || unsafe {
             drop_app(storage.0.as_mut_ptr())
         });
@@ -569,13 +596,17 @@ pub async fn run_fpapp(
         return;
     }
     for channel in 0..channels {
-        context.push_event(EventV1::value(
-            0,
-            channel as u8,
-            MAX_VALUES_FADER[start_channel + channel].load(Ordering::Relaxed),
-        ));
+        // SAFETY: no app code runs between polls, so nothing else holds a
+        // borrow of the context here. Same reasoning for every `(*ctx)` below.
+        unsafe {
+            (*ctx).push_event(EventV1::value(
+                0,
+                channel as u8,
+                MAX_VALUES_FADER[start_channel + channel].load(Ordering::Relaxed),
+            ));
+        }
     }
-    if !drive_app(&mut context, &mut storage, &host, poll, descriptor.slot).await {
+    if !drive_app(ctx, &mut storage, &host, poll, descriptor.slot).await {
         let _ = watchdog::guarding(descriptor.slot, || unsafe {
             drop_app(storage.0.as_mut_ptr())
         });
@@ -588,17 +619,17 @@ pub async fn run_fpapp(
     let mut midi_din_subscriber = MIDI_DIN_PUBSUB.subscriber().unwrap();
     let mut midi_usb_subscriber = MIDI_USB_PUBSUB.subscriber().unwrap();
     loop {
-        let timer_deadline = context
-            .wake_at
+        let timer_deadline = unsafe { (*ctx).wake_at }
             .unwrap_or_else(|| Instant::now().as_millis().saturating_add(86_400_000));
+        // The `wake` borrow below is held across the await. That is sound
+        // because `wake` is only signalled from a host callback, i.e. from app
+        // code, and no app code runs while this select is pending.
+        let wake = unsafe { &(*ctx).wake };
         match select6(
             event_subscriber.next_message_pure(),
             clock_subscriber.next_message_pure(),
             APP_PARAM_SIGNALS[layout_id as usize].wait(),
-            select(
-                context.wake.wait(),
-                Timer::at(Instant::from_millis(timer_deadline)),
-            ),
+            select(wake.wait(), Timer::at(Instant::from_millis(timer_deadline))),
             exit_signal.wait(),
             select(
                 midi_din_subscriber.next_message_pure(),
@@ -608,50 +639,57 @@ pub async fn run_fpapp(
         .await
         {
             Either6::First(event) => {
-                if let Some(event) = context.translate(event) {
-                    context.push_event(event);
+                let translated = unsafe { (*ctx).translate(event) };
+                if let Some(event) = translated {
+                    unsafe { (*ctx).push_event(event) };
                 } else {
                     continue;
                 }
             }
-            Either6::Second(event) => context.push_event(RuntimeContext::translate_clock(event)),
+            Either6::Second(event) => unsafe {
+                (*ctx).push_event(RuntimeContext::translate_clock(event));
+            },
             Either6::Third(command) => match command {
                 AppParamCmd::SetAppParams { values } => {
                     let mut bytes = [0u8; MAX_DATA_LEN];
                     if let Ok(encoded) = postcard::to_slice(&values, &mut bytes) {
-                        context
-                            .blob_cache
-                            .store(blob_kind::PARAM_UPDATE, 0, encoded);
+                        unsafe {
+                            (*ctx).blob_cache.store(blob_kind::PARAM_UPDATE, 0, encoded);
+                        }
                     }
-                    context.push_event(EventV1 {
-                        kind: event_kind::PARAM_SET,
+                    unsafe {
+                        (*ctx).push_event(EventV1 {
+                            kind: event_kind::PARAM_SET,
+                            ..EventV1::default()
+                        });
+                    }
+                }
+                AppParamCmd::RequestParamValues => unsafe {
+                    (*ctx).push_event(EventV1 {
+                        kind: event_kind::PARAM_REQUEST,
                         ..EventV1::default()
                     });
-                }
-                AppParamCmd::RequestParamValues => context.push_event(EventV1 {
-                    kind: event_kind::PARAM_REQUEST,
-                    ..EventV1::default()
-                }),
+                },
             },
             Either6::Fourth(Either::First(_)) => {}
-            Either6::Fourth(Either::Second(_)) => context.wake_at = None,
+            Either6::Fourth(Either::Second(_)) => unsafe { (*ctx).wake_at = None },
             Either6::Fifth(_) => break,
             Either6::Sixth(Either::First(event)) => {
                 if let Some(event) = RuntimeContext::translate_midi(event, false) {
-                    context.push_event(event);
+                    unsafe { (*ctx).push_event(event) };
                 } else {
                     continue;
                 }
             }
             Either6::Sixth(Either::Second(event)) => {
                 if let Some(event) = RuntimeContext::translate_midi(event, true) {
-                    context.push_event(event);
+                    unsafe { (*ctx).push_event(event) };
                 } else {
                     continue;
                 }
             }
         }
-        if !drive_app(&mut context, &mut storage, &host, poll, descriptor.slot).await {
+        if !drive_app(ctx, &mut storage, &host, poll, descriptor.slot).await {
             break;
         }
     }
@@ -659,14 +697,20 @@ pub async fn run_fpapp(
     let _ = watchdog::guarding(descriptor.slot, || unsafe {
         drop_app(storage.0.as_mut_ptr())
     });
-    while process_services(&mut context).await {}
+    while process_services(unsafe { &mut *ctx }).await {}
     reset_channels(start_channel, channels).await;
 }
 
 const MAX_POLL_PER_TURN: usize = 128;
 
+/// Takes the context as a raw pointer rather than `&mut` on purpose. `poll` is
+/// handed the host table, so app code can call back in and reconstruct the
+/// context from that same pointer — a `&mut` held across the call would be a
+/// second live mutable borrow, and its `noalias` would license the compiler to
+/// cache the very fields (`commands`, `pending_blob_*`) that the callbacks
+/// mutate and `process_services` reads immediately below.
 async fn drive_app(
-    context: &mut RuntimeContext,
+    ctx: *mut RuntimeContext,
     storage: &mut InstanceStorage,
     host: &HostV1,
     poll: PollFn,
@@ -678,7 +722,9 @@ async fn drive_app(
         if status != export_status::OK {
             return false;
         }
-        if !process_services(context).await {
+        // SAFETY: `poll` has returned, so no app code is running and this is
+        // the only live borrow.
+        if !process_services(unsafe { &mut *ctx }).await {
             return true;
         }
         turns += 1;
