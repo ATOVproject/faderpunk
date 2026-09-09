@@ -1,6 +1,6 @@
 //! Transactional fixed-slot storage for installable applications.
 
-use crate::fpapp::{crc32, Package, PackageError, Version};
+use crate::fpapp::{abi_minor_is_compatible, crc32, Package, PackageError, Version};
 
 pub const FPAPP_REGION_SIZE: usize = 512 * 1024;
 pub const SLOT_COUNT: usize = 4;
@@ -82,13 +82,14 @@ struct Staging {
 
 pub struct SlotStore<F: SlotFlash> {
     flash: F,
-    firmware_abi: [u8; 32],
     entries: [Option<SlotEntry>; SLOT_COUNT],
     staging: Option<Staging>,
 }
 
 impl<F: SlotFlash> SlotStore<F> {
-    pub fn open(flash: F, firmware_abi: [u8; 32]) -> Result<Self, StoreError<F::Error>> {
+    /// No firmware identity is needed: compatibility is decided by the ABI
+    /// contract in each package's manifest, not by which build produced it.
+    pub fn open(flash: F) -> Result<Self, StoreError<F::Error>> {
         if flash.len() < FPAPP_REGION_SIZE {
             return Err(StoreError::RegionTooSmall);
         }
@@ -97,8 +98,7 @@ impl<F: SlotFlash> SlotStore<F> {
         let mut app_ids = [0u8; SLOT_COUNT];
         let mut app_count = 0;
         for (slot, destination) in entries.iter_mut().enumerate() {
-            let Some(entry) = read_slot(&flash, slot, &firmware_abi).map_err(StoreError::Flash)?
-            else {
+            let Some(entry) = read_slot(&flash, slot).map_err(StoreError::Flash)? else {
                 continue;
             };
             if app_ids[..app_count].contains(&entry.app_id) {
@@ -111,7 +111,6 @@ impl<F: SlotFlash> SlotStore<F> {
 
         Ok(Self {
             flash,
-            firmware_abi,
             entries,
             staging: None,
         })
@@ -248,7 +247,7 @@ impl<F: SlotFlash> SlotStore<F> {
             .map_err(StoreError::Flash)?;
         let package = Package::parse(package_bytes)?;
         package.native_program()?;
-        if package.manifest.firmware_abi != self.firmware_abi {
+        if !abi_minor_is_compatible(package.manifest.abi_major, package.manifest.abi_minor) {
             return Err(StoreError::IncompatibleFirmware);
         }
         if self.entries.iter().enumerate().any(|(slot, entry)| {
@@ -330,11 +329,7 @@ fn package_offset(slot: usize) -> usize {
     slot_offset(slot) + PACKAGE_OFFSET
 }
 
-fn read_slot<F: SlotFlash>(
-    flash: &F,
-    slot: usize,
-    firmware_abi: &[u8; 32],
-) -> Result<Option<SlotEntry>, F::Error> {
+fn read_slot<F: SlotFlash>(flash: &F, slot: usize) -> Result<Option<SlotEntry>, F::Error> {
     let control = flash.mapped(slot_offset(slot), CONTROL_RECORD_LEN)?;
     let Some(entry) = decode_control(slot, control) else {
         return Ok(None);
@@ -352,9 +347,12 @@ fn read_slot<F: SlotFlash>(
     if package.native_program().is_err() {
         return Ok(None);
     }
+    // Gating on the ABI contract rather than the exact build identity is what
+    // lets an installed app survive a firmware update. Checking identity here
+    // meant every update silently emptied every slot.
     if package.manifest.app_id != entry.app_id
         || package.manifest.version != entry.version
-        || &package.manifest.firmware_abi != firmware_abi
+        || !abi_minor_is_compatible(package.manifest.abi_major, package.manifest.abi_minor)
     {
         return Ok(None);
     }
@@ -415,8 +413,8 @@ mod tests {
 
     use super::*;
     use crate::fpapp::{
-        Manifest, NativeEntrypoints, NativeProgram, PackageBuilder, Version,
-        PROGRAM_KIND_THUMB_ROPI,
+        Manifest, NativeEntrypoints, NativeProgram, PackageBuilder, Version, FPAPP_ABI_MAJOR,
+        FPAPP_ABI_MINOR, PROGRAM_KIND_THUMB_ROPI,
     };
     use std::vec;
     use std::vec::Vec;
@@ -478,6 +476,24 @@ mod tests {
         version: Version,
         program_byte: u8,
     ) -> Vec<u8> {
+        package_with_abi(
+            app_id,
+            firmware_abi,
+            version,
+            program_byte,
+            FPAPP_ABI_MAJOR,
+            FPAPP_ABI_MINOR,
+        )
+    }
+
+    fn package_with_abi(
+        app_id: u8,
+        firmware_abi: [u8; 32],
+        version: Version,
+        program_byte: u8,
+        abi_major: u16,
+        abi_minor: u16,
+    ) -> Vec<u8> {
         let manifest = Manifest {
             app_id,
             version,
@@ -493,6 +509,8 @@ mod tests {
             execution_units_per_event: 10_000,
             capabilities: 3,
             firmware_abi,
+            abi_major,
+            abi_minor,
         };
         let mut output = [0u8; 256];
         let image = [program_byte; 16];
@@ -525,13 +543,13 @@ mod tests {
         let version_one = package(Version::new(1, 0, 0), 0x11);
         let version_two = package(Version::new(2, 0, 0), 0x22);
         let other = package_for(103, ABI, Version::new(1, 0, 0), 0x33);
-        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
         install(&mut store, 0, &version_one);
         install(&mut store, 1, &other);
 
         store.begin_install(0, version_two.len(), &[], 0).unwrap();
         store.write_chunk(0, &version_two[..32], 0).unwrap();
-        let reopened = SlotStore::open(store.into_flash(), ABI).unwrap();
+        let reopened = SlotStore::open(store.into_flash()).unwrap();
 
         assert_eq!(reopened.installed(0).unwrap(), None);
         assert_eq!(reopened.installed(1).unwrap().unwrap().app_id, 103);
@@ -540,11 +558,11 @@ mod tests {
     #[test]
     fn completed_install_survives_reopen() {
         let bytes = package(Version::new(2, 1, 3), 0x22);
-        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
         let installed = install(&mut store, 3, &bytes);
         assert_eq!(installed.slot, 3);
 
-        let reopened = SlotStore::open(store.into_flash(), ABI).unwrap();
+        let reopened = SlotStore::open(store.into_flash()).unwrap();
         assert_eq!(reopened.installed(3).unwrap(), Some(installed));
         assert_eq!(
             reopened
@@ -561,7 +579,7 @@ mod tests {
     #[test]
     fn fully_uploaded_package_can_be_checked_before_it_is_published() {
         let bytes = package(Version::new(1, 2, 3), 0x22);
-        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
         store.begin_install(0, bytes.len(), &[], 0).unwrap();
         store.write_chunk(0, &bytes, 0).unwrap();
 
@@ -573,21 +591,69 @@ mod tests {
 
     #[test]
     fn incompatible_package_never_becomes_installed() {
-        let bytes = package_for(102, [0x99; 32], Version::new(1, 0, 0), 0x11);
-        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        // A different ABI *generation* is the incompatible case. The 32-byte
+        // build identity deliberately is not: gating on it made every firmware
+        // update empty every slot.
+        let bytes = package_with_abi(
+            102,
+            ABI,
+            Version::new(1, 0, 0),
+            0x11,
+            FPAPP_ABI_MAJOR + 1,
+            FPAPP_ABI_MINOR,
+        );
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
         store.begin_install(0, bytes.len(), &[], 0).unwrap();
         store.write_chunk(0, &bytes, 0).unwrap();
 
         assert_eq!(store.commit(), Err(StoreError::IncompatibleFirmware));
         store.abort().unwrap();
-        let reopened = SlotStore::open(store.into_flash(), ABI).unwrap();
+        let reopened = SlotStore::open(store.into_flash()).unwrap();
         assert_eq!(reopened.installed(0).unwrap(), None);
+    }
+
+    #[test]
+    fn a_package_built_against_another_firmware_build_still_installs() {
+        // The whole point of the change: same ABI contract, different build
+        // identity, and an older feature level — must install and survive a
+        // reopen, which is what a firmware update looks like to the store.
+        let bytes = package_with_abi(
+            102,
+            [0x99; 32],
+            Version::new(1, 0, 0),
+            0x11,
+            FPAPP_ABI_MAJOR,
+            0,
+        );
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
+        store.begin_install(0, bytes.len(), &[], 0).unwrap();
+        store.write_chunk(0, &bytes, 0).unwrap();
+        store.commit().unwrap();
+
+        let reopened = SlotStore::open(store.into_flash()).unwrap();
+        assert!(reopened.installed(0).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_package_needing_a_newer_feature_level_is_refused() {
+        let bytes = package_with_abi(
+            102,
+            ABI,
+            Version::new(1, 0, 0),
+            0x11,
+            FPAPP_ABI_MAJOR,
+            FPAPP_ABI_MINOR + 1,
+        );
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
+        store.begin_install(0, bytes.len(), &[], 0).unwrap();
+        store.write_chunk(0, &bytes, 0).unwrap();
+        assert_eq!(store.commit(), Err(StoreError::IncompatibleFirmware));
     }
 
     #[test]
     fn active_apps_cannot_be_replaced_or_removed() {
         let bytes = package(Version::new(1, 0, 0), 0x11);
-        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
         install(&mut store, 0, &bytes);
 
         assert_eq!(
@@ -601,7 +667,7 @@ mod tests {
     #[test]
     fn abandoned_staging_expires_instead_of_wedging_the_slot() {
         let bytes = package(Version::new(1, 0, 0), 0x11);
-        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
 
         // An upload starts and then the uploader vanishes part-way through.
         store.begin_install(0, bytes.len(), &[], 1_000).unwrap();
@@ -626,7 +692,7 @@ mod tests {
     #[test]
     fn staging_timeout_is_measured_from_the_last_chunk() {
         let bytes = package(Version::new(1, 0, 0), 0x11);
-        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
         store.begin_install(0, bytes.len(), &[], 0).unwrap();
 
         // A slow but live upload keeps refreshing the deadline, so it must not
@@ -647,7 +713,7 @@ mod tests {
     #[test]
     fn chunks_are_sequential_and_removal_survives_reopen() {
         let bytes = package(Version::new(1, 0, 0), 0x11);
-        let mut store = SlotStore::open(VecFlash::erased(), ABI).unwrap();
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
         store.begin_install(2, bytes.len(), &[], 0).unwrap();
         assert_eq!(
             store.write_chunk(1, &bytes[..4], 0),
@@ -657,7 +723,7 @@ mod tests {
         store.commit().unwrap();
         store.remove(2, &[]).unwrap();
 
-        let reopened = SlotStore::open(store.into_flash(), ABI).unwrap();
+        let reopened = SlotStore::open(store.into_flash()).unwrap();
         assert_eq!(reopened.installed(2).unwrap(), None);
     }
 }

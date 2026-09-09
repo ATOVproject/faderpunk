@@ -1359,7 +1359,11 @@ pub enum ConfigMsgOut<'a> {
     /// Acknowledges `SetVoOctOutput` / `ReleaseVoOctOutput`.
     VoOctOutputSet,
     FpAppSupport {
+        /// Which firmware build this is. Provenance for diagnostics only —
+        /// compatibility is decided by `abi_major`/`abi_minor`.
         firmware_abi: [u8; 32],
+        abi_major: u16,
+        abi_minor: u16,
         slots: u8,
         max_package_len: u32,
         chunk_size: u16,

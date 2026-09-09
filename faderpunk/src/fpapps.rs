@@ -11,7 +11,6 @@ use embassy_sync::once_lock::OnceLock;
 use libfp::fpapp_store::{SlotFlash, SlotStore, ERASE_SIZE, FPAPP_REGION_SIZE, SLOT_COUNT};
 use portable_atomic::{AtomicU32, AtomicU8, Ordering};
 
-use crate::version::FPAPP_FIRMWARE_ABI;
 use crate::watchdog;
 
 const PHYSICAL_FLASH_SIZE: usize = 2 * 1024 * 1024;
@@ -177,8 +176,7 @@ pub static FPAPP_STORE: OnceLock<FpAppStore> = OnceLock::new();
 
 pub fn init(peripheral: Peri<'static, FLASH>) {
     let flash = RpFpAppFlash::new(peripheral);
-    let store = SlotStore::open(flash, FPAPP_FIRMWARE_ABI)
-        .expect("reserved FPApp flash region must be valid");
+    let store = SlotStore::open(flash).expect("reserved FPApp flash region must be valid");
     refresh_catalog(&store);
     FPAPP_STORE
         .init(Mutex::new(store))

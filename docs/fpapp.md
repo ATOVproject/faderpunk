@@ -91,51 +91,61 @@ binaries should not become the source of truth.
 ### Native code compiled for one firmware
 
 Program kind `1` is a read-only, position-independent Thumb image. The package
-contains a 32-byte firmware compatibility identity. Normal release builds
-derive it from the full 40-digit Git revision. Firmware and Configurator both
-require an exact match before installation.
+declares the ABI contract it was compiled against, and firmware checks that
+contract — not which build produced the package.
 
-An explicit `FPAPP_FIRMWARE_ABI=<64 hex digits>` build setting exists for
-uncommitted development firmware. It lets hardware tests bind packages to the
-exact test binary without pretending the dirty tree is its parent commit.
-Distributed releases should use the clean commit-derived identity.
+**The contract is a major/minor pair** (`libfp::fpapp::FPAPP_ABI_MAJOR` /
+`FPAPP_ABI_MINOR`):
 
-In practice this means **every local firmware rebuild after a new commit
-invalidates every previously built `.fpapp`**, because the identity follows
-`HEAD`. The symptom is not obvious from the UI: the Configurator simply refuses
-to enable the install button. When developing an app, pass the same
-`FPAPP_FIRMWARE_ABI` value to both the firmware build and
-`fpapp build-community`, and keep passing it — dropping it on a later rebuild
-silently moves the firmware's identity while the packages keep the old one.
+- **major** changes only when something breaks apps already compiled against
+  the previous value: reordering, removing or retyping a field of
+  `HostV1`/`EventV1`/`CommandV1`, or redefining what an existing
+  `value_kind`/`command_kind`/`blob_kind`/`event_kind` number means. Firmware
+  requires an exact match, because none of these are detectable at runtime.
+- **minor** changes on any additive step: a host function appended to `HostV1`,
+  or a newly defined `*_kind`. Firmware accepts any app whose minor is **less
+  than or equal to** its own.
 
-If a community app misbehaves badly enough to stop the device responding, the
-firmware quarantines it automatically and the Configurator marks the slot
-Stopped; a hardware factory reset (channel buttons 1+2 held at power-on) clears
-installed apps entirely and is the recovery path when the Configurator cannot
-be reached. See the Configurator manual's Troubleshooting → Factory Reset
-section.
+The rule is asymmetric on purpose. Newer firmware runs older apps, because
+appending never moves an existing field offset and an app cannot reference a
+constant that did not exist when it was built. Older firmware must refuse newer
+apps, because the app may call a host function this firmware does not implement,
+which would read as a garbage value rather than an error.
 
-This choice is intentionally simple: the host table may evolve without
-promising a stable Rust compiler ABI, and stale packages cannot execute after a
-firmware change. The tradeoff is that packages must be rebuilt and reinstalled
-after updating to an incompatible firmware.
+**Why not bind to the exact build.** An earlier design derived a 32-byte
+identity from the firmware Git revision and required an exact match. That is
+maximally conservative and has a cost that only appears once apps are in the
+wild: *every* firmware update invalidates *every* installed app, even an update
+that does not touch the ABI at all. A package whose identity does not match is
+never published by `refresh_catalog`, so installed apps simply disappear from
+the user's channels with no error. The 32-byte identity is still recorded in the
+manifest as build provenance — `fpapp inspect` prints it, and `fpapp verify
+--firmware-abi` checks it on request — but it no longer gates anything.
 
-Compatibility has two explicit layers:
+**What stops a breaking change slipping through.** The major/minor numbers are
+maintained by hand, so the dangerous mistake is changing a layout without
+bumping major: an app compiled against the old layout would then read every
+field at the wrong offset, silently. `fpapp-sdk`'s `abi_layout` module asserts
+the size of each wire struct at compile time, so any such change fails the build
+with a message saying which number to bump. `HostV1` is pointer-bearing, so its
+assertion is checked for the ARM target only — the SDK is also compiled for the
+host by the metadata helper, where no FFI boundary is crossed.
 
-- the runtime ABI version identifies the published `HostV1` layout and its
-  behavioral contract. Once ABI 1 ships, an incompatible table or semantic
-  change must increment this field and introduce a correspondingly named host
-  table;
-- the 32-byte firmware identity binds a package to one exact compatible build.
-  It changes for every release revision (and for each explicitly identified
-  development build), even when the runtime ABI version stays the same.
+`HostV1` also carries `abi_version` and `struct_size` in its first two fields,
+which is what makes appending safe: `context` and every function pointer sit at
+fixed offsets after them, so a grown table is still readable by an app compiled
+against a shorter one.
 
-The runtime ABI is therefore a generation number, not a promise that one
-native Rust image can run on every firmware in that generation. Firmware still
-requires the exact identity. This deliberately conservative rule allows the
-project to relax compatibility later without ever running a stale package by
-accident. ABI 1 remains version 1 during this work because it has not yet been
-released.
+**Feature level, not per-app requirement.** An app records the minor level it
+was *built* against, whether or not it calls anything new — so an app built at
+minor 7 is refused by minor 6 firmware even if it only uses features from minor
+3. The precise alternative would record, per app, the highest level it actually
+depends on. That needs build-time analysis of the compiled image (the `*_kind`
+values are plain integers inlined into the binary), most tractably by having
+each SDK accessor emit a marker symbol that `fpapp pack` reduces to a maximum.
+It is documented in `abi_minor_is_compatible` and deliberately not built: it
+only pays off once firmware versions are widely spread across users *and* apps
+commonly lag the current level.
 
 ### Four slots, no A/B slots
 

@@ -111,6 +111,8 @@ export interface ParsedFpApp {
   author: string;
   channels: number;
   firmwareAbi: string;
+  abiMajor: number;
+  abiMinor: number;
   manual?: string;
   setup?: string;
   settings?: string;
@@ -285,6 +287,8 @@ export async function parseFpApp(file: File): Promise<ParsedFpApp> {
     author: manifest.author,
     channels: manifest.channels,
     firmwareAbi: toHex(manifest.firmwareAbi),
+    abiMajor: Number(manifest.abiMajor ?? 0),
+    abiMinor: Number(manifest.abiMinor ?? 0),
     manual,
     setup: decodeText(4),
     settings,
@@ -558,6 +562,19 @@ export async function getFpAppSlots(
   });
 }
 
+/// Mirror of `libfp::fpapp::abi_minor_is_compatible`. Keep the two in step: if
+/// the UI is more permissive the device rejects the upload late, and if it is
+/// stricter the user is blocked from an install that would have worked.
+export function isAbiCompatible(
+  app: Pick<ParsedFpApp, "abiMajor" | "abiMinor">,
+  support: Pick<FpAppSupport, "abi_major" | "abi_minor">,
+) {
+  return (
+    app.abiMajor === Number(support.abi_major) &&
+    app.abiMinor <= Number(support.abi_minor)
+  );
+}
+
 export async function installFpApp(
   device: FpMidiDevice,
   slot: number,
@@ -565,8 +582,10 @@ export async function installFpApp(
   support: FpAppSupport,
   onProgress: (progress: number) => void,
 ) {
-  if (app.firmwareAbi !== toHex(support.firmware_abi)) {
-    throw new Error("This FPApp was compiled for a different firmware build.");
+  if (!isAbiCompatible(app, support)) {
+    throw new Error(
+      `This FPApp needs firmware ABI ${app.abiMajor}.${app.abiMinor}; this device provides ${support.abi_major}.${support.abi_minor}.`,
+    );
   }
   if (app.bytes.length > support.max_package_len) {
     throw new Error(
@@ -767,6 +786,8 @@ function parseManifest(bytes: Uint8Array) {
     author: result[5],
     channels: result[6],
     firmwareAbi: result[13],
+    abiMajor: result[14],
+    abiMinor: result[15],
   };
 }
 

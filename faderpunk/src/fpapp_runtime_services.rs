@@ -86,7 +86,12 @@ impl Drop for CompletionGuard {
 /// in the image; this call executes the tiny size export and enforces the
 /// fixed per-instance arena bound used by `run_fpapp`.
 pub fn validate_runtime_package(package: &Package<'_>) -> Result<(), RuntimePackageError> {
-    if package.manifest.firmware_abi != crate::version::FPAPP_FIRMWARE_ABI {
+    // The ABI contract, not the build identity: an app built against an older
+    // feature level of the same generation is expected to keep working.
+    if !libfp::fpapp::abi_minor_is_compatible(
+        package.manifest.abi_major,
+        package.manifest.abi_minor,
+    ) {
         return Err(RuntimePackageError::InvalidPackage);
     }
     let native = package

@@ -7,6 +7,46 @@ use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 pub const HOST_ABI_VERSION: u16 = 1;
 
+/// Layout lock for the wire structs shared with untrusted native code.
+///
+/// Compatibility is declared by hand via `libfp::fpapp::FPAPP_ABI_MAJOR` /
+/// `FPAPP_ABI_MINOR`, and the dangerous mistake is changing a layout *without*
+/// bumping the major — an app compiled against the old layout would then read
+/// every field at the wrong offset, silently. These assertions turn that into a
+/// build failure, so the decision has to be made deliberately.
+///
+/// **If a change here fails the build**: appending a field to `HostV1` is an
+/// additive change — update `HOST_V1_SIZE` and bump `FPAPP_ABI_MINOR`. Anything
+/// that moves or retypes an existing field is breaking — bump
+/// `FPAPP_ABI_MAJOR`. `EventV1`/`CommandV1` are passed by value across the FFI,
+/// so *any* change to them is breaking.
+mod abi_layout {
+    use super::{CommandV1, EventV1, HostV1};
+    use core::mem::size_of;
+
+    /// Size on the device. `HostV1` is pointer-bearing, so this is checked only
+    /// for the ARM target — `fpapp-sdk` is also compiled for the host by the
+    /// metadata helper, where pointers are wider and no FFI boundary is
+    /// crossed, so the number would differ there for no useful reason.
+    const HOST_V1_SIZE_ARM: usize = 56;
+    const EVENT_V1_SIZE: usize = 16;
+    const COMMAND_V1_SIZE: usize = 16;
+
+    #[cfg(target_arch = "arm")]
+    const _: () = assert!(
+        size_of::<HostV1>() == HOST_V1_SIZE_ARM,
+        "HostV1 layout changed: if a field was appended, update HOST_V1_SIZE_ARM and bump FPAPP_ABI_MINOR; if an existing field moved or changed type, bump FPAPP_ABI_MAJOR"
+    );
+    const _: () = assert!(
+        size_of::<EventV1>() == EVENT_V1_SIZE,
+        "EventV1 is passed by value across the FFI, so any layout change is breaking: bump FPAPP_ABI_MAJOR"
+    );
+    const _: () = assert!(
+        size_of::<CommandV1>() == COMMAND_V1_SIZE,
+        "CommandV1 is passed by value across the FFI, so any layout change is breaking: bump FPAPP_ABI_MAJOR"
+    );
+}
+
 pub mod event_kind {
     pub const FADER: u8 = 1;
     pub const BUTTON_DOWN: u8 = 2;

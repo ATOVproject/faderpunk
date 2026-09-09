@@ -3,11 +3,11 @@ import { Checkbox } from "@heroui/checkbox";
 
 import { useStore } from "../store";
 import {
-  abiHex,
   cacheFpAppManual,
   getFpAppSlots,
   getFpAppSupport,
   installFpApp,
+  isAbiCompatible,
   parseFpApp,
   removeCachedFpAppManual,
   removeFpApp,
@@ -102,13 +102,12 @@ export const InstalledApps = () => {
     return () => window.removeEventListener("beforeunload", handler);
   }, [progress]);
 
-  const firmwareAbi = support ? abiHex(support.firmware_abi) : undefined;
   const isCompatible = useMemo(
     () =>
-      selection && firmwareAbi
-        ? selection.app.firmwareAbi === firmwareAbi
+      selection && support
+        ? isAbiCompatible(selection.app, support)
         : Boolean(selection && isSimulator),
-    [firmwareAbi, isSimulator, selection],
+    [isSimulator, selection, support],
   );
   const isReplacing = Boolean(
     selection && slots.find((slot) => slot.slot === selection.slot)?.app,

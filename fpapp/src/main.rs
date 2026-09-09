@@ -140,6 +140,10 @@ fn pack(options: BTreeMap<String, String>) -> Result<(), String> {
         execution_units_per_event: 0,
         capabilities: parse_optional_hex_u32(&options, "capabilities", 0)?,
         firmware_abi: firmware_abi_option(&options)?,
+        // Stamped from the SDK the app is compiled against, so a package always
+        // declares the contract it was actually built to.
+        abi_major: libfp::fpapp::FPAPP_ABI_MAJOR,
+        abi_minor: libfp::fpapp::FPAPP_ABI_MINOR,
     };
 
     let manual = read_optional_text(&options, "manual")?;
@@ -672,6 +676,10 @@ fn inspect(path: &Path) -> Result<(), String> {
     println!("Parameters: {}", manifest.parameter_count);
     println!("Description: {}", manifest.description);
     println!("Firmware ABI: {}", format_abi(&manifest.firmware_abi));
+    println!(
+        "ABI contract: {}.{} (major must match firmware exactly; minor must not exceed it)",
+        manifest.abi_major, manifest.abi_minor
+    );
     println!("Native image: {} bytes", native.image.len());
     println!(
         "Entrypoints: required=0x{:x} init=0x{:x} poll=0x{:x} drop=0x{:x}",
@@ -699,6 +707,21 @@ fn verify(arguments: &[OsString]) -> Result<(), String> {
     package
         .native_program()
         .map_err(|error| format!("invalid native program: {error:?}"))?;
+    // The contract that actually decides whether firmware will run this. The
+    // `--firmware-abi` check below is a separate, opt-in provenance question:
+    // "was this built against the exact build I think it was?"
+    if !libfp::fpapp::abi_minor_is_compatible(
+        package.manifest.abi_major,
+        package.manifest.abi_minor,
+    ) {
+        return Err(format!(
+            "package declares ABI {}.{}, this tooling provides {}.{}",
+            package.manifest.abi_major,
+            package.manifest.abi_minor,
+            libfp::fpapp::FPAPP_ABI_MAJOR,
+            libfp::fpapp::FPAPP_ABI_MINOR,
+        ));
+    }
     if let Some(expected) = options.get("firmware-abi") {
         let expected = parse_abi(expected)?;
         if package.manifest.firmware_abi != expected {

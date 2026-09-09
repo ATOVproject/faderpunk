@@ -282,6 +282,8 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 proto
                     .send_msg(ConfigMsgOut::FpAppSupport {
                         firmware_abi: FPAPP_FIRMWARE_ABI,
+                        abi_major: libfp::fpapp::FPAPP_ABI_MAJOR,
+                        abi_minor: libfp::fpapp::FPAPP_ABI_MINOR,
                         slots: SLOT_COUNT as u8,
                         max_package_len: MAX_PACKAGE_SIZE as u32,
                         chunk_size: FPAPP_CHUNK_SIZE as u16,

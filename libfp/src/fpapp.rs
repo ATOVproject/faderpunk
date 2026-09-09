@@ -6,6 +6,61 @@
 pub const MAGIC: [u8; 8] = *b"FPAPP\0\r\n";
 pub const CONTAINER_VERSION: u16 = 0;
 pub const RUNTIME_ABI_VERSION: u16 = 1;
+
+/// Major ABI generation. Bump **only** for a change that breaks apps already
+/// compiled against the previous value: reordering, removing or retyping a
+/// field of `HostV1`/`EventV1`/`CommandV1`, or redefining what an existing
+/// `value_kind`/`command_kind`/`blob_kind`/`event_kind` number means. Firmware
+/// requires an exact match, because none of those can be detected at runtime.
+///
+/// Compile-time layout assertions in `fpapp-sdk` exist so that a breaking
+/// change cannot slip through without a build failure forcing this decision.
+pub const FPAPP_ABI_MAJOR: u16 = 1;
+
+/// Minor ABI feature level. Bump for any **additive** change: a host function
+/// appended to `HostV1`, or a newly defined `*_kind` constant. Old apps keep
+/// working, because appending never moves an existing field and an app never
+/// references a constant that did not exist when it was built.
+///
+/// This is a *feature level*, not a per-app requirement: an app records the
+/// level it was built against, whether or not it actually calls anything new.
+/// That is deliberately conservative — see `abi_minor_is_compatible` for the
+/// more precise alternative and why it is not implemented.
+pub const FPAPP_ABI_MINOR: u16 = 1;
+
+/// Whether firmware at `(FPAPP_ABI_MAJOR, FPAPP_ABI_MINOR)` can run an app
+/// built against `(app_major, app_minor)`.
+///
+/// The rule is asymmetric on purpose. Newer firmware runs older apps, because
+/// additive changes preserve every existing field offset and constant meaning.
+/// Older firmware must refuse newer apps, because the app may call a host
+/// function or reference a `*_kind` that this firmware does not implement —
+/// which would read as a garbage value rather than an error.
+///
+/// # A more precise alternative, deliberately not implemented
+///
+/// This compares against the app's *build-time feature level*, so an app built
+/// against minor 7 is refused by minor 6 firmware even when it only ever calls
+/// things that existed at minor 3. The precise version would record, per app,
+/// the highest feature level it *actually depends on* — the maximum over the
+/// `HostV1` fields it references and the `*_kind` constants it names — and
+/// compare that instead. An app would then only be refused by firmware
+/// genuinely missing something it calls.
+///
+/// It is not implemented because deriving that number needs build-time
+/// analysis of the compiled app: the `*_kind` values are plain integer
+/// constants inlined into the image, so recovering "which kinds does this
+/// binary use" means either scanning relocations and immediates in the ROPI
+/// object (fragile, and misses computed kinds) or having the SDK record it —
+/// e.g. every accessor emitting a `#[used]` marker symbol into a dedicated
+/// section that `fpapp pack` then reduces to a maximum. The latter is the
+/// tractable route if this ever becomes worth doing. It only pays off once
+/// firmware versions are widely spread across users *and* apps commonly lag
+/// the current feature level; until then the conservative rule costs a rebuild
+/// and the precise one costs a build-system dependency on symbol scanning.
+pub const fn abi_minor_is_compatible(app_major: u16, app_minor: u16) -> bool {
+    app_major == FPAPP_ABI_MAJOR && app_minor <= FPAPP_ABI_MINOR
+}
 pub const PROGRAM_KIND_THUMB_ROPI: u16 = 1;
 
 pub const NATIVE_PROGRAM_MAGIC: [u8; 4] = *b"FPN0";
@@ -63,7 +118,18 @@ pub struct Manifest<'a> {
     pub persistent_state_bytes: u16,
     pub execution_units_per_event: u32,
     pub capabilities: u32,
+    /// Which firmware build this package was produced against. **Provenance
+    /// only — not a compatibility gate.** Kept because it answers "what was
+    /// this built with?" when diagnosing a report, but gating on it made every
+    /// firmware update invalidate every installed app. `abi_major`/`abi_minor`
+    /// carry the actual contract.
     pub firmware_abi: [u8; 32],
+    /// ABI generation the app was compiled against; must match the firmware's
+    /// exactly. See `FPAPP_ABI_MAJOR`.
+    pub abi_major: u16,
+    /// ABI feature level the app was compiled against; must not exceed the
+    /// firmware's. See `FPAPP_ABI_MINOR`.
+    pub abi_minor: u16,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -474,6 +540,8 @@ fn parse_manifest(bytes: &[u8]) -> Result<Manifest<'_>, PackageError> {
     let mut execution_units_per_event = None;
     let mut capabilities = None;
     let mut firmware_abi = None;
+    let mut abi_major = None;
+    let mut abi_minor = None;
 
     for _ in 0..fields {
         let key = decoder.u32().map_err(|_| PackageError::InvalidManifest)?;
@@ -526,6 +594,8 @@ fn parse_manifest(bytes: &[u8]) -> Result<Manifest<'_>, PackageError> {
                         .map_err(|_| PackageError::InvalidManifest)?,
                 )
             }
+            14 => abi_major = Some(decoder.u16().map_err(|_| PackageError::InvalidManifest)?),
+            15 => abi_minor = Some(decoder.u16().map_err(|_| PackageError::InvalidManifest)?),
             _ => decoder.skip().map_err(|_| PackageError::InvalidManifest)?,
         }
     }
@@ -546,6 +616,12 @@ fn parse_manifest(bytes: &[u8]) -> Result<Manifest<'_>, PackageError> {
             .ok_or(PackageError::InvalidManifest)?,
         capabilities: capabilities.ok_or(PackageError::InvalidManifest)?,
         firmware_abi: firmware_abi.ok_or(PackageError::InvalidManifest)?,
+        // Absent in packages built before these keys existed. Defaulting to
+        // major 0 makes them fail the compatibility check rather than being
+        // mistaken for current — no such package was ever released, so this is
+        // only about failing loudly if one turns up.
+        abi_major: abi_major.unwrap_or(0),
+        abi_minor: abi_minor.unwrap_or(0),
     };
     validate_manifest(&manifest)?;
     Ok(manifest)
@@ -600,7 +676,7 @@ fn encode_manifest(manifest: &Manifest<'_>, output: &mut [u8]) -> Result<usize, 
     {
         let mut encoder = minicbor::Encoder::new(&mut writer);
         encoder
-            .map(14)
+            .map(16)
             .and_then(|encoder| encoder.u8(0))
             .and_then(|encoder| encoder.u8(manifest.app_id))
             .and_then(|encoder| encoder.u8(1))
@@ -639,6 +715,10 @@ fn encode_manifest(manifest: &Manifest<'_>, output: &mut [u8]) -> Result<usize, 
             .and_then(|encoder| encoder.u32(manifest.capabilities))
             .and_then(|encoder| encoder.u8(13))
             .and_then(|encoder| encoder.bytes(&manifest.firmware_abi))
+            .and_then(|encoder| encoder.u8(14))
+            .and_then(|encoder| encoder.u16(manifest.abi_major))
+            .and_then(|encoder| encoder.u8(15))
+            .and_then(|encoder| encoder.u16(manifest.abi_minor))
             .map_err(|error| error.into_write().unwrap_or(PackageError::InvalidManifest))?;
     }
     Ok(writer.position)
@@ -785,16 +865,16 @@ mod tests {
     // this independent of the builder catches drift in offsets, endian order,
     // CBOR field numbers, alignment, and the CRC-covered byte range.
     const GOLDEN_SIFT_PACKAGE: &[u8] = &[
-        0x46, 0x50, 0x41, 0x50, 0x50, 0x00, 0x0d, 0x0a, 0x00, 0x00, 0x01, 0x00, 0x90, 0x00, 0x00,
-        0x00, 0x02, 0x00, 0x30, 0x00, 0xcb, 0x32, 0x91, 0xf9, 0x01, 0x00, 0x01, 0x00, 0x30, 0x00,
-        0x00, 0x00, 0x5a, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x8c, 0x00, 0x00, 0x00, 0x04,
-        0x00, 0x00, 0x00, 0xae, 0x00, 0x18, 0x66, 0x01, 0x83, 0x01, 0x00, 0x00, 0x02, 0x00, 0x03,
+        0x46, 0x50, 0x41, 0x50, 0x50, 0x00, 0x0d, 0x0a, 0x00, 0x00, 0x01, 0x00, 0x94, 0x00, 0x00,
+        0x00, 0x02, 0x00, 0x30, 0x00, 0xe6, 0x5c, 0xb4, 0x05, 0x01, 0x00, 0x01, 0x00, 0x30, 0x00,
+        0x00, 0x00, 0x5e, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x90, 0x00, 0x00, 0x00, 0x04,
+        0x00, 0x00, 0x00, 0xb0, 0x00, 0x18, 0x66, 0x01, 0x83, 0x01, 0x00, 0x00, 0x02, 0x00, 0x03,
         0x64, 0x53, 0x69, 0x66, 0x74, 0x04, 0x69, 0x54, 0x68, 0x72, 0x65, 0x73, 0x68, 0x6f, 0x6c,
         0x64, 0x05, 0x64, 0x4e, 0x65, 0x61, 0x6c, 0x06, 0x02, 0x07, 0x1a, 0x00, 0xff, 0x00, 0xff,
         0x08, 0x0d, 0x09, 0x80, 0x0a, 0x18, 0x40, 0x0b, 0x19, 0x27, 0x10, 0x0c, 0x03, 0x0d, 0x58,
         0x20, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
         0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-        0x11, 0x11, 0x11, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00,
+        0x11, 0x11, 0x11, 0x0e, 0x01, 0x0f, 0x01, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00,
     ];
 
     #[test]
@@ -823,6 +903,35 @@ mod tests {
     }
 
     #[test]
+    fn abi_compatibility_is_asymmetric_by_design() {
+        // Same generation, app built against an older feature level: runs.
+        // This is the case the whole scheme exists for — a firmware update
+        // must not invalidate apps already in the wild.
+        assert!(abi_minor_is_compatible(FPAPP_ABI_MAJOR, 0));
+        assert!(abi_minor_is_compatible(FPAPP_ABI_MAJOR, FPAPP_ABI_MINOR));
+
+        // App needs a newer feature level than this firmware provides: refused.
+        // It may call a host function or reference a `*_kind` that does not
+        // exist here, which would read as a garbage value rather than error.
+        assert!(!abi_minor_is_compatible(
+            FPAPP_ABI_MAJOR,
+            FPAPP_ABI_MINOR + 1
+        ));
+
+        // Different generation: refused in both directions, since a layout or
+        // semantic change cannot be detected at runtime.
+        assert!(!abi_minor_is_compatible(FPAPP_ABI_MAJOR + 1, 0));
+        assert!(!abi_minor_is_compatible(
+            FPAPP_ABI_MAJOR.wrapping_sub(1),
+            FPAPP_ABI_MINOR
+        ));
+
+        // A package predating these manifest keys decodes as major 0, which
+        // must not be mistaken for a current build.
+        assert!(!abi_minor_is_compatible(0, 0) || FPAPP_ABI_MAJOR == 0);
+    }
+
+    #[test]
     fn builder_reproduces_the_golden_package() {
         let manifest = Manifest {
             app_id: 102,
@@ -839,6 +948,8 @@ mod tests {
             execution_units_per_event: 10_000,
             capabilities: 3,
             firmware_abi: [0x11; 32],
+            abi_major: FPAPP_ABI_MAJOR,
+            abi_minor: FPAPP_ABI_MINOR,
         };
         let mut output = [0u8; 160];
 
@@ -866,6 +977,8 @@ mod tests {
             execution_units_per_event: 10_000,
             capabilities: 3,
             firmware_abi: [0x22; 32],
+            abi_major: FPAPP_ABI_MAJOR,
+            abi_minor: FPAPP_ABI_MINOR,
         };
         let mut output = [0u8; 512];
 
