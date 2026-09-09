@@ -1,0 +1,12 @@
+Firmware exited unexpectedly: Exception
+[33m WARN[0m [2mprobe_rs::session[0m[2m:[0m Could not clear all hardware breakpoints: An ARM specific error occurred.
+
+Caused by:
+    0: An error occurred in the communication with an access port or debug port.
+    1: Target device did not respond to request.
+[33m WARN[0m [2mprobe_rs::session[0m[2m:[0m Failed to deconfigure device during shutdown: Arm(Dap(NoAcknowledge))
+Error: An ARM specific error occurred.
+
+Caused by:
+    0: An error occurred in the communication with an access port or debug port.
+    1: Target device did not respond to request.

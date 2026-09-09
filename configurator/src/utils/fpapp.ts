@@ -287,6 +287,9 @@ export async function parseFpApp(file: File): Promise<ParsedFpApp> {
     author: manifest.author,
     channels: manifest.channels,
     firmwareAbi: toHex(manifest.firmwareAbi),
+    // Absent only in packages predating these keys, which no release ever
+    // produced. Defaulting to major 0 makes such a package fail the
+    // compatibility check rather than be mistaken for a current build.
     abiMajor: Number(manifest.abiMajor ?? 0),
     abiMinor: Number(manifest.abiMinor ?? 0),
     manual,
@@ -734,6 +737,8 @@ function parseManifest(bytes: Uint8Array) {
       case 10:
       case 11:
       case 12:
+      case 14:
+      case 15:
         result[key] = decoder.uint();
         break;
       case 1: {
