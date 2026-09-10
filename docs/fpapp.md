@@ -327,8 +327,8 @@ The CBOR map has integer keys so firmware can parse it without allocation.
 | 0 | app ID | `100..=255` |
 | 1 | version | three `u16` values |
 | 2 | program kind | `1` for Thumb ROPI |
-| 3 | name | ASCII, 1-32 bytes |
-| 4 | description | ASCII, 1-96 bytes |
+| 3 | name | UTF-8, 1-32 bytes |
+| 4 | description | UTF-8, 1-96 bytes |
 | 5 | author | UTF-8, 1-64 bytes |
 | 6 | channels | `1..=16` |
 | 7 | display color | 24-bit RGB in `u32` |
