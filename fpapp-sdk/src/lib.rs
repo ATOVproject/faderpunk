@@ -21,13 +21,16 @@ pub const HOST_ABI_VERSION: u16 = 1;
 /// `FPAPP_ABI_MAJOR`. `EventV1`/`CommandV1` are passed by value across the FFI,
 /// so *any* change to them is breaking.
 mod abi_layout {
-    use super::{CommandV1, EventV1, HostV1};
+    #[cfg(target_arch = "arm")]
+    use super::HostV1;
+    use super::{CommandV1, EventV1};
     use core::mem::size_of;
 
     /// Size on the device. `HostV1` is pointer-bearing, so this is checked only
     /// for the ARM target — `fpapp-sdk` is also compiled for the host by the
     /// metadata helper, where pointers are wider and no FFI boundary is
     /// crossed, so the number would differ there for no useful reason.
+    #[cfg(target_arch = "arm")]
     const HOST_V1_SIZE_ARM: usize = 56;
     const EVENT_V1_SIZE: usize = 16;
     const COMMAND_V1_SIZE: usize = 16;
