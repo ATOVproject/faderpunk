@@ -26,6 +26,11 @@ macro_rules! register_apps {
 
         pub const REGISTERED_APP_IDS: [u8; _APP_COUNT] = [$($id),*];
 
+        /// Returns whether the app actually started. A spawn fails when the
+        /// task pool for that app is exhausted; the caller must not record the
+        /// channel as occupied in that case, or the layout would claim an app
+        /// that is not running and no later respawn would correct it.
+        #[must_use]
         pub fn spawn_app_by_id(
             app_id: u8,
             start_channel: usize,
@@ -33,7 +38,7 @@ macro_rules! register_apps {
             spawner: Spawner,
             exit_signals: &'static [Signal<NoopRawMutex, bool>; 16],
             completion_signals: &'static [Signal<NoopRawMutex, ()>; 16],
-        ) {
+        ) -> bool {
             match app_id {
                 $(
                     $id => {
@@ -49,13 +54,23 @@ macro_rules! register_apps {
                             &MIDI_USB_PUBSUB,
                         );
 
-                        spawner.spawn($app_mod::wrapper(app, &exit_signals[start_channel])).unwrap();
+                        if spawner
+                            .spawn($app_mod::wrapper(app, &exit_signals[start_channel]))
+                            .is_err()
+                        {
+                            defmt::warn!(
+                                "no free task slot for app {} on channel {}",
+                                app_id,
+                                start_channel
+                            );
+                            return false;
+                        }
                     },
                 )*
                 _ => {
                     if let Some(descriptor) = crate::fpapps::runtime_descriptor(app_id) {
                         completion_signals[start_channel].reset();
-                        spawner
+                        if spawner
                             .spawn(crate::fpapp_runtime::run_fpapp(
                                 descriptor,
                                 start_channel,
@@ -63,10 +78,21 @@ macro_rules! register_apps {
                                 &exit_signals[start_channel],
                                 &completion_signals[start_channel],
                             ))
-                            .unwrap();
+                            .is_err()
+                        {
+                            defmt::warn!(
+                                "no free task slot for installable app {} on channel {}",
+                                app_id,
+                                start_channel
+                            );
+                            return false;
+                        }
+                    } else {
+                        return false;
                     }
                 }
             }
+            true
         }
 
         pub fn get_channels(app_id: u8) -> Option<usize> {

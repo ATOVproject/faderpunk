@@ -118,15 +118,16 @@ impl LayoutManager {
         layout_id: u8,
     ) {
         let mut current_layout = self.layout.lock().await;
-        if current_layout[start_channel].is_none() {
-            spawn_app_by_id(
+        if current_layout[start_channel].is_none()
+            && spawn_app_by_id(
                 app_id,
                 start_channel,
                 layout_id,
                 self.spawner,
                 &self.exit_signals,
                 &self.completion_signals,
-            );
+            )
+        {
             current_layout[start_channel] = Some((app_id, channels, layout_id));
         }
     }
@@ -165,15 +166,17 @@ impl LayoutManager {
                 };
                 let held = self.held.lock().await[start_channel];
 
-                if should_spawn && !held {
-                    spawn_app_by_id(
+                if should_spawn
+                    && !held
+                    && spawn_app_by_id(
                         app_id,
                         start_channel,
                         layout_id,
                         self.spawner,
                         &self.exit_signals,
                         &self.completion_signals,
-                    );
+                    )
+                {
                     let mut current_layout = self.layout.lock().await;
                     current_layout[start_channel] = Some((app_id, channels, layout_id));
                     changed = true;
