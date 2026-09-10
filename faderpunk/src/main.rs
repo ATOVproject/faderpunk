@@ -85,8 +85,33 @@ bind_interrupts!(struct Irqs {
     UART1_IRQ => uart::BufferedInterruptHandler<UART1>;
 });
 
-static mut CORE1_STACK: Stack<131_072> = Stack::new();
+// Was 131_072 B, restored to that size once before (c5ce49a1) with no
+// measurement behind it. Painting the stack with a canary and reading back
+// the high-water mark on hardware (the `stack-diag` feature below), under
+// max stress on a busy 6-app-type layout, measured 2,532 B used — this
+// leaves >12x headroom while freeing RAM other reservations can use.
+static mut CORE1_STACK: Stack<32_768> = Stack::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
+
+#[cfg(feature = "stack-diag")]
+const STACK_CANARY: u8 = 0xa5;
+
+// Cortex-M stacks grow down from the top of the array, so the lowest address
+// still holding canary bytes marks how deep core1 has ever reached.
+#[cfg(feature = "stack-diag")]
+#[embassy_executor::task]
+async fn stack_diag_task() {
+    loop {
+        embassy_time::Timer::after_secs(5).await;
+        let mem = unsafe { &(*core::ptr::addr_of!(CORE1_STACK)).mem };
+        let untouched = mem.iter().take_while(|&&b| b == STACK_CANARY).count();
+        defmt::info!(
+            "core1 stack high-water mark: {}/{} bytes",
+            mem.len() - untouched,
+            mem.len()
+        );
+    }
+}
 
 /// MIDI buffers (RX and TX)
 static BUF_UART1_RX: StaticCell<[u8; 64]> = StaticCell::new();
@@ -308,6 +333,13 @@ async fn main(spawner: Spawner) {
 
     tasks::global_config::start_global_config(&spawner).await;
 
+    #[cfg(feature = "stack-diag")]
+    unsafe {
+        (*core::ptr::addr_of_mut!(CORE1_STACK))
+            .mem
+            .fill(STACK_CANARY);
+    }
+
     // Armed last, so none of the one-time init above can trip it. From here on
     // Core 1's heartbeat is what keeps the device alive. Skipped entirely when
     // no installed app can run: there is no untrusted code to guard, and an
@@ -327,6 +359,9 @@ async fn main(spawner: Spawner) {
             });
         },
     );
+
+    #[cfg(feature = "stack-diag")]
+    spawner.spawn(stack_diag_task()).unwrap();
 
     let layout = load_layout().await;
 
