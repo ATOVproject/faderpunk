@@ -705,6 +705,8 @@ function statusMessage(status: FpAppStatus) {
     InvalidPackage: "The device rejected the FPApp package.",
     RuntimeTooLarge:
       "This app needs more runtime memory than the firmware can provide.",
+    UnsupportedChannelCount:
+      "This app needs more channels than this device has.",
     FlashError: "The device could not write its FPApp flash region.",
   };
   return messages[status.tag];

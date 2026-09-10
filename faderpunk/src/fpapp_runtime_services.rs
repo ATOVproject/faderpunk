@@ -94,6 +94,12 @@ pub fn validate_runtime_package(package: &Package<'_>) -> Result<(), RuntimePack
     ) {
         return Err(RuntimePackageError::InvalidPackage);
     }
+    // Refuse here rather than at spawn: the width is knowable at install time,
+    // and silently accepting a package this build cannot run would leave the
+    // user with an app that installs, looks fine, and then fails to start.
+    if usize::from(package.manifest.channels) > GLOBAL_CHANNELS {
+        return Err(RuntimePackageError::UnsupportedChannelCount);
+    }
     let native = package
         .native_program()
         .map_err(|_| RuntimePackageError::InvalidPackage)?;
@@ -117,6 +123,7 @@ pub fn validate_runtime_package(package: &Package<'_>) -> Result<(), RuntimePack
 pub enum RuntimePackageError {
     InvalidPackage,
     InstanceTooLarge,
+    UnsupportedChannelCount,
 }
 
 struct BlobCache {
@@ -532,7 +539,10 @@ pub async fn run_fpapp(
 ) {
     let _completion = CompletionGuard(completion_signal);
     let channels = descriptor.channels as usize;
-    if channels == 0 || start_channel + channels > 16 {
+    // Derived from GLOBAL_CHANNELS, not a literal: this bound is what keeps a
+    // package's declared width from indexing past the channel arrays, so it has
+    // to track the platform rather than assume the widest build.
+    if channels == 0 || start_channel + channels > GLOBAL_CHANNELS {
         return;
     }
 

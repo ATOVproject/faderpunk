@@ -377,6 +377,9 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                         Err(crate::fpapp_runtime::RuntimePackageError::InstanceTooLarge) => {
                             FpAppStatus::RuntimeTooLarge
                         }
+                        Err(crate::fpapp_runtime::RuntimePackageError::UnsupportedChannelCount) => {
+                            FpAppStatus::UnsupportedChannelCount
+                        }
                         Err(crate::fpapp_runtime::RuntimePackageError::InvalidPackage) => {
                             FpAppStatus::InvalidPackage
                         }

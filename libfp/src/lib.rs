@@ -1270,6 +1270,8 @@ pub enum FpAppStatus {
     DuplicateAppId,
     InvalidPackage,
     RuntimeTooLarge,
+    /// The package declares more channels than this build has.
+    UnsupportedChannelCount,
     FlashError,
 }
 
