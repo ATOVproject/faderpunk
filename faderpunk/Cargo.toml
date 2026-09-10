@@ -63,6 +63,12 @@ ws2812-async = "0.3.0"
 
 libfp = { path = "../libfp" }
 
+[features]
+# Paints CORE1_STACK with a canary before spawning core1 and periodically
+# logs the high-water mark over defmt. Diagnostic only, never enabled in
+# release builds.
+stack-diag = []
+
 [lints.clippy]
 large_futures = "warn"
 
