@@ -9,7 +9,12 @@ embedded-io-async = "0.6.1"
 embassy-embedded-hal = { version = "0.3.2", features = ["defmt"] }
 embassy-sync = { version = "0.7.2", features = ["defmt"] }
 embassy-executor = { version = "0.7.0", features = [
-  "task-arena-size-262144",
+  # Each FPApp instance's future carries a fixed 8 KiB instance arena plus its
+  # runtime context — ~11 KiB — and the pool covers one instance per channel, so
+  # installable apps alone reserve ~173 KiB. 256 KiB left no room for that plus
+  # the built-in app pools, and spawning an app on the last free channel
+  # panicked with "task arena is full".
+  "task-arena-size-327680",
   "arch-cortex-m",
   "executor-thread",
   "executor-interrupt",
