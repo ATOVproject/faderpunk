@@ -1726,6 +1726,15 @@ pub mod compat {
         }
     }
 
+    /// Convert a quantized pitch to DAC counts.
+    ///
+    /// Mirrors `crate::app::pitch_as_counts` in the firmware. Custom V/Oct
+    /// curves from the global config are not available through the host ABI,
+    /// so the standard curves are used.
+    pub fn pitch_as_counts(pitch: Pitch, range: Range, vpo: VoltPerOct) -> u16 {
+        pitch.as_counts(range, vpo)
+    }
+
     pub use libfp::latch::LatchLayer;
 }
 
