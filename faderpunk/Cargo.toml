@@ -82,6 +82,7 @@ libfp = { path = "../libfp" }
 # release builds.
 stack-diag = []
 
+
 [lints.clippy]
 large_futures = "warn"
 
