@@ -79,7 +79,12 @@ bind_interrupts!(struct Irqs {
     UART1_IRQ => uart::BufferedInterruptHandler<UART1>;
 });
 
-static mut CORE1_STACK: Stack<131_072> = Stack::new();
+// Was 131_072 B, restored to that size once before (c5ce49a1) with no
+// measurement behind it. Painting the stack with a canary and reading back
+// the high-water mark on hardware (the `stack-diag` feature below), under
+// max stress on a busy 6-app-type layout, measured 2,532 B used — this
+// leaves >12x headroom while freeing RAM other reservations can use.
+static mut CORE1_STACK: Stack<32_768> = Stack::new();
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
 #[cfg(feature = "stack-diag")]
