@@ -22,7 +22,29 @@ export const Troubleshooting = () => (
       above.
     </p>
 
-    <H4>2. Grant MIDI access</H4>
+    <H4>2. Known issue: Chrome SysEx bug on macOS</H4>
+    <p>
+      As of Chrome 152 on macOS, a confirmed bug in Chrome's Web MIDI
+      implementation corrupts outgoing SysEx messages and can also block
+      incoming ones from reaching the page — this can prevent the Configurator
+      from finding or talking to your Faderpunk at all. It's a Chrome
+      regression, not a Faderpunk issue (
+      <a
+        className="font-semibold underline"
+        href="https://issues.chromium.org/issues/553149486"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        tracked here
+      </a>
+      ), and other USB-MIDI devices are affected too.
+    </p>
+    <p>
+      <strong>Workaround:</strong> use <strong>Firefox</strong> instead —
+      faderpunk.io works the same way there and isn't affected.
+    </p>
+
+    <H4>3. Grant MIDI access</H4>
     <p>
       The first time you connect, your browser shows a permission prompt asking
       to allow MIDI (SysEx) access — make sure to click <strong>Allow</strong>.
@@ -30,13 +52,13 @@ export const Troubleshooting = () => (
       faderpunk.io, reset the MIDI permission, and reload the page.
     </p>
 
-    <H4>3. Check your USB cable</H4>
+    <H4>4. Check your USB cable</H4>
     <p>
       Some USB cables only carry power, not data. Make sure you're using a cable
       that supports data transfer, not a charge-only cable.
     </p>
 
-    <H4>4. Mac: clear stale MIDI ports after a firmware update</H4>
+    <H4>5. Mac: clear stale MIDI ports after a firmware update</H4>
     <p>
       If you updated your Faderpunk's firmware from{" "}
       <strong>v1.10.x or earlier to v1.11.0 or later</strong>, macOS can leave
@@ -58,7 +80,7 @@ export const Troubleshooting = () => (
       <li>Replug your Faderpunk and try connecting again</li>
     </ol>
 
-    <H4>5. Running older firmware?</H4>
+    <H4>6. Running older firmware?</H4>
     <p>
       Faderpunk devices on firmware older than v1.7 only support the previous
       USB connection method. The site detects this automatically: if no
