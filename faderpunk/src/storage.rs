@@ -36,7 +36,7 @@ const SCHEMA_HEADER_RANGE: Range<u32> = 131_056..131_072;
 
 const APP_STORAGE_MAX_BYTES: u32 = 400;
 const APP_PARAMS_MAX_BYTES: u32 = 128;
-const SCENES_PER_APP: u32 = 16;
+pub const SCENES_PER_APP: u32 = 16;
 
 /// Magic bytes identifying a valid `SchemaHeader` (FaderPunk Schema Version).
 const SCHEMA_MAGIC: [u8; 4] = *b"FPSV";
@@ -474,6 +474,11 @@ pub async fn factory_reset() {
     erase_range(APP_PARAM_RANGE).await;
     erase_range(SCHEMA_HEADER_RANGE).await;
     write_schema_header(SCHEMA_VERSION).await;
+    // After the FRAM wipe, so the quarantine bits this clears are already gone.
+    // Without this the two-button recovery leaves a misbehaving community app
+    // resident in flash, and the only way to remove it is a working
+    // configurator — which is exactly what the user may not have.
+    crate::fpapps::erase_all_slots().await;
     // Wait a bit
     Timer::after_millis(100).await;
     // Then restart the unit

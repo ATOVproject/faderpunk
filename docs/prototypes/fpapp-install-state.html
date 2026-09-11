@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Superseded FPApp install state prototype</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    body { max-width: 1120px; margin: 24px auto; padding: 0 16px 48px; }
+    h1, h2, h3 { font-family: system-ui, sans-serif; }
+    h1 { margin-bottom: 0; }
+    .warning { margin: 8px 0 24px; padding: 12px; border: 2px solid #d97706; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 16px; }
+    section { border: 1px solid #8888; padding: 16px; }
+    button { margin: 3px; padding: 7px 10px; }
+    button[disabled] { opacity: .45; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+    .tab[aria-selected="true"] { outline: 3px solid #4f46e5; }
+    .scenario { display: none; }
+    .scenario.active { display: block; }
+    .ok { color: #16a34a; }
+    .error { color: #dc2626; }
+    .pending { color: #d97706; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: #7771; max-height: 560px; overflow: auto; }
+    #catalog { font-size: 1.1rem; }
+    ol { padding-left: 24px; }
+    code { background: #7772; padding: 1px 4px; }
+  </style>
+</head>
+<body>
+  <h1>Superseded FPApp install state model</h1>
+  <p class="warning"><strong>REJECTED DESIGN RECORD.</strong> This throwaway page models the earlier A/B rollback idea. The implemented design uses four independent slots: a failed upload empties only its selected slot and the user uploads again. The live Configurator's Apps page now contains the testable Installed Apps section. This file is retained for design-history review and must not be treated as the current specification.</p>
+
+  <section>
+    <h2>Guided failure scenarios</h2>
+    <div class="tabs" role="tablist" aria-label="Prototype scenarios">
+      <button class="tab" role="tab" aria-selected="true" data-scenario="happy">Happy install</button>
+      <button class="tab" role="tab" aria-selected="false" data-scenario="interrupted">Interrupted update</button>
+      <button class="tab" role="tab" aria-selected="false" data-scenario="bad-update">Bad update rollback</button>
+      <button class="tab" role="tab" aria-selected="false" data-scenario="active-remove">Active-app rejection</button>
+    </div>
+    <div id="happy" class="scenario active">
+      <p>Install Sift 1.0.0, commit it, reboot, and confirm it joins the factory app catalog.</p>
+      <button data-run="happy">Run walkthrough</button>
+    </div>
+    <div id="interrupted" class="scenario">
+      <p>Start a Sift 1.1.0 update, lose power midway, and confirm Sift 1.0.0 remains active.</p>
+      <button data-run="interrupted">Run walkthrough</button>
+    </div>
+    <div id="bad-update" class="scenario">
+      <p>Commit a structurally valid Sift 1.1.0 that fails runtime validation at boot, then fall back to 1.0.0.</p>
+      <button data-run="bad-update">Run walkthrough</button>
+    </div>
+    <div id="active-remove" class="scenario">
+      <p>Put Sift in a layout and confirm update and removal are rejected until it is inactive.</p>
+      <button data-run="active-remove">Run walkthrough</button>
+    </div>
+    <pre id="walkthrough">Choose a scenario and run it.</pre>
+  </section>
+
+  <div class="grid">
+    <section>
+      <h2>Free play</h2>
+      <h3>Transfer</h3>
+      <button data-action="begin-100">Begin Sift 1.0.0</button>
+      <button data-action="begin-110">Begin Sift 1.1.0</button>
+      <button data-action="chunk">Write next 384-byte chunk</button>
+      <button data-action="finish">Write all remaining chunks</button>
+      <button data-action="corrupt-crc">Corrupt transfer CRC</button>
+      <button data-action="bad-runtime">Mark runtime invalid</button>
+      <button data-action="commit">Commit package</button>
+      <button data-action="abort">Abort transfer</button>
+
+      <h3>Device lifecycle</h3>
+      <button data-action="power-loss">Simulate power loss</button>
+      <button data-action="reboot">Clean reboot</button>
+      <button data-action="reset">Reset prototype</button>
+
+      <h3>Layout and removal</h3>
+      <button data-action="add-layout">Add Sift to active layout</button>
+      <button data-action="remove-layout">Remove Sift from layout</button>
+      <button data-action="remove-package">Remove installed Sift</button>
+    </section>
+
+    <section>
+      <h2>Connected-device view</h2>
+      <p id="status"></p>
+      <p id="catalog"></p>
+      <p id="layout"></p>
+      <p id="transfer"></p>
+      <h3>Invariant checks</h3>
+      <ul id="invariants"></ul>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section>
+      <h2>Full in-memory state</h2>
+      <pre id="state"></pre>
+    </section>
+    <section>
+      <h2>Action log</h2>
+      <pre id="log"></pre>
+    </section>
+  </div>
+
+  <script>
+    "use strict";
+
+    const FACTORY_APP_IDS = Array.from({ length: 27 }, (_, index) => index + 1);
+    const SIFT_ID = 102;
+    const CHUNK_SIZE = 384;
+    const PACKAGE_BYTES = 1536;
+
+    function freshState() {
+      return {
+        bootCount: 1,
+        mode: "ready",
+        outputsSafe: false,
+        pendingRestart: false,
+        lastError: null,
+        nextRecordId: 1,
+        activeCatalog: {},
+        committedCatalog: {},
+        layoutAppIds: [],
+        staging: null,
+        records: [],
+        quarantinedRecordIds: [],
+        log: ["Boot 1: factory catalog active; no community packages installed."]
+      };
+    }
+
+    let state = freshState();
+    let walkthroughLines = [];
+
+    function clone(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function record(message) {
+      state.log.unshift(message);
+      state.log = state.log.slice(0, 80);
+      state.lastError = null;
+    }
+
+    function reject(message) {
+      state.lastError = message;
+      state.log.unshift(`REJECTED: ${message}`);
+      state.log = state.log.slice(0, 80);
+      return false;
+    }
+
+    function siftIsActiveInLayout() {
+      return state.layoutAppIds.includes(SIFT_ID);
+    }
+
+    function beginInstall(version) {
+      if (state.staging) return reject("another transfer is already in progress");
+      if (siftIsActiveInLayout()) return reject("Sift is active in a layout");
+      state.mode = "installing";
+      state.outputsSafe = true;
+      state.staging = {
+        appId: SIFT_ID,
+        name: "Sift",
+        version,
+        totalBytes: PACKAGE_BYTES,
+        receivedBytes: 0,
+        nextExpectedOffset: 0,
+        crcValid: true,
+        runtimeValid: true
+      };
+      record(`Began Sift ${version} transfer; active catalog unchanged.`);
+      return true;
+    }
+
+    function writeChunk(allRemaining = false) {
+      if (!state.staging) return reject("no transfer is in progress");
+      const remaining = state.staging.totalBytes - state.staging.receivedBytes;
+      if (remaining === 0) return reject("all package bytes have already arrived");
+      const bytes = allRemaining ? remaining : Math.min(CHUNK_SIZE, remaining);
+      state.staging.receivedBytes += bytes;
+      state.staging.nextExpectedOffset = state.staging.receivedBytes;
+      record(`Accepted ${bytes} sequential bytes; next offset is ${state.staging.nextExpectedOffset}.`);
+      return true;
+    }
+
+    function corruptCrc() {
+      if (!state.staging) return reject("no staged package to corrupt");
+      state.staging.crcValid = false;
+      record("The staged package CRC is now invalid.");
+      return true;
+    }
+
+    function markRuntimeInvalid() {
+      if (!state.staging) return reject("no staged package to mark invalid");
+      state.staging.runtimeValid = false;
+      record("The staged program will fail runtime validation at boot.");
+      return true;
+    }
+
+    function commitPackage() {
+      if (!state.staging) return reject("no package is staged");
+      if (state.staging.receivedBytes !== state.staging.totalBytes) {
+        return reject(`package incomplete: expected offset ${state.staging.receivedBytes}`);
+      }
+      if (!state.staging.crcValid) return reject("package CRC check failed");
+      const packageRecord = {
+        recordId: state.nextRecordId++,
+        type: "package",
+        appId: state.staging.appId,
+        name: state.staging.name,
+        version: state.staging.version,
+        runtimeValid: state.staging.runtimeValid,
+        committed: true
+      };
+      state.records.push(packageRecord);
+      state.committedCatalog[String(SIFT_ID)] = packageRecord.recordId;
+      state.staging = null;
+      state.mode = "ready";
+      state.outputsSafe = false;
+      state.pendingRestart = true;
+      record(`Committed immutable record ${packageRecord.recordId}; reboot required before activation.`);
+      return true;
+    }
+
+    function abortTransfer(reason = "Transfer aborted by user") {
+      if (!state.staging) return reject("no transfer is in progress");
+      state.staging = null;
+      state.mode = "ready";
+      state.outputsSafe = false;
+      record(`${reason}; active catalog unchanged.`);
+      return true;
+    }
+
+    function latestFallbackRecord(appId, beforeRecordId) {
+      return state.records
+        .filter(record => record.type === "package"
+          && record.appId === appId
+          && record.recordId < beforeRecordId
+          && record.runtimeValid
+          && !state.quarantinedRecordIds.includes(record.recordId))
+        .sort((a, b) => b.recordId - a.recordId)[0] || null;
+    }
+
+    function boot(cause) {
+      const discardedTransfer = Boolean(state.staging);
+      state.bootCount += 1;
+      state.staging = null;
+      state.mode = "booting";
+      state.outputsSafe = true;
+
+      for (const [appId, recordId] of Object.entries(clone(state.committedCatalog))) {
+        const packageRecord = state.records.find(record => record.recordId === recordId);
+        if (!packageRecord || packageRecord.type !== "package") {
+          delete state.committedCatalog[appId];
+          continue;
+        }
+        if (!packageRecord.runtimeValid) {
+          state.quarantinedRecordIds.push(packageRecord.recordId);
+          const fallback = latestFallbackRecord(Number(appId), packageRecord.recordId);
+          if (fallback) state.committedCatalog[appId] = fallback.recordId;
+          else delete state.committedCatalog[appId];
+          state.log.unshift(`Boot quarantined record ${packageRecord.recordId} and ${fallback ? `restored ${fallback.version}` : "removed its catalog entry"}.`);
+        }
+      }
+
+      state.activeCatalog = clone(state.committedCatalog);
+      state.layoutAppIds = state.layoutAppIds.filter(appId =>
+        FACTORY_APP_IDS.includes(appId) || Object.hasOwn(state.activeCatalog, String(appId))
+      );
+      state.pendingRestart = false;
+      state.mode = "ready";
+      state.outputsSafe = false;
+      record(`Boot ${state.bootCount} after ${cause}${discardedTransfer ? "; incomplete staging discarded" : ""}.`);
+      return true;
+    }
+
+    function removePackage() {
+      if (siftIsActiveInLayout()) return reject("Sift is active in a layout");
+      if (!Object.hasOwn(state.committedCatalog, String(SIFT_ID))) {
+        return reject("Sift is not present in the committed catalog");
+      }
+      const tombstone = {
+        recordId: state.nextRecordId++,
+        type: "tombstone",
+        appId: SIFT_ID,
+        committed: true
+      };
+      state.records.push(tombstone);
+      delete state.committedCatalog[String(SIFT_ID)];
+      state.pendingRestart = true;
+      record(`Committed removal tombstone ${tombstone.recordId}; reboot required.`);
+      return true;
+    }
+
+    function addToLayout() {
+      if (!Object.hasOwn(state.activeCatalog, String(SIFT_ID))) {
+        return reject("Sift is not active in the running catalog");
+      }
+      if (!siftIsActiveInLayout()) state.layoutAppIds.push(SIFT_ID);
+      record("Sift added to the active layout.");
+      return true;
+    }
+
+    function removeFromLayout() {
+      state.layoutAppIds = state.layoutAppIds.filter(appId => appId !== SIFT_ID);
+      record("Sift removed from the active layout.");
+      return true;
+    }
+
+    function reset() {
+      state = freshState();
+      walkthroughLines = [];
+      render();
+    }
+
+    function activeSiftVersion() {
+      const recordId = state.activeCatalog[String(SIFT_ID)];
+      const packageRecord = state.records.find(record => record.recordId === recordId);
+      return packageRecord ? packageRecord.version : null;
+    }
+
+    function catalogIds() {
+      return [...FACTORY_APP_IDS, ...Object.keys(state.activeCatalog).map(Number)].sort((a, b) => a - b);
+    }
+
+    function invariantChecks() {
+      const activeRecordIds = Object.values(state.activeCatalog);
+      const activeRecordsExist = activeRecordIds.every(recordId =>
+        state.records.some(record => record.recordId === recordId && record.type === "package")
+      );
+      const catalogChangedBeforeReboot = Object.keys(state.activeCatalog).some(appId =>
+        state.activeCatalog[appId] !== state.committedCatalog[appId]
+      ) && !state.pendingRestart;
+      return [
+        [activeRecordsExist, "Every active catalog entry points to an immutable package record"],
+        [!catalogChangedBeforeReboot, "Catalog activation occurs only at boot"],
+        [!state.staging || state.staging.nextExpectedOffset === state.staging.receivedBytes, "Transfer offset is sequential"],
+        [!state.outputsSafe || state.mode === "installing" || state.mode === "booting", "Safe-output mode is limited to install/boot transitions"],
+        [state.quarantinedRecordIds.every(id => !activeRecordIds.includes(id)), "Quarantined records cannot be active"],
+        [state.layoutAppIds.every(id => FACTORY_APP_IDS.includes(id) || Object.hasOwn(state.activeCatalog, String(id))), "Layouts reference only active catalog entries"]
+      ];
+    }
+
+    function snapshot(label) {
+      const version = activeSiftVersion();
+      walkthroughLines.push(
+        `${walkthroughLines.length + 1}. ${label}\n`
+        + `   active=${version ? `Sift ${version}` : "none"}; committed=${JSON.stringify(state.committedCatalog)}; `
+        + `staging=${state.staging ? `${state.staging.version} ${state.staging.receivedBytes}/${state.staging.totalBytes}` : "none"}; `
+        + `layout=${JSON.stringify(state.layoutAppIds)}; error=${state.lastError || "none"}`
+      );
+    }
+
+    function installAndBoot(version, runtimeValid = true) {
+      beginInstall(version);
+      writeChunk(true);
+      if (!runtimeValid) markRuntimeInvalid();
+      commitPackage();
+      boot("clean restart");
+    }
+
+    function runScenario(name) {
+      reset();
+      if (name === "happy") {
+        snapshot("Initial device state");
+        beginInstall("1.0.0");
+        snapshot("Transfer began; running catalog is unchanged");
+        writeChunk(true);
+        commitPackage();
+        snapshot("Package committed; still not running");
+        boot("clean restart");
+        snapshot("Reboot atomically activates Sift 1.0.0");
+      } else if (name === "interrupted") {
+        installAndBoot("1.0.0");
+        snapshot("Sift 1.0.0 is active");
+        beginInstall("1.1.0");
+        writeChunk();
+        snapshot("A partial 1.1.0 update exists only in staging");
+        boot("power loss");
+        snapshot("Staging is discarded and 1.0.0 remains active");
+      } else if (name === "bad-update") {
+        installAndBoot("1.0.0");
+        snapshot("Sift 1.0.0 is active");
+        beginInstall("1.1.0");
+        writeChunk(true);
+        markRuntimeInvalid();
+        commitPackage();
+        snapshot("1.1.0 is committed but not yet active");
+        boot("clean restart");
+        snapshot("Boot quarantines 1.1.0 and restores 1.0.0");
+      } else if (name === "active-remove") {
+        installAndBoot("1.0.0");
+        addToLayout();
+        snapshot("Sift 1.0.0 is active in a layout");
+        beginInstall("1.1.0");
+        snapshot("Update is rejected while active");
+        removePackage();
+        snapshot("Removal is also rejected while active");
+        removeFromLayout();
+        removePackage();
+        snapshot("Removal is committed after the layout releases Sift");
+        boot("clean restart");
+        snapshot("Reboot removes Sift from GetAllApps");
+      }
+      render();
+    }
+
+    function render() {
+      const version = activeSiftVersion();
+      const status = document.querySelector("#status");
+      status.className = state.lastError ? "error" : state.pendingRestart ? "pending" : "ok";
+      status.textContent = state.lastError
+        ? `Last action rejected: ${state.lastError}`
+        : state.pendingRestart
+          ? "A committed catalog change is waiting for reboot."
+          : `Ready on boot ${state.bootCount}.`;
+      document.querySelector("#catalog").textContent =
+        `GetAllApps: 27 factory apps${version ? ` + Sift ${version} (ID ${SIFT_ID})` : " + no community apps"}`;
+      document.querySelector("#layout").textContent =
+        `Active layout IDs: ${state.layoutAppIds.length ? state.layoutAppIds.join(", ") : "none"}`;
+      document.querySelector("#transfer").textContent = state.staging
+        ? `Transfer: Sift ${state.staging.version}, ${state.staging.receivedBytes}/${state.staging.totalBytes} bytes, next offset ${state.staging.nextExpectedOffset}`
+        : "Transfer: none";
+      document.querySelector("#state").textContent = JSON.stringify({
+        ...state,
+        getAllAppsIds: catalogIds()
+      }, null, 2);
+      document.querySelector("#log").textContent = state.log.join("\n");
+      document.querySelector("#walkthrough").textContent = walkthroughLines.length
+        ? walkthroughLines.join("\n\n")
+        : "Choose a scenario and run it.";
+      document.querySelector("#invariants").innerHTML = invariantChecks()
+        .map(([passes, label]) => `<li class="${passes ? "ok" : "error"}">${passes ? "PASS" : "FAIL"}: ${label}</li>`)
+        .join("");
+    }
+
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(item => item.setAttribute("aria-selected", "false"));
+        document.querySelectorAll(".scenario").forEach(item => item.classList.remove("active"));
+        tab.setAttribute("aria-selected", "true");
+        document.querySelector(`#${tab.dataset.scenario}`).classList.add("active");
+      });
+    });
+
+    document.querySelectorAll("[data-run]").forEach(button => {
+      button.addEventListener("click", () => runScenario(button.dataset.run));
+    });
+
+    document.querySelectorAll("[data-action]").forEach(button => {
+      button.addEventListener("click", () => {
+        const actions = {
+          "begin-100": () => beginInstall("1.0.0"),
+          "begin-110": () => beginInstall("1.1.0"),
+          "chunk": () => writeChunk(false),
+          "finish": () => writeChunk(true),
+          "corrupt-crc": corruptCrc,
+          "bad-runtime": markRuntimeInvalid,
+          "commit": commitPackage,
+          "abort": () => abortTransfer(),
+          "power-loss": () => boot("power loss"),
+          "reboot": () => boot("clean restart"),
+          "reset": reset,
+          "add-layout": addToLayout,
+          "remove-layout": removeFromLayout,
+          "remove-package": removePackage
+        };
+        actions[button.dataset.action]();
+        render();
+      });
+    });
+
+    render();
+  </script>
+</body>
+</html>

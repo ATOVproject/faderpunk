@@ -12,6 +12,11 @@ pub struct RuntimeState {
     #[n(0)]
     #[cbor(default)]
     pub clock_is_running: bool,
+    /// Bitmask of FPApp slots that tripped the watchdog and are held back from
+    /// spawning. Cleared by a factory reset, or by reinstalling the slot.
+    #[n(1)]
+    #[cbor(default)]
+    pub quarantined_slots: u8,
 }
 
 /// A factory-fresh unit (empty/unreadable FRAM) boots with the internal
@@ -20,12 +25,14 @@ impl Default for RuntimeState {
     fn default() -> Self {
         Self {
             clock_is_running: true,
+            quarantined_slots: 0,
         }
     }
 }
 
 static STATE: Mutex<CriticalSectionRawMutex, RuntimeState> = Mutex::new(RuntimeState {
     clock_is_running: true,
+    quarantined_slots: 0,
 });
 
 pub async fn init_state() {
@@ -60,4 +67,8 @@ where
 
 pub async fn is_clock_running() -> bool {
     STATE.lock().await.clock_is_running
+}
+
+pub async fn quarantined_slots() -> u8 {
+    STATE.lock().await.quarantined_slots
 }

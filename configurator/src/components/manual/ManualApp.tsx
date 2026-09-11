@@ -43,6 +43,7 @@ export interface ManualAppData {
   color: AllColors;
   params?: string[];
   storage?: string[];
+  setup?: ReactNode;
   text: string;
   channels: Omit<ChannelProps, "idx" | "color" | "singleChannel">[];
 }
@@ -295,9 +296,9 @@ export const ManualApp = ({ app }: Props) => {
           </List>
         </div>
       ) : null}
-      <p className="mb-4">
+      <div className="mb-4">
         <Md>{app.text}</Md>
-      </p>
+      </div>
       <div
         className="inline-grid"
         style={{
@@ -453,6 +454,14 @@ export const ManualApp = ({ app }: Props) => {
           />
         ))}
       </div>
+      {app.setup ? (
+        <details className="mt-8 border-y border-white/10 py-4">
+          <summary className="cursor-pointer font-semibold">Setup</summary>
+          <div className="mt-3 max-w-[75ch] text-sm leading-6 text-white">
+            <Md>{app.setup}</Md>
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 };

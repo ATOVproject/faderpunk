@@ -37,6 +37,7 @@ export interface FpMidiDevice {
   output: MIDIOutput;
   version: string;
   rx: RxState;
+  transactionTail: Promise<void>;
 }
 
 function attachInput(input: MIDIInput): RxState {
@@ -163,7 +164,14 @@ async function findDevice(access: MIDIAccess): Promise<FpMidiDevice | null> {
       if (version === null) continue;
 
       const rx = attachInput(input);
-      const device: FpMidiDevice = { access, input, output, version, rx };
+      const device: FpMidiDevice = {
+        access,
+        input,
+        output,
+        version,
+        rx,
+        transactionTail: Promise.resolve(),
+      };
       access.onstatechange = (event: MIDIConnectionEvent) => {
         const port = event.port;
         if (
@@ -222,7 +230,10 @@ export async function sendMessage(
   device: FpMidiDevice,
   msg: ConfigMsgIn,
 ): Promise<void> {
-  sendFrame(device.output, msg);
+  return runTransaction(device, () => {
+    sendFrame(device.output, msg);
+    return Promise.resolve();
+  });
 }
 
 export async function receiveMessage(
@@ -237,11 +248,13 @@ export async function sendAndReceive(
   msg: ConfigMsgIn,
   timeoutMs?: number,
 ): Promise<ConfigMsgOut> {
-  await sendMessage(device, msg);
-  return receiveMessage(device, timeoutMs);
+  return runTransaction(device, async () => {
+    sendFrame(device.output, msg);
+    return receiveMessage(device, timeoutMs);
+  });
 }
 
-export async function receiveBatchMessages(
+async function receiveBatchMessages(
   device: FpMidiDevice,
   count: bigint,
 ): Promise<ConfigMsgOut[]> {
@@ -258,6 +271,39 @@ export async function receiveBatchMessages(
   }
 
   return results;
+}
+
+export async function sendAndReceiveBatch(
+  device: FpMidiDevice,
+  msg: ConfigMsgIn,
+): Promise<{ start: ConfigMsgOut; messages: ConfigMsgOut[] }> {
+  return runTransaction(device, async () => {
+    sendFrame(device.output, msg);
+    const start = await receiveMessage(device);
+    const messages =
+      start.tag === "BatchMsgStart"
+        ? await receiveBatchMessages(device, start.value)
+        : [];
+    return { start, messages };
+  });
+}
+
+async function runTransaction<T>(
+  device: FpMidiDevice,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = device.transactionTail;
+  let release = () => {};
+  device.transactionTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
 }
 
 export function getDeviceName(device: FpMidiDevice): string {

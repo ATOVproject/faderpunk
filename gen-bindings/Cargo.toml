@@ -8,3 +8,7 @@ license = "GPL-3.0"
 libfp = { path = "../libfp" }
 postcard-bindgen = { version = "0.7.1", features = ["generating"] }
 syn = { version = "2", features = ["full", "extra-traits"] }
+
+# Keep this generator standalone even when the checkout itself is nested in a
+# Git worktree directory inside another Faderpunk workspace.
+[workspace]

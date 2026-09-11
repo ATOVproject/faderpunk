@@ -117,7 +117,7 @@ cargo build
 
 ## Web Configurator
 
-The Faderpunk Configurator is a React/TypeScript web application that communicates with the device via WebUSB.
+The Faderpunk Configurator is a React/TypeScript web application that communicates with the device over its USB MIDI configuration connection.
 
 ### Features
 - Drag-and-drop layout management
@@ -125,6 +125,22 @@ The Faderpunk Configurator is a React/TypeScript web application that communicat
 - Global settings (MIDI, I2C, clock, quantizer)
 - Scene management
 - Live visual feedback
+- Four installable community-app slots
+
+### Installing community apps
+
+FPApp-capable firmware can install `.fpapp` files without entering BOOTSEL or
+replacing the firmware image. Connect normally, open **Apps**, scroll to
+**Installed Apps**, and install a trusted package in any of the four slots. If
+the replaced app is running, firmware safely removes its instances from the
+channel layout first. The installed app then appears in the normal app
+catalogue and layout editor.
+
+Installation uses the USB MIDI configuration cable and requires a Chromium
+browser with Web MIDI/SysEx permission.
+
+See [the FPApp proposal and format](docs/fpapp.md) for the build workflow,
+compatibility contract, trust boundary, and implementation status.
 
 ### Running the Configurator
 
@@ -184,6 +200,8 @@ faderpunk/
 ├── libfp/               # Shared library
 │   ├── src/             # Common types and utilities
 │   └── Cargo.toml
+├── fpapp-sdk/           # Rust compatibility facade for installable apps
+├── fpapp/               # Build, inspect, and verify .fpapp packages
 ├── configurator/        # Web configurator
 │   ├── src/
 │   └── package.json
