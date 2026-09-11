@@ -17,12 +17,13 @@ import type {
 } from "../utils/types";
 
 import {
-  receiveBatchMessages,
   sendAndReceive,
+  sendAndReceiveBatch,
   sendMessage,
   type FpMidiDevice,
 } from "../utils/midi-protocol";
 import { getFixedLengthParamArray } from "./utils";
+import { mergeInstalledFpAppConfigs } from "./fpapp";
 import {
   parseParamValueFromFile,
   parseGlobalConfigFromFile,
@@ -41,7 +42,7 @@ export const setGlobalConfig = async (
 };
 
 export const getAllApps = async (dev: FpMidiDevice) => {
-  const response = await sendAndReceive(dev, {
+  const { start: response, messages: apps } = await sendAndReceiveBatch(dev, {
     tag: "GetAllApps",
   });
 
@@ -50,8 +51,6 @@ export const getAllApps = async (dev: FpMidiDevice) => {
       `Could not fetch apps. Unexpected repsonse tag: ${response.tag}`,
     );
   }
-
-  const apps = await receiveBatchMessages(dev, response.value);
 
   // Parse apps data into a Map for easy lookup by app ID
   const parsedApps = new Map<number, App>();
@@ -76,7 +75,7 @@ export const getAllApps = async (dev: FpMidiDevice) => {
       parsedApps.set(appConfig.appId, appConfig);
     });
 
-  return parsedApps;
+  return mergeInstalledFpAppConfigs(dev, parsedApps);
 };
 
 export const getAppParams = async (dev: FpMidiDevice, layoutId: number) => {
@@ -119,7 +118,7 @@ export const setAppParams = async (
 export const getAllAppParams = async (
   dev: FpMidiDevice,
 ): Promise<Map<number, Value[]>> => {
-  const response = await sendAndReceive(dev, {
+  const { start: response, messages } = await sendAndReceiveBatch(dev, {
     tag: "GetAllAppParams",
   });
 
@@ -129,7 +128,6 @@ export const getAllAppParams = async (
     );
   }
 
-  const messages = await receiveBatchMessages(dev, response.value);
   const params = messages
     .filter((item): item is AppParams => item.tag === "AppState")
     .map(({ value }) => value);

@@ -9,7 +9,16 @@ embedded-io-async = "0.6.1"
 embassy-embedded-hal = { version = "0.3.2", features = ["defmt"] }
 embassy-sync = { version = "0.7.2", features = ["defmt"] }
 embassy-executor = { version = "0.7.0", features = [
-  "task-arena-size-262144",
+  # Embassy allocates a task pool wholesale on the first spawn of that app type
+  # and never frees it, so the reservation is the sum over every app type touched
+  # in a boot. An FPApp instance's future carries a fixed 8 KiB instance arena
+  # plus its runtime context (~11 KiB), and the pool covers one instance per
+  # channel, so installable apps alone reserve ~181 KiB. At 256 KiB that starved
+  # the built-in pools and a known-good layout panicked with "task arena is
+  # full". The room comes from CORE1_STACK, which measured 2,532 B of its former
+  # 128 KiB (see main.rs); spending most of that here keeps built-ins close to
+  # the headroom they had before installable apps existed.
+  "task-arena-size-393216",
   "arch-cortex-m",
   "executor-thread",
   "executor-interrupt",
@@ -62,12 +71,17 @@ static_cell = "2.1.1"
 ws2812-async = "0.3.0"
 
 libfp = { path = "../libfp" }
+fpapp-sdk = { path = "../fpapp-sdk" }
+
+[build-dependencies]
+libfp = { path = "../libfp" }
 
 [features]
 # Paints CORE1_STACK with a canary before spawning core1 and periodically
 # logs the high-water mark over defmt. Diagnostic only, never enabled in
 # release builds.
 stack-diag = []
+
 
 [lints.clippy]
 large_futures = "warn"

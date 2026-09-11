@@ -2,6 +2,7 @@ import { ModalMode, type AllApps, type AppLayout } from "../utils/types";
 import { useModalContext } from "../contexts/ModalContext";
 import { ChannelOverview } from "./ChannelOverview";
 import { GroupedApps } from "./GroupedApps";
+import { InstalledApps } from "./FpAppsTab";
 
 interface Props {
   apps?: AllApps;
@@ -25,6 +26,7 @@ export const AppsTab = ({ apps, layout }: Props) => {
         />
       </div>
       {apps ? <GroupedApps apps={apps} /> : null}
+      <InstalledApps />
     </div>
   );
 };
