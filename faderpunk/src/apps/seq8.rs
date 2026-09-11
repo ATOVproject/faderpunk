@@ -550,7 +550,7 @@ pub async fn run(
                     s.gateseq.set(gateseq);
                     s.legato_seq.set(legato_seq);
                 });
-            } else if chan % 2 == 0 {
+            } else if chan.is_multiple_of(2) {
                 // Shift + long press on even button (0,2,4,6) → mute track
                 page_glob.set(prev_page_glob.get());
                 let track = chan / 2;
@@ -661,7 +661,7 @@ pub async fn run(
                     // suppress for muted tracks so the indicator goes dark.
                     let track = n / 2;
                     let step = playing_pos[track];
-                    let active = if n % 2 == 0 { step < 8 } else { step >= 8 };
+                    let active = if n.is_multiple_of(2) { step < 8 } else { step >= 8 };
                     if active && !muted[track] {
                         led.set(n, Led::Bottom, Color::Red, Brightness::Mid);
                     } else {
