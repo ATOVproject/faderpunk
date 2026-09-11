@@ -29,6 +29,8 @@ fn main() {
             libfp::ConfigMsgOut,
             libfp::Curve,
             libfp::CustomVoOctCurve,
+            libfp::FpAppSection,
+            libfp::FpAppStatus,
             libfp::GlobalConfig,
             libfp::I2cMode,
             libfp::Key,

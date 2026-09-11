@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 
 import { Preface } from "./manual/Preface";
 import { type ManualAppData } from "./manual/ManualApp";
@@ -10,8 +11,14 @@ import { H2, List, Link } from "./manual/Shared";
 import { Interface } from "./manual/Interface";
 import { PunkBus } from "./manual/PunkBus";
 import { Configurator } from "./manual/Configurator";
+import {
+  FPAPP_MANUALS_UPDATED_EVENT,
+  getCachedFpAppManuals,
+  parseFpAppManual,
+  type CachedFpAppManual,
+} from "../utils/fpapp";
 
-const apps: ManualAppData[] = [
+const builtInApps: ManualAppData[] = [
   {
     appId: 1,
     title: "Control",
@@ -1597,9 +1604,87 @@ On load, both registers are restored at the next phrase boundary so the recalled
   },
 ];
 
+const LegacyInstalledAppManuals = ({
+  manuals,
+}: {
+  manuals: CachedFpAppManual[];
+}) => (
+  <>
+    {manuals.map((manual) => (
+      <section className="mb-16" id={`app-${manual.appId}`} key={manual.appId}>
+        <div className="mb-4">
+          <h3 className="text-yellow-fp font-bold uppercase">{manual.name}</h3>
+          <p>{manual.description}</p>
+        </div>
+        {manual.manual && (
+          <div className="prose prose-invert max-w-none text-white">
+            <ReactMarkdown>
+              {withoutHeading(manual.manual, manual)}
+            </ReactMarkdown>
+          </div>
+        )}
+        {manual.setup && (
+          <details className="mt-6 border-y border-white/10 py-4">
+            <summary className="cursor-pointer font-semibold">Setup</summary>
+            <div className="prose prose-invert mt-3 max-w-none text-white">
+              <ReactMarkdown>{withoutHeading(manual.setup)}</ReactMarkdown>
+            </div>
+          </details>
+        )}
+      </section>
+    ))}
+  </>
+);
+
+function toManualApp(manual: CachedFpAppManual): ManualAppData | undefined {
+  if (!manual.manual) return undefined;
+  try {
+    const app = parseFpAppManual(manual.manual, manual.appId);
+    return app
+      ? {
+          ...app,
+          setup: manual.setup ? withoutHeading(manual.setup) : undefined,
+        }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function withoutHeading(markdown: string, manual?: CachedFpAppManual) {
+  const lines = markdown.split("\n");
+  if (lines[0]?.startsWith("# ")) lines.shift();
+  while (lines[0]?.trim() === "") lines.shift();
+  if (manual && lines[0]?.trim() === manual.description.trim()) lines.shift();
+  while (lines[0]?.trim() === "") lines.shift();
+  return lines.join("\n");
+}
+
 export const ManualTab = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [installedManuals, setInstalledManuals] = useState(
+    getCachedFpAppManuals,
+  );
+  const installedManualViews = installedManuals.map((cached) => ({
+    cached,
+    app: toManualApp(cached),
+  }));
+  const installedManualApps = installedManualViews.flatMap(({ app }) =>
+    app ? [app] : [],
+  );
+  const legacyInstalledManuals = installedManualViews.flatMap(
+    ({ cached, app }) => (app ? [] : [cached]),
+  );
+  useEffect(() => {
+    const refresh = () => setInstalledManuals(getCachedFpAppManuals());
+    window.addEventListener(FPAPP_MANUALS_UPDATED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(FPAPP_MANUALS_UPDATED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
   useEffect(() => {
     if (location.hash) {
       const element = document.getElementById(location.hash.slice(1));
@@ -1708,9 +1793,16 @@ export const ManualTab = () => {
               <li>
                 <Link to="#resolution-apps">Clock Resolution</Link>
               </li>
-              {apps.map((app) => (
+              {builtInApps.map((app) => (
                 <li key={app.title}>
                   <Link to={`#app-${app.appId}`}>{app.title}</Link>
+                </li>
+              ))}
+              {installedManualViews.map(({ cached, app }) => (
+                <li key={cached.appId}>
+                  <Link to={`#app-${cached.appId}`}>
+                    {app?.title ?? cached.name}
+                  </Link>
                 </li>
               ))}
             </List>
@@ -1735,7 +1827,8 @@ export const ManualTab = () => {
       <Interface />
       <PunkBus />
       <Configurator />
-      <Apps apps={apps} />
+      <Apps apps={[...builtInApps, ...installedManualApps]} />
+      <LegacyInstalledAppManuals manuals={legacyInstalledManuals} />
       <UpdateGuide />
       <Troubleshooting />
     </>

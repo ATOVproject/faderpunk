@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { Value, type GlobalConfig } from "@atov/fp-config";
 
-import type { AllApps, AppLayout, AppSlot, ParamValues } from "./utils/types";
+import type {
+  AllApps,
+  App,
+  AppLayout,
+  AppSlot,
+  ParamValues,
+} from "./utils/types";
 import {
   connectToFaderPunk,
   getDeviceVersion,
@@ -35,6 +41,11 @@ const makeEmptyLayout = (): AppLayout =>
 // All deployments (/1.9, /beta, /simulator, …) share one gh-pages origin and
 // thus one localStorage, so the key is namespaced by deploy path.
 const SIMULATOR_STORAGE_KEY = `fp-simulator-state:${import.meta.env.BASE_URL}`;
+
+// React Strict Mode deliberately replays mount effects in development. Keep
+// device discovery single-flight so a replay cannot attach a second receiver
+// and interleave catalog, slot, or version responses on the config cable.
+let autoConnectInFlight: Promise<boolean> | undefined;
 
 const persistSimulatorState = (
   layout: AppLayout,
@@ -72,6 +83,9 @@ interface State {
   isSimulator: boolean;
   layout: AppLayout | undefined;
   params: ParamValues | undefined;
+  refreshApps: () => Promise<void>;
+  addSimulatorApp: (app: App) => void;
+  removeSimulatorApp: (appId: number) => void;
   setConfig: (config: GlobalConfig) => void;
   setLayout: (layout: AppLayout) => void;
   setParams: (id: number, newParams: Value[]) => void;
@@ -99,23 +113,34 @@ const initialState = {
 export const useStore = create<State>((set, get) => ({
   ...initialState,
   autoConnect: async () => {
+    if (autoConnectInFlight) return autoConnectInFlight;
+
+    const attempt = (async () => {
+      try {
+        const device = await tryAutoConnect();
+        if (!device) return false;
+
+        const deviceVersion = getDeviceVersion(device);
+        set({ deviceVersion });
+
+        const apps = await getAllApps(device);
+        const params = await getAllAppParams(device);
+        const layout = await getLayout(device, apps);
+        const config = await getGlobalConfig(device);
+
+        set({ apps, config, deviceVersion, layout, params, device });
+        return true;
+      } catch (error) {
+        console.error("Auto-connect failed:", error);
+        return false;
+      }
+    })();
+    autoConnectInFlight = attempt;
+
     try {
-      const device = await tryAutoConnect();
-      if (!device) return false;
-
-      const deviceVersion = getDeviceVersion(device);
-      set({ deviceVersion });
-
-      const apps = await getAllApps(device);
-      const params = await getAllAppParams(device);
-      const layout = await getLayout(device, apps);
-      const config = await getGlobalConfig(device);
-
-      set({ apps, config, deviceVersion, layout, params, device });
-      return true;
-    } catch (error) {
-      console.error("Auto-connect failed:", error);
-      return false;
+      return await attempt;
+    } finally {
+      if (autoConnectInFlight === attempt) autoConnectInFlight = undefined;
     }
   },
   connect: async () => {
@@ -163,6 +188,22 @@ export const useStore = create<State>((set, get) => ({
     // The dedicated simulator build has no connect page to return to, so
     // drop straight back into a simulator session.
     if (IS_SIMULATOR_BUILD) get().connectSimulator();
+  },
+  refreshApps: async () => {
+    const { device } = get();
+    if (!device) return;
+    const apps = await getAllApps(device);
+    const layout = await getLayout(device, apps);
+    set({ apps, layout });
+  },
+  addSimulatorApp: (app) => {
+    const apps = new Map(get().apps).set(app.appId, app);
+    set({ apps });
+  },
+  removeSimulatorApp: (appId) => {
+    const apps = new Map(get().apps);
+    apps.delete(appId);
+    set({ apps });
   },
   setConfig: (config) => {
     set({ config });

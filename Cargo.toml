@@ -1,5 +1,5 @@
 [workspace]
-members = ["faderpunk", "libfp"]
+members = ["faderpunk", "fpapp", "fpapp-sdk", "libfp"]
 
 exclude = ["gen-bindings"]
 
