@@ -14,7 +14,14 @@ midly = { version = "0.5", default-features = false }
 postcard = "1"
 serde = { version = "1", default-features = false }
 
+[target.'cfg(target_arch = "arm")'.dependencies]
+embassy-time-driver = { version = "0.2", optional = true }
+
 [features]
+# Provide the `embassy-time` driver for installable apps, backed by the host's
+# wake scheduling. Only the packager's generated app crate enables this; the
+# firmware links its own driver via embassy-rp.
+host-time-driver = ["dep:embassy-time-driver"]
 native-example = []
 
 [[example]]
