@@ -1,3 +1,14 @@
+// Shared helpers for the genre-based apps (Grooves, Chord Vamp, Bassment) and
+// for following the device tonality. Those apps land in their own PRs, so
+// nothing references these yet — follow_key carries its own inner allow.
+mod follow_key;
+#[allow(dead_code)]
+mod genre_palette;
+#[allow(dead_code)]
+mod groove;
+#[allow(dead_code)]
+mod led_fx;
+
 register_apps!(
     1 => control,
     2 => lfo,
