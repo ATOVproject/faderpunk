@@ -230,97 +230,157 @@ fn build_community(options: BTreeMap<String, String>) -> Result<(), String> {
         return Err("community catalog contains no apps".into());
     }
 
+    // Best-effort across the whole catalog: one app's build error must not
+    // stop every app behind it in the list from ever being attempted. Each
+    // entry gets its own Result instead of the loop propagating the first
+    // error with `?` — otherwise `build-community` against a large, actively
+    // developed catalog (where some apps are always mid-fix) produces
+    // whatever alphabetically/positionally precedes the first failure and
+    // silently skips the rest, success or not.
+    let mut built = Vec::new();
+    let mut failed = Vec::new();
     for entry in &catalog {
-        let source_path = repository.join("apps").join(format!("{}.rs", entry.module));
-        let source = fs::read_to_string(&source_path)
-            .map_err(|error| format!("could not read {}: {error}", source_path.display()))?;
-        let transformed = transform_community_source(&source)?;
-        let manual = manuals
-            .iter()
-            .find(|manual| {
-                manual.get("appId").and_then(JsonValue::as_u64) == Some(entry.app_id.into())
-            })
-            .ok_or_else(|| format!("app {} has no manual-tab entry", entry.app_id))?;
-        let title = json_string(manual, "title")?;
-        let description = json_string(manual, "description")?;
-        let color_name = json_string(manual, "color")?;
-        let icon_name = json_string(manual, "icon")?;
-        let version = entry.version.as_deref().unwrap_or(&default_version);
-        parse_version(version)?;
-
-        let app_root = staging.join(&entry.module);
-        let metadata_root = app_root.join("metadata");
-        let native_root = app_root.join("native");
-        write_metadata_crate(&metadata_root, &transformed, &sdk, &libfp)?;
-        let params = run_metadata_helper(&metadata_root, &cargo_target_dir)?;
-        write_native_crate(&native_root, &transformed, &sdk, &libfp)?;
-        build_native_crate(&native_root, &linker, &cargo_target_dir)?;
-
-        let manual_path = app_root.join("manual.json");
-        let setup_path = app_root.join("setup.md");
-        let settings_path = app_root.join("settings.json");
-        fs::write(&manual_path, render_manual(manual)?)
-            .map_err(|error| format!("could not write {}: {error}", manual_path.display()))?;
-        fs::write(&setup_path, render_setup(manual)?)
-            .map_err(|error| format!("could not write {}: {error}", setup_path.display()))?;
-        let settings = json!({
-            "format": "faderpunk-app-config-v1",
-            "app": {
-                "color": color_name,
-                "icon": icon_pascal(icon_name),
-                "params": params,
-            }
-        });
-        fs::write(
-            &settings_path,
-            serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?,
-        )
-        .map_err(|error| format!("could not write {}: {error}", settings_path.display()))?;
-
-        let binary_name = format!("fpapp_{}", entry.module);
-        let elf = cargo_target_dir
-            .join("thumbv8m.main-none-eabihf/release")
-            .join(&binary_name);
-        let output = output_dir.join(format!("{}.fpapp", entry.module.replace('_', "-")));
-        let mut pack_options = BTreeMap::from([
-            ("elf".into(), elf.display().to_string()),
-            ("output".into(), output.display().to_string()),
-            ("id".into(), entry.app_id.to_string()),
-            ("version".into(), version.to_owned()),
-            ("name".into(), title.to_owned()),
-            ("description".into(), description.to_owned()),
-            ("author".into(), entry.author.clone()),
-            (
-                "channels".into(),
-                json_number(manual, "channels", |value| value.as_array().map(Vec::len))?
-                    .to_string(),
-            ),
-            ("color".into(), color_hex(color_name)?.into()),
-            ("icon".into(), icon_id(icon_name)?.to_string()),
-            (
-                "parameter-count".into(),
-                params
-                    .as_array()
-                    .ok_or("community metadata helper did not return a parameter array")?
-                    .len()
-                    .to_string(),
-            ),
-            ("manual".into(), manual_path.display().to_string()),
-            ("setup".into(), setup_path.display().to_string()),
-            ("settings".into(), settings_path.display().to_string()),
-            ("firmware-abi".into(), format_abi(&firmware_abi)),
-        ]);
-        if let Some(capabilities) = options.get("capabilities") {
-            pack_options.insert("capabilities".into(), capabilities.clone());
+        match build_community_entry(
+            entry,
+            &repository,
+            &manuals,
+            &default_version,
+            &firmware_abi,
+            &staging,
+            &sdk,
+            &libfp,
+            &linker,
+            &cargo_target_dir,
+            &output_dir,
+            options.get("capabilities"),
+        ) {
+            Ok(()) => built.push(entry.module.clone()),
+            Err(error) => failed.push((entry.module.clone(), error)),
         }
-        pack(pack_options)?;
+    }
+
+    if !failed.is_empty() {
+        eprintln!(
+            "Failed to build {} of {} community FPApps:",
+            failed.len(),
+            catalog.len()
+        );
+        for (module, error) in &failed {
+            eprintln!("  {module}: {error}");
+        }
     }
     println!(
-        "Built {} community FPApps in {}",
+        "Built {} of {} community FPApps in {}",
+        built.len(),
         catalog.len(),
         output_dir.display()
     );
-    Ok(())
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} of {} community apps failed to build (see above)",
+            failed.len(),
+            catalog.len()
+        ))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_community_entry(
+    entry: &CommunityCatalogEntry,
+    repository: &Path,
+    manuals: &[JsonValue],
+    default_version: &str,
+    firmware_abi: &[u8; 32],
+    staging: &Path,
+    sdk: &Path,
+    libfp: &Path,
+    linker: &Path,
+    cargo_target_dir: &Path,
+    output_dir: &Path,
+    capabilities: Option<&String>,
+) -> Result<(), String> {
+    let source_path = repository.join("apps").join(format!("{}.rs", entry.module));
+    let source = fs::read_to_string(&source_path)
+        .map_err(|error| format!("could not read {}: {error}", source_path.display()))?;
+    let transformed = transform_community_source(&source)?;
+    let manual = manuals
+        .iter()
+        .find(|manual| manual.get("appId").and_then(JsonValue::as_u64) == Some(entry.app_id.into()))
+        .ok_or_else(|| format!("app {} has no manual-tab entry", entry.app_id))?;
+    let title = json_string(manual, "title")?;
+    let description = json_string(manual, "description")?;
+    let color_name = json_string(manual, "color")?;
+    let icon_name = json_string(manual, "icon")?;
+    let version = entry.version.as_deref().unwrap_or(default_version);
+    parse_version(version)?;
+
+    let app_root = staging.join(&entry.module);
+    let metadata_root = app_root.join("metadata");
+    let native_root = app_root.join("native");
+    write_metadata_crate(&metadata_root, &transformed, sdk, libfp)?;
+    let params = run_metadata_helper(&metadata_root, cargo_target_dir)?;
+    write_native_crate(&native_root, &transformed, sdk, libfp)?;
+    build_native_crate(&native_root, linker, cargo_target_dir)?;
+
+    let manual_path = app_root.join("manual.json");
+    let setup_path = app_root.join("setup.md");
+    let settings_path = app_root.join("settings.json");
+    fs::write(&manual_path, render_manual(manual)?)
+        .map_err(|error| format!("could not write {}: {error}", manual_path.display()))?;
+    fs::write(&setup_path, render_setup(manual)?)
+        .map_err(|error| format!("could not write {}: {error}", setup_path.display()))?;
+    let settings = json!({
+        "format": "faderpunk-app-config-v1",
+        "app": {
+            "color": color_name,
+            "icon": icon_pascal(icon_name),
+            "params": params,
+        }
+    });
+    fs::write(
+        &settings_path,
+        serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| format!("could not write {}: {error}", settings_path.display()))?;
+
+    let binary_name = format!("fpapp_{}", entry.module);
+    let elf = cargo_target_dir
+        .join("thumbv8m.main-none-eabihf/release")
+        .join(&binary_name);
+    let output = output_dir.join(format!("{}.fpapp", entry.module.replace('_', "-")));
+    let mut pack_options = BTreeMap::from([
+        ("elf".into(), elf.display().to_string()),
+        ("output".into(), output.display().to_string()),
+        ("id".into(), entry.app_id.to_string()),
+        ("version".into(), version.to_owned()),
+        ("name".into(), title.to_owned()),
+        ("description".into(), description.to_owned()),
+        ("author".into(), entry.author.clone()),
+        (
+            "channels".into(),
+            json_number(manual, "channels", |value| value.as_array().map(Vec::len))?.to_string(),
+        ),
+        ("color".into(), color_hex(color_name)?.into()),
+        ("icon".into(), icon_id(icon_name)?.to_string()),
+        (
+            "parameter-count".into(),
+            params
+                .as_array()
+                .ok_or("community metadata helper did not return a parameter array")?
+                .len()
+                .to_string(),
+        ),
+        ("manual".into(), manual_path.display().to_string()),
+        ("setup".into(), setup_path.display().to_string()),
+        ("settings".into(), settings_path.display().to_string()),
+        ("firmware-abi".into(), format_abi(firmware_abi)),
+    ]);
+    if let Some(capabilities) = capabilities {
+        pack_options.insert("capabilities".into(), capabilities.clone());
+    }
+    pack(pack_options)
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String> {
@@ -438,6 +498,27 @@ panic = "abort"
     Ok(())
 }
 
+// `build-community` builds every catalog entry best-effort (one failure
+// mustn't stop the rest), which means every failure's message gets printed
+// in the final summary rather than just the first one that used to abort the
+// whole run. A raw `cargo`/`rustc` stderr capture is mostly warnings, so
+// trimming to just the `error`-prefixed lines keeps a catalog-wide failure
+// summary readable instead of dumping the full compiler output once per
+// failed app. Falls back to the untrimmed, trimmed-of-whitespace text if
+// nothing matches (e.g. a non-rustc failure), so nothing is ever swallowed.
+fn compiler_error_summary(stderr: &[u8]) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|line| line.trim_start().starts_with("error"))
+        .collect();
+    if lines.is_empty() {
+        text.trim().to_owned()
+    } else {
+        lines.join("\n")
+    }
+}
+
 fn run_metadata_helper(root: &Path, cargo_target_dir: &Path) -> Result<JsonValue, String> {
     let output = Command::new("cargo")
         .args(["run", "--quiet", "--release"])
@@ -448,7 +529,7 @@ fn run_metadata_helper(root: &Path, cargo_target_dir: &Path) -> Result<JsonValue
     if !output.status.success() {
         return Err(format!(
             "community metadata helper failed:\n{}",
-            String::from_utf8_lossy(&output.stderr).trim()
+            compiler_error_summary(&output.stderr)
         ));
     }
     serde_json::from_slice(&output.stdout)
@@ -478,7 +559,7 @@ fn build_native_crate(root: &Path, linker: &Path, cargo_target_dir: &Path) -> Re
     if !output.status.success() {
         return Err(format!(
             "community FPApp compile failed:\n{}",
-            String::from_utf8_lossy(&output.stderr).trim()
+            compiler_error_summary(&output.stderr)
         ));
     }
     Ok(())
