@@ -633,10 +633,8 @@ fn validate_manifest(manifest: &Manifest<'_>) -> Result<(), PackageError> {
         || manifest.parameter_count as usize > crate::APP_MAX_PARAMS
         || manifest.name.is_empty()
         || manifest.name.len() > 32
-        || !manifest.name.is_ascii()
         || manifest.description.is_empty()
         || manifest.description.len() > 96
-        || !manifest.description.is_ascii()
         || manifest.author.is_empty()
         || manifest.author.len() > 64
     {

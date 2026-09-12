@@ -21,13 +21,16 @@ pub const HOST_ABI_VERSION: u16 = 1;
 /// `FPAPP_ABI_MAJOR`. `EventV1`/`CommandV1` are passed by value across the FFI,
 /// so *any* change to them is breaking.
 mod abi_layout {
-    use super::{CommandV1, EventV1, HostV1};
+    #[cfg(target_arch = "arm")]
+    use super::HostV1;
+    use super::{CommandV1, EventV1};
     use core::mem::size_of;
 
     /// Size on the device. `HostV1` is pointer-bearing, so this is checked only
     /// for the ARM target — `fpapp-sdk` is also compiled for the host by the
     /// metadata helper, where pointers are wider and no FFI boundary is
     /// crossed, so the number would differ there for no useful reason.
+    #[cfg(target_arch = "arm")]
     const HOST_V1_SIZE_ARM: usize = 56;
     const EVENT_V1_SIZE: usize = 16;
     const COMMAND_V1_SIZE: usize = 16;
@@ -45,6 +48,61 @@ mod abi_layout {
         size_of::<CommandV1>() == COMMAND_V1_SIZE,
         "CommandV1 is passed by value across the FFI, so any layout change is breaking: bump FPAPP_ABI_MAJOR"
     );
+}
+
+/// `embassy_time` driver for installed apps.
+///
+/// Community sources call `Instant::now()` freely, which resolves to the
+/// `_embassy_time_now` symbol at link time. An app image has no writable
+/// statics, so the driver cannot stash a `HostV1` pointer; instead `now` reads
+/// the RP2350 `TIMER0` raw counter that the firmware's own time driver runs at
+/// 1 MHz, so an app's `Instant` agrees exactly with the firmware's.
+///
+/// `schedule_wake` recovers the host table from the waker: every waker an app
+/// sees is the host waker whose data pointer is the `HostV1` handed to
+/// `fpapp_poll`, so the deadline is forwarded to `schedule_wake_at`. The vtable
+/// is cross-checked first so a foreign waker is ignored rather than
+/// dereferenced.
+#[cfg(all(target_arch = "arm", feature = "host-time-driver"))]
+mod time_driver {
+    use super::HostV1;
+    use core::ptr;
+    use core::task::Waker;
+
+    const TIMER0_BASE: usize = 0x400b_0000;
+    const TIMERAWH: *const u32 = (TIMER0_BASE + 0x24) as *const u32;
+    const TIMERAWL: *const u32 = (TIMER0_BASE + 0x28) as *const u32;
+    const TICKS_PER_MILLI: u64 = embassy_time_driver::TICK_HZ / 1000;
+
+    struct HostTimeDriver;
+
+    impl embassy_time_driver::Driver for HostTimeDriver {
+        fn now(&self) -> u64 {
+            loop {
+                let hi = unsafe { ptr::read_volatile(TIMERAWH) };
+                let lo = unsafe { ptr::read_volatile(TIMERAWL) };
+                let hi2 = unsafe { ptr::read_volatile(TIMERAWH) };
+                if hi == hi2 {
+                    return (u64::from(hi) << 32) | u64::from(lo);
+                }
+            }
+        }
+
+        fn schedule_wake(&self, at: u64, waker: &Waker) {
+            let host = waker.data().cast::<HostV1>();
+            if host.is_null() {
+                return;
+            }
+            let host = unsafe { &*host };
+            if !ptr::eq(waker.vtable(), host.waker_vtable) {
+                return;
+            }
+            let deadline_millis = at.div_ceil(TICKS_PER_MILLI);
+            unsafe { (host.schedule_wake_at)(host.context, deadline_millis) };
+        }
+    }
+
+    embassy_time_driver::time_driver_impl!(static DRIVER: HostTimeDriver = HostTimeDriver);
 }
 
 pub mod event_kind {
@@ -1666,6 +1724,15 @@ pub mod compat {
         GlobalConfig {
             clock: GlobalClockConfig { swing_amount: 0 },
         }
+    }
+
+    /// Convert a quantized pitch to DAC counts.
+    ///
+    /// Mirrors `crate::app::pitch_as_counts` in the firmware. Custom V/Oct
+    /// curves from the global config are not available through the host ABI,
+    /// so the standard curves are used.
+    pub fn pitch_as_counts(pitch: Pitch, range: Range, vpo: VoltPerOct) -> u16 {
+        pitch.as_counts(range, vpo)
     }
 
     pub use libfp::latch::LatchLayer;

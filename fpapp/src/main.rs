@@ -411,7 +411,7 @@ edition = "2021"
 embassy-futures = "0.1"
 embassy-sync = "0.7"
 embassy-time = "0.4.0"
-fpapp-sdk = {{ path = "{}" }}
+fpapp-sdk = {{ path = "{}", features = ["host-time-driver"] }}
 heapless = {{ version = "0.7.17", features = ["serde"] }}
 libfp = {{ path = "{}" }}
 libm = "0.2.16"
