@@ -111,5 +111,17 @@ export const Apps = ({ apps }: Props) => (
     {apps.map((app) => (
       <ManualApp key={app.appId} app={app} />
     ))}
+    <p className="mt-8">
+      Looking for more? Community-submitted apps aren't included in this
+      firmware by default — browse what's available at{" "}
+      <a
+        className="underline"
+        href="https://atovproject.github.io/faderpunk-community-apps/#/manual"
+        target="_blank"
+      >
+        the community app manual
+      </a>
+      .
+    </p>
   </>
 );
