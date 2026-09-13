@@ -1,3 +1,50 @@
+/// Identifiers for the lookup tables the firmware owns.
+///
+/// An installed app resolves these through the host instead of linking its own
+/// copy — each table is 8 KiB, and duplicating them accounted for roughly 70%
+/// of a large package. The firmware indexes its own statics directly, so both
+/// sides read the same data and `Curve::at`/`Waveform::at` keep identical
+/// signatures in either build.
+pub mod table_kind {
+    pub const WAVEFORM_SINE: u8 = 0;
+    pub const WAVEFORM_TRIANGLE: u8 = 1;
+    pub const WAVEFORM_SAW: u8 = 2;
+    pub const WAVEFORM_SAW_INV: u8 = 3;
+    pub const WAVEFORM_SQUARE: u8 = 4;
+    pub const CURVE_EXP: u8 = 5;
+    pub const CURVE_LOG: u8 = 6;
+    /// Every table is this many `u16` entries.
+    pub const LEN: usize = 4096;
+}
+
+/// The firmware-owned table a [`table_kind`] identifier names.
+///
+/// This is the **single** place that mapping lives. The firmware serves
+/// `HostV1::table_base` from it and `Curve::at`/`Waveform::at` index through
+/// it, so the two cannot drift apart — a transposed pair here would otherwise
+/// link, run and pass every test while producing the wrong waveform.
+///
+/// `None` means an identifier this build does not know, which is reachable:
+/// an app built against a newer SDK may name a table that did not exist yet.
+///
+/// Not compiled for an app build. There the tables live in the firmware and are
+/// reached through the host, and referencing them here would be exactly what
+/// keeps `--gc-sections` from dropping them.
+#[cfg(not(feature = "fpapp-host"))]
+#[inline]
+pub fn table_for_kind(kind: u8) -> Option<&'static [u16; table_kind::LEN]> {
+    Some(match kind {
+        table_kind::WAVEFORM_SINE => &WAVEFORM_SINE,
+        table_kind::WAVEFORM_TRIANGLE => &WAVEFORM_TRIANGLE,
+        table_kind::WAVEFORM_SAW => &WAVEFORM_SAW,
+        table_kind::WAVEFORM_SAW_INV => &WAVEFORM_SAW_INV,
+        table_kind::WAVEFORM_SQUARE => &WAVEFORM_SQUARE,
+        table_kind::CURVE_EXP => &CURVE_EXP,
+        table_kind::CURVE_LOG => &CURVE_LOG,
+        _ => return None,
+    })
+}
+
 pub static CHAN_LED_MAP: [[usize; 16]; 3] = [
     // Top LEDs
     [

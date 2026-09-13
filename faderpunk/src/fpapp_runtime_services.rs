@@ -516,6 +516,28 @@ unsafe extern "C" fn set_output(context: *mut (), channel: u8, value: u16) {
     }
 }
 
+/// Hands an app the address of one of the firmware's lookup tables.
+///
+/// The tables are `static`s in `libfp` living in firmware flash, so the pointer
+/// stays valid for the lifetime of the process and the app can cache it. This
+/// exists so an installed app stops linking its own 8 KiB copy of each table —
+/// which accounted for roughly 70% of a large package — while `Curve::at` and
+/// `Waveform::at` keep identical signatures in both builds.
+/// Hand an app the address of a firmware-owned lookup table.
+///
+/// `kind` arrives from app code, so this is a trust boundary: an app built
+/// against a newer SDK can name a table this firmware does not have. Null is
+/// the documented "unavailable" answer and the SDK checks for it.
+///
+/// The mapping itself lives in `libfp` so this and `Curve::at`/`Waveform::at`
+/// cannot disagree about which table a `kind` names.
+unsafe extern "C" fn table_base(_context: *mut (), kind: u8) -> *const u16 {
+    match libfp::constants::table_for_kind(kind) {
+        Some(table) => table.as_ptr(),
+        None => core::ptr::null(),
+    }
+}
+
 unsafe extern "C" fn read_value(context: *mut (), kind: u8, index: u8) -> u32 {
     if context.is_null() {
         return 0;
@@ -768,6 +790,7 @@ pub async fn run_fpapp(
     host.now_millis = now_millis;
     host.schedule_wake_at = schedule_wake_at;
     host.quantize = quantize;
+    host.table_base = table_base;
 
     let mut storage = InstanceStorage([0; MAX_INSTANCE_BYTES]);
     let storage_ptr = storage.0.as_mut_ptr();
