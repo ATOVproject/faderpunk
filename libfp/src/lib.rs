@@ -27,10 +27,6 @@ pub mod utils;
 // Re-export commonly used latch types
 pub use latch::{AnalogLatch, LatchLayer, TakeoverMode};
 
-use constants::{
-    CURVE_EXP, CURVE_LOG, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE, WAVEFORM_SQUARE,
-    WAVEFORM_TRIANGLE,
-};
 use smart_leds::RGB8;
 
 use crate::ext::FromValue;
@@ -845,14 +841,70 @@ pub fn deadzone_curve_inverse(value: u16) -> u16 {
     out.clamp(0, DEADZONE_MAX) as u16
 }
 
+// Resolved by `fpapp-sdk` when `libfp` is built for an installed app.
+//
+// Returns the base of one of the firmware's lookup tables (see
+// `constants::table_kind`), so an app reads the firmware's single copy rather
+// than linking 8 KiB of its own per table. Declared as a bare `extern` so
+// `libfp` keeps no dependency on `fpapp-sdk` — the SDK supplies the symbol, and
+// the firmware build never references it.
+#[cfg(feature = "fpapp-host")]
+unsafe extern "C" {
+    fn fpapp_table_base(kind: u8) -> *const u16;
+}
+
+/// One entry from the firmware-owned table `kind`.
+///
+/// The two bodies are the only difference between a firmware build and an app
+/// build; every caller above is identical in both. `index` is already reduced
+/// below `table_kind::LEN` by each caller.
+///
+/// An unknown `kind` yields 0. Both bodies reach that only for an identifier
+/// this build does not define, which `table_kind_resolves_to_its_own_table`
+/// proves cannot happen for any `Curve` or `Waveform` variant.
+#[cfg(not(feature = "fpapp-host"))]
+#[inline]
+fn table_at(kind: u8, index: usize) -> u16 {
+    match constants::table_for_kind(kind) {
+        Some(table) => table[index],
+        None => 0,
+    }
+}
+
+#[cfg(feature = "fpapp-host")]
+#[inline]
+fn table_at(kind: u8, index: usize) -> u16 {
+    // SAFETY: `fpapp_table_base` returns either null or a pointer to a
+    // `[u16; LEN]` living in firmware flash for the lifetime of the process,
+    // and `index` is already reduced below `LEN`.
+    unsafe {
+        let base = fpapp_table_base(kind);
+        if base.is_null() {
+            return 0;
+        }
+        core::ptr::read(base.add(index))
+    }
+}
+
 impl Curve {
+    /// The firmware table this curve reads, or `None` if it is computed.
+    pub const fn table_kind(&self) -> Option<u8> {
+        match self {
+            Curve::Exponential => Some(constants::table_kind::CURVE_EXP),
+            Curve::Logarithmic => Some(constants::table_kind::CURVE_LOG),
+            Curve::Linear | Curve::Deadzone => None,
+        }
+    }
+
     pub fn at(&self, value: u16) -> u16 {
         let value = value.min(4095);
         match self {
             Curve::Linear => value,
-            Curve::Exponential => CURVE_EXP[value as usize],
-            Curve::Logarithmic => CURVE_LOG[value as usize],
             Curve::Deadzone => deadzone_curve(value),
+            Curve::Exponential | Curve::Logarithmic => match self.table_kind() {
+                Some(kind) => table_at(kind, value as usize),
+                None => value,
+            },
         }
     }
 
@@ -886,15 +938,20 @@ pub enum Waveform {
 }
 
 impl Waveform {
-    pub fn at(&self, index: usize) -> u16 {
-        let i = index % 4096;
+    /// The firmware table this waveform reads. Every waveform is table-driven.
+    pub const fn table_kind(&self) -> u8 {
+        use constants::table_kind as tk;
         match self {
-            Waveform::Sine => WAVEFORM_SINE[i],
-            Waveform::Triangle => WAVEFORM_TRIANGLE[i],
-            Waveform::Saw => WAVEFORM_SAW[i],
-            Waveform::SawInv => WAVEFORM_SAW_INV[i],
-            Waveform::Square => WAVEFORM_SQUARE[i],
+            Waveform::Sine => tk::WAVEFORM_SINE,
+            Waveform::Triangle => tk::WAVEFORM_TRIANGLE,
+            Waveform::Saw => tk::WAVEFORM_SAW,
+            Waveform::SawInv => tk::WAVEFORM_SAW_INV,
+            Waveform::Square => tk::WAVEFORM_SQUARE,
         }
+    }
+
+    pub fn at(&self, index: usize) -> u16 {
+        table_at(self.table_kind(), index % constants::table_kind::LEN)
     }
 
     pub fn cycle(&self) -> Waveform {
@@ -1712,6 +1769,71 @@ impl MidiOut {
 
 #[cfg(test)]
 mod tests {
+
+    /// Every `Curve`/`Waveform` variant must resolve to *its own* table.
+    ///
+    /// This is the check the rest of the gate suite structurally cannot make.
+    /// A transposed pair — `Saw` pointing at `SawInv`, `CURVE_EXP` at the log
+    /// table — still compiles, still links, still runs, and every other test
+    /// still passes. Only the audio is wrong. Comparing by address rather than
+    /// by content makes a transposition or a copy-paste impossible to miss.
+    #[test]
+    fn table_kind_resolves_to_its_own_table() {
+        use crate::constants::{
+            table_for_kind, CURVE_EXP, CURVE_LOG, WAVEFORM_SAW, WAVEFORM_SAW_INV, WAVEFORM_SINE,
+            WAVEFORM_SQUARE, WAVEFORM_TRIANGLE,
+        };
+
+        let expected: [(u8, &'static [u16; 4096]); 7] = [
+            (Waveform::Sine.table_kind(), &WAVEFORM_SINE),
+            (Waveform::Triangle.table_kind(), &WAVEFORM_TRIANGLE),
+            (Waveform::Saw.table_kind(), &WAVEFORM_SAW),
+            (Waveform::SawInv.table_kind(), &WAVEFORM_SAW_INV),
+            (Waveform::Square.table_kind(), &WAVEFORM_SQUARE),
+            (Curve::Exponential.table_kind().unwrap(), &CURVE_EXP),
+            (Curve::Logarithmic.table_kind().unwrap(), &CURVE_LOG),
+        ];
+
+        for (kind, want) in expected {
+            let got = table_for_kind(kind)
+                .unwrap_or_else(|| panic!("table kind {kind} does not resolve to a table"));
+            assert!(
+                core::ptr::eq(got, want),
+                "table kind {kind} resolves to the wrong table"
+            );
+        }
+
+        // No two kinds may name the same table, which is what a copy-paste in
+        // either mapping would produce.
+        for (i, (a, _)) in expected.iter().enumerate() {
+            for (b, _) in expected.iter().skip(i + 1) {
+                assert_ne!(a, b, "two variants share table kind {a}");
+                assert!(
+                    !core::ptr::eq(table_for_kind(*a).unwrap(), table_for_kind(*b).unwrap()),
+                    "table kinds {a} and {b} resolve to the same table"
+                );
+            }
+        }
+    }
+
+    /// A kind this build does not define must read as 0, never as a wild index.
+    #[test]
+    fn unknown_table_kind_is_not_indexed() {
+        assert!(crate::constants::table_for_kind(7).is_none());
+        assert!(crate::constants::table_for_kind(u8::MAX).is_none());
+        assert_eq!(super::table_at(7, 0), 0);
+        assert_eq!(super::table_at(u8::MAX, 4095), 0);
+    }
+
+    /// The curves that are computed rather than table-driven must stay that
+    /// way, or `at` would silently route them through `table_at`.
+    #[test]
+    fn computed_curves_name_no_table() {
+        assert!(Curve::Linear.table_kind().is_none());
+        assert!(Curve::Deadzone.table_kind().is_none());
+        assert_eq!(Curve::Linear.at(1234), 1234);
+        assert_eq!(Curve::Deadzone.at(2048), crate::DEADZONE_CENTER);
+    }
     use super::{
         AppIcon, Color, Config, ConfigMsgIn, ConfigMsgOut, CustomVoOctCurve, FpAppSection, Layout,
         Param, VoltPerOct, FPAPP_CHUNK_BLOCKS, FPAPP_CHUNK_BLOCK_SIZE, FPAPP_CHUNK_SIZE,

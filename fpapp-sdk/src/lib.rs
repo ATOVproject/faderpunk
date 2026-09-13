@@ -31,7 +31,7 @@ mod abi_layout {
     /// metadata helper, where pointers are wider and no FFI boundary is
     /// crossed, so the number would differ there for no useful reason.
     #[cfg(target_arch = "arm")]
-    const HOST_V1_SIZE_ARM: usize = 56;
+    const HOST_V1_SIZE_ARM: usize = 60;
     const EVENT_V1_SIZE: usize = 16;
     const COMMAND_V1_SIZE: usize = 16;
 
@@ -103,6 +103,59 @@ mod time_driver {
     }
 
     embassy_time_driver::time_driver_impl!(static DRIVER: HostTimeDriver = HostTimeDriver);
+}
+
+/// Supplies `libfp`'s `fpapp_table_base` hook for an installed app.
+///
+/// `libfp` built with its `fpapp-host` feature reads the firmware's lookup
+/// tables instead of linking its own, which is what lets `--gc-sections` drop
+/// ~8 KiB per table from the image. It reaches the host through this symbol so
+/// that it keeps no dependency on this crate.
+///
+/// The host pointer and the resolved bases are cached in writable statics,
+/// which installed apps only gained with the move to `ropi-rwpi`. Caching is
+/// what makes this cheap: the host is asked once per table, and every later
+/// `Waveform::at` is a plain indexed load rather than an FFI call — this sits
+/// on a per-sample path, so a call per read would be the wrong trade.
+mod host_tables {
+    use crate::HostV1;
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Number of distinct tables (`libfp`'s `constants::table_kind`).
+    const TABLE_COUNT: usize = 7;
+
+    static HOST: AtomicUsize = AtomicUsize::new(0);
+    #[allow(clippy::declare_interior_mutable_const)]
+    const UNRESOLVED: AtomicUsize = AtomicUsize::new(0);
+    static CACHE: [AtomicUsize; TABLE_COUNT] = [UNRESOLVED; TABLE_COUNT];
+
+    /// Records the host table for later lookups. Called on every entry, since
+    /// the pointer is only guaranteed valid for the duration of a call.
+    pub fn set_host(host: *const HostV1) {
+        HOST.store(host as usize, Ordering::Relaxed);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn fpapp_table_base(kind: u8) -> *const u16 {
+        let index = kind as usize;
+        if index >= TABLE_COUNT {
+            return core::ptr::null();
+        }
+        let cached = CACHE[index].load(Ordering::Relaxed);
+        if cached != 0 {
+            return cached as *const u16;
+        }
+        let host = HOST.load(Ordering::Relaxed) as *const HostV1;
+        if host.is_null() {
+            return core::ptr::null();
+        }
+        // SAFETY: `host` was handed to an entry point by the firmware and the
+        // table it names lives in firmware flash for the lifetime of the
+        // process, so the pointer stays valid once resolved.
+        let base = unsafe { ((*host).table_base)((*host).context, kind) };
+        CACHE[index].store(base as usize, Ordering::Relaxed);
+        base
+    }
 }
 
 pub mod event_kind {
@@ -228,6 +281,11 @@ pub struct HostV1 {
     pub quantize: unsafe extern "C" fn(*mut (), u16, u8, u8, bool) -> u32,
     pub schedule_poll: unsafe extern "C" fn(*mut ()),
     pub waker_vtable: *const RawWakerVTable,
+    /// Base of one of the firmware's lookup tables, by `libfp`'s
+    /// `constants::table_kind`. Lets an app read the firmware's single copy
+    /// instead of linking 8 KiB of its own per table — appended, so every
+    /// existing field keeps its offset.
+    pub table_base: unsafe extern "C" fn(*mut (), u8) -> *const u16,
 }
 
 impl HostV1 {
@@ -254,6 +312,7 @@ impl HostV1 {
             quantize: no_quantize,
             schedule_poll,
             waker_vtable: &HOST_WAKER_VTABLE,
+            table_base: no_table_base,
         }
     }
 }
@@ -272,6 +331,10 @@ unsafe fn drop_host_waker(_data: *const ()) {}
 
 static HOST_WAKER_VTABLE: RawWakerVTable =
     RawWakerVTable::new(clone_host_waker, wake_host, wake_host, drop_host_waker);
+
+unsafe extern "C" fn no_table_base(_context: *mut (), _kind: u8) -> *const u16 {
+    core::ptr::null()
+}
 
 unsafe extern "C" fn no_read_value(_context: *mut (), _kind: u8, _index: u8) -> u32 {
     0
@@ -1881,6 +1944,10 @@ pub mod future_slot {
         if storage.is_null() || host.is_null() {
             return Err(FutureSlotError::Invalid);
         }
+        // Recorded on every entry, not just the first: the firmware may hand a
+        // different table across calls, and it is only guaranteed valid for the
+        // duration of one.
+        crate::host_tables::set_host(host);
         let required_alignment = align_of::<Header>().max(align_of::<F>());
         if !storage.addr().is_multiple_of(required_alignment) {
             return Err(FutureSlotError::Misaligned);
@@ -1915,6 +1982,7 @@ pub mod future_slot {
         if host.is_null() {
             return Err(FutureSlotError::Invalid);
         }
+        crate::host_tables::set_host(host);
         let header = unsafe { header(storage)? };
         let future = unsafe { storage.add(header.future_offset as usize) };
         Ok(unsafe { (header.poll)(future, host) })
