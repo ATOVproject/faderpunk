@@ -511,6 +511,7 @@ mod tests {
             firmware_abi,
             abi_major,
             abi_minor,
+            rw_bytes: 0,
         };
         let mut output = [0u8; 256];
         let image = [program_byte; 16];
