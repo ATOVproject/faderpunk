@@ -475,7 +475,7 @@ embassy-sync = "0.7"
 embassy-time = "0.4.0"
 fpapp-sdk = {{ path = "{}", features = ["host-time-driver"] }}
 heapless = {{ version = "0.7.17", features = ["serde"] }}
-libfp = {{ path = "{}" }}
+libfp = {{ path = "{}", features = ["fpapp-host"] }}
 libm = "0.2.16"
 midly = {{ version = "0.5.3", default-features = false }}
 portable-atomic = {{ version = "1.13.1", features = ["critical-section"] }}
