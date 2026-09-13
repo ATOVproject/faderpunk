@@ -1770,6 +1770,75 @@ impl MidiOut {
 #[cfg(test)]
 mod tests {
 
+    /// The custom V/Oct fallback must be identical for a built-in app and an
+    /// installed one.
+    ///
+    /// An installed app cannot see `GlobalConfig`, so it fetches one curve
+    /// through the host and hands `libfp` an array with only that entry filled.
+    /// This asserts that shortcut agrees with the firmware's full array for
+    /// every case that matters, including the ones where `resolve_custom_cpo`
+    /// substitutes 410: uncalibrated (0), out of range, and implausible values.
+    /// A fallback applied on one side but not the other is exactly the
+    /// divergence this is meant to close.
+    #[test]
+    fn one_populated_curve_matches_the_full_array() {
+        let pitch = crate::quantizer::Pitch {
+            octave: 3,
+            note: Note::C,
+            raw: None,
+        };
+
+        for (idx, cpo) in [
+            (0u8, 500u16),
+            (1, 410),
+            (2, 0),
+            (3, 9999),
+            (4, 500),
+            (255, 500),
+        ] {
+            let vpo = VoltPerOct::Custom(idx);
+
+            // What the firmware has: every curve populated.
+            let full = [CustomVoOctCurve {
+                counts_per_oct: cpo,
+            }; 4];
+
+            // What an installed app builds: one entry, at the index it asked for.
+            let mut sparse = [CustomVoOctCurve { counts_per_oct: 0 }; 4];
+            if let Some(curve) = sparse.get_mut(idx as usize) {
+                curve.counts_per_oct = cpo;
+            }
+
+            assert_eq!(
+                vpo.counts_per_oct_with_curves(&full),
+                vpo.counts_per_oct_with_curves(&sparse),
+                "counts/oct diverged for Custom({idx}) at {cpo}"
+            );
+            assert_eq!(
+                pitch.as_counts_with_curves(Range::_0_5V, vpo, &full),
+                pitch.as_counts_with_curves(Range::_0_5V, vpo, &sparse),
+                "DAC counts diverged for Custom({idx}) at {cpo}"
+            );
+        }
+    }
+
+    /// The non-custom curves must not consult the array at all, or an installed
+    /// app would need a host round trip to compute a constant.
+    #[test]
+    fn standard_and_buchla_ignore_the_custom_curves() {
+        let populated = [CustomVoOctCurve {
+            counts_per_oct: 777,
+        }; 4];
+        let empty = [CustomVoOctCurve { counts_per_oct: 0 }; 4];
+        for vpo in [VoltPerOct::Standard, VoltPerOct::Buchla] {
+            assert_eq!(
+                vpo.counts_per_oct_with_curves(&populated),
+                vpo.counts_per_oct_with_curves(&empty)
+            );
+            assert_eq!(vpo.counts_per_oct_with_curves(&empty), vpo.counts_per_oct());
+        }
+    }
+
     /// Every `Curve`/`Waveform` variant must resolve to *its own* table.
     ///
     /// This is the check the rest of the gate suite structurally cannot make.
