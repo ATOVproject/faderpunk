@@ -16,15 +16,23 @@ import {
   type ParsedFpApp,
 } from "../utils/fpapp";
 import { ButtonPrimary, ButtonSecondary } from "./Button";
+import { SLOT_COUNT } from "../demo/catalog";
 
 interface Selection {
   app: ParsedFpApp;
   slot: number;
 }
 
-const EMPTY_SLOTS: FpAppSlot[] = Array.from({ length: 4 }, (_, slot) => ({
-  slot,
-}));
+// Placeholder rows shown before a device answers. With hardware these are
+// replaced by the device's own slot list within a second; in simulator mode
+// there is no device to ask, so the generated firmware constant is the only
+// source of the real count.
+const EMPTY_SLOTS: FpAppSlot[] = Array.from(
+  { length: SLOT_COUNT },
+  (_, slot) => ({
+    slot,
+  }),
+);
 
 export const InstalledApps = () => {
   const {
@@ -271,15 +279,18 @@ export const InstalledApps = () => {
           <span className="min-w-64 text-right">Actions</span>
         </div>
         {loading
-          ? Array.from({ length: 4 }, (_, index) => (
-              <div
-                className="grid min-h-28 animate-pulse grid-cols-[4rem_1fr] items-center gap-4 border-b border-white/10 px-5 py-4 last:border-b-0"
-                key={index}
-              >
-                <div className="h-8 w-8 rounded-sm bg-white/10" />
-                <div className="h-5 max-w-sm rounded-sm bg-white/10" />
-              </div>
-            ))
+          ? Array.from(
+              { length: support?.slots ?? slots.length },
+              (_, index) => (
+                <div
+                  className="grid min-h-28 animate-pulse grid-cols-[4rem_1fr] items-center gap-4 border-b border-white/10 px-5 py-4 last:border-b-0"
+                  key={index}
+                >
+                  <div className="h-8 w-8 rounded-sm bg-white/10" />
+                  <div className="h-5 max-w-sm rounded-sm bg-white/10" />
+                </div>
+              ),
+            )
           : slots.map((slot) => (
               <div
                 className="border-b border-white/10 last:border-b-0"

@@ -3,7 +3,11 @@
 use crate::fpapp::{abi_minor_is_compatible, crc32, Package, PackageError, Version};
 
 pub const FPAPP_REGION_SIZE: usize = 512 * 1024;
-pub const SLOT_COUNT: usize = 4;
+/// Slots are fixed-size partitions, so this sets the largest installable
+/// package as well as how many fit. Eight became possible once apps stopped
+/// carrying their own copies of the firmware's lookup tables: the largest
+/// community package is now under 39 KiB against a 60 KiB payload.
+pub const SLOT_COUNT: usize = 8;
 pub const SLOT_SIZE: usize = FPAPP_REGION_SIZE / SLOT_COUNT;
 pub const ERASE_SIZE: usize = 4096;
 /// How long a half-finished upload keeps its slot reserved. Staging lives only
@@ -537,6 +541,40 @@ mod tests {
         store.begin_install(slot, bytes.len(), &[], 0).unwrap();
         store.write_chunk(0, bytes, 0).unwrap();
         store.commit().unwrap()
+    }
+
+    /// A slot record is honoured only at the slot it names.
+    ///
+    /// This is what makes changing `SLOT_COUNT` safe. Slot offsets are
+    /// `slot * SLOT_SIZE`, so changing the count moves every boundary and the
+    /// records written under the old geometry land at addresses the new one
+    /// reads as different slots. Without this check those stale bytes would
+    /// decode as ghost apps: correct magic, valid CRC, parseable package, all
+    /// at the wrong index.
+    ///
+    /// Simulated here by copying a good slot's bytes verbatim to another
+    /// slot's offset, which is exactly what a geometry change does to them.
+    #[test]
+    fn a_slot_record_is_ignored_at_any_other_slot() {
+        let bytes = package(Version::new(1, 0, 0), 0x11);
+        let mut store = SlotStore::open(VecFlash::erased()).unwrap();
+        install(&mut store, 0, &bytes);
+
+        let mut flash = store.into_flash();
+        let (source, destination) = (slot_offset(0), slot_offset(2));
+        let copied = flash.bytes[source..source + SLOT_SIZE].to_vec();
+        flash.bytes[destination..destination + SLOT_SIZE].copy_from_slice(&copied);
+        // Erase the original. Otherwise `open`'s duplicate-app-id filter is
+        // what drops the copy, and this would pass with the slot check gone.
+        flash.bytes[source..source + ERASE_SIZE].fill(0xff);
+
+        let reopened = SlotStore::open(flash).unwrap();
+        assert_eq!(reopened.installed(0).unwrap(), None);
+        assert_eq!(
+            reopened.installed(2).unwrap(),
+            None,
+            "a record naming slot 0 must not be honoured at slot 2"
+        );
     }
 
     #[test]
