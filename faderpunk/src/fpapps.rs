@@ -40,6 +40,10 @@ pub struct RuntimeDescriptor {
     pub init: u32,
     pub poll: u32,
     pub drop: u32,
+    /// Zero-initialised read-write bytes the app needs (`.bss` under
+    /// `ropi-rwpi`). The runtime provides this much RAM and points the static
+    /// base register at it. Zero for apps with no writable statics.
+    pub rw_bytes: u32,
 }
 
 struct CachedDescriptor {
@@ -52,6 +56,7 @@ struct CachedDescriptor {
     init: AtomicU32,
     poll: AtomicU32,
     drop: AtomicU32,
+    rw_bytes: AtomicU32,
 }
 
 impl CachedDescriptor {
@@ -64,6 +69,7 @@ impl CachedDescriptor {
             init: AtomicU32::new(0),
             poll: AtomicU32::new(0),
             drop: AtomicU32::new(0),
+            rw_bytes: AtomicU32::new(0),
         }
     }
 
@@ -81,6 +87,7 @@ impl CachedDescriptor {
         self.init.store(descriptor.init, Ordering::Relaxed);
         self.poll.store(descriptor.poll, Ordering::Relaxed);
         self.drop.store(descriptor.drop, Ordering::Relaxed);
+        self.rw_bytes.store(descriptor.rw_bytes, Ordering::Relaxed);
         self.app_id.store(descriptor.app_id, Ordering::Release);
     }
 
@@ -97,6 +104,7 @@ impl CachedDescriptor {
             init: self.init.load(Ordering::Relaxed),
             poll: self.poll.load(Ordering::Relaxed),
             drop: self.drop.load(Ordering::Relaxed),
+            rw_bytes: self.rw_bytes.load(Ordering::Relaxed),
         })
     }
 }
@@ -272,6 +280,7 @@ pub fn refresh_catalog(store: &SlotStore<RpFpAppFlash<'static>>) {
                 init: native.entrypoints.init,
                 poll: native.entrypoints.poll,
                 drop: native.entrypoints.drop,
+                rw_bytes: package.manifest.rw_bytes,
             })
         });
         if let Some(descriptor) = descriptor {

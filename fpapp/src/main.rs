@@ -82,6 +82,7 @@ fn pack(options: BTreeMap<String, String>) -> Result<(), String> {
         &[OsString::from("-SW"), elf.clone().into_os_string()],
     )?;
     verify_sections(&readelf)?;
+    let rw_bytes = read_write_bytes(&readelf)?;
     let relocations = tool_output(
         "arm-none-eabi-readelf",
         &[OsString::from("-rW"), elf.clone().into_os_string()],
@@ -144,6 +145,7 @@ fn pack(options: BTreeMap<String, String>) -> Result<(), String> {
         // declares the contract it was actually built to.
         abi_major: libfp::fpapp::FPAPP_ABI_MAJOR,
         abi_minor: libfp::fpapp::FPAPP_ABI_MINOR,
+        rw_bytes,
     };
 
     let manual = read_optional_text(&options, "manual")?;
@@ -548,7 +550,7 @@ fn build_native_crate(root: &Path, linker: &Path, cargo_target_dir: &Path) -> Re
         .env(
             "RUSTFLAGS",
             format!(
-                "-C relocation-model=ropi -C panic=abort -C link-arg=-T{} -C link-arg=--emit-relocs",
+                "-C relocation-model=ropi-rwpi -C panic=abort -C link-arg=-T{} -C link-arg=--emit-relocs",
                 linker.display()
             ),
         )
@@ -833,7 +835,10 @@ fn verify_sections(readelf: &str) -> Result<(), String> {
         let name = fields[type_index - 1];
         let address = fields[type_index + 1];
         let flags = fields[type_index + 5];
-        if flags.contains('W') && flags.contains('A') {
+        // `.data`/`.bss` are expected under `ropi-rwpi` — the firmware gives the
+        // app RAM for them and points r9 at it. Anything *else* writable is not
+        // something the loader knows how to place, so it still fails.
+        if flags.contains('W') && flags.contains('A') && !matches!(name, ".data" | ".bss") {
             return Err(format!(
                 "writable allocated ELF section is not allowed: {name}"
             ));
@@ -851,6 +856,45 @@ fn verify_sections(readelf: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Total zero-initialised read-write bytes the app needs, read from `.bss`.
+///
+/// Only zeroed data is supported. A non-empty `.data` would mean the package
+/// has to carry an initialiser image for the firmware to copy in, which nothing
+/// needs yet — every app in the catalogue produces neither section — so it is
+/// rejected with an explanation rather than silently dropped, which would hand
+/// the app uninitialised statics it believes are initialised.
+fn read_write_bytes(readelf: &str) -> Result<u32, String> {
+    let mut data = 0u64;
+    let mut bss = 0u64;
+    for line in readelf.lines() {
+        let fields: Vec<_> = line.split_whitespace().collect();
+        let Some(type_index) = fields
+            .iter()
+            .position(|field| *field == "PROGBITS" || *field == "NOBITS")
+        else {
+            continue;
+        };
+        if type_index == 0 || fields.len() <= type_index + 3 {
+            continue;
+        }
+        let name = fields[type_index - 1];
+        let size = u64::from_str_radix(fields[type_index + 3], 16).unwrap_or(0);
+        match name {
+            ".data" => data = size,
+            ".bss" => bss = size,
+            _ => {}
+        }
+    }
+    if data != 0 {
+        return Err(format!(
+            "app has {data} bytes of initialised read-write data (.data); only \
+             zero-initialised statics (.bss) are supported, because the package \
+             carries no initialiser image"
+        ));
+    }
+    u32::try_from(bss).map_err(|_| "app requires an implausible amount of read-write data".into())
+}
+
 fn verify_relocations(readelf: &str) -> Result<(), String> {
     for line in readelf.lines() {
         let fields: Vec<_> = line.split_whitespace().collect();
@@ -859,9 +903,13 @@ fn verify_relocations(readelf: &str) -> Result<(), String> {
             continue;
         };
         let relocation = fields[relocation_index];
+        // R_ARM_SBREL32 is how `ropi-rwpi` addresses read-write data: an offset
+        // from the static base (r9), resolved at link time. It needs no runtime
+        // fixup and is position-independent by construction, which is the
+        // property this check exists to enforce.
         if !matches!(
             relocation,
-            "R_ARM_REL32" | "R_ARM_THM_CALL" | "R_ARM_THM_JUMP24"
+            "R_ARM_REL32" | "R_ARM_THM_CALL" | "R_ARM_THM_JUMP24" | "R_ARM_SBREL32"
         ) {
             let offset = fields.first().copied().unwrap_or("unknown offset");
             return Err(format!(
