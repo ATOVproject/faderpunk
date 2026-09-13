@@ -109,7 +109,12 @@ impl CachedDescriptor {
     }
 }
 
-static RUNTIME_DESCRIPTORS: [CachedDescriptor; 4] = [const { CachedDescriptor::new() }; 4];
+/// One cache entry per slot. Sized from `SLOT_COUNT` rather than a literal:
+/// `runtime_descriptor` searches this array by slot index, so an array shorter
+/// than the store makes apps in the high slots unspawnable. They install, list
+/// and read back correctly, and then silently cannot be added to a layout.
+static RUNTIME_DESCRIPTORS: [CachedDescriptor; SLOT_COUNT] =
+    [const { CachedDescriptor::new() }; SLOT_COUNT];
 
 pub struct RpFpAppFlash<'d> {
     flash: Flash<'d, FLASH, Blocking, PHYSICAL_FLASH_SIZE>,
@@ -240,7 +245,7 @@ pub async fn clear_quarantine(slot: usize) {
 
 /// Forget every installed app, as part of a factory reset.
 ///
-/// Only the 4 KiB control record per slot is erased, not the ~124 KiB of
+/// Only the 4 KiB control record per slot is erased, not the ~60 KiB of
 /// package bytes behind it: a slot whose control record is gone already reads
 /// as empty and is fully overwritten by the next install, so erasing the
 /// payload too would add seconds of flash erase to a recovery path the user is

@@ -49,7 +49,7 @@ Installation uses Faderpunk's USB MIDI configuration cable, so the browser
 must support Web MIDI with SysEx permission (Chrome and other Chromium-based
 browsers do).
 
-There are four independent slots. An interrupted upload leaves only its chosen
+There are eight independent slots. An interrupted upload leaves only its chosen
 slot empty; the player can select the file and install it again. Replacing or
 removing an app automatically stops all of its running instances and removes
 them from the saved channel layout before changing the slot.
@@ -147,10 +147,10 @@ It is documented in `abi_minor_is_compatible` and deliberately not built: it
 only pays off once firmware versions are widely spread across users *and* apps
 commonly lag the current level.
 
-### Four slots, no A/B slots
+### Eight slots, no A/B slots
 
-The final 512 KiB of the supported 2 MiB flash is split into four independent
-128 KiB slots. Each has a 4 KiB control sector and up to 124 KiB of package
+The final 512 KiB of the supported 2 MiB flash is split into eight independent
+64 KiB slots. Each has a 4 KiB control sector and up to 60 KiB of package
 data. Beginning an upload invalidates that slot. Commit writes its control
 record only after all package and compatibility checks succeed.
 

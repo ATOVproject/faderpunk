@@ -426,7 +426,21 @@ pub fn generate(faderpunk_src: &Path, out_file: &Path) {
         out.push_str(",\n");
     }
     out.push_str("];\n\n");
-    out.push_str("export const DEMO_APPS: AllApps = new Map(APPS.map((a) => [a.appId, a]));\n");
+    out.push_str("export const DEMO_APPS: AllApps = new Map(APPS.map((a) => [a.appId, a]));\n\n");
+    // A live device reports its own slot count in `FpAppSupport`, so the UI
+    // never needs this for real hardware. Simulator mode has no device to ask,
+    // and hardcoding the number there means it silently disagrees with the
+    // firmware the next time `SLOT_COUNT` changes.
+    out.push_str(&format!(
+        "/**\n\
+         \x20* Installable-app slots the firmware provides.\n\
+         \x20*\n\
+         \x20* Simulator mode only. A live device reports its own slot count in\n\
+         \x20* `FpAppSupport`; prefer that whenever a device is connected.\n\
+         \x20*/\n\
+         export const SLOT_COUNT = {};\n",
+        libfp::fpapp_store::SLOT_COUNT
+    ));
 
     if let Some(parent) = out_file.parent() {
         fs::create_dir_all(parent).unwrap();

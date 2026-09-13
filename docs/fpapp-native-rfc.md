@@ -12,7 +12,7 @@ Runtime ABI version: `0`
 
 This RFC defines an installable community-app format for Faderpunk. A user
 selects a `.fpapp` in the Configurator, reviews its documentation and requested
-access, chooses one of four slots, and uploads it over the existing config
+access, chooses a slot, and uploads it over the existing config
 connection. BOOTSEL and a replacement UF2 are not part of app installation.
 
 Version 0 deliberately chooses a small native wrapper instead of a VM. An app
@@ -64,12 +64,12 @@ is not executed by a different firmware.
 
 ### Four independent slots; no A/B pair
 
-The final 512 KiB of the supported 2 MiB flash is four independent 128 KiB
+The final 512 KiB of the supported 2 MiB flash is eight independent 64 KiB
 slots. Each slot holds at most one app package. There is no active/inactive A/B
 pair and no automatic rollback:
 
 - a 4 KiB control sector says whether the slot is valid;
-- up to 124 KiB stores package bytes;
+- up to 60 KiB stores package bytes;
 - beginning an upload erases the slot's control sector first;
 - commit writes the control record only after every package check passes;
 - reset or power loss before commit therefore leaves that slot empty;
@@ -134,14 +134,18 @@ details. The package tooling does not know how firmware schedules an instance.
 0x1018_0000 .. 0x1020_0000  FPApp region          512 KiB
 ```
 
-The FPApp region contains four equal slots:
+The FPApp region contains eight equal slots:
 
 | Slot | Control | Package capacity |
 | ---: | ---: | ---: |
-| 0 | 4 KiB | 124 KiB |
-| 1 | 4 KiB | 124 KiB |
-| 2 | 4 KiB | 124 KiB |
-| 3 | 4 KiB | 124 KiB |
+| 0 | 4 KiB | 60 KiB |
+| 1 | 4 KiB | 60 KiB |
+| 2 | 4 KiB | 60 KiB |
+| 3 | 4 KiB | 60 KiB |
+| 4 | 4 KiB | 60 KiB |
+| 5 | 4 KiB | 60 KiB |
+| 6 | 4 KiB | 60 KiB |
+| 7 | 4 KiB | 60 KiB |
 
 The firmware linker is limited to the first 1536 KiB, so normal firmware
 linking cannot overwrite package storage. Physical flash operations pause the
@@ -272,7 +276,7 @@ The existing 512-byte config transport has these appended request variants:
 - `RemoveFpApp { slot }`;
 - `ReadFpAppSection { slot, section, offset }`.
 
-Support reports the 32-byte firmware ABI, four slots, 124 KiB package maximum,
+Support reports the 32-byte firmware ABI, the slot count, the package maximum,
 and a 256-byte chunk size. Chunks are strictly sequential. A protocol unit test
 serializes a full request and response and proves each remains below 512 bytes.
 
