@@ -70,8 +70,169 @@ type InitFn = unsafe extern "C" fn(*mut u8, usize, *const HostV1) -> u32;
 type PollFn = unsafe extern "C" fn(*mut u8, *const HostV1) -> u32;
 type DropFn = unsafe extern "C" fn(*mut u8) -> u32;
 
+/// Zero-initialised read-write data an app may declare (`.bss` under
+/// `ropi-rwpi`). Kept deliberately small: every app in the catalogue currently
+/// needs none, and the only planned consumer is the SDK stashing the host
+/// pointer. An app asking for more than this is refused at spawn.
+const MAX_RW_BYTES: usize = 256;
+
 #[repr(C, align(8))]
 struct InstanceStorage([u8; MAX_INSTANCE_BYTES]);
+
+/// Read-write data block for one app instance, addressed through the static
+/// base register. Separate from `InstanceStorage` so the arena an app asks for
+/// via `required_bytes` stays exactly what it asked for.
+#[repr(C, align(8))]
+struct RwBlock([u8; MAX_RW_BYTES]);
+
+/// Enter app code with the static base register pointing at `sb`.
+///
+/// Apps are built `-C relocation-model=ropi-rwpi`, so every access to a
+/// writable static compiles to `ldr [r9, #offset]`. The firmware is not built
+/// that way and uses r9 as an ordinary register, so it has to be set on the way
+/// in and the firmware's own value put back on the way out.
+///
+/// Rust cannot express "call this pointer with r9 set", hence the assembly.
+/// `lateout("r9") _` is what tells the compiler r9 does not survive the block:
+/// without it an input could be allocated into r9 and destroyed by the `mov`
+/// before the call, and the firmware could keep using a stale value afterwards.
+///
+/// The other direction needs nothing: r9 is callee-saved in the firmware's own
+/// code, so a host callback preserves and restores it, and the app's base is
+/// intact when the callback returns.
+/// Enter app code with the static base register pointing at `sb`.
+///
+/// Apps are built `-C relocation-model=ropi-rwpi`, so every access to a
+/// writable static compiles to an `[r9, #offset]` load. The firmware is not
+/// built that way and uses r9 as an ordinary register, so it has to be set on
+/// the way in and the firmware's own value restored on the way out.
+///
+/// `lateout("r9") _` is what makes that safe: it tells the compiler r9 does not
+/// survive the block, so no input gets allocated there (which the `mov` would
+/// destroy before the call) and nothing downstream keeps using a stale value.
+///
+/// The other direction needs nothing. r9 is callee-saved in the firmware's own
+/// code, so a host callback preserves and restores it and the app's base is
+/// still valid when the callback returns.
+///
+/// SAFETY for all four: the function pointer must come from the validated
+/// native image, and `sb` must point at a live `RwBlock` owned by this instance
+/// for the duration of the call.
+unsafe fn call_required_bytes(func: RequiredBytesFn, sb: *mut u8) -> u32 {
+    let status: u32;
+    unsafe {
+        core::arch::asm!(
+            "mov r9, {sb}",
+            "blx {func}",
+            sb = in(reg) sb,
+            func = in(reg) func,
+            lateout("r0") status,
+            // AAPCS call-clobbered set, listed explicitly. `clobber_abi("C")`
+            // would also name D16-D31, which this target does not have, and
+            // clobbering reserved registers is undefined behaviour.
+            lateout("r1") _,
+            lateout("r2") _,
+            lateout("r3") _,
+            lateout("r12") _,
+            lateout("lr") _,
+            // r9 is the static base: set on the way in, and declared dead here
+            // so no input is allocated into it and nothing downstream reuses
+            // the firmware's stale value.
+            lateout("r9") _,
+        );
+    }
+    status
+}
+
+unsafe fn call_init(
+    func: InitFn,
+    sb: *mut u8,
+    storage: *mut u8,
+    len: usize,
+    host: *const HostV1,
+) -> u32 {
+    let status: u32;
+    unsafe {
+        core::arch::asm!(
+            "mov r9, {sb}",
+            "blx {func}",
+            sb = in(reg) sb,
+            func = in(reg) func,
+            in("r0") storage,
+            in("r1") len,
+            in("r2") host,
+            lateout("r0") status,
+            // AAPCS call-clobbered set, listed explicitly. `clobber_abi("C")`
+            // would also name D16-D31, which this target does not have, and
+            // clobbering reserved registers is undefined behaviour.
+            lateout("r1") _,
+            lateout("r2") _,
+            lateout("r3") _,
+            lateout("r12") _,
+            lateout("lr") _,
+            // r9 is the static base: set on the way in, and declared dead here
+            // so no input is allocated into it and nothing downstream reuses
+            // the firmware's stale value.
+            lateout("r9") _,
+        );
+    }
+    status
+}
+
+unsafe fn call_poll(func: PollFn, sb: *mut u8, storage: *mut u8, host: *const HostV1) -> u32 {
+    let status: u32;
+    unsafe {
+        core::arch::asm!(
+            "mov r9, {sb}",
+            "blx {func}",
+            sb = in(reg) sb,
+            func = in(reg) func,
+            in("r0") storage,
+            in("r1") host,
+            lateout("r0") status,
+            // AAPCS call-clobbered set, listed explicitly. `clobber_abi("C")`
+            // would also name D16-D31, which this target does not have, and
+            // clobbering reserved registers is undefined behaviour.
+            lateout("r1") _,
+            lateout("r2") _,
+            lateout("r3") _,
+            lateout("r12") _,
+            lateout("lr") _,
+            // r9 is the static base: set on the way in, and declared dead here
+            // so no input is allocated into it and nothing downstream reuses
+            // the firmware's stale value.
+            lateout("r9") _,
+        );
+    }
+    status
+}
+
+unsafe fn call_drop(func: DropFn, sb: *mut u8, storage: *mut u8) -> u32 {
+    let status: u32;
+    unsafe {
+        core::arch::asm!(
+            "mov r9, {sb}",
+            "blx {func}",
+            sb = in(reg) sb,
+            func = in(reg) func,
+            in("r0") storage,
+            lateout("r0") status,
+            // AAPCS call-clobbered set, listed explicitly. `clobber_abi("C")`
+            // would also name D16-D31, which this target does not have, and
+            // clobbering reserved registers is undefined behaviour.
+            lateout("r1") _,
+            lateout("r2") _,
+            lateout("r3") _,
+            lateout("r12") _,
+            lateout("lr") _,
+            // r9 is the static base: set on the way in, and declared dead here
+            // so no input is allocated into it and nothing downstream reuses
+            // the firmware's stale value.
+            lateout("r9") _,
+        );
+    }
+    status
+}
 
 struct CompletionGuard(&'static Signal<NoopRawMutex, ()>);
 
@@ -557,7 +718,25 @@ pub async fn run_fpapp(
     let drop_app: DropFn =
         unsafe { transmute(native_address(descriptor.code_base, descriptor.drop)) };
 
-    let required = watchdog::guarding(descriptor.slot, || unsafe { required_bytes() }) as usize;
+    if descriptor.rw_bytes as usize > MAX_RW_BYTES {
+        defmt::warn!(
+            "fpapp slot {} wants {} bytes of read-write data, limit is {}",
+            descriptor.slot,
+            descriptor.rw_bytes,
+            MAX_RW_BYTES
+        );
+        reset_channels(start_channel, channels).await;
+        return;
+    }
+    // Zeroed once and never written by the firmware again: the app's statics
+    // live here for as long as the instance does. Created before the first call
+    // into app code, since `required_bytes` may touch them too.
+    let mut rw = RwBlock([0; MAX_RW_BYTES]);
+    let sb = rw.0.as_mut_ptr();
+
+    let required = watchdog::guarding(descriptor.slot, || unsafe {
+        call_required_bytes(required_bytes, sb)
+    }) as usize;
     if required > MAX_INSTANCE_BYTES {
         reset_channels(start_channel, channels).await;
         return;
@@ -591,21 +770,20 @@ pub async fn run_fpapp(
     host.quantize = quantize;
 
     let mut storage = InstanceStorage([0; MAX_INSTANCE_BYTES]);
+    let storage_ptr = storage.0.as_mut_ptr();
+    let storage_len = storage.0.len();
+    let host_ptr = &host as *const HostV1;
     if watchdog::guarding(descriptor.slot, || unsafe {
-        init(
-            storage.0.as_mut_ptr(),
-            storage.0.len(),
-            &host as *const HostV1,
-        )
+        call_init(init, sb, storage_ptr, storage_len, host_ptr)
     }) != export_status::OK
     {
         reset_channels(start_channel, channels).await;
         return;
     }
     APP_PARAM_SIGNALS[layout_id as usize].reset();
-    if !drive_app(ctx, &mut storage, &host, poll, descriptor.slot).await {
+    if !drive_app(ctx, &mut storage, &host, poll, descriptor.slot, sb).await {
         let _ = watchdog::guarding(descriptor.slot, || unsafe {
-            drop_app(storage.0.as_mut_ptr())
+            call_drop(drop_app, sb, storage.0.as_mut_ptr())
         });
         reset_channels(start_channel, channels).await;
         return;
@@ -621,9 +799,9 @@ pub async fn run_fpapp(
             ));
         }
     }
-    if !drive_app(ctx, &mut storage, &host, poll, descriptor.slot).await {
+    if !drive_app(ctx, &mut storage, &host, poll, descriptor.slot, sb).await {
         let _ = watchdog::guarding(descriptor.slot, || unsafe {
-            drop_app(storage.0.as_mut_ptr())
+            call_drop(drop_app, sb, storage.0.as_mut_ptr())
         });
         reset_channels(start_channel, channels).await;
         return;
@@ -704,13 +882,13 @@ pub async fn run_fpapp(
                 }
             }
         }
-        if !drive_app(ctx, &mut storage, &host, poll, descriptor.slot).await {
+        if !drive_app(ctx, &mut storage, &host, poll, descriptor.slot, sb).await {
             break;
         }
     }
 
     let _ = watchdog::guarding(descriptor.slot, || unsafe {
-        drop_app(storage.0.as_mut_ptr())
+        call_drop(drop_app, sb, storage.0.as_mut_ptr())
     });
     while process_services(unsafe { &mut *ctx }).await {}
     reset_channels(start_channel, channels).await;
@@ -730,10 +908,15 @@ async fn drive_app(
     host: &HostV1,
     poll: PollFn,
     slot: u8,
+    sb: *mut u8,
 ) -> bool {
     let mut turns = 0;
     loop {
-        let status = watchdog::guarding(slot, || unsafe { poll(storage.0.as_mut_ptr(), host) });
+        let storage_ptr = storage.0.as_mut_ptr();
+        let host_ptr = host as *const HostV1;
+        let status = watchdog::guarding(slot, || unsafe {
+            call_poll(poll, sb, storage_ptr, host_ptr)
+        });
         if status != export_status::OK {
             return false;
         }

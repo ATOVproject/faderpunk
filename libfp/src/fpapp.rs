@@ -26,7 +26,7 @@ pub const FPAPP_ABI_MAJOR: u16 = 1;
 /// level it was built against, whether or not it actually calls anything new.
 /// That is deliberately conservative — see `abi_minor_is_compatible` for the
 /// more precise alternative and why it is not implemented.
-pub const FPAPP_ABI_MINOR: u16 = 1;
+pub const FPAPP_ABI_MINOR: u16 = 2;
 
 /// Whether firmware at `(FPAPP_ABI_MAJOR, FPAPP_ABI_MINOR)` can run an app
 /// built against `(app_major, app_minor)`.
@@ -130,6 +130,14 @@ pub struct Manifest<'a> {
     /// ABI feature level the app was compiled against; must not exceed the
     /// firmware's. See `FPAPP_ABI_MINOR`.
     pub abi_minor: u16,
+    /// Bytes of zero-initialised read-write data the app needs (`.bss` under
+    /// `ropi-rwpi`). The firmware provides this much RAM and points the static
+    /// base register at it before entering app code.
+    ///
+    /// Only zeroed data is supported: `fpapp pack` rejects a non-empty `.data`,
+    /// so there is no initialiser image to carry. Zero for an app with no
+    /// writable statics, which is every app built before this existed.
+    pub rw_bytes: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -542,6 +550,7 @@ fn parse_manifest(bytes: &[u8]) -> Result<Manifest<'_>, PackageError> {
     let mut firmware_abi = None;
     let mut abi_major = None;
     let mut abi_minor = None;
+    let mut rw_bytes = None;
 
     for _ in 0..fields {
         let key = decoder.u32().map_err(|_| PackageError::InvalidManifest)?;
@@ -596,6 +605,7 @@ fn parse_manifest(bytes: &[u8]) -> Result<Manifest<'_>, PackageError> {
             }
             14 => abi_major = Some(decoder.u16().map_err(|_| PackageError::InvalidManifest)?),
             15 => abi_minor = Some(decoder.u16().map_err(|_| PackageError::InvalidManifest)?),
+            16 => rw_bytes = Some(decoder.u32().map_err(|_| PackageError::InvalidManifest)?),
             _ => decoder.skip().map_err(|_| PackageError::InvalidManifest)?,
         }
     }
@@ -622,6 +632,9 @@ fn parse_manifest(bytes: &[u8]) -> Result<Manifest<'_>, PackageError> {
         // only about failing loudly if one turns up.
         abi_major: abi_major.unwrap_or(0),
         abi_minor: abi_minor.unwrap_or(0),
+        // Absent in packages built before read-write data was supported, which
+        // is exactly the case where the app needs none.
+        rw_bytes: rw_bytes.unwrap_or(0),
     };
     validate_manifest(&manifest)?;
     Ok(manifest)
@@ -674,7 +687,7 @@ fn encode_manifest(manifest: &Manifest<'_>, output: &mut [u8]) -> Result<usize, 
     {
         let mut encoder = minicbor::Encoder::new(&mut writer);
         encoder
-            .map(16)
+            .map(17)
             .and_then(|encoder| encoder.u8(0))
             .and_then(|encoder| encoder.u8(manifest.app_id))
             .and_then(|encoder| encoder.u8(1))
@@ -717,6 +730,8 @@ fn encode_manifest(manifest: &Manifest<'_>, output: &mut [u8]) -> Result<usize, 
             .and_then(|encoder| encoder.u16(manifest.abi_major))
             .and_then(|encoder| encoder.u8(15))
             .and_then(|encoder| encoder.u16(manifest.abi_minor))
+            .and_then(|encoder| encoder.u8(16))
+            .and_then(|encoder| encoder.u32(manifest.rw_bytes))
             .map_err(|error| error.into_write().unwrap_or(PackageError::InvalidManifest))?;
     }
     Ok(writer.position)
@@ -864,15 +879,15 @@ mod tests {
     // CBOR field numbers, alignment, and the CRC-covered byte range.
     const GOLDEN_SIFT_PACKAGE: &[u8] = &[
         0x46, 0x50, 0x41, 0x50, 0x50, 0x00, 0x0d, 0x0a, 0x00, 0x00, 0x01, 0x00, 0x94, 0x00, 0x00,
-        0x00, 0x02, 0x00, 0x30, 0x00, 0xe6, 0x5c, 0xb4, 0x05, 0x01, 0x00, 0x01, 0x00, 0x30, 0x00,
-        0x00, 0x00, 0x5e, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x90, 0x00, 0x00, 0x00, 0x04,
-        0x00, 0x00, 0x00, 0xb0, 0x00, 0x18, 0x66, 0x01, 0x83, 0x01, 0x00, 0x00, 0x02, 0x00, 0x03,
+        0x00, 0x02, 0x00, 0x30, 0x00, 0x7d, 0x82, 0x15, 0x42, 0x01, 0x00, 0x01, 0x00, 0x30, 0x00,
+        0x00, 0x00, 0x60, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x90, 0x00, 0x00, 0x00, 0x04,
+        0x00, 0x00, 0x00, 0xb1, 0x00, 0x18, 0x66, 0x01, 0x83, 0x01, 0x00, 0x00, 0x02, 0x00, 0x03,
         0x64, 0x53, 0x69, 0x66, 0x74, 0x04, 0x69, 0x54, 0x68, 0x72, 0x65, 0x73, 0x68, 0x6f, 0x6c,
         0x64, 0x05, 0x64, 0x4e, 0x65, 0x61, 0x6c, 0x06, 0x02, 0x07, 0x1a, 0x00, 0xff, 0x00, 0xff,
         0x08, 0x0d, 0x09, 0x80, 0x0a, 0x18, 0x40, 0x0b, 0x19, 0x27, 0x10, 0x0c, 0x03, 0x0d, 0x58,
         0x20, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
         0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-        0x11, 0x11, 0x11, 0x0e, 0x01, 0x0f, 0x01, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00,
+        0x11, 0x11, 0x11, 0x0e, 0x01, 0x0f, 0x02, 0x10, 0x00, 0x13, 0x00, 0x00, 0x00,
     ];
 
     #[test]
@@ -948,6 +963,7 @@ mod tests {
             firmware_abi: [0x11; 32],
             abi_major: FPAPP_ABI_MAJOR,
             abi_minor: FPAPP_ABI_MINOR,
+            rw_bytes: 0,
         };
         let mut output = [0u8; 160];
 
@@ -977,6 +993,7 @@ mod tests {
             firmware_abi: [0x22; 32],
             abi_major: FPAPP_ABI_MAJOR,
             abi_minor: FPAPP_ABI_MINOR,
+            rw_bytes: 0,
         };
         let mut output = [0u8; 512];
 
