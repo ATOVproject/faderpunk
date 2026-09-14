@@ -554,6 +554,15 @@ unsafe extern "C" fn read_value(context: *mut (), kind: u8, index: u8) -> u32 {
             u32::from(u16::from_le_bytes([RoscRng::next_u8(), RoscRng::next_u8()]))
         }
         value_kind::GLOBAL_SWING => get_global_config().clock.swing_amount as u32,
+        // `index` is a curve index (0-3), not a channel, so the clamped
+        // `channel` above deliberately goes unused here. Returned raw,
+        // including the 0 that means uncalibrated: `libfp`'s
+        // `resolve_custom_cpo` applies the fallback, and it must apply it the
+        // same way for an installed app as for a built-in one.
+        value_kind::CUSTOM_VOCT_COUNTS_PER_OCT => get_global_config()
+            .custom_voct_curves
+            .get(usize::from(index))
+            .map_or(0, |curve| u32::from(curve.counts_per_oct)),
         value_kind::CURRENT_TICK_LOW => (CURRENT_TICK.load(Ordering::Relaxed) & 0xFFFF_FFFF) as u32,
         value_kind::CURRENT_TICK_HIGH => (CURRENT_TICK.load(Ordering::Relaxed) >> 32) as u32,
         value_kind::CLOCK_RUNNING => u32::from(CLOCK_RUNNING.load(Ordering::Relaxed)),

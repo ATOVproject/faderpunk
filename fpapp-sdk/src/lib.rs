@@ -135,6 +135,15 @@ mod host_tables {
         HOST.store(host as usize, Ordering::Relaxed);
     }
 
+    /// The host table recorded by the last entry, or null before the first.
+    ///
+    /// Free functions in `compat` have no `App` to borrow a host from, so they
+    /// read it from here. Only reachable because installed apps are built
+    /// `ropi-rwpi` and can hold writable statics at all.
+    pub fn host() -> *const HostV1 {
+        HOST.load(Ordering::Relaxed) as *const HostV1
+    }
+
     #[unsafe(no_mangle)]
     pub extern "C" fn fpapp_table_base(kind: u8) -> *const u16 {
         let index = kind as usize;
@@ -197,6 +206,12 @@ pub mod value_kind {
     pub const CURRENT_TICK_LOW: u8 = 13;
     pub const CURRENT_TICK_HIGH: u8 = 14;
     pub const CLOCK_RUNNING: u8 = 15;
+    /// `GlobalConfig::custom_voct_curves[index].counts_per_oct`, raw as stored.
+    /// `index` is the curve index (0-3), *not* a channel, so this is one of the
+    /// few kinds the host does not clamp to the app's channel range. The
+    /// uncalibrated/out-of-range fallback is applied by `libfp`, identically on
+    /// both sides, so this must stay raw.
+    pub const CUSTOM_VOCT_COUNTS_PER_OCT: u8 = 16;
 }
 
 pub mod command_kind {
@@ -451,8 +466,8 @@ pub mod compat {
     use libfp::quantizer::Pitch;
     use libfp::utils::scale_bits_14_12;
     use libfp::{
-        APP_MAX_PARAMS, Brightness, ClockDivision, Color, Key, MidiCc, MidiChannel, MidiIn,
-        MidiNote, MidiOut, Note, Range, Value, VoltPerOct,
+        APP_MAX_PARAMS, Brightness, ClockDivision, Color, CustomVoOctCurve, Key, MidiCc,
+        MidiChannel, MidiIn, MidiNote, MidiOut, Note, Range, Value, VoltPerOct,
     };
     use midly::{
         MidiMessage, PitchBend,
@@ -1783,19 +1798,66 @@ pub mod compat {
         pub clock: GlobalClockConfig,
     }
 
+    /// The parts of the device's global config an app can see.
+    ///
+    /// `build_community` rewrites a community app's `get_global_config()` into
+    /// `app.global_config()`, so this free function is normally unreachable.
+    /// It reads through the host anyway rather than returning zeroes: a stub
+    /// that silently reports "no swing" is indistinguishable from a device the
+    /// user actually set to zero, and would be a trap the one time the rewrite
+    /// does not apply.
     pub fn get_global_config() -> GlobalConfig {
         GlobalConfig {
-            clock: GlobalClockConfig { swing_amount: 0 },
+            clock: GlobalClockConfig {
+                swing_amount: host_read(value_kind::GLOBAL_SWING, 0) as i8,
+            },
         }
+    }
+
+    /// Read one value through the host table stashed at the last entry.
+    ///
+    /// The `App`-bound helpers borrow their host; these free functions have no
+    /// `App`, so they use the recorded pointer instead.
+    fn host_read(kind: u8, index: u8) -> u32 {
+        let host = crate::host_tables::host();
+        if host.is_null() {
+            return 0;
+        }
+        // SAFETY: `host` was handed to an entry point by the firmware and the
+        // table stays valid for the duration of a call.
+        unsafe { ((*host).read_value)((*host).context, kind, index) }
+    }
+
+    /// The user's calibrated V/Oct curves, as far as this call needs them.
+    ///
+    /// Only `VoltPerOct::Custom(idx)` reads the array, and only at `idx`, so a
+    /// single host read fills the one entry that matters. An out-of-range index
+    /// leaves the array zeroed, which `libfp` already treats as uncalibrated.
+    fn custom_voct_curves(vpo: VoltPerOct) -> [CustomVoOctCurve; 4] {
+        let mut curves = [CustomVoOctCurve { counts_per_oct: 0 }; 4];
+        if let VoltPerOct::Custom(idx) = vpo
+            && let Some(curve) = curves.get_mut(idx as usize)
+        {
+            curve.counts_per_oct = host_read(value_kind::CUSTOM_VOCT_COUNTS_PER_OCT, idx) as u16;
+        }
+        curves
     }
 
     /// Convert a quantized pitch to DAC counts.
     ///
-    /// Mirrors `crate::app::pitch_as_counts` in the firmware. Custom V/Oct
-    /// curves from the global config are not available through the host ABI,
-    /// so the standard curves are used.
+    /// Mirrors `crate::app::pitch_as_counts` in the firmware, including the
+    /// user's custom V/Oct calibration: the curve is fetched through the host
+    /// and handed to the same `libfp` routine the firmware calls, so an app
+    /// produces identical CV built in or installed.
     pub fn pitch_as_counts(pitch: Pitch, range: Range, vpo: VoltPerOct) -> u16 {
-        pitch.as_counts(range, vpo)
+        pitch.as_counts_with_curves(range, vpo, &custom_voct_curves(vpo))
+    }
+
+    /// DAC counts per octave for `vpo`, resolving any custom curve.
+    ///
+    /// Mirrors `crate::app::vpo_counts_per_oct` in the firmware.
+    pub fn vpo_counts_per_oct(vpo: VoltPerOct) -> i16 {
+        vpo.counts_per_oct_with_curves(&custom_voct_curves(vpo))
     }
 
     pub use libfp::latch::LatchLayer;
