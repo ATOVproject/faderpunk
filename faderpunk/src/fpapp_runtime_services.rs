@@ -1135,7 +1135,9 @@ async fn process_blob_write(context: &mut RuntimeContext, write: &BlobWrite) {
         if let Ok(values) = postcard::from_bytes::<heapless::Vec<Value, { libfp::APP_MAX_PARAMS }>>(
             &write.bytes[..write.len],
         ) {
-            APP_PARAM_CHANNEL.send((write.index, values)).await;
+            // Keyed by the app's own layout id, not the one it wrote, so an
+            // app cannot answer a param request on another app's behalf.
+            APP_PARAM_CHANNEL.send((context.layout_id, values)).await;
         }
         return;
     }
