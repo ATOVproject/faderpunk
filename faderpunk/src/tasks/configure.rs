@@ -2,7 +2,7 @@ use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
-use embassy_time::{with_timeout, Duration};
+use embassy_time::{with_deadline, with_timeout, Duration, Instant, Timer};
 use heapless::Vec;
 use portable_atomic::Ordering;
 use postcard::{from_bytes, to_slice};
@@ -45,8 +45,10 @@ pub static CONFIG_RX_CHANNEL: Channel<CriticalSectionRawMutex, Vec<u8, CONFIG_FR
 /// 1ms performance-MIDI timeout: config frames must not be silently
 /// truncated, but a stalled host must not block the USB sender forever.
 const CONFIG_WRITE_TIMEOUT_MS: u64 = 500;
-/// Multi-message response timeout for app param collection
+/// How long to wait for apps to answer a param request
 const APP_PARAM_TIMEOUT_MS: u64 = 1000;
+/// How often to check whether every app has answered `GetAllAppParams`
+const APP_PARAM_POLL_MS: u64 = 5;
 
 pub enum AppParamCmd {
     SetAppParams {
@@ -73,6 +75,24 @@ pub enum ProtocolError {
     CorruptedMessage,
     Timeout,
     NotConnected,
+}
+
+/// Discards answers left over from an earlier request that timed out, so a late
+/// answer is not taken as the answer to the next request.
+fn drain_app_param_responses() {
+    while APP_PARAM_CHANNEL.try_receive().is_ok() {}
+}
+
+/// Waits for `layout_id`'s answer, discarding late answers from any other app.
+async fn receive_app_params(layout_id: u8) -> Option<Vec<Value, APP_MAX_PARAMS>> {
+    let deadline = Instant::now() + Duration::from_millis(APP_PARAM_TIMEOUT_MS);
+    loop {
+        match with_deadline(deadline, APP_PARAM_CHANNEL.receive()).await {
+            Ok((res_layout_id, values)) if res_layout_id == layout_id => return Some(values),
+            Ok(_) => {}
+            Err(_) => return None,
+        }
+    }
 }
 
 /// Monotonic milliseconds for the FPApp store's staging timeout. Only ever
@@ -165,62 +185,59 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 proto.send_msg(ConfigMsgOut::GlobalConfig(config)).await
             }
             ConfigMsgIn::GetAppParams { layout_id } => {
+                drain_app_param_responses();
                 APP_PARAM_SIGNALS[layout_id as usize].signal(AppParamCmd::RequestParamValues);
-                if let Ok((res_layout_id, values)) = with_timeout(
-                    Duration::from_millis(APP_PARAM_TIMEOUT_MS),
-                    APP_PARAM_CHANNEL.receive(),
-                )
-                .await
-                {
-                    proto
-                        .send_msg(ConfigMsgOut::AppState(res_layout_id, &values))
-                        .await
-                } else {
-                    Ok(())
+                match receive_app_params(layout_id).await {
+                    Some(values) => {
+                        proto
+                            .send_msg(ConfigMsgOut::AppState(layout_id, &values))
+                            .await
+                    }
+                    None => Ok(()),
                 }
             }
             ConfigMsgIn::SetAppParams { layout_id, values } => {
+                drain_app_param_responses();
                 APP_PARAM_SIGNALS[layout_id as usize].signal(AppParamCmd::SetAppParams { values });
-                if let Ok((res_layout_id, values)) = with_timeout(
-                    Duration::from_millis(APP_PARAM_TIMEOUT_MS),
-                    APP_PARAM_CHANNEL.receive(),
-                )
-                .await
-                {
-                    proto
-                        .send_msg(ConfigMsgOut::AppState(res_layout_id, &values))
-                        .await
-                } else {
-                    Ok(())
+                match receive_app_params(layout_id).await {
+                    Some(values) => {
+                        proto
+                            .send_msg(ConfigMsgOut::AppState(layout_id, &values))
+                            .await
+                    }
+                    None => Ok(()),
                 }
             }
             ConfigMsgIn::GetAllAppParams => {
                 let layout_ids = layout.get_layout_ids();
-                let app_count = layout_ids.len();
-
-                let mut res = proto.send_msg(ConfigMsgOut::BatchMsgStart(app_count)).await;
-
-                if app_count > 0 && res.is_ok() {
-                    for id in layout_ids {
-                        APP_PARAM_SIGNALS[id as usize].signal(AppParamCmd::RequestParamValues);
-                    }
-                    let receiver = async {
-                        for _ in 0..app_count {
-                            let (res_layout_id, values) = APP_PARAM_CHANNEL.receive().await;
-                            proto
-                                .send_msg(ConfigMsgOut::AppState(res_layout_id, &values))
-                                .await?;
-                        }
-                        Ok(())
-                    };
-
-                    if let Ok(receiver_res) =
-                        with_timeout(Duration::from_millis(APP_PARAM_TIMEOUT_MS), receiver).await
-                    {
-                        res = receiver_res;
-                    }
+                drain_app_param_responses();
+                for id in &layout_ids {
+                    APP_PARAM_SIGNALS[*id as usize].signal(AppParamCmd::RequestParamValues);
                 }
 
+                // The configurator reads exactly as many messages as the batch
+                // announces, so the count must be known before announcing it.
+                // An app that never answers (a wedged one, or one without a
+                // param handler) is left out rather than announced and never
+                // sent, which would desync the connection for good. The
+                // responses wait in the channel instead of a local buffer, and
+                // nothing else receives from it, so all `count` are there.
+                let deadline = Instant::now() + Duration::from_millis(APP_PARAM_TIMEOUT_MS);
+                while APP_PARAM_CHANNEL.len() < layout_ids.len() && Instant::now() < deadline {
+                    Timer::after_millis(APP_PARAM_POLL_MS).await;
+                }
+                let count = APP_PARAM_CHANNEL.len();
+
+                let mut res = proto.send_msg(ConfigMsgOut::BatchMsgStart(count)).await;
+                for _ in 0..count {
+                    if res.is_err() {
+                        break;
+                    }
+                    let (res_layout_id, values) = APP_PARAM_CHANNEL.receive().await;
+                    res = proto
+                        .send_msg(ConfigMsgOut::AppState(res_layout_id, &values))
+                        .await;
+                }
                 if res.is_ok() {
                     res = proto.send_msg(ConfigMsgOut::BatchMsgEnd).await;
                 }
