@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.13.0 (2026-09-15)
+
+### Features
+
+- add installable native community apps (#666)
+- surface community apps in the configurator (#664)
+- build the remaining community apps as installable fpapps (#677)
+- resolve libfp lookup tables through the host (#686)
+- raise installable app slots from four to eight (#687)
+- resolve custom V/Oct curves in installed apps (#689)
+
+### Fixes
+
+- recognize FPApp tooling in scope checks (#665)
+- announce only the apps that answered in the param batch (#690)
+
 ## 1.12.0 (2026-09-01)
 
 ### Features
