@@ -23,6 +23,8 @@ interface Props {
   layoutId: number;
   startChannel: number;
   params: Value[];
+  /** The app declares params but never answered a request for them. */
+  notResponding?: boolean;
 }
 
 // react-hook-form seeds each field's value once, when the form itself is
@@ -105,7 +107,13 @@ const ActiveAppParamsForm = ({
   );
 };
 
-export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
+export const ActiveApp = ({
+  app,
+  layoutId,
+  params,
+  startChannel,
+  notResponding,
+}: Props) => {
   return (
     <details className="group w-full bg-black">
       <summary
@@ -128,7 +136,17 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
         </div>
         <div className="flex-1">
           <p className="text-yellow-fp text-sm font-bold uppercase">App</p>
-          <p className="text-lg font-medium">{app.name}</p>
+          <p className="flex items-center gap-2 text-lg font-medium">
+            {app.name}
+            {notResponding && (
+              <span
+                className="rounded bg-red-900 px-2 py-0.5 text-xs font-bold tracking-wide text-red-200 uppercase"
+                title="This app declares parameters but hasn't answered a request for them — its params may be unreachable from the Configurator."
+              >
+                Not responding
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex-1">
           <p className="text-yellow-fp text-sm font-bold uppercase">
@@ -164,7 +182,13 @@ export const ActiveApp = ({ app, layoutId, params, startChannel }: Props) => {
           <div className="w-7" />
         )}
       </summary>
-      {app.paramCount > 0 ? (
+      {app.paramCount > 0 && notResponding ? (
+        <div className="border-default-100 border-y-3 px-4 py-8 text-red-300">
+          This app hasn't answered a parameter request, so there's nothing real
+          to show here — showing empty or default values would be misleading,
+          and saving them could overwrite what the app actually holds.
+        </div>
+      ) : app.paramCount > 0 ? (
         <ActiveAppParamsForm
           key={JSON.stringify(params)}
           app={app}
