@@ -18,7 +18,7 @@ use crate::{
     apps::get_channels,
     state::RuntimeState,
     tasks::{
-        configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
+        configure::{mark_params_dirty, AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS},
         fram::{erase_with, read_data, write_with},
     },
 };
@@ -712,6 +712,37 @@ impl<P: AppParams> ParamStore<P> {
     {
         let guard = self.inner.borrow();
         accessor(&*guard)
+    }
+
+    /// Changes a param from inside the app — e.g. a panel gesture that picks a
+    /// value the user could otherwise only set from the configurator — and
+    /// persists it. Marks the layout dirty rather than pushing the change over
+    /// MIDI: an unsolicited message on the config connection has no way to be
+    /// told apart from a reply to whatever the host just asked (see the `#640`
+    /// review), so the host instead learns about it next time it calls
+    /// `GetChangedAppParams`, which reads the *current* values rather than a
+    /// value snapshotted here.
+    ///
+    /// Does not restart `run()` — unlike a host-driven `SetAppParams`, which
+    /// only restarts on an applied change. A gesture already runs inside
+    /// `run()`, so restarting it out from under itself would be wrong; a
+    /// param that must be re-derived by other in-flight state should re-derive
+    /// it at the same point the gesture applies it, not rely on a restart.
+    ///
+    /// No built-in app calls this yet — see AGENTS.md/the `#640` decision on
+    /// why device-driven param edits are deliberately rare. Kept available
+    /// (and mirrored in `fpapp-sdk`) for the apps that do want it.
+    #[allow(dead_code)]
+    pub async fn update<F>(&self, modifier: F)
+    where
+        F: FnOnce(&mut P),
+    {
+        {
+            let mut inner = self.inner.borrow_mut();
+            modifier(&mut inner);
+        }
+        self.save().await;
+        mark_params_dirty(self.layout_id);
     }
 
     pub async fn param_handler(&self) {
