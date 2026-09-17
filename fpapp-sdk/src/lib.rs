@@ -234,6 +234,10 @@ pub mod blob_kind {
     pub const PARAMS: u8 = 2;
     pub const PARAM_UPDATE: u8 = 3;
     pub const PARAM_RESPONSE: u8 = 4;
+    /// Write-only, empty payload: tells the host this app's params changed on
+    /// the device (not via a `SetAppParams` request), so it should re-fetch
+    /// them next time it polls `GetChangedAppParams`. See `ParamStore::update`.
+    pub const PARAM_DIRTY: u8 = 5;
 }
 
 #[repr(C)]
@@ -1586,6 +1590,27 @@ pub mod compat {
             F: FnOnce(&P) -> R,
         {
             accessor(&*self.inner.borrow())
+        }
+
+        /// Mirrors the firmware `ParamStore::update` exactly — see its doc
+        /// comment for why this persists and marks the host's copy dirty
+        /// instead of pushing the new values over MIDI.
+        pub async fn update<F>(&self, modifier: F)
+        where
+            F: FnOnce(&mut P),
+        {
+            {
+                let mut inner = self.inner.borrow_mut();
+                modifier(&mut inner);
+            }
+            self.save().await;
+            WriteBlob {
+                host: self.host,
+                kind: blob_kind::PARAM_DIRTY,
+                index: 0,
+                data: &[],
+            }
+            .await;
         }
 
         pub async fn param_handler(&self) {
