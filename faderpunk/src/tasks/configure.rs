@@ -246,6 +246,14 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 proto.send_msg(ConfigMsgOut::GlobalConfig(config)).await
             }
             ConfigMsgIn::GetAppParams { layout_id } => {
+                // layout_id comes straight from the client with no validation
+                // elsewhere; every other caller indexes it from a real
+                // Layout, but this one goes over the wire raw. Answering
+                // nothing for an out-of-range id (same as an app that never
+                // replies) beats indexing APP_PARAM_SIGNALS out of bounds.
+                if layout_id as usize >= GLOBAL_CHANNELS {
+                    continue;
+                }
                 drain_app_param_responses();
                 APP_PARAM_SIGNALS[layout_id as usize].signal(AppParamCmd::RequestParamValues);
                 match receive_app_params(layout_id).await {
@@ -258,6 +266,9 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 }
             }
             ConfigMsgIn::SetAppParams { layout_id, values } => {
+                if layout_id as usize >= GLOBAL_CHANNELS {
+                    continue;
+                }
                 drain_app_param_responses();
                 APP_PARAM_SIGNALS[layout_id as usize].signal(AppParamCmd::SetAppParams { values });
                 match receive_app_params(layout_id).await {
