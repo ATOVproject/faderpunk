@@ -25,16 +25,19 @@ export const ActiveApps = () => {
           )
           .map(({ app, id, startChannel }) => {
             const params = allParams.get(id);
-            if (!params) {
-              return null;
-            }
+            // A missing entry is normal for an app with no params (it never
+            // gets asked). For one that declares params, it means the app
+            // never answered a param request — still worth a card, so the
+            // silence is visible instead of the app just not being listed.
+            const notResponding = app.paramCount > 0 && !params;
             return (
               <li key={id}>
                 <ActiveApp
                   app={app}
                   startChannel={startChannel}
                   layoutId={id}
-                  params={params}
+                  params={params ?? []}
+                  notResponding={notResponding}
                 />
               </li>
             );
