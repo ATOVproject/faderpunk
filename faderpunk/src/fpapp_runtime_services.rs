@@ -47,7 +47,9 @@ use crate::fpapps::RuntimeDescriptor;
 use crate::storage::{AppParamsAddress, AppStorageAddress};
 use crate::tasks::buttons::{is_channel_button_pressed, is_shift_button_pressed};
 use crate::tasks::clock::{CLOCK_PUBSUB, CLOCK_RUNNING, CURRENT_TICK};
-use crate::tasks::configure::{AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS};
+use crate::tasks::configure::{
+    mark_params_dirty, AppParamCmd, APP_PARAM_CHANNEL, APP_PARAM_SIGNALS,
+};
 use crate::tasks::fram::{read_data, write_with, MAX_DATA_LEN};
 use crate::tasks::global_config::get_global_config;
 use crate::tasks::i2c::I2C_LEADER_PUBLISHER;
@@ -1131,6 +1133,13 @@ async fn process_blob_read(context: &mut RuntimeContext, kind: u8, index: u8) {
 }
 
 async fn process_blob_write(context: &mut RuntimeContext, write: &BlobWrite) {
+    defmt::info!(
+        "DEBUG process_blob_write kind={} index={} len={} layout_id={}",
+        write.kind,
+        write.index,
+        write.len,
+        context.layout_id
+    );
     if write.kind == blob_kind::PARAM_RESPONSE {
         if let Ok(values) = postcard::from_bytes::<heapless::Vec<Value, { libfp::APP_MAX_PARAMS }>>(
             &write.bytes[..write.len],
@@ -1139,6 +1148,12 @@ async fn process_blob_write(context: &mut RuntimeContext, write: &BlobWrite) {
             // app cannot answer a param request on another app's behalf.
             APP_PARAM_CHANNEL.send((context.layout_id, values)).await;
         }
+        return;
+    }
+    if write.kind == blob_kind::PARAM_DIRTY {
+        // Keyed the same way — the app's own layout id, not a value it wrote —
+        // for the same reason: it can only mark itself, not another app.
+        mark_params_dirty(context.layout_id);
         return;
     }
     let address: u32 = match write.kind {
