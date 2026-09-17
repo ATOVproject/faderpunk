@@ -7,7 +7,8 @@ use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 pub const HOST_ABI_VERSION: u16 = 1;
 
-/// Layout lock for the wire structs shared with untrusted native code.
+/// Layout lock for the wire structs shared with untrusted native code, plus a
+/// count lock on the four `*_kind` modules (`#679`).
 ///
 /// Compatibility is declared by hand via `libfp::fpapp::FPAPP_ABI_MAJOR` /
 /// `FPAPP_ABI_MINOR`, and the dangerous mistake is changing a layout *without*
@@ -20,6 +21,12 @@ pub const HOST_ABI_VERSION: u16 = 1;
 /// that moves or retypes an existing field is breaking — bump
 /// `FPAPP_ABI_MAJOR`. `EventV1`/`CommandV1` are passed by value across the FFI,
 /// so *any* change to them is breaking.
+///
+/// **If a `*_KIND_COUNT` assertion fails the build**: a constant was added to
+/// or removed from that `*_kind` module (see `kind_mod!`, above) without this
+/// recorded count following it — update the count, and bump `FPAPP_ABI_MINOR`
+/// for an addition or `FPAPP_ABI_MAJOR` for a removal/renumbering, same
+/// reasoning as the field-layout case above.
 mod abi_layout {
     #[cfg(target_arch = "arm")]
     use super::HostV1;
@@ -47,6 +54,35 @@ mod abi_layout {
     const _: () = assert!(
         size_of::<CommandV1>() == COMMAND_V1_SIZE,
         "CommandV1 is passed by value across the FFI, so any layout change is breaking: bump FPAPP_ABI_MAJOR"
+    );
+
+    // `*_kind::COUNT` (see `kind_mod!`) is derived from how many constants
+    // each module actually declares, so these recorded numbers can only ever
+    // go stale in one direction: someone added or removed a kind and this
+    // wasn't updated alongside it — which is exactly the drift `#679` asks
+    // this to catch. A kind added: update the count here and bump
+    // `FPAPP_ABI_MINOR`. A kind removed or renumbered: bump
+    // `FPAPP_ABI_MAJOR` — an old app could still reference the old meaning.
+    const EVENT_KIND_COUNT: usize = 16;
+    const VALUE_KIND_COUNT: usize = 16;
+    const COMMAND_KIND_COUNT: usize = 12;
+    const BLOB_KIND_COUNT: usize = 5;
+
+    const _: () = assert!(
+        super::event_kind::COUNT == EVENT_KIND_COUNT,
+        "event_kind gained or lost a constant: update EVENT_KIND_COUNT here, and if one was added, bump FPAPP_ABI_MINOR (removed/renumbered is breaking — bump FPAPP_ABI_MAJOR instead)"
+    );
+    const _: () = assert!(
+        super::value_kind::COUNT == VALUE_KIND_COUNT,
+        "value_kind gained or lost a constant: update VALUE_KIND_COUNT here, and if one was added, bump FPAPP_ABI_MINOR (removed/renumbered is breaking — bump FPAPP_ABI_MAJOR instead)"
+    );
+    const _: () = assert!(
+        super::command_kind::COUNT == COMMAND_KIND_COUNT,
+        "command_kind gained or lost a constant: update COMMAND_KIND_COUNT here, and if one was added, bump FPAPP_ABI_MINOR (removed/renumbered is breaking — bump FPAPP_ABI_MAJOR instead)"
+    );
+    const _: () = assert!(
+        super::blob_kind::COUNT == BLOB_KIND_COUNT,
+        "blob_kind gained or lost a constant: update BLOB_KIND_COUNT here, and if one was added, bump FPAPP_ABI_MINOR (removed/renumbered is breaking — bump FPAPP_ABI_MAJOR instead)"
     );
 }
 
@@ -167,78 +203,94 @@ mod host_tables {
     }
 }
 
-pub mod event_kind {
-    pub const FADER: u8 = 1;
-    pub const BUTTON_DOWN: u8 = 2;
-    pub const BUTTON_UP: u8 = 3;
-    pub const BUTTON_LONG_PRESS: u8 = 4;
-    pub const CLOCK_TICK: u8 = 5;
-    pub const CLOCK_START: u8 = 6;
-    pub const CLOCK_STOP: u8 = 7;
-    pub const CLOCK_RESET: u8 = 8;
-    pub const SCENE_LOAD: u8 = 9;
-    pub const SCENE_SAVE: u8 = 10;
-    pub const PARAM_SET: u8 = 11;
-    pub const PARAM_REQUEST: u8 = 12;
-    pub const MIDI_USB_MESSAGE: u8 = 13;
-    pub const MIDI_DIN_MESSAGE: u8 = 14;
-    pub const MIDI_USB_NRPN: u8 = 15;
-    pub const MIDI_DIN_NRPN: u8 = 16;
+/// Declares a `pub mod $name { pub const ...: u8 = ...; }` plus, inside it, a
+/// `COUNT` derived from how many constants were actually listed — an array
+/// literal's length, not a number copied by hand, so it cannot silently drift
+/// from the module's real contents the way a separately maintained count
+/// could. `abi_layout` below asserts each `COUNT` against a recorded number;
+/// see `#679` for why this exists — appending a `*_kind` is the additive
+/// change the minor level exists to track, but had no mechanical guard.
+macro_rules! kind_mod {
+    ($name:ident { $($(#[$attr:meta])* $item:ident = $val:expr),+ $(,)? }) => {
+        pub mod $name {
+            $($(#[$attr])* pub const $item: u8 = $val;)+
+            pub const COUNT: usize = [$($item),+].len();
+        }
+    };
 }
 
-pub mod value_kind {
-    pub const FADER: u8 = 1;
-    pub const BUTTON: u8 = 2;
-    pub const SHIFT: u8 = 3;
-    pub const INPUT: u8 = 4;
-    pub const RANDOM: u8 = 5;
-    pub const GLOBAL_SWING: u8 = 6;
-    pub const TAKEOVER_MODE: u8 = 7;
-    pub const APP_ID: u8 = 8;
-    pub const START_CHANNEL: u8 = 9;
-    pub const LAYOUT_ID: u8 = 10;
-    pub const GLOBAL_KEY: u8 = 11;
-    pub const GLOBAL_TONIC: u8 = 12;
+kind_mod!(event_kind {
+    FADER = 1,
+    BUTTON_DOWN = 2,
+    BUTTON_UP = 3,
+    BUTTON_LONG_PRESS = 4,
+    CLOCK_TICK = 5,
+    CLOCK_START = 6,
+    CLOCK_STOP = 7,
+    CLOCK_RESET = 8,
+    SCENE_LOAD = 9,
+    SCENE_SAVE = 10,
+    PARAM_SET = 11,
+    PARAM_REQUEST = 12,
+    MIDI_USB_MESSAGE = 13,
+    MIDI_DIN_MESSAGE = 14,
+    MIDI_USB_NRPN = 15,
+    MIDI_DIN_NRPN = 16,
+});
+
+kind_mod!(value_kind {
+    FADER = 1,
+    BUTTON = 2,
+    SHIFT = 3,
+    INPUT = 4,
+    RANDOM = 5,
+    GLOBAL_SWING = 6,
+    TAKEOVER_MODE = 7,
+    APP_ID = 8,
+    START_CHANNEL = 9,
+    LAYOUT_ID = 10,
+    GLOBAL_KEY = 11,
+    GLOBAL_TONIC = 12,
     /// Low/high 32 bits of the absolute tick counter (see `App::current_tick`).
     /// Split across two reads because `read_value` returns `u32`; `u64::MAX` in
     /// both halves is the "no tick yet" sentinel, matching the host's own
     /// `CURRENT_TICK` atomic.
-    pub const CURRENT_TICK_LOW: u8 = 13;
-    pub const CURRENT_TICK_HIGH: u8 = 14;
-    pub const CLOCK_RUNNING: u8 = 15;
+    CURRENT_TICK_LOW = 13,
+    CURRENT_TICK_HIGH = 14,
+    CLOCK_RUNNING = 15,
     /// `GlobalConfig::custom_voct_curves[index].counts_per_oct`, raw as stored.
     /// `index` is the curve index (0-3), *not* a channel, so this is one of the
     /// few kinds the host does not clamp to the app's channel range. The
     /// uncalibrated/out-of-range fallback is applied by `libfp`, identically on
     /// both sides, so this must stay raw.
-    pub const CUSTOM_VOCT_COUNTS_PER_OCT: u8 = 16;
-}
+    CUSTOM_VOCT_COUNTS_PER_OCT = 16,
+});
 
-pub mod command_kind {
-    pub const LED_SET: u8 = 1;
-    pub const LED_UNSET: u8 = 2;
-    pub const JACK_INPUT: u8 = 3;
-    pub const JACK_OUTPUT: u8 = 4;
-    pub const JACK_GATE: u8 = 5;
-    pub const GATE_HIGH: u8 = 6;
-    pub const GATE_LOW: u8 = 7;
-    pub const MIDI_CC: u8 = 8;
-    pub const MIDI_NOTE_ON: u8 = 9;
-    pub const MIDI_NOTE_OFF: u8 = 10;
-    pub const I2C_FADER: u8 = 11;
-    pub const MIDI_PITCH_BEND: u8 = 12;
-}
+kind_mod!(command_kind {
+    LED_SET = 1,
+    LED_UNSET = 2,
+    JACK_INPUT = 3,
+    JACK_OUTPUT = 4,
+    JACK_GATE = 5,
+    GATE_HIGH = 6,
+    GATE_LOW = 7,
+    MIDI_CC = 8,
+    MIDI_NOTE_ON = 9,
+    MIDI_NOTE_OFF = 10,
+    I2C_FADER = 11,
+    MIDI_PITCH_BEND = 12,
+});
 
-pub mod blob_kind {
-    pub const STORAGE: u8 = 1;
-    pub const PARAMS: u8 = 2;
-    pub const PARAM_UPDATE: u8 = 3;
-    pub const PARAM_RESPONSE: u8 = 4;
+kind_mod!(blob_kind {
+    STORAGE = 1,
+    PARAMS = 2,
+    PARAM_UPDATE = 3,
+    PARAM_RESPONSE = 4,
     /// Write-only, empty payload: tells the host this app's params changed on
     /// the device (not via a `SetAppParams` request), so it should re-fetch
     /// them next time it polls `GetChangedAppParams`. See `ParamStore::update`.
-    pub const PARAM_DIRTY: u8 = 5;
-}
+    PARAM_DIRTY = 5,
+});
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
