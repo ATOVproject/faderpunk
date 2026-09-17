@@ -4,7 +4,7 @@ use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::{with_deadline, with_timeout, Duration, Instant, Timer};
 use heapless::Vec;
-use portable_atomic::Ordering;
+use portable_atomic::{AtomicU16, Ordering};
 use postcard::{from_bytes, to_slice};
 
 use libfp::sysex::{
@@ -66,6 +66,33 @@ pub static APP_PARAM_CHANNEL: Channel<
     GLOBAL_CHANNELS,
 > = Channel::new();
 
+/// One bit per layout id: set when that app's params changed on the device
+/// itself (`ParamStore::update`), rather than via a host `SetAppParams`.
+/// `GetChangedAppParams` swaps this to 0 and re-fetches the current values for
+/// every id that was set, so a host polling it learns about device-driven
+/// changes without the device ever sending unsolicited SysEx — see the
+/// `#640` review for why a push doesn't work: the configurator can't tell one
+/// apart from a reply to whatever it just asked.
+pub static APP_PARAM_DIRTY: AtomicU16 = AtomicU16::new(0);
+
+/// Marks `layout_id`'s params as changed on the device, for `GetChangedAppParams`
+/// to pick up. `layout_id` is always a channel a `ParamStore` was constructed
+/// for, so always < `GLOBAL_CHANNELS`; out-of-range is ignored rather than
+/// panicking, since it can now arrive from an FPApp over the host boundary
+/// (`blob_kind::PARAM_DIRTY`).
+pub fn mark_params_dirty(layout_id: u8) {
+    defmt::info!("DEBUG mark_params_dirty layout_id={}", layout_id);
+    if let Some(bit) = 1u16.checked_shl(u32::from(layout_id)) {
+        APP_PARAM_DIRTY.fetch_or(bit, Ordering::Relaxed);
+        defmt::info!(
+            "DEBUG mark_params_dirty set bit, mask now={:016b}",
+            APP_PARAM_DIRTY.load(Ordering::Relaxed)
+        );
+    } else {
+        defmt::info!("DEBUG mark_params_dirty layout_id out of range");
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
 pub enum ProtocolError {
     BufferTooSmall,
@@ -93,6 +120,40 @@ async fn receive_app_params(layout_id: u8) -> Option<Vec<Value, APP_MAX_PARAMS>>
             Err(_) => return None,
         }
     }
+}
+
+/// Signals every id in `ids` to send its current params, then answers a batch
+/// with only the ones that actually replied within the timeout. Shared by
+/// `GetAllAppParams` and `GetChangedAppParams` — the count must be known
+/// before it is announced, so an app that never answers is left out instead
+/// of desyncing the connection (`#688`).
+async fn send_app_param_batch(
+    proto: &mut ConfigTransport<'_>,
+    ids: &[u8],
+) -> Result<(), ProtocolError> {
+    drain_app_param_responses();
+    for id in ids {
+        APP_PARAM_SIGNALS[*id as usize].signal(AppParamCmd::RequestParamValues);
+    }
+
+    let deadline = Instant::now() + Duration::from_millis(APP_PARAM_TIMEOUT_MS);
+    while APP_PARAM_CHANNEL.len() < ids.len() && Instant::now() < deadline {
+        Timer::after_millis(APP_PARAM_POLL_MS).await;
+    }
+    let count = APP_PARAM_CHANNEL.len();
+
+    let mut res = proto.send_msg(ConfigMsgOut::BatchMsgStart(count)).await;
+    for _ in 0..count {
+        if res.is_err() {
+            break;
+        }
+        let (id, values) = APP_PARAM_CHANNEL.receive().await;
+        res = proto.send_msg(ConfigMsgOut::AppState(id, &values)).await;
+    }
+    if res.is_ok() {
+        res = proto.send_msg(ConfigMsgOut::BatchMsgEnd).await;
+    }
+    res
 }
 
 /// Monotonic milliseconds for the FPApp store's staging timeout. Only ever
@@ -210,38 +271,17 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
             }
             ConfigMsgIn::GetAllAppParams => {
                 let layout_ids = layout.get_layout_ids();
-                drain_app_param_responses();
-                for id in &layout_ids {
-                    APP_PARAM_SIGNALS[*id as usize].signal(AppParamCmd::RequestParamValues);
-                }
-
-                // The configurator reads exactly as many messages as the batch
-                // announces, so the count must be known before announcing it.
-                // An app that never answers (a wedged one, or one without a
-                // param handler) is left out rather than announced and never
-                // sent, which would desync the connection for good. The
-                // responses wait in the channel instead of a local buffer, and
-                // nothing else receives from it, so all `count` are there.
-                let deadline = Instant::now() + Duration::from_millis(APP_PARAM_TIMEOUT_MS);
-                while APP_PARAM_CHANNEL.len() < layout_ids.len() && Instant::now() < deadline {
-                    Timer::after_millis(APP_PARAM_POLL_MS).await;
-                }
-                let count = APP_PARAM_CHANNEL.len();
-
-                let mut res = proto.send_msg(ConfigMsgOut::BatchMsgStart(count)).await;
-                for _ in 0..count {
-                    if res.is_err() {
-                        break;
-                    }
-                    let (res_layout_id, values) = APP_PARAM_CHANNEL.receive().await;
-                    res = proto
-                        .send_msg(ConfigMsgOut::AppState(res_layout_id, &values))
-                        .await;
-                }
-                if res.is_ok() {
-                    res = proto.send_msg(ConfigMsgOut::BatchMsgEnd).await;
-                }
-                res
+                send_app_param_batch(&mut proto, &layout_ids).await
+            }
+            ConfigMsgIn::GetChangedAppParams => {
+                let dirty = APP_PARAM_DIRTY.swap(0, Ordering::Relaxed);
+                defmt::info!("DEBUG GetChangedAppParams dirty={:016b}", dirty);
+                let changed_ids: Vec<u8, GLOBAL_CHANNELS> = layout
+                    .get_layout_ids()
+                    .into_iter()
+                    .filter(|id| dirty & (1 << id) != 0)
+                    .collect();
+                send_app_param_batch(&mut proto, &changed_ids).await
             }
             ConfigMsgIn::SetGlobalConfig(mut global_config) => {
                 global_config.validate();

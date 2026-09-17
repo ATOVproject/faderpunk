@@ -135,6 +135,31 @@ export const getAllAppParams = async (
   return new Map(params);
 };
 
+// Apps whose params changed on the device itself (a panel gesture calling
+// `ParamStore::update`) since the last call. Same shape as getAllAppParams,
+// but the device answers only the apps that actually changed — most polls
+// return an empty batch. See useConnectionHealthCheck, which polls this
+// alongside its existing GetGlobalConfig check.
+export const getChangedAppParams = async (
+  dev: FpMidiDevice,
+): Promise<Map<number, Value[]>> => {
+  const { start: response, messages } = await sendAndReceiveBatch(dev, {
+    tag: "GetChangedAppParams",
+  });
+
+  if (response.tag !== "BatchMsgStart") {
+    throw new Error(
+      `Could not fetch changed app params. Unexpected repsonse tag: ${response.tag}`,
+    );
+  }
+
+  const params = messages
+    .filter((item): item is AppParams => item.tag === "AppState")
+    .map(({ value }) => value);
+
+  return new Map(params);
+};
+
 export const getGlobalConfig = async (dev: FpMidiDevice) => {
   const response = await sendAndReceive(dev, {
     tag: "GetGlobalConfig",

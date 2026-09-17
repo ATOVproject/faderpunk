@@ -1392,6 +1392,12 @@ pub enum ConfigMsgIn {
         section: FpAppSection,
         offset: u32,
     },
+    /// Apps whose params changed on the device since the last call (or since
+    /// boot), e.g. through a panel gesture calling `ParamStore::update`.
+    /// Answers the same way as `GetAllAppParams`, but only for apps that
+    /// actually changed — a device with nothing new answers an empty batch.
+    /// Meant to be polled periodically; each app is reported once per change.
+    GetChangedAppParams,
 }
 
 #[derive(Clone, Serialize, PostcardBindings)]
