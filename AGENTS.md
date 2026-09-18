@@ -222,7 +222,16 @@ Apps can implement scene storage by implementing serialization with `postcard`. 
 ## Creating a New App
 
 1. Create `faderpunk/src/apps/my_app.rs` with CHANNELS, CONFIG, wrapper task, and run function
-2. Register in `faderpunk/src/apps/mod.rs`: `register_apps!(... 42 => my_app,)`
+2. Register in `faderpunk/src/apps/mod.rs`: `register_apps!(... 42 => my_app @ <bytes>,)`.
+   The `@ <bytes>` is `my_app`'s embassy-executor task pool cost, used by the
+   `#675` arena-exhaustion reboot check — measure it the same way as every
+   other entry: build a release firmware, then
+   `readelf --debug-dump=info target/thumbv8m.main-none-eabihf/release/faderpunk`,
+   grep for
+   `MaybeUninit<embassy_executor::raw::TaskPool<faderpunk::apps::my_app::__wrapper_task::{async_fn_env#0}, N>>`,
+   and read that DIE's `DW_AT_byte_size`. Required, not optional. While
+   iterating, any number compiles — use `40_000` as a placeholder and
+   measure for real before the app is done.
 3. If adding new parameter types to CONFIG, update `libfp/src/lib.rs`
 4. Run `./gen-bindings.sh` — regenerates both the protocol bindings and the
    simulator app catalog (`configurator/src/demo/catalog.ts`) so the new app

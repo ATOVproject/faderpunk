@@ -13,7 +13,12 @@ export const useConnectionHealthCheck = () => {
     if (!device || isSimulator) return;
 
     const interval = setInterval(async () => {
-      if (pollingRef.current || useStore.getState().suspendHealthCheck) return;
+      if (
+        pollingRef.current ||
+        useStore.getState().suspendHealthCheck ||
+        useStore.getState().rebooting
+      )
+        return;
       pollingRef.current = true;
 
       try {
