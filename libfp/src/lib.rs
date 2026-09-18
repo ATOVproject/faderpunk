@@ -1407,7 +1407,18 @@ pub enum ConfigMsgOut<'a> {
     BatchMsgStart(usize),
     BatchMsgEnd,
     GlobalConfig(GlobalConfig),
-    Layout(Layout),
+    Layout {
+        layout: Layout,
+        /// True only on the `SetLayout` reply that immediately precedes a
+        /// firmware-initiated `sys_reset()` (see #675's arena-budget
+        /// check in `faderpunk::apps::layout_exceeds_arena_budget`).
+        /// Lets the client tell a normal layout update apart from one
+        /// about to be followed by a brief, deliberate disconnect, so it
+        /// can suspend connection-health polling instead of treating the
+        /// reset as a dropped connection. Always `false` on `GetLayout`'s
+        /// reply.
+        rebooting: bool,
+    },
     AppConfig(u8, usize, ConfigMeta<'a>),
     AppState(u8, &'a [Value]),
     Version {

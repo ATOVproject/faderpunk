@@ -23,6 +23,12 @@ use syn::{
 struct AppEntry {
     id: LitInt,
     module: Ident,
+    // `@ <task pool cost in bytes>` — consumed so `register_apps!`'s
+    // `id => module @ bytes` syntax parses; unused here, this tool only
+    // needs id/module. See `faderpunk/src/macros.rs`'s doc comments for
+    // what the cost drives (issue #675's arena-exhaustion reboot check).
+    #[allow(dead_code)]
+    pool_bytes: LitInt,
 }
 
 impl syn::parse::Parse for AppEntry {
@@ -30,7 +36,13 @@ impl syn::parse::Parse for AppEntry {
         let id: LitInt = input.parse()?;
         input.parse::<Token![=>]>()?;
         let module: Ident = input.parse()?;
-        Ok(AppEntry { id, module })
+        input.parse::<Token![@]>()?;
+        let pool_bytes: LitInt = input.parse()?;
+        Ok(AppEntry {
+            id,
+            module,
+            pool_bytes,
+        })
     }
 }
 

@@ -27,6 +27,17 @@ import {
 import { DEMO_APPS } from "./demo/catalog";
 import { defaultGlobalConfig } from "./utils/validators";
 import { IS_SIMULATOR_BUILD } from "./consts";
+import { delay } from "./utils/utils";
+
+// Shared by every firmware-initiated-reboot flow (SetLayout's #675
+// arena-budget reboot, factory reset): how long resyncAfterReboot retries
+// resyncDeviceState before giving up. Both the reset itself and USB
+// re-enumeration were well under 5s on hardware for either trigger, so
+// this is a comfortable margin above what's actually been observed, not a
+// tight bound — a partially-answered batch call could still push a single
+// attempt past RESYNC_RETRY_DELAY_MS in a slow case.
+const RESYNC_RETRY_DELAY_MS = 2000;
+const RESYNC_MAX_ATTEMPTS = 5;
 
 const makeEmptyLayout = (): AppLayout =>
   Array.from(
@@ -84,6 +95,19 @@ interface State {
   layout: AppLayout | undefined;
   params: ParamValues | undefined;
   refreshApps: () => Promise<void>;
+  // Re-fetches everything device-state-related on the already-connected
+  // `device` — apps (FPApp slots may have just been wiped), params, layout,
+  // config. For resuming in place after a firmware-initiated reboot whose
+  // effects go beyond layout/config (factory reset), where refreshApps
+  // alone (apps+layout only) isn't enough. Throws if the device isn't
+  // responding yet — callers own the retry/fallback policy.
+  resyncDeviceState: () => Promise<void>;
+  // Retries resyncDeviceState on a fixed schedule while `rebooting` (and
+  // the blocking overlay it drives) stays set, clearing it as soon as the
+  // device answers or the retry budget runs out. Returns whether it
+  // resynced; every caller so far falls back to disconnect()+navigate("/")
+  // on false, since none of these reboots are recoverable any other way.
+  resyncAfterReboot: () => Promise<boolean>;
   addSimulatorApp: (app: App) => void;
   removeSimulatorApp: (appId: number) => void;
   setConfig: (config: GlobalConfig) => void;
@@ -97,6 +121,13 @@ interface State {
   // response for a dropped connection and force-navigate away.
   suspendHealthCheck: boolean;
   setSuspendHealthCheck: (suspendHealthCheck: boolean) => void;
+  // Set when the firmware has told us (via SetLayout's `rebooting` flag,
+  // see #675) that it's about to sys_reset() on its own. Same effect on
+  // useConnectionHealthCheck as suspendHealthCheck — don't treat the
+  // resulting drop as a lost connection — plus it drives a "unit
+  // rebooting" overlay instead of staying silent about it.
+  rebooting: boolean;
+  setRebooting: (rebooting: boolean) => void;
 }
 
 const initialState = {
@@ -108,6 +139,20 @@ const initialState = {
   params: undefined,
   device: undefined,
   suspendHealthCheck: false,
+  rebooting: false,
+};
+
+// Shared by autoConnect, connect, and resyncDeviceState — all three need
+// the full apps/params/layout/config picture for an already-open `device`,
+// just at different moments (first connect vs. resuming after a reboot).
+// One place for this sequence means a future added/changed call can't be
+// applied to some callers and not others.
+const fetchDeviceState = async (device: FpMidiDevice) => {
+  const apps = await getAllApps(device);
+  const params = await getAllAppParams(device);
+  const layout = await getLayout(device, apps);
+  const config = await getGlobalConfig(device);
+  return { apps, params, layout, config };
 };
 
 export const useStore = create<State>((set, get) => ({
@@ -123,10 +168,7 @@ export const useStore = create<State>((set, get) => ({
         const deviceVersion = getDeviceVersion(device);
         set({ deviceVersion });
 
-        const apps = await getAllApps(device);
-        const params = await getAllAppParams(device);
-        const layout = await getLayout(device, apps);
-        const config = await getGlobalConfig(device);
+        const { apps, params, layout, config } = await fetchDeviceState(device);
 
         set({ apps, config, deviceVersion, layout, params, device });
         return true;
@@ -150,10 +192,7 @@ export const useStore = create<State>((set, get) => ({
 
       set({ deviceVersion });
 
-      const apps = await getAllApps(device);
-      const params = await getAllAppParams(device);
-      const layout = await getLayout(device, apps);
-      const config = await getGlobalConfig(device);
+      const { apps, params, layout, config } = await fetchDeviceState(device);
       set({ apps, config, deviceVersion, layout, params, device });
     } catch (error) {
       console.error("Failed to connect to device:", error);
@@ -188,6 +227,29 @@ export const useStore = create<State>((set, get) => ({
     // The dedicated simulator build has no connect page to return to, so
     // drop straight back into a simulator session.
     if (IS_SIMULATOR_BUILD) get().connectSimulator();
+  },
+  resyncDeviceState: async () => {
+    const { device } = get();
+    if (!device) throw new Error("No device connected");
+    const { apps, params, layout, config } = await fetchDeviceState(device);
+    set({ apps, config, layout, params });
+  },
+  resyncAfterReboot: async () => {
+    const { setRebooting, resyncDeviceState } = get();
+    setRebooting(true);
+    let resynced = false;
+    for (let attempt = 0; attempt < RESYNC_MAX_ATTEMPTS; attempt++) {
+      await delay(RESYNC_RETRY_DELAY_MS);
+      try {
+        await resyncDeviceState();
+        resynced = true;
+        break;
+      } catch {
+        // Still rebooting/re-enumerating — retry.
+      }
+    }
+    setRebooting(false);
+    return resynced;
   },
   refreshApps: async () => {
     const { device } = get();
@@ -231,4 +293,5 @@ export const useStore = create<State>((set, get) => ({
       persistSimulatorState(layout, newParams, config);
   },
   setSuspendHealthCheck: (suspendHealthCheck) => set({ suspendHealthCheck }),
+  setRebooting: (rebooting) => set({ rebooting }),
 }));

@@ -194,7 +194,7 @@ const transformLayout = (
   let lastUsed = -1;
   let nextEmptyId = 16;
 
-  response.value[0].forEach((slot, idx) => {
+  response.value.layout[0].forEach((slot, idx) => {
     if (idx <= lastUsed) {
       return;
     }
@@ -298,7 +298,14 @@ export const setLayout = async (
     );
   }
 
-  return transformLayout(response, allApps);
+  // `rebooting`: the firmware is about to sys_reset() on its own right
+  // after this reply (see #675's arena-budget check) — the caller needs
+  // this to suppress any further device calls it was about to make and
+  // to let the user know a brief, deliberate disconnect is coming.
+  return {
+    layout: transformLayout(response, allApps),
+    rebooting: response.value.rebooting,
+  };
 };
 
 export const saveLayout = (
