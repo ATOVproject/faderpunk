@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.13.0 (2026-09-18)
+
+### Features
+
+- add App accessors for global swing, current tick, and clock-running state (#671)
+- add installable native community apps (#666)
+- surface community apps in the configurator (#664)
+- build the remaining community apps as installable fpapps (#677)
+- build installed apps as ropi-rwpi so they can have writable statics (#685)
+- resolve libfp lookup tables through the host (#686)
+- raise installable app slots from four to eight (#687)
+- resolve custom V/Oct curves in installed apps (#689)
+- let apps mark their params changed for the configurator to poll
+
+### Fixes
+
+- recognize FPApp tooling in scope checks (#665)
+- shrink core1 stack to its measured usage
+- use is_multiple_of to satisfy current clippy (#676)
+- build every community app instead of aborting on the first failure
+- decode and encode postcard strings as UTF-8
+- announce only the apps that answered in the param batch (#690)
+- guard an out-of-range layout_id, show a not-responding badge
+- reboot before the task arena panics on an unpaid-for app type (#675)
+
 ## 1.12.0 (2026-09-01)
 
 ### Features
