@@ -11,11 +11,10 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { Switch } from "@heroui/switch";
-import { delay } from "../../utils/utils";
 import { useNavigate } from "react-router-dom";
 
 export const FactoryReset = () => {
-  const { disconnect, device } = useStore();
+  const { disconnect, device, resyncAfterReboot } = useStore();
   const navigate = useNavigate();
   const [isOpen, setOpen] = useState(false);
   const [isSure, setSure] = useState(false);
@@ -28,18 +27,25 @@ export const FactoryReset = () => {
     setLoading(true);
     try {
       await factoryReset(device);
-      // 3 seconds should be plenty enough
-      await delay(5000);
       setSure(false);
       setOpen(false);
-      disconnect();
-      navigate("/");
+      // Same underlying sys_reset() as SetLayout's #675 arena-budget
+      // reboot, which stayed connected on the same `device` object through
+      // the reset on hardware — try resuming in place here too via the
+      // shared retry helper, rather than always forcing a manual
+      // reconnect, and only fall back to that if the device genuinely
+      // doesn't come back within its retry budget.
+      const resynced = await resyncAfterReboot();
+      if (!resynced) {
+        disconnect();
+        navigate("/");
+      }
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
-  }, [disconnect, navigate, device]);
+  }, [disconnect, navigate, device, resyncAfterReboot]);
 
   const handleOpenChange = useCallback((shouldOpen: boolean) => {
     setSure(false);

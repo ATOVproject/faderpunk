@@ -9,6 +9,7 @@ import { AboutPage } from "./components/AboutPage";
 import { ConnectPage } from "./components/ConnectPage";
 import { ManualPage } from "./components/ManualPage";
 import { UpdatePage } from "./components/UpdatePage";
+import { RebootingOverlay } from "./components/RebootingOverlay";
 
 const DEVICELESS_ROUTES = ["/about", "/manual", "/update"];
 
@@ -47,31 +48,34 @@ const App = () => {
   }
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          device || isSimulator ? (
-            <Navigate to="/configurator" replace />
-          ) : (
-            <ConnectPage />
-          )
-        }
-      />
-      <Route
-        path="/configurator"
-        element={
-          device || isSimulator ? (
-            <ConfiguratorPage />
-          ) : (
-            <Navigate to="/" replace />
-          )
-        }
-      />
-      <Route path="/about" element={<AboutPage />} />
-      <Route path="/manual" element={<ManualPage />} />
-      <Route path="/update" element={<UpdatePage />} />
-    </Routes>
+    <>
+      <RebootingOverlay />
+      <Routes>
+        <Route
+          path="/"
+          element={
+            device || isSimulator ? (
+              <Navigate to="/configurator" replace />
+            ) : (
+              <ConnectPage />
+            )
+          }
+        />
+        <Route
+          path="/configurator"
+          element={
+            device || isSimulator ? (
+              <ConfiguratorPage />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/manual" element={<ManualPage />} />
+        <Route path="/update" element={<UpdatePage />} />
+      </Routes>
+    </>
   );
 };
 

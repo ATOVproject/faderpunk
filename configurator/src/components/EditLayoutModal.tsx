@@ -22,7 +22,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { useStore } from "../store";
 import { COLORS_CLASSES } from "../utils/class-helpers";
@@ -147,8 +147,17 @@ export const EditLayoutModal = ({
   onClose,
   modalConfig,
 }: Props) => {
-  const { device, isSimulator, apps, setParams, setAllParams, setConfig } =
-    useStore();
+  const {
+    device,
+    isSimulator,
+    apps,
+    setParams,
+    setAllParams,
+    setConfig,
+    resyncAfterReboot,
+    disconnect,
+  } = useStore();
+  const navigate = useNavigate();
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [layout, setItems] = useState<AppLayout>(initialLayout);
   const [newApp, setNewApp] = useState<App | null>(null);
@@ -270,8 +279,28 @@ export const EditLayoutModal = ({
     setSubmitting(true);
     try {
       if (device && apps && !isSimulator) {
-        const newLayout = await setLayout(device, layout, apps);
-        if (modalConfig.mode === ModalMode.RecallSetup) {
+        const { layout: newLayout, rebooting } = await setLayout(
+          device,
+          layout,
+          apps,
+        );
+        if (rebooting) {
+          // The firmware is about to reset on its own (#675) — none of the
+          // usual follow-up device calls below would land, so skip them
+          // rather than send them into a reboot. Try to resume in place
+          // via the same retry helper factory reset uses (it stayed
+          // connected on the same `device` object through this exact
+          // sys_reset() on hardware); only force a manual reconnect if the
+          // device genuinely doesn't come back within its retry budget.
+          const resynced = await resyncAfterReboot();
+          if (resynced) {
+            onSave(newLayout);
+          } else {
+            disconnect();
+            navigate("/");
+          }
+          return;
+        } else if (modalConfig.mode === ModalMode.RecallSetup) {
           if (recallParams && modalConfig.recallParams) {
             // Wait 1s for the apps to spawn before setting params
             await delay(1000);
@@ -364,6 +393,9 @@ export const EditLayoutModal = ({
     setParams,
     setAllParams,
     setConfig,
+    resyncAfterReboot,
+    disconnect,
+    navigate,
   ]);
 
   const activeItem =

@@ -240,7 +240,14 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 }
                 res
             }
-            ConfigMsgIn::GetLayout => proto.send_msg(ConfigMsgOut::Layout(layout.clone())).await,
+            ConfigMsgIn::GetLayout => {
+                proto
+                    .send_msg(ConfigMsgOut::Layout {
+                        layout: layout.clone(),
+                        rebooting: false,
+                    })
+                    .await
+            }
             ConfigMsgIn::GetGlobalConfig => {
                 let config = get_global_config();
                 proto.send_msg(ConfigMsgOut::GlobalConfig(config)).await
@@ -302,12 +309,44 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
             }
             ConfigMsgIn::SetLayout(mut new_layout) => {
                 new_layout.validate(get_channels);
-                let sender = LAYOUT_WATCH.sender();
+
+                let rebooting = crate::apps::layout_exceeds_arena_budget(&new_layout);
+
+                // Echo back first, unconditionally — the configurator's
+                // setLayout() is a sendAndReceive that throws on any
+                // non-Layout reply, so skipping this on the reboot branch
+                // below would turn a clean reboot into a spurious client
+                // timeout instead. `rebooting` tells the client this
+                // particular reply is about to be followed by a
+                // deliberate reset, so it can suspend connection-health
+                // polling instead of treating it as a dropped connection.
                 let res = proto
-                    .send_msg(ConfigMsgOut::Layout(new_layout.clone()))
+                    .send_msg(ConfigMsgOut::Layout {
+                        layout: new_layout.clone(),
+                        rebooting,
+                    })
                     .await;
+
+                if rebooting {
+                    // At least one built-in type (or the FPApp pool, on its
+                    // first-ever spawn) in this layout hasn't been paid for
+                    // out of the task arena yet this boot, and the combined
+                    // cost of everything not yet paid for doesn't fit in
+                    // what's left — see #675. Persist directly, bypassing
+                    // LAYOUT_WATCH/spawn_layout entirely, then reboot: Core 1
+                    // must never attempt this spawn pre-reset, since that
+                    // attempt is exactly what can panic inside
+                    // embassy-executor's Arena::alloc. After sys_reset(),
+                    // main()'s own load_layout() + LAYOUT_WATCH send spawns
+                    // this layout fresh, with the arena and every
+                    // spawned/flag bit back to empty.
+                    store_layout(&new_layout).await;
+                    Timer::after_millis(100).await;
+                    cortex_m::peripheral::SCB::sys_reset(); // -> !, nothing below runs
+                }
+
                 layout = new_layout.clone();
-                sender.send(new_layout);
+                LAYOUT_WATCH.sender().send(new_layout);
                 res
             }
             ConfigMsgIn::FactoryReset => {
