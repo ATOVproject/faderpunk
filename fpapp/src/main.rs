@@ -351,7 +351,11 @@ fn build_community_entry(
     let elf = cargo_target_dir
         .join("thumbv8m.main-none-eabihf/release")
         .join(&binary_name);
-    let output = output_dir.join(format!("{}.fpapp", entry.module.replace('_', "-")));
+    let output = output_dir.join(format!(
+        "{}-{}.fpapp",
+        entry.module.replace('_', "-"),
+        version
+    ));
     let mut pack_options = BTreeMap::from([
         ("elf".into(), elf.display().to_string()),
         ("output".into(), output.display().to_string()),
