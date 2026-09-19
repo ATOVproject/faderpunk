@@ -46,6 +46,11 @@ export interface ManualAppData {
   setup?: ReactNode;
   text: string;
   channels: Omit<ChannelProps, "idx" | "color" | "singleChannel">[];
+  // Installed-apps section: the version of the specific package installed
+  // on the connected device. Catalogue section: the latest version
+  // published in faderpunk-community-apps. Never both/cross-checked —
+  // see Package H's plan for why. Absent for built-ins.
+  version?: string;
 }
 
 interface FunctionFieldProps {
@@ -264,7 +269,14 @@ export const ManualApp = ({ app }: Props) => {
           <Icon className="h-12 w-12 text-black" name={app.icon} />
         </div>
         <div>
-          <h3 className="text-yellow-fp font-bold uppercase">{app.title}</h3>
+          <h3 className="text-yellow-fp font-bold uppercase">
+            {app.title}
+            {app.version ? (
+              <span className="ml-2 text-xs font-normal text-gray-400 normal-case">
+                v{app.version}
+              </span>
+            ) : null}
+          </h3>
           <p>{app.description}</p>
         </div>
       </div>
