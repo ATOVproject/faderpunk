@@ -8,6 +8,7 @@ import { UpdateGuide } from "./manual/UpdateGuide";
 import { Troubleshooting } from "./manual/Troubleshooting";
 import { Apps } from "./manual/Apps";
 import { InstalledCommunityApps } from "./manual/InstalledCommunityApps";
+import { CommunityCatalogue } from "./manual/CommunityCatalogue";
 import { H2, List, Link } from "./manual/Shared";
 import { Interface } from "./manual/Interface";
 import { PunkBus } from "./manual/PunkBus";
@@ -1820,6 +1821,9 @@ export const ManualTab = () => {
             </li>
           ) : null}
           <li>
+            <Link to="#community-catalogue">Community App Catalogue</Link>
+          </li>
+          <li>
             <Link to="#update">Update guide</Link>
           </li>
           <li>
@@ -1845,6 +1849,7 @@ export const ManualTab = () => {
       <Apps apps={builtInApps} />
       <InstalledCommunityApps apps={installedManualApps} />
       <LegacyInstalledAppManuals manuals={legacyInstalledManuals} />
+      <CommunityCatalogue />
       <UpdateGuide />
       <Troubleshooting />
       <CommunityTools />
