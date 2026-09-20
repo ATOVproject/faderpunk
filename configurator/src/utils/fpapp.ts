@@ -127,6 +127,7 @@ export interface CachedFpAppManual {
   description: string;
   manual?: string;
   setup?: string;
+  version?: string;
 }
 
 export interface FpAppManualChannel {
@@ -426,6 +427,7 @@ export async function mergeInstalledFpAppConfigs(
         description: slot.app.description,
         manual,
         setup,
+        version: `${slot.app.version_major}.${slot.app.version_minor}.${slot.app.version_patch}`,
       });
     }
   }
@@ -467,6 +469,7 @@ export function cacheFpAppManual(app: ParsedFpApp) {
       description: app.description,
       manual: app.manual,
       setup: app.setup,
+      version: app.version,
     });
   }
   saveCachedFpAppManuals(manuals);
@@ -496,7 +499,8 @@ function isCachedFpAppManual(value: unknown): value is CachedFpAppManual {
     typeof manual.name === "string" &&
     typeof manual.description === "string" &&
     (manual.manual === undefined || typeof manual.manual === "string") &&
-    (manual.setup === undefined || typeof manual.setup === "string")
+    (manual.setup === undefined || typeof manual.setup === "string") &&
+    (manual.version === undefined || typeof manual.version === "string")
   );
 }
 
