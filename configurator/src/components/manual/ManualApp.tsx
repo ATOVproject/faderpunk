@@ -46,6 +46,11 @@ export interface ManualAppData {
   setup?: ReactNode;
   text: string;
   channels: Omit<ChannelProps, "idx" | "color" | "singleChannel">[];
+  // Installed-apps section: the version of the specific package installed
+  // on the connected device. Catalogue section: the latest version
+  // published in faderpunk-community-apps. Never both/cross-checked —
+  // see Package H's plan for why. Absent for built-ins.
+  version?: string;
 }
 
 interface FunctionFieldProps {
@@ -242,9 +247,13 @@ const Channel = ({
 
 interface Props {
   app: ManualAppData;
+  // Rendered directly under the app's icon. Unused by the in-app manual;
+  // the community catalogue puts each app's download link here so it sits
+  // with the app it belongs to rather than floating off to one side.
+  action?: ReactNode;
 }
 
-export const ManualApp = ({ app }: Props) => {
+export const ManualApp = ({ app, action }: Props) => {
   const hasFn = app.channels.some((chan) => !!chan.fnTitle);
   const hasFaderPlusShift = app.channels.some(
     (chan) => !!chan.faderPlusShiftTitle,
@@ -255,16 +264,26 @@ export const ManualApp = ({ app }: Props) => {
   return (
     <div className="mb-16" id={`app-${app.appId}`}>
       <div className="mb-4 flex gap-4">
-        <div
-          className={clx(
-            "flex items-center justify-center rounded-sm p-2",
-            COLORS_CLASSES[app.color].bg,
-          )}
-        >
-          <Icon className="h-12 w-12 text-black" name={app.icon} />
+        <div className="flex flex-col gap-2">
+          <div
+            className={clx(
+              "flex items-center justify-center rounded-sm p-2",
+              COLORS_CLASSES[app.color].bg,
+            )}
+          >
+            <Icon className="h-12 w-12 text-black" name={app.icon} />
+          </div>
+          {action}
         </div>
         <div>
-          <h3 className="text-yellow-fp font-bold uppercase">{app.title}</h3>
+          <h3 className="text-yellow-fp font-bold uppercase">
+            {app.title}
+            {app.version ? (
+              <span className="ml-2 text-xs font-normal text-gray-400 normal-case">
+                v{app.version}
+              </span>
+            ) : null}
+          </h3>
           <p>{app.description}</p>
         </div>
       </div>

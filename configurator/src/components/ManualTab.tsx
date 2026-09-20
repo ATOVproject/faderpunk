@@ -7,6 +7,8 @@ import { type ManualAppData } from "./manual/ManualApp";
 import { UpdateGuide } from "./manual/UpdateGuide";
 import { Troubleshooting } from "./manual/Troubleshooting";
 import { Apps } from "./manual/Apps";
+import { InstalledCommunityApps } from "./manual/InstalledCommunityApps";
+import { CommunityCatalogue } from "./manual/CommunityCatalogue";
 import { H2, List, Link } from "./manual/Shared";
 import { Interface } from "./manual/Interface";
 import { PunkBus } from "./manual/PunkBus";
@@ -1645,6 +1647,7 @@ function toManualApp(manual: CachedFpAppManual): ManualAppData | undefined {
       ? {
           ...app,
           setup: manual.setup ? withoutHeading(manual.setup) : undefined,
+          version: manual.version,
         }
       : undefined;
   } catch {
@@ -1799,14 +1802,26 @@ export const ManualTab = () => {
                   <Link to={`#app-${app.appId}`}>{app.title}</Link>
                 </li>
               ))}
-              {installedManualViews.map(({ cached, app }) => (
-                <li key={cached.appId}>
-                  <Link to={`#app-${cached.appId}`}>
-                    {app?.title ?? cached.name}
-                  </Link>
-                </li>
-              ))}
             </List>
+          </li>
+          {installedManualViews.length > 0 ? (
+            <li>
+              <Link to="#installed-community-apps">
+                Installed Community Apps
+              </Link>
+              <List>
+                {installedManualViews.map(({ cached, app }) => (
+                  <li key={cached.appId}>
+                    <Link to={`#app-${cached.appId}`}>
+                      {app?.title ?? cached.name}
+                    </Link>
+                  </li>
+                ))}
+              </List>
+            </li>
+          ) : null}
+          <li>
+            <Link to="#community-catalogue">Community App Catalogue</Link>
           </li>
           <li>
             <Link to="#update">Update guide</Link>
@@ -1831,8 +1846,10 @@ export const ManualTab = () => {
       <Interface />
       <PunkBus />
       <Configurator />
-      <Apps apps={[...builtInApps, ...installedManualApps]} />
+      <Apps apps={builtInApps} />
+      <InstalledCommunityApps apps={installedManualApps} />
       <LegacyInstalledAppManuals manuals={legacyInstalledManuals} />
+      <CommunityCatalogue />
       <UpdateGuide />
       <Troubleshooting />
       <CommunityTools />
