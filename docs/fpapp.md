@@ -103,14 +103,26 @@ contract — not which build produced the package.
   `value_kind`/`command_kind`/`blob_kind`/`event_kind` number means. Firmware
   requires an exact match, because none of these are detectable at runtime.
 - **minor** changes on any additive step: a host function appended to `HostV1`,
-  or a newly defined `*_kind`. Firmware accepts any app whose minor is **less
-  than or equal to** its own.
+  a newly defined `*_kind`, **or a manifest validation rule the firmware
+  relaxes** — accepting a manifest shape older firmware rejects (e.g. UTF-8
+  names/descriptions, previously ASCII-only). Firmware accepts any app whose
+  minor is **less than or equal to** its own.
 
 The rule is asymmetric on purpose. Newer firmware runs older apps, because
 appending never moves an existing field offset and an app cannot reference a
 constant that did not exist when it was built. Older firmware must refuse newer
 apps, because the app may call a host function this firmware does not implement,
-which would read as a garbage value rather than an error.
+which would read as a garbage value rather than an error — the same reasoning
+applies to a relaxed validation rule: an app built under the relaxed rule can
+fail the old, stricter check on old firmware, and without the bump that reads
+as a corrupt package rather than a firmware-too-old message.
+
+`fpapp-sdk`'s `abi_layout` module mechanically enforces the first half of this
+(appending to `HostV1`/`EventV1`/`CommandV1`, or to a `*_kind` module) with a
+build-time assertion naming which number to bump — see its doc comment. A
+relaxed validation rule is not mechanizable the same way; catching it is a
+release-checklist item ("confirm `FPAPP_ABI_MINOR` covers everything added or
+relaxed since the last release"), not a compiler error.
 
 **Why not bind to the exact build.** An earlier design derived a 32-byte
 identity from the firmware Git revision and required an exact match. That is
