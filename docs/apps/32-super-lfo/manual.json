@@ -1,0 +1,129 @@
+{
+  "id": 32,
+  "slug": "super_lfo",
+  "name": "Super LFO",
+  "status": "wip",
+  "tag": "ready",
+  "description": "Morphing dual-osc LFO · 2 channels",
+  "color": "Cyan",
+  "icon": "Sine",
+  "channels_count": 2,
+  "cv_jack": true,
+  "params": [
+    "Speed",
+    "Range",
+    "MIDI Channel",
+    "MIDI CC",
+    "Color",
+    "NRPN",
+    "MIDI Out",
+    "Grid Lock",
+    "Mix Mode",
+    "Osc B",
+    "Mix balance",
+    "CV Dest"
+  ],
+  "storage": [
+    "Morph",
+    "Skew",
+    "Warp",
+    "Symmetry",
+    "Speed",
+    "Attenuation",
+    "Rate Mod",
+    "CV dest",
+    "Reversed",
+    "Frozen",
+    "Clocked",
+    "In mute",
+    "Out mute"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Ch0 Main</strong> — Morph · <strong>Alt</strong> — Attenuation (Amp)",
+            "<strong>Ch0 Third</strong> — Skew",
+            "<strong>Ch1 Main</strong> — Symmetry · <strong>Alt</strong> — Speed",
+            "<strong>Ch1 Third</strong> — Phase-Warp"
+          ]
+        },
+        {
+          "heading": "CV destinations (Ch0 Shift+Short)",
+          "items": [
+            "Blue Rate Mod · Pink Phase · Red Reset · Cyan Amp",
+            "Yellow Speed · Orange Morph · Violet Skew",
+            "Green Warp · Rose Symmetry"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Ch0 Short</strong> — Freeze toggle (white)",
+            "<strong>Ch0 Long</strong> — In mute",
+            "<strong>Ch0 Shift+Short</strong> — Cycle CV Dest",
+            "<strong>Ch0 Shift+Long</strong> — Cycle Mix Mode",
+            "<strong>Ch1 Short</strong> — Phase reset",
+            "<strong>Ch1 Long</strong> — Out mute",
+            "<strong>Ch1 Shift+Short</strong> — Phase reverse",
+            "<strong>Ch1 Shift+Long</strong> — Clock sync toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Params",
+          "items": [
+            "Speed, Range, MIDI, Grid Lock",
+            "Mix Mode: Xfade / Min / Max / Sum",
+            "Osc B: Quad / Octave · Mix balance 0–100%",
+            "Rate-mod depth 0–100% (Configurator) · CV Dest can modulate it",
+            "Ch0 jack = CV In · Ch1 jack = CV Out"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "CV In",
+      "jackDescription": "Modulates the selected CV Dest (attenuated)",
+      "faderTitle": "Morph",
+      "faderDescription": "Waveform morph amount",
+      "faderPlusShiftTitle": "Attenuation (Amp)",
+      "faderPlusShiftDescription": "Output / CV-in amplitude",
+      "faderPlusFnTitle": "Skew",
+      "faderPlusFnDescription": "Soft skew of the morph shape",
+      "fnTitle": "Freeze",
+      "fnDescription": "Short: freeze toggle. Long: in-mute.",
+      "fnPlusShiftTitle": "CV Dest / Mix Mode",
+      "fnPlusShiftDescription": "Short: cycle CV Dest. Long: cycle Mix Mode.",
+      "ledTop": "Morph / dest meters",
+      "ledBottom": "Amp / skew meters"
+    },
+    {
+      "jackTitle": "CV Out",
+      "jackDescription": "Mixed LFO voltage",
+      "faderTitle": "Symmetry",
+      "faderDescription": "Duty / symmetry of the wave",
+      "faderPlusShiftTitle": "Speed",
+      "faderPlusShiftDescription": "Rate (or clock division when Grid Lock)",
+      "faderPlusFnTitle": "Phase-Warp",
+      "faderPlusFnDescription": "Nonlinear phase distortion",
+      "fnTitle": "Phase reset",
+      "fnDescription": "Short: reset phase. Long: out-mute.",
+      "fnPlusShiftTitle": "Reverse / Grid Lock",
+      "fnPlusShiftDescription": "Short: reverse. Long: clock sync toggle.",
+      "ledTop": "Symmetry / speed meters",
+      "ledBottom": "Warp meters"
+    }
+  ]
+}

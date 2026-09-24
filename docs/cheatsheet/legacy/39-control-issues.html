@@ -1,0 +1,40 @@
+<!-- CONTROL ISSUES -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 39</span>
+    <h2>Control Issues <span class="tag ready">ready</span></h2>
+    <span class="desc">Shape CV and send it as MIDI CC / NRPN</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Attenuverter −100…+100 % (center deadband = 0)</li>
+          <li><strong>Alt</strong> (Shift+Fader) — Offset −100…+100 %</li>
+          <li><strong>Third</strong> (hold button + fader) — Slew 0…10 s</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short click</strong> (no fader move) — Mute toggle on release (sends Output Min)</li>
+          <li><strong>Hold + fader</strong> — edit Slew (suppresses mute)</li>
+          <li><strong>Shift+Hold</strong> — momentary Bypass (keeps Range / Min-Max / Rate)</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Params / LEDs</h3>
+        <ul>
+          <li>Pipeline: Gate/CV → Att → Offset → Transfer → Slew → Steps → Min/Max → Rate</li>
+          <li>Button LED only: Main = app color × out; Alt = red × |offset|; Third = cyan × slew (floor so hue stays visible at 0)</li>
+          <li>Mute = off · Bypass = full · black blink on downbeat while out &gt; Min</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> 1-channel CV→MIDI sculptor. Defaults are transparent (+100 % att, 0 offset, 0 slew, Linear, full CC window, 100 Hz). Gate mode runs a Schmitt threshold (0.1 V hysteresis) then the same pipeline. Mute sends Output Min once and goes silent; unmute resends the live value. Watch the button LED for level — fader LEDs stay dark. Uses clock ticker only (no CLOCK_PUBSUB). No clock → no downbeat blink.</p>
+    </div>
+  </div>
+</section>
+
