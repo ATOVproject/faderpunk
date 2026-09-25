@@ -6,6 +6,7 @@ use embassy_time::{with_deadline, with_timeout, Duration, Instant, Timer};
 use heapless::Vec;
 use portable_atomic::{AtomicU16, Ordering};
 use postcard::{from_bytes, to_slice};
+use static_cell::StaticCell;
 
 use libfp::sysex::{
     pack_7bit, unpack_7bit, MAX_PLAIN_SIZE, MAX_SYSEX_FRAME, SYSEX_EOX, SYSEX_HEADER, SYSEX_START,
@@ -13,7 +14,7 @@ use libfp::sysex::{
 use libfp::{
     fpapp_store::{StoreError, MAX_PACKAGE_SIZE, SLOT_COUNT},
     AppIcon, AuxJackMode, Color, ConfigMsgIn, ConfigMsgOut, FpAppSection, FpAppStatus, Layout,
-    Param, Value, APP_MAX_PARAMS, FPAPP_CHUNK_BLOCKS, FPAPP_CHUNK_BLOCK_SIZE, FPAPP_CHUNK_SIZE,
+    Value, APP_MAX_PARAMS, FPAPP_CHUNK_BLOCKS, FPAPP_CHUNK_BLOCK_SIZE, FPAPP_CHUNK_SIZE,
     GLOBAL_CHANNELS,
 };
 use max11300::config::{ConfigMode0, ConfigMode3, ConfigMode5, Mode, Port, DACRANGE};
@@ -162,8 +163,13 @@ fn now_ms() -> u64 {
     embassy_time::Instant::now().as_millis()
 }
 
+static BUF_PLAIN: StaticCell<[u8; MAX_PLAIN_SIZE]> = StaticCell::new();
+static BUF_FRAME: StaticCell<[u8; MAX_SYSEX_FRAME]> = StaticCell::new();
+
 pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
-    let mut proto = ConfigTransport::new(usb_tx);
+    let plain_buf = BUF_PLAIN.init([0; MAX_PLAIN_SIZE]);
+    let frame_buf = BUF_FRAME.init([0; MAX_SYSEX_FRAME]);
+    let mut proto = ConfigTransport::new(usb_tx, plain_buf, frame_buf);
     let mut layout_receiver = LAYOUT_WATCH.receiver().unwrap();
     let mut layout = layout_receiver.get().await;
     let mut pending_voct_eviction: Option<(u8, EvictedApp)> = None;
@@ -188,51 +194,26 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                     .await
             }
             ConfigMsgIn::GetAllApps => {
-                let configs = REGISTERED_APP_IDS.map(get_config);
-                let dynamic_count = {
-                    let store = FPAPP_STORE.get().await.lock().await;
-                    (0..SLOT_COUNT)
-                        .filter(|slot| store.installed(*slot).ok().flatten().is_some())
-                        .count()
-                };
+                let store = FPAPP_STORE.get().await.lock().await;
+                let dynamic_ids: Vec<u8, SLOT_COUNT> = (0..SLOT_COUNT)
+                    .filter_map(|slot| store.installed(slot).ok().flatten().map(|app| app.app_id))
+                    .collect();
+                let total_count = REGISTERED_APP_IDS.len() + dynamic_ids.len();
                 let mut res = proto
-                    .send_msg(ConfigMsgOut::BatchMsgStart(configs.len() + dynamic_count))
+                    .send_msg(ConfigMsgOut::BatchMsgStart(total_count))
                     .await;
-                for (app_id, channels, config_meta) in configs.into_iter().flatten() {
+                for app_id in REGISTERED_APP_IDS
+                    .iter()
+                    .copied()
+                    .chain(dynamic_ids.iter().copied())
+                {
                     if res.is_err() {
                         break;
                     }
-                    res = proto
-                        .send_msg(ConfigMsgOut::AppConfig(app_id, channels, config_meta))
-                        .await;
-                }
-                if res.is_ok() {
-                    let store = FPAPP_STORE.get().await.lock().await;
-                    for slot in 0..SLOT_COUNT {
-                        let Ok(Some(package)) = store.package(slot) else {
-                            continue;
-                        };
-                        let manifest = package.manifest;
-                        let color = fpapp_color(manifest.color_rgb);
-                        let icon = fpapp_icon(manifest.icon);
-                        let params: &[Param] = &[];
+                    if let Some((id, channels, config_meta)) = get_config(app_id, &store) {
                         res = proto
-                            .send_msg(ConfigMsgOut::AppConfig(
-                                manifest.app_id,
-                                manifest.channels as usize,
-                                (
-                                    usize::from(manifest.parameter_count),
-                                    manifest.name,
-                                    manifest.description,
-                                    color,
-                                    icon,
-                                    params,
-                                ),
-                            ))
+                            .send_msg(ConfigMsgOut::AppConfig(id, channels, config_meta))
                             .await;
-                        if res.is_err() {
-                            break;
-                        }
                     }
                 }
                 if res.is_ok() {
@@ -417,36 +398,25 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                     crate::fpapps::refresh_catalog(&store);
                     result
                 };
-                let status = match begin_result {
-                    Ok(()) => FpAppStatus::Ok,
-                    Err(StoreError::ActiveApp) => {
-                        let app_id = {
-                            let store = FPAPP_STORE.get().await.lock().await;
-                            store
-                                .installed(slot as usize)
-                                .ok()
-                                .flatten()
-                                .map(|app| app.app_id)
-                        };
-                        if let Some(app_id) = app_id {
-                            deactivate_fpapp(&mut layout, app_id).await;
-                            let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
-                                layout.iter().map(|(app_id, _, _, _)| app_id).collect();
-                            let mut store = FPAPP_STORE.get().await.lock().await;
-                            let result = store.begin_install(
-                                slot as usize,
-                                total_len as usize,
-                                &active_app_ids,
-                                now_ms(),
-                            );
-                            crate::fpapps::refresh_catalog(&store);
-                            result.map(|_| FpAppStatus::Ok).unwrap_or_else(fpapp_status)
-                        } else {
-                            FpAppStatus::ActiveApp
-                        }
-                    }
-                    Err(error) => fpapp_status(error),
-                };
+                let status = retry_on_active_conflict(
+                    &mut layout,
+                    slot,
+                    begin_result,
+                    |active_app_ids| async move {
+                        let mut store = FPAPP_STORE.get().await.lock().await;
+                        let result = store.begin_install(
+                            slot as usize,
+                            total_len as usize,
+                            &active_app_ids,
+                            now_ms(),
+                        );
+                        crate::fpapps::refresh_catalog(&store);
+                        result
+                    },
+                )
+                .await
+                .map(|_| FpAppStatus::Ok)
+                .unwrap_or_else(fpapp_status);
                 proto.send_msg(ConfigMsgOut::FpAppResult(status)).await
             }
             ConfigMsgIn::WriteFpAppChunk { offset, len, data } => {
@@ -510,38 +480,22 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                     let mut store = FPAPP_STORE.get().await.lock().await;
                     store.remove(slot as usize, &active_app_ids)
                 };
-                let status = match remove_result {
+                let res = retry_on_active_conflict(
+                    &mut layout,
+                    slot,
+                    remove_result,
+                    |active_app_ids| async move {
+                        let mut store = FPAPP_STORE.get().await.lock().await;
+                        store.remove(slot as usize, &active_app_ids)
+                    },
+                )
+                .await;
+                let status = match res {
                     Ok(()) => {
                         crate::fpapps::clear_quarantine(slot as usize).await;
                         let store = FPAPP_STORE.get().await.lock().await;
                         crate::fpapps::refresh_catalog(&store);
                         FpAppStatus::Ok
-                    }
-                    Err(StoreError::ActiveApp) => {
-                        let app_id = {
-                            let store = FPAPP_STORE.get().await.lock().await;
-                            store
-                                .installed(slot as usize)
-                                .ok()
-                                .flatten()
-                                .map(|app| app.app_id)
-                        };
-                        if let Some(app_id) = app_id {
-                            deactivate_fpapp(&mut layout, app_id).await;
-                            let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
-                                layout.iter().map(|(app_id, _, _, _)| app_id).collect();
-                            let mut store = FPAPP_STORE.get().await.lock().await;
-                            match store.remove(slot as usize, &active_app_ids) {
-                                Ok(()) => {
-                                    crate::fpapps::clear_quarantine(slot as usize).await;
-                                    crate::fpapps::refresh_catalog(&store);
-                                    FpAppStatus::Ok
-                                }
-                                Err(error) => fpapp_status(error),
-                            }
-                        } else {
-                            FpAppStatus::ActiveApp
-                        }
                     }
                     Err(error) => fpapp_status(error),
                 };
@@ -590,42 +544,28 @@ async fn deactivate_fpapp(layout: &mut Layout, app_id: u8) {
     }
 }
 
-fn fpapp_color(rgb: u32) -> Color {
+// Dev note: fpapp_color stays in faderpunk (needs smart_leds::RGB8 for its distance metric,
+// which libfp doesn't depend on) but iterates libfp::COLOR_TABLE instead of its own private
+// array — removes the duplicate table, keeps the distance logic where its dependency lives.
+pub(crate) fn fpapp_color(rgb: u32) -> Color {
     let target = (
         ((rgb >> 16) & 0xff) as i32,
         ((rgb >> 8) & 0xff) as i32,
         (rgb & 0xff) as i32,
     );
-    [
-        Color::White,
-        Color::Yellow,
-        Color::Orange,
-        Color::Red,
-        Color::Lime,
-        Color::Green,
-        Color::Cyan,
-        Color::SkyBlue,
-        Color::Blue,
-        Color::Violet,
-        Color::Pink,
-        Color::PaleGreen,
-        Color::Sand,
-        Color::Rose,
-        Color::Salmon,
-        Color::LightBlue,
-    ]
-    .into_iter()
-    .min_by_key(|color| {
-        let value: smart_leds::RGB8 = (*color).into();
-        let red = target.0 - value.r as i32;
-        let green = target.1 - value.g as i32;
-        let blue = target.2 - value.b as i32;
-        red * red + green * green + blue * blue
-    })
-    .unwrap_or(Color::White)
+    libfp::COLOR_TABLE
+        .into_iter()
+        .min_by_key(|color| {
+            let value: smart_leds::RGB8 = (*color).into();
+            let red = target.0 - value.r as i32;
+            let green = target.1 - value.g as i32;
+            let blue = target.2 - value.b as i32;
+            red * red + green * green + blue * blue
+        })
+        .unwrap_or(Color::White)
 }
 
-fn fpapp_icon(icon: u8) -> AppIcon {
+pub(crate) fn fpapp_icon(icon: u8) -> AppIcon {
     match icon {
         1 => AppIcon::AdEnv,
         2 => AppIcon::Random,
@@ -663,6 +603,38 @@ fn fpapp_status(error: StoreError<embassy_rp::flash::Error>) -> FpAppStatus {
         StoreError::DuplicateAppId => FpAppStatus::DuplicateAppId,
         StoreError::Package(_) => FpAppStatus::InvalidPackage,
         StoreError::Flash(_) | StoreError::RegionTooSmall => FpAppStatus::FlashError,
+    }
+}
+
+async fn retry_on_active_conflict<R, Fut>(
+    layout: &mut Layout,
+    slot: u8,
+    initial: Result<R, StoreError<embassy_rp::flash::Error>>,
+    retry: impl FnOnce(Vec<u8, GLOBAL_CHANNELS>) -> Fut,
+) -> Result<R, StoreError<embassy_rp::flash::Error>>
+where
+    Fut: core::future::Future<Output = Result<R, StoreError<embassy_rp::flash::Error>>>,
+{
+    match initial {
+        Err(StoreError::ActiveApp) => {
+            let app_id = {
+                let store = FPAPP_STORE.get().await.lock().await;
+                store
+                    .installed(slot as usize)
+                    .ok()
+                    .flatten()
+                    .map(|app| app.app_id)
+            };
+            if let Some(app_id) = app_id {
+                deactivate_fpapp(layout, app_id).await;
+                let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
+                    layout.iter().map(|(app_id, _, _, _)| app_id).collect();
+                retry(active_app_ids).await
+            } else {
+                Err(StoreError::ActiveApp)
+            }
+        }
+        other => other,
     }
 }
 
@@ -757,8 +729,8 @@ async fn send_fpapp_section(
 /// USB-MIDI sender. Wire format: see libfp::sysex.
 struct ConfigTransport<'a> {
     usb_tx: &'a SharedUsbSender<'a>,
-    plain_buf: [u8; MAX_PLAIN_SIZE],
-    frame_buf: [u8; MAX_SYSEX_FRAME],
+    plain_buf: &'a mut [u8],
+    frame_buf: &'a mut [u8],
 }
 
 /// (app_id, start_channel, channels, layout_id) of an app temporarily evicted
@@ -1007,11 +979,15 @@ async fn handle_release_voct_output(
 }
 
 impl<'a> ConfigTransport<'a> {
-    fn new(usb_tx: &'a SharedUsbSender<'a>) -> Self {
+    fn new(
+        usb_tx: &'a SharedUsbSender<'a>,
+        plain_buf: &'a mut [u8],
+        frame_buf: &'a mut [u8],
+    ) -> Self {
         ConfigTransport {
             usb_tx,
-            plain_buf: [0; MAX_PLAIN_SIZE],
-            frame_buf: [0; MAX_SYSEX_FRAME],
+            plain_buf,
+            frame_buf,
         }
     }
 
@@ -1021,7 +997,7 @@ impl<'a> ConfigTransport<'a> {
             .strip_prefix(&SYSEX_HEADER[..])
             .ok_or(ProtocolError::CorruptedMessage)?;
         let plain_len =
-            unpack_7bit(packed, &mut self.plain_buf).map_err(|_| ProtocolError::DecodingError)?;
+            unpack_7bit(packed, self.plain_buf).map_err(|_| ProtocolError::DecodingError)?;
         if plain_len < 2 {
             return Err(ProtocolError::CorruptedMessage);
         }

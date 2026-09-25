@@ -106,6 +106,9 @@ export interface ParsedFpApp {
   bytes: Uint8Array;
   appId: number;
   version: string;
+  versionMajor: number;
+  versionMinor: number;
+  versionPatch: number;
   name: string;
   description: string;
   author: string;
@@ -283,6 +286,9 @@ export async function parseFpApp(file: File): Promise<ParsedFpApp> {
     bytes,
     appId: manifest.appId,
     version: manifest.version.join("."),
+    versionMajor: manifest.version[0],
+    versionMinor: manifest.version[1],
+    versionPatch: manifest.version[2],
     name: manifest.name,
     description: manifest.description,
     author: manifest.author,
@@ -388,11 +394,12 @@ function isOptionalStringArray(value: unknown) {
 export async function mergeInstalledFpAppConfigs(
   device: FpMidiDevice,
   apps: AllApps,
+  slots?: FpAppSlot[],
 ): Promise<AllApps> {
   const merged = new Map(apps);
-  const slots = await getFpAppSlots(device);
+  const resolvedSlots = slots ?? (await getFpAppSlots(device));
   const manuals: CachedFpAppManual[] = [];
-  for (const slot of slots) {
+  for (const slot of resolvedSlots) {
     if (!slot.app) continue;
     if (slot.app.has_settings) {
       try {

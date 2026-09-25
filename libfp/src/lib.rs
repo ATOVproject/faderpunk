@@ -996,6 +996,48 @@ pub enum Color {
     Custom(u8, u8, u8),
 }
 
+pub const COLOR_TABLE: [Color; 16] = [
+    Color::White,
+    Color::Yellow,
+    Color::Orange,
+    Color::Red,
+    Color::Lime,
+    Color::Green,
+    Color::Cyan,
+    Color::SkyBlue,
+    Color::Blue,
+    Color::Violet,
+    Color::Pink,
+    Color::PaleGreen,
+    Color::Sand,
+    Color::Rose,
+    Color::Salmon,
+    Color::LightBlue,
+];
+
+pub fn decode_color_wire(value: u32) -> Color {
+    if value & 0x8000_0000 != 0 {
+        return Color::Custom((value >> 16) as u8, (value >> 8) as u8, value as u8);
+    }
+    COLOR_TABLE
+        .get(value as usize)
+        .copied()
+        .unwrap_or(Color::White)
+}
+
+pub fn encode_color_wire(color: Color) -> u32 {
+    match color {
+        Color::Custom(red, green, blue) => {
+            0x8000_0000 | (u32::from(red) << 16) | (u32::from(green) << 8) | u32::from(blue)
+        }
+        named => COLOR_TABLE
+            .iter()
+            .position(|&c| c == named)
+            .map(|index| index as u32)
+            .unwrap_or(0),
+    }
+}
+
 const PALETTE: [Color; 16] = [
     Color::White,
     Color::Pink,
@@ -2539,5 +2581,22 @@ mod tests {
         // Responses borrow app metadata and therefore intentionally serialize
         // only. Encoding the largest response proves its wire size fits the
         // same 512-byte transport envelope.
+    }
+
+    #[test]
+    fn color_wire_encoding_round_trips() {
+        for (index, &color) in COLOR_TABLE.iter().enumerate() {
+            let encoded = encode_color_wire(color);
+            assert_eq!(encoded, index as u32);
+            assert_eq!(decode_color_wire(encoded), color);
+        }
+
+        let custom = Color::Custom(0x12, 0x34, 0x56);
+        let encoded_custom = encode_color_wire(custom);
+        assert_eq!(encoded_custom, 0x8012_3456);
+        assert_eq!(decode_color_wire(encoded_custom), custom);
+
+        // Out-of-bounds wire index falls back to Color::White
+        assert_eq!(decode_color_wire(99), Color::White);
     }
 }

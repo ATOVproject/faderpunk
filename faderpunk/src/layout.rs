@@ -5,7 +5,7 @@ use embassy_sync::{
     signal::Signal,
     watch::Watch,
 };
-use embassy_time::Timer;
+use embassy_time::{with_timeout, Duration};
 use static_cell::StaticCell;
 
 use libfp::{InnerLayout, Layout, GLOBAL_CHANNELS};
@@ -74,24 +74,17 @@ impl LayoutManager {
 
     pub(crate) async fn exit_app(&self, start_channel: usize) {
         let mut layout = self.layout.lock().await;
-        if let Some((app_id, _, _)) = layout[start_channel] {
-            let is_fpapp = crate::fpapps::runtime_descriptor(app_id).is_some();
+        if layout[start_channel].is_some() {
             layout[start_channel] = None;
             drop(layout);
 
             self.exit_signals[start_channel].signal(true);
-            if is_fpapp {
-                self.completion_signals[start_channel].wait().await;
-                // A native task may have finished by itself before the exit
-                // request was sent. Completion proves that no task can still
-                // need the request, so it is now safe to clear a stale value.
-                self.exit_signals[start_channel].reset();
-            } else {
-                // Factory tasks predate completion acknowledgements. Their
-                // exit handlers contain only bounded host cleanup, so retain
-                // the existing scheduling grace period for those tasks.
-                Timer::after_millis(10).await;
-            }
+            let _ = with_timeout(
+                Duration::from_millis(1000),
+                self.completion_signals[start_channel].wait(),
+            )
+            .await;
+            self.exit_signals[start_channel].reset();
         }
     }
 

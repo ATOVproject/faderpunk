@@ -780,23 +780,27 @@ fn write_u32(output: &mut [u8], offset: usize, value: u32) -> Result<(), Package
     Ok(())
 }
 
+pub(crate) fn read_u16_opt(bytes: &[u8], offset: usize) -> Option<u16> {
+    let value = bytes.get(offset..offset + 2)?;
+    Some(u16::from_le_bytes([value[0], value[1]]))
+}
+
+pub(crate) fn read_u32_opt(bytes: &[u8], offset: usize) -> Option<u32> {
+    let value = bytes.get(offset..offset + 4)?;
+    Some(u32::from_le_bytes([value[0], value[1], value[2], value[3]]))
+}
+
 fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, PackageError> {
-    let value = bytes
-        .get(offset..offset + 2)
-        .ok_or(PackageError::Truncated)?;
-    Ok(u16::from_le_bytes([value[0], value[1]]))
+    read_u16_opt(bytes, offset).ok_or(PackageError::Truncated)
 }
 
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, PackageError> {
-    let value = bytes
-        .get(offset..offset + 4)
-        .ok_or(PackageError::Truncated)?;
-    Ok(u32::from_le_bytes([value[0], value[1], value[2], value[3]]))
+    read_u32_opt(bytes, offset).ok_or(PackageError::Truncated)
 }
 
-pub fn crc32(bytes: &[u8]) -> u32 {
+fn crc32_fold(bytes: impl Iterator<Item = u8>) -> u32 {
     let mut crc = 0xffff_ffffu32;
-    for &byte in bytes {
+    for byte in bytes {
         crc ^= byte as u32;
         for _ in 0..8 {
             let polynomial = 0xedb8_8320 & (0u32.wrapping_sub(crc & 1));
@@ -804,6 +808,10 @@ pub fn crc32(bytes: &[u8]) -> u32 {
         }
     }
     !crc
+}
+
+pub fn crc32(bytes: &[u8]) -> u32 {
+    crc32_fold(bytes.iter().copied())
 }
 
 /// Converts a 40-digit Git revision into the fixed firmware compatibility ID.
@@ -820,16 +828,9 @@ pub fn firmware_abi_from_revision(revision: &str) -> Option<[u8; 32]> {
         *byte = parse_hex_byte(&revision.as_bytes()[index * 2..index * 2 + 2])?;
     }
     for salt in 0..3u8 {
-        let mut crc = 0xffff_ffffu32;
-        for byte in revision.bytes().chain(core::iter::once(salt)) {
-            crc ^= byte as u32;
-            for _ in 0..8 {
-                let polynomial = 0xedb8_8320 & (0u32.wrapping_sub(crc & 1));
-                crc = (crc >> 1) ^ polynomial;
-            }
-        }
+        let crc = crc32_fold(revision.bytes().chain(core::iter::once(salt)));
         let offset = 20 + salt as usize * 4;
-        output[offset..offset + 4].copy_from_slice(&(!crc).to_le_bytes());
+        output[offset..offset + 4].copy_from_slice(&crc.to_le_bytes());
     }
     Some(output)
 }

@@ -23,7 +23,7 @@ import {
   type FpMidiDevice,
 } from "../utils/midi-protocol";
 import { getFixedLengthParamArray } from "./utils";
-import { mergeInstalledFpAppConfigs } from "./fpapp";
+import { mergeInstalledFpAppConfigs, type FpAppSlot } from "./fpapp";
 import {
   parseParamValueFromFile,
   parseGlobalConfigFromFile,
@@ -41,7 +41,7 @@ export const setGlobalConfig = async (
   });
 };
 
-export const getAllApps = async (dev: FpMidiDevice) => {
+export const getAllApps = async (dev: FpMidiDevice, slots?: FpAppSlot[]) => {
   const { start: response, messages: apps } = await sendAndReceiveBatch(dev, {
     tag: "GetAllApps",
   });
@@ -75,7 +75,7 @@ export const getAllApps = async (dev: FpMidiDevice) => {
       parsedApps.set(appConfig.appId, appConfig);
     });
 
-  return mergeInstalledFpAppConfigs(dev, parsedApps);
+  return mergeInstalledFpAppConfigs(dev, parsedApps, slots);
 };
 
 export const getAppParams = async (dev: FpMidiDevice, layoutId: number) => {

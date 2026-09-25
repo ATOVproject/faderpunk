@@ -148,7 +148,11 @@ impl Default for Storage {
 impl AppStorage for Storage {}
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
-pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+pub async fn wrapper(
+    app: App<CHANNELS>,
+    exit_signal: &'static Signal<NoopRawMutex, bool>,
+    completion_signal: &'static Signal<NoopRawMutex, ()>,
+) {
     let ch = app.start_channel as u8;
     let param_store = ParamStore::<Params>::new(
         app.app_id,
@@ -185,7 +189,7 @@ pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMut
         }
     };
 
-    select(app_loop, app.exit_handler(exit_signal)).await;
+    select(app_loop, app.exit_handler(exit_signal, completion_signal)).await;
 }
 
 pub async fn run(

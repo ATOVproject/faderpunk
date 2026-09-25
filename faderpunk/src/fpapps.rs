@@ -9,7 +9,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::once_lock::OnceLock;
 use libfp::fpapp_store::{SlotFlash, SlotStore, ERASE_SIZE, FPAPP_REGION_SIZE, SLOT_COUNT};
-use portable_atomic::{AtomicU32, AtomicU8, Ordering};
+use portable_atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 
 use crate::watchdog;
 
@@ -47,8 +47,7 @@ pub struct RuntimeDescriptor {
 }
 
 struct CachedDescriptor {
-    // Published last with Release ordering; readers acquire it before loading
-    // the remaining fields.
+    valid: AtomicBool,
     app_id: AtomicU8,
     channels: AtomicU8,
     code_base: AtomicU32,
@@ -62,6 +61,7 @@ struct CachedDescriptor {
 impl CachedDescriptor {
     const fn new() -> Self {
         Self {
+            valid: AtomicBool::new(false),
             app_id: AtomicU8::new(0),
             channels: AtomicU8::new(0),
             code_base: AtomicU32::new(0),
@@ -74,11 +74,13 @@ impl CachedDescriptor {
     }
 
     fn clear(&self) {
-        self.app_id.store(0, Ordering::Release);
+        self.valid.store(false, Ordering::Release);
+        self.app_id.store(0, Ordering::Relaxed);
     }
 
     fn publish(&self, descriptor: RuntimeDescriptor) {
         self.clear();
+        self.app_id.store(descriptor.app_id, Ordering::Relaxed);
         self.channels.store(descriptor.channels, Ordering::Relaxed);
         self.code_base
             .store(descriptor.code_base, Ordering::Relaxed);
@@ -88,14 +90,17 @@ impl CachedDescriptor {
         self.poll.store(descriptor.poll, Ordering::Relaxed);
         self.drop.store(descriptor.drop, Ordering::Relaxed);
         self.rw_bytes.store(descriptor.rw_bytes, Ordering::Relaxed);
-        self.app_id.store(descriptor.app_id, Ordering::Release);
+        self.valid.store(true, Ordering::Release);
     }
 
     fn get(&self, slot: usize, app_id: u8) -> Option<RuntimeDescriptor> {
-        if self.app_id.load(Ordering::Acquire) != app_id {
+        if !self.valid.load(Ordering::Acquire) {
             return None;
         }
-        Some(RuntimeDescriptor {
+        if self.app_id.load(Ordering::Relaxed) != app_id {
+            return None;
+        }
+        let desc = RuntimeDescriptor {
             slot: slot as u8,
             app_id,
             channels: self.channels.load(Ordering::Relaxed),
@@ -105,7 +110,11 @@ impl CachedDescriptor {
             poll: self.poll.load(Ordering::Relaxed),
             drop: self.drop.load(Ordering::Relaxed),
             rw_bytes: self.rw_bytes.load(Ordering::Relaxed),
-        })
+        };
+        if !self.valid.load(Ordering::Acquire) || self.app_id.load(Ordering::Relaxed) != app_id {
+            return None;
+        }
+        Some(desc)
     }
 }
 
@@ -208,7 +217,7 @@ static QUARANTINED_SLOTS: AtomicU8 = AtomicU8::new(0);
 pub fn has_runnable_app() -> bool {
     RUNTIME_DESCRIPTORS
         .iter()
-        .any(|cached| cached.app_id.load(Ordering::Acquire) != 0)
+        .any(|cached| cached.valid.load(Ordering::Acquire))
 }
 
 pub fn quarantined_slots() -> u8 {
@@ -305,4 +314,35 @@ pub fn runtime_descriptor(app_id: u8) -> Option<RuntimeDescriptor> {
 
 pub fn get_channels(app_id: u8) -> Option<usize> {
     runtime_descriptor(app_id).map(|descriptor| descriptor.channels as usize)
+}
+
+pub fn get_config<'a, F: SlotFlash>(
+    app_id: u8,
+    store: &'a SlotStore<F>,
+) -> Option<(u8, usize, libfp::ConfigMeta<'a>)> {
+    for slot in 0..SLOT_COUNT {
+        if let Ok(Some(installed)) = store.installed(slot) {
+            if installed.app_id == app_id {
+                if let Ok(Some(package)) = store.package(slot) {
+                    let manifest = package.manifest;
+                    let color = crate::tasks::configure::fpapp_color(manifest.color_rgb);
+                    let icon = crate::tasks::configure::fpapp_icon(manifest.icon);
+                    let params: &[libfp::Param] = &[];
+                    return Some((
+                        manifest.app_id,
+                        manifest.channels as usize,
+                        (
+                            usize::from(manifest.parameter_count),
+                            manifest.name,
+                            manifest.description,
+                            color,
+                            icon,
+                            params,
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    None
 }
