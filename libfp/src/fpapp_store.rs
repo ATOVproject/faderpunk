@@ -1,6 +1,9 @@
 //! Transactional fixed-slot storage for installable applications.
 
-use crate::fpapp::{abi_minor_is_compatible, crc32, Package, PackageError, Version};
+use crate::fpapp::{
+    abi_minor_is_compatible, crc32, read_u16_opt as read_u16, read_u32_opt as read_u32, Package,
+    PackageError, Version,
+};
 
 pub const FPAPP_REGION_SIZE: usize = 512 * 1024;
 /// Slots are fixed-size partitions, so this sets the largest installable
@@ -399,16 +402,6 @@ fn encode_control(slot: usize, entry: SlotEntry) -> [u8; CONTROL_RECORD_LEN] {
     let checksum = crc32(&bytes[..CONTROL_BODY_LEN]);
     bytes[CONTROL_BODY_LEN..].copy_from_slice(&checksum.to_le_bytes());
     bytes
-}
-
-fn read_u16(bytes: &[u8], offset: usize) -> Option<u16> {
-    let bytes = bytes.get(offset..offset + 2)?;
-    Some(u16::from_le_bytes([bytes[0], bytes[1]]))
-}
-
-fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
-    let bytes = bytes.get(offset..offset + 4)?;
-    Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
 #[cfg(test)]

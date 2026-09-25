@@ -61,7 +61,7 @@ macro_rules! register_apps {
         /// ever, any slot or app. Measured the same way; notably larger
         /// than an earlier ~181 KiB estimate that turns out to have been
         /// stale.
-        const FPAPP_POOL_BYTES: u32 = 205_952;
+        const FPAPP_POOL_BYTES: u32 = 206_720;
         /// Arena::alloc pads each allocation up to the type's alignment
         /// (next_multiple_of), so the raw sum of measured sizes slightly
         /// under-reports true consumption. All 28 measured types (27
@@ -183,8 +183,13 @@ macro_rules! register_apps {
                             &MIDI_USB_PUBSUB,
                         );
 
+                        completion_signals[start_channel].reset();
                         if spawner
-                            .spawn($app_mod::wrapper(app, &exit_signals[start_channel]))
+                            .spawn($app_mod::wrapper(
+                                app,
+                                &exit_signals[start_channel],
+                                &completion_signals[start_channel],
+                            ))
                             .is_err()
                         {
                             defmt::warn!(
@@ -236,14 +241,17 @@ macro_rules! register_apps {
             }
         }
 
-        pub fn get_config(app_id: u8) -> Option<(u8, usize, ConfigMeta<'static>)> {
+        pub fn get_config<'a, F: libfp::fpapp_store::SlotFlash>(
+            app_id: u8,
+            store: &'a libfp::fpapp_store::SlotStore<F>,
+        ) -> Option<(u8, usize, ConfigMeta<'a>)> {
             match app_id {
                 $(
                     $id => {
                         Some((app_id, $app_mod::CHANNELS, $app_mod::CONFIG.get_meta()))
                     },
                 )*
-                _ => None
+                _ => crate::fpapps::get_config(app_id, store),
             }
         }
     };

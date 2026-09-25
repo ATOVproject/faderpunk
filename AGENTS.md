@@ -251,8 +251,12 @@ pub static CONFIG: Config<N> = Config::new(
 );
 
 #[embassy_executor::task(pool_size = 16/CHANNELS)]
-pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
-    select(run(&app), app.exit_handler(exit_signal)).await;
+pub async fn wrapper(
+    app: App<CHANNELS>,
+    exit_signal: &'static Signal<NoopRawMutex, bool>,
+    completion_signal: &'static Signal<NoopRawMutex, ()>,
+) {
+    select(run(&app), app.exit_handler(exit_signal, completion_signal)).await;
 }
 
 pub async fn run(app: &App<CHANNELS>) {

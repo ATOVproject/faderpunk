@@ -428,6 +428,17 @@ impl EventReader {
     }
 }
 
+pub(crate) fn poll_with_host<T>(
+    host: *const HostV1,
+    f: impl FnOnce(&HostV1) -> Poll<T>,
+) -> Poll<T> {
+    if host.is_null() {
+        Poll::Pending
+    } else {
+        f(unsafe { &*host })
+    }
+}
+
 pub struct NextEvent<'a> {
     host: *const HostV1,
     cursor: &'a mut u32,
@@ -438,17 +449,15 @@ impl Future for NextEvent<'_> {
 
     fn poll(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        if this.host.is_null() {
-            return Poll::Pending;
-        }
-        let host = unsafe { &*this.host };
-        let mut event = EventV1::default();
-        if unsafe { (host.read_event_after)(host.context, *this.cursor, &mut event) } {
-            *this.cursor = event.sequence;
-            Poll::Ready(event)
-        } else {
-            Poll::Pending
-        }
+        poll_with_host(this.host, |host| {
+            let mut event = EventV1::default();
+            if unsafe { (host.read_event_after)(host.context, *this.cursor, &mut event) } {
+                *this.cursor = event.sequence;
+                Poll::Ready(event)
+            } else {
+                Poll::Pending
+            }
+        })
     }
 }
 
@@ -479,7 +488,10 @@ pub mod compat {
     };
     use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as DeError};
 
-    use super::{CommandV1, EventReader, HostV1, blob_kind, command_kind, event_kind, value_kind};
+    use super::{
+        CommandV1, EventReader, HostV1, blob_kind, command_kind, event_kind, poll_with_host,
+        value_kind,
+    };
 
     const MAX_BLOB_BYTES: usize = 384;
     fn read_value(host: *const HostV1, kind: u8, index: usize) -> u32 {
@@ -502,15 +514,14 @@ pub mod compat {
         type Output = ();
 
         fn poll(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
-            if self.host.is_null() {
-                return Poll::Pending;
-            }
-            let host = unsafe { &*self.host };
-            if unsafe { (host.submit_command)(host.context, &self.command) } {
-                Poll::Ready(())
-            } else {
-                Poll::Pending
-            }
+            let this = self.get_mut();
+            poll_with_host(this.host, |host| {
+                if unsafe { (host.submit_command)(host.context, &this.command) } {
+                    Poll::Ready(())
+                } else {
+                    Poll::Pending
+                }
+            })
         }
     }
 
@@ -524,25 +535,24 @@ pub mod compat {
     impl Future for ReadBlob<'_> {
         type Output = usize;
 
-        fn poll(mut self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
-            if self.host.is_null() {
-                return Poll::Pending;
-            }
-            let host = unsafe { &*self.host };
-            let len = unsafe {
-                (host.read_blob)(
-                    host.context,
-                    self.kind,
-                    self.index,
-                    self.output.as_mut_ptr(),
-                    self.output.len(),
-                )
-            };
-            if len < 0 {
-                Poll::Pending
-            } else {
-                Poll::Ready(len as usize)
-            }
+        fn poll(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
+            let this = self.get_mut();
+            poll_with_host(this.host, |host| {
+                let len = unsafe {
+                    (host.read_blob)(
+                        host.context,
+                        this.kind,
+                        this.index,
+                        this.output.as_mut_ptr(),
+                        this.output.len(),
+                    )
+                };
+                if len < 0 {
+                    Poll::Pending
+                } else {
+                    Poll::Ready(len as usize)
+                }
+            })
         }
     }
 
@@ -557,23 +567,22 @@ pub mod compat {
         type Output = ();
 
         fn poll(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
-            if self.host.is_null() {
-                return Poll::Pending;
-            }
-            let host = unsafe { &*self.host };
-            if unsafe {
-                (host.write_blob)(
-                    host.context,
-                    self.kind,
-                    self.index,
-                    self.data.as_ptr(),
-                    self.data.len(),
-                )
-            } {
-                Poll::Ready(())
-            } else {
-                Poll::Pending
-            }
+            let this = self.get_mut();
+            poll_with_host(this.host, |host| {
+                if unsafe {
+                    (host.write_blob)(
+                        host.context,
+                        this.kind,
+                        this.index,
+                        this.data.as_ptr(),
+                        this.data.len(),
+                    )
+                } {
+                    Poll::Ready(())
+                } else {
+                    Poll::Pending
+                }
+            })
         }
     }
 
@@ -1086,27 +1095,7 @@ pub mod compat {
     }
 
     fn encode_color(color: Color) -> u32 {
-        match color {
-            Color::White => 0,
-            Color::Yellow => 1,
-            Color::Orange => 2,
-            Color::Red => 3,
-            Color::Lime => 4,
-            Color::Green => 5,
-            Color::Cyan => 6,
-            Color::SkyBlue => 7,
-            Color::Blue => 8,
-            Color::Violet => 9,
-            Color::Pink => 10,
-            Color::PaleGreen => 11,
-            Color::Sand => 12,
-            Color::Rose => 13,
-            Color::Salmon => 14,
-            Color::LightBlue => 15,
-            Color::Custom(red, green, blue) => {
-                0x8000_0000 | (u32::from(red) << 16) | (u32::from(green) << 8) | u32::from(blue)
-            }
-        }
+        libfp::encode_color_wire(color)
     }
 
     pub struct InJack {

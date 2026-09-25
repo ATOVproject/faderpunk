@@ -104,29 +104,135 @@ fn fpapp_firmware_abi() -> [u8; 32] {
         .expect("firmware Git revision must contain 40 hexadecimal digits")
 }
 
+fn is_valid_hex_sha(s: &str) -> bool {
+    s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn find_git_dir(start: &Path) -> Option<(PathBuf, Option<PathBuf>)> {
+    for ancestor in start.ancestors() {
+        let git_path = ancestor.join(".git");
+        if git_path.is_dir() {
+            return Some((git_path.clone(), Some(git_path)));
+        } else if git_path.is_file() {
+            let content = std::fs::read_to_string(&git_path).ok()?;
+            for line in content.lines() {
+                if let Some(rest) = line.strip_prefix("gitdir:") {
+                    let gitdir_path = rest.trim();
+                    let resolved = if Path::new(gitdir_path).is_absolute() {
+                        PathBuf::from(gitdir_path)
+                    } else {
+                        ancestor.join(gitdir_path)
+                    };
+                    let commondir_file = resolved.join("commondir");
+                    let commondir = if commondir_file.is_file() {
+                        let c_content = std::fs::read_to_string(&commondir_file).ok()?;
+                        let c_trimmed = c_content.trim();
+                        if Path::new(c_trimmed).is_absolute() {
+                            Some(PathBuf::from(c_trimmed))
+                        } else {
+                            Some(resolved.join(c_trimmed))
+                        }
+                    } else {
+                        Some(resolved.clone())
+                    };
+                    return Some((resolved, commondir));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn resolve_head_from_fs(manifest_dir: &Path) -> Option<String> {
+    let (git_dir, common_dir) = find_git_dir(manifest_dir)?;
+    let common_dir = common_dir.unwrap_or_else(|| git_dir.clone());
+
+    let head_file = git_dir.join("HEAD");
+    if !head_file.is_file() {
+        return None;
+    }
+    println!("cargo:rerun-if-changed={}", head_file.display());
+    let head_content = std::fs::read_to_string(&head_file).ok()?;
+    let head_trimmed = head_content.trim();
+
+    if let Some(ref_path) = head_trimmed.strip_prefix("ref:") {
+        let ref_rel = ref_path.trim();
+        let loose_git = git_dir.join(ref_rel);
+        println!("cargo:rerun-if-changed={}", loose_git.display());
+        if common_dir != git_dir {
+            println!(
+                "cargo:rerun-if-changed={}",
+                common_dir.join(ref_rel).display()
+            );
+        }
+
+        let packed_refs = common_dir.join("packed-refs");
+        if packed_refs.is_file() {
+            println!("cargo:rerun-if-changed={}", packed_refs.display());
+        }
+
+        let loose_ref = if loose_git.is_file() {
+            Some(loose_git)
+        } else if common_dir.join(ref_rel).is_file() {
+            Some(common_dir.join(ref_rel))
+        } else {
+            None
+        };
+
+        if let Some(loose) = loose_ref {
+            let sha = std::fs::read_to_string(&loose).ok()?.trim().to_string();
+            if is_valid_hex_sha(&sha) {
+                return Some(sha);
+            }
+        }
+
+        if packed_refs.is_file() {
+            let content = std::fs::read_to_string(&packed_refs).ok()?;
+            for line in content.lines() {
+                let line = line.trim();
+                if line.starts_with('#') || line.starts_with('^') {
+                    continue;
+                }
+                let mut parts = line.split_whitespace();
+                if let (Some(sha), Some(name)) = (parts.next(), parts.next()) {
+                    if name == ref_rel && is_valid_hex_sha(sha) {
+                        return Some(sha.to_string());
+                    }
+                }
+            }
+        }
+
+        None
+    } else if is_valid_hex_sha(head_trimmed) {
+        Some(head_trimmed.to_string())
+    } else {
+        None
+    }
+}
+
+fn check_git_dirty(manifest_dir: &str) {
+    if let Ok(output) = Command::new("git")
+        .args(["-C", manifest_dir, "status", "--porcelain"])
+        .output()
+    {
+        if output.status.success() && !output.stdout.is_empty() {
+            println!("cargo:warning=working directory is dirty; firmware ABI revision reflects HEAD commit without uncommitted changes");
+        }
+    }
+}
+
 fn firmware_revision() -> String {
     println!("cargo:rerun-if-env-changed=FADERPUNK_GIT_REVISION");
     if let Ok(revision) = env::var("FADERPUNK_GIT_REVISION") {
         return revision;
     }
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let manifest_path = Path::new(&manifest_dir);
 
-    // A linked worktree has a `.git` file rather than `../.git/HEAD`. Ask Git
-    // for both the worktree HEAD and its shared branch ref so a new commit
-    // always rebuilds the exact-firmware ABI in either checkout shape.
-    for path in [
-        git_output(&manifest_dir, &["rev-parse", "--git-path", "HEAD"]),
-        git_output(&manifest_dir, &["symbolic-ref", "-q", "HEAD"]).and_then(|reference| {
-            git_output(
-                &manifest_dir,
-                &["rev-parse", "--git-path", reference.trim()],
-            )
-        }),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        println!("cargo:rerun-if-changed={}", path.trim());
+    check_git_dirty(&manifest_dir);
+
+    if let Some(sha) = resolve_head_from_fs(manifest_path) {
+        return sha;
     }
 
     git_output(&manifest_dir, &["rev-parse", "HEAD"])
@@ -140,9 +246,10 @@ fn git_output(manifest_dir: &str, args: &[&str]) -> Option<String> {
         .args(["-C", manifest_dir])
         .args(args)
         .output()
-        .expect("git is required to derive the FPApp firmware ABI");
+        .ok()?;
     output
         .status
         .success()
-        .then(|| String::from_utf8(output.stdout).expect("Git output must be UTF-8"))
+        .then(|| String::from_utf8(output.stdout).ok())
+        .flatten()
 }

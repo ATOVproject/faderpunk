@@ -733,27 +733,15 @@ impl<const N: usize> App<N> {
 
     pub async fn make_in_jack(&self, chan: usize, range: Range) -> InJack {
         let chan = chan.clamp(0, N - 1);
-        let adc_range = match range {
-            Range::_Neg5_5V => ADCRANGE::RgNeg5_5v,
-            _ => ADCRANGE::Rg0_10v,
-        };
-        self.reconfigure_jack(
-            chan,
-            Mode::Mode7(ConfigMode7(AVR::InternalRef, adc_range, NSAMPLES::Samples1)),
-            None,
-        )
-        .await;
+        self.reconfigure_jack(chan, adc_mode_for_range(range), None)
+            .await;
 
         InJack::new(self.start_channel + chan, range)
     }
 
     pub async fn make_out_jack(&self, chan: usize, range: Range) -> OutJack {
         let chan = chan.clamp(0, N - 1);
-        let dac_range = match range {
-            Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
-            _ => DACRANGE::Rg0_10v,
-        };
-        self.reconfigure_jack(chan, Mode::Mode5(ConfigMode5(dac_range)), None)
+        self.reconfigure_jack(chan, dac_mode_for_range(range), None)
             .await;
 
         OutJack::new(self.start_channel + chan, range)
@@ -878,10 +866,31 @@ impl<const N: usize> App<N> {
         }
     }
 
-    pub async fn exit_handler(&self, exit_signal: &'static Signal<NoopRawMutex, bool>) {
+    pub async fn exit_handler(
+        &self,
+        exit_signal: &'static Signal<NoopRawMutex, bool>,
+        completion_signal: &'static Signal<NoopRawMutex, ()>,
+    ) {
         exit_signal.wait().await;
         self.reset().await;
+        completion_signal.signal(());
     }
+}
+
+pub fn adc_mode_for_range(range: Range) -> Mode {
+    let adc_range = match range {
+        Range::_Neg5_5V => ADCRANGE::RgNeg5_5v,
+        _ => ADCRANGE::Rg0_10v,
+    };
+    Mode::Mode7(ConfigMode7(AVR::InternalRef, adc_range, NSAMPLES::Samples1))
+}
+
+pub fn dac_mode_for_range(range: Range) -> Mode {
+    let dac_range = match range {
+        Range::_Neg5_5V => DACRANGE::RgNeg5_5v,
+        _ => DACRANGE::Rg0_10v,
+    };
+    Mode::Mode5(ConfigMode5(dac_range))
 }
 
 /// Convert a quantized pitch to DAC counts, resolving any Custom V/Oct curve

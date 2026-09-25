@@ -8,6 +8,7 @@ import type {
   AppSlot,
   ParamValues,
 } from "./utils/types";
+import type { FpAppSlot } from "./utils/fpapp";
 import {
   connectToFaderPunk,
   getDeviceVersion,
@@ -94,7 +95,7 @@ interface State {
   isSimulator: boolean;
   layout: AppLayout | undefined;
   params: ParamValues | undefined;
-  refreshApps: () => Promise<void>;
+  refreshApps: (slots?: FpAppSlot[]) => Promise<void>;
   // Re-fetches everything device-state-related on the already-connected
   // `device` — apps (FPApp slots may have just been wiped), params, layout,
   // config. For resuming in place after a firmware-initiated reboot whose
@@ -251,10 +252,10 @@ export const useStore = create<State>((set, get) => ({
     setRebooting(false);
     return resynced;
   },
-  refreshApps: async () => {
+  refreshApps: async (slots?: FpAppSlot[]) => {
     const { device } = get();
     if (!device) return;
-    const apps = await getAllApps(device);
+    const apps = await getAllApps(device, slots);
     const layout = await getLayout(device, apps);
     set({ apps, layout });
   },

@@ -58,7 +58,9 @@ export const InstalledApps = () => {
   );
   const sectionRef = useRef<HTMLDivElement>(null);
 
-  const refresh = async (showLoading = true) => {
+  const refresh = async (
+    showLoading = true,
+  ): Promise<FpAppSlot[] | undefined> => {
     if (!device) return;
     if (showLoading) setLoading(true);
     try {
@@ -68,8 +70,10 @@ export const InstalledApps = () => {
       const nextSupport = await getFpAppSupport(device);
       const nextSlots = await getFpAppSlots(device);
       setSupport(nextSupport);
-      setSlots(nextSlots.sort((a, b) => a.slot - b.slot));
+      const sorted = nextSlots.sort((a, b) => a.slot - b.slot);
+      setSlots(sorted);
       setError(undefined);
+      return sorted;
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -151,8 +155,8 @@ export const InstalledApps = () => {
           support,
           setProgress,
         );
-        await refresh(false);
-        await preserveSectionPosition(refreshApps);
+        const refreshedSlots = await refresh(false);
+        await preserveSectionPosition(() => refreshApps(refreshedSlots));
       } else if (isSimulator) {
         const nextPackages = new Map(simulatorPackages).set(
           selection.slot,
@@ -180,9 +184,9 @@ export const InstalledApps = () => {
                   app: {
                     slot: slot.slot,
                     app_id: selection.app.appId,
-                    version_major: Number(selection.app.version.split(".")[0]),
-                    version_minor: Number(selection.app.version.split(".")[1]),
-                    version_patch: Number(selection.app.version.split(".")[2]),
+                    version_major: selection.app.versionMajor,
+                    version_minor: selection.app.versionMinor,
+                    version_patch: selection.app.versionPatch,
                     channels: selection.app.channels,
                     name: selection.app.name,
                     description: selection.app.description,
@@ -223,8 +227,8 @@ export const InstalledApps = () => {
     try {
       if (device) {
         await removeFpApp(device, slot.slot);
-        await refresh(false);
-        await preserveSectionPosition(refreshApps);
+        const refreshedSlots = await refresh(false);
+        await preserveSectionPosition(() => refreshApps(refreshedSlots));
       } else {
         await preserveSectionPosition(() =>
           removeSimulatorApp(slot.app!.app_id),
