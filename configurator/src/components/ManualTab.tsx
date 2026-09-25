@@ -219,6 +219,8 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
       "Track 2: transpose CH",
       "Track 3: transpose CH",
       "Track 4: transpose CH",
+      "1V/Oct",
+      "Bypass quantizer",
     ],
     storage: [
       "Sequences (Gate/CV)",
@@ -233,7 +235,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
       "Slide times",
       "Muted (per track)",
     ],
-    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, navigated with **Shift + Buttons** (short press). CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, 5&6 for sequencer 3, and 7&8 for sequencer 4. Faders set note values, buttons define the gate pattern, and **long button presses** enable legato between steps. CV output is quantized to the scale set in the global quantizer.\n\n#### Shift mode\n\nWith Shift held, all 8 faders control settings for the currently selected sequencer:\n\n- **Fader 1** — step length (1–16 steps)\n- **Fader 2** — gate length\n- **Fader 3** — octave offset (0–5 octaves)\n- **Fader 4** — sequence range (1–5 octaves)\n- **Fader 5** — clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th)\n- **Fader 6** — direction (Forward / Backward / Ping-Pong / Random)\n- **Fader 7** — trigger probability (5%–100%)\n- **Fader 8** — 303-style slide time (0 = instant)\n\nTop LEDs show sequence length. Resolution LED color: **orange** = triplet division, **blue** = straight division.\n\n#### Muting tracks\n\n**Shift + long press** on an even button (0, 2, 4, or 6) mutes the corresponding track (1–4). While muted, gates and CV are suppressed and the top and position LEDs turn off; the gate pattern remains visible so the sequence can still be edited. Mute state is saved per scene.\n\n#### MIDI transposition\n\nEach track can be live-transposed via incoming MIDI. Assign a dedicated transpose MIDI channel per track in the parameters. Receiving a NoteOn on that channel shifts the track's output relative to **C4** — middle C = no change, notes above/below transpose up/down by semitones. Transposition applies to both CV and MIDI output.\n\n#### Velocity lane mode (tracks 2 and 4)\n\nWhen enabled, a track acts as a velocity lane for its paired primary track (track 2 → track 1, track 4 → track 3):\n\n- **Fader** — controls the MIDI velocity sent to the paired track, not a note value\n- **CV output** — unquantized voltage proportional to fader position (0–10V)\n- **Gate button** — controls whether velocity advances on that step (on) or holds the previous value (off)\n- MIDI notes are suppressed on the velocity lane track itself",
+    text: "4x16 step sequencer app featuring four independent sequencers, each represented by a distinct color. Each sequencer has two pages, navigated with **Shift + Buttons** (short press). CV/Gate outputs are paired per sequencer: jacks 1&2 for sequencer 1, 3&4 for sequencer 2, 5&6 for sequencer 3, and 7&8 for sequencer 4. Faders set note values, buttons define the gate pattern, and **long button presses** enable legato between steps. CV output is quantized to the scale set in the global quantizer. On the main page the top LEDs show the note levels, and the bottom LEDs show which page is playing in the sequencer's color, fading as the playhead moves through the page.\n\n#### Shift mode\n\nWith Shift held, all 8 faders control settings for the currently selected sequencer:\n\n- **Fader 1** — step length (1–16 steps)\n- **Fader 2** — gate length\n- **Fader 3** — octave offset (0–4 octaves)\n- **Fader 4** — sequence range (1–5 octaves)\n- **Fader 5** — clock resolution (32ndT, 32nd, 16thT, 16th, 8thT, 8th, 4thT, 4th)\n- **Fader 6** — direction (Forward / Backward / Ping-Pong / Random)\n- **Fader 7** — trigger probability (5%–100%)\n- **Fader 8** — 303-style slide time (0 = instant)\n\n#### Shift mode LEDs\n\nWith Shift held, the **top LED** above each fader shows that setting for the selected sequencer. The button LEDs keep showing the sequencer and page selection, and the bottom LEDs stay off.\n\n- **LED 1 (length)** — flashes in time with the sequence, once for every step of the length, then rests before repeating. Moving Fader 1 temporarily shows the full length bar across the top and bottom LEDs with the playing step marked, and returns to the normal shift view 3 seconds after you let go\n- **LED 2 (gate length)** — flashes in time with each step for as long as the gate is open\n- **LED 3 (octave)** and **LED 4 (range)** — brightness follows the setting\n- **LED 5 (resolution)** — flashes in time with every step. **Orange** = triplet division, **blue** = straight division\n- **LED 6 (direction)** — brightness animates like an LFO: rising for Forward, falling for Backward, up and down for Ping-Pong, random for Random\n- **LED 7 (probability)** and **LED 8 (slide time)** — brightness follows the setting\n\n#### Muting tracks\n\n**Shift + long press** on an even button (0, 2, 4, or 6) mutes the corresponding track (1–4). While muted, gates and CV are suppressed and the top and position LEDs turn off; the gate pattern remains visible so the sequence can still be edited. Mute state is saved per scene.\n\n#### MIDI transposition\n\nEach track can be live-transposed via incoming MIDI. Assign a dedicated transpose MIDI channel per track in the parameters. Receiving a NoteOn on that channel shifts the track's output relative to **C4** — middle C = no change, notes above/below transpose up/down by semitones. Transposition applies to both CV and MIDI output.\n\n#### Velocity lane mode (tracks 2 and 4)\n\nWhen enabled, a track acts as a velocity lane for its paired primary track (track 2 → track 1, track 4 → track 3):\n\n- **Fader** — controls the MIDI velocity sent to the paired track, not a note value\n- **CV output** — unquantized voltage proportional to fader position (0–10V)\n- **Gate button** — controls whether velocity advances on that step (on) or holds the previous value (off)\n- MIDI notes are suppressed on the velocity lane track itself",
     channels: [
       {
         jackTitle: "CV Output",
@@ -250,9 +252,10 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
         fnPlusShiftDescription:
           "Short: select page. Long: mute/unmute sequencer 1",
         ledTop: "Note level",
-        ledTopPlusShift: "Sequence Length",
-        ledBottom: "Active page",
-        ledBottomPlusShift: "Sequence Length",
+        ledTopPlusShift:
+          "Length: flashes once per step of the length, then rests. While moving the fader: length bar with the playing step marked",
+        ledBottom: "Playing page, fading as the playhead moves through it",
+        ledBottomPlusShift: "Off (length bar while moving Fader 1)",
       },
       {
         jackTitle: "Gate Output",
@@ -265,9 +268,9 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
           "Short press sets a gate or rest, long press sets a legato",
         fnPlusShiftTitle: "Select Seq 1, page 2",
         ledTop: "Note level",
-        ledTopPlusShift: "Sequence Length",
-        ledBottom: "Active page",
-        ledBottomPlusShift: "Sequence Length",
+        ledTopPlusShift:
+          "Gate length: flashes in time with each step for as long as the gate is open",
+        ledBottom: "Playing page, fading as the playhead moves through it",
       },
       {
         jackTitle: "CV Output",
@@ -277,7 +280,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
         faderDescription:
           "Sets the note at this step, or velocity level when velocity lane is enabled",
         faderPlusShiftTitle: "Octave",
-        faderPlusShiftDescription: "Offset the whole sequence by 0–5 octaves",
+        faderPlusShiftDescription: "Offset the whole sequence by 0–4 octaves",
         fnTitle: "Gate/Legato",
         fnDescription:
           "Short press sets a gate or rest, long press sets a legato",
@@ -285,9 +288,8 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
         fnPlusShiftDescription:
           "Short: select page. Long: mute/unmute sequencer 2",
         ledTop: "Note level",
-        ledTopPlusShift: "Sequence Length",
-        ledBottom: "Active page",
-        ledBottomPlusShift: "Sequence Length",
+        ledTopPlusShift: "Octave offset: brightness follows the setting",
+        ledBottom: "Playing page, fading as the playhead moves through it",
       },
       {
         jackTitle: "Gate Output",
@@ -302,9 +304,8 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
           "Short press sets a gate or rest, long press sets a legato",
         fnPlusShiftTitle: "Select Seq 2, page 2",
         ledTop: "Note level",
-        ledTopPlusShift: "Sequence Length",
-        ledBottom: "Active page",
-        ledBottomPlusShift: "Sequence Length",
+        ledTopPlusShift: "Sequence range: brightness follows the setting",
+        ledBottom: "Playing page, fading as the playhead moves through it",
       },
       {
         jackTitle: "CV Output",
@@ -321,9 +322,9 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
         fnPlusShiftDescription:
           "Short: select page. Long: mute/unmute sequencer 3",
         ledTop: "Note level",
-        ledTopPlusShift: "Sequence Length",
-        ledBottom: "Active page",
-        ledBottomPlusShift: "Sequence Length",
+        ledTopPlusShift:
+          "Resolution: flashes in time with every step. **Orange** = triplet, **blue** = straight",
+        ledBottom: "Playing page, fading as the playhead moves through it",
       },
       {
         jackTitle: "Gate Output",
@@ -338,9 +339,9 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
           "Short press sets a gate or rest, long press sets a legato",
         fnPlusShiftTitle: "Select Seq 3, page 2",
         ledTop: "Note level",
-        ledTopPlusShift: "Sequence Length",
-        ledBottom: "Active page",
-        ledBottomPlusShift: "Sequence Length",
+        ledTopPlusShift:
+          "Direction: LFO-style animation — rising (Forward), falling (Backward), up and down (Ping-Pong), random (Random)",
+        ledBottom: "Playing page, fading as the playhead moves through it",
       },
       {
         jackTitle: "CV Output",
@@ -359,9 +360,8 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
         fnPlusShiftDescription:
           "Short: select page. Long: mute/unmute sequencer 4",
         ledTop: "Note level",
-        ledTopPlusShift: "Sequence Length",
-        ledBottom: "Active page",
-        ledBottomPlusShift: "Sequence Length",
+        ledTopPlusShift: "Probability: brightness follows the setting",
+        ledBottom: "Playing page, fading as the playhead moves through it",
       },
       {
         jackTitle: "Gate Output",
@@ -377,9 +377,8 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
           "Short press sets a gate or rest, long press sets a legato",
         fnPlusShiftTitle: "Select Seq 4, page 2",
         ledTop: "Note level",
-        ledTopPlusShift: "Sequence Length",
-        ledBottom: "Active page",
-        ledBottomPlusShift: "Sequence Length",
+        ledTopPlusShift: "Slide time: brightness follows the setting",
+        ledBottom: "Playing page, fading as the playhead moves through it",
       },
     ],
   },
