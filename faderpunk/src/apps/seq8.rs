@@ -2,6 +2,7 @@ use embassy_futures::{
     join::{join4, join5},
     select::{select, select3, select4, Either4},
 };
+use embassy_time::{Duration, Instant};
 use midly::MidiMessage;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
@@ -223,6 +224,25 @@ fn step_position(direction: Direction, step: usize, length: u8, die_roll: u16) -
 
 impl AppStorage for Storage {}
 
+// Shift-menu (Alt layer) LED feedback: each of the 8 alt-layer faders
+// (F0=length .. F7=slide) shows its own current value on its own Top LED,
+// all simultaneously. Moving F0 (length) temporarily swaps in the original
+// full Top+Bottom length/playhead overlay for this long, then reverts.
+const F0_OVERLAY_TIMEOUT: Duration = Duration::from_millis(3000);
+
+// Gap (in visual steps, i.e. half-speed steps — see F0 below) between
+// flash-groups in the F0 flash-count display: just a single step's rest.
+const FLASH_PAUSE_STEPS: usize = 4;
+
+// Minimum on-time (in 16ms led_handler polls) for the step-synced flashes.
+// The LED task keeps only the latest value per LED and refreshes on its own
+// ~16ms frame, so a pulse held for a single poll can be overwritten before
+// it is ever drawn.
+const MIN_PULSE_FRAMES: u8 = 2;
+
+const DIR_ANIM_PERIOD_FRAMES: u32 = 64;
+const DIR_SH_HOLD_FRAMES: u32 = 8;
+
 /// Derives runtime parameters from stored fader values.
 fn derive_runtime_params(
     length_faders: [u16; 4],
@@ -383,6 +403,9 @@ pub async fn run(
     let playing_pos_glob: Global<[usize; 4]> = app.make_global([0; 4]);
     // Per-track semitone offset set by incoming MIDI (0 = no transpose).
     let transpo_glob: Global<[i8; 4]> = app.make_global([0i8; 4]);
+    // When the F0 (length) alt-fader was last touched; led_handler shows
+    // the full-strip length overlay for F0_OVERLAY_TIMEOUT after this.
+    let f0_touch_at_glob: Global<Instant> = app.make_global(Instant::now());
 
     let resolution = [24usize, 16, 12, 8, 6, 4, 3, 2];
 
@@ -458,6 +481,10 @@ pub async fn run(
             let page = page_glob.get();
             let seq_idx = page / 2;
             let latch_layer = latch_layer_glob.get();
+
+            if latch_layer == LatchLayer::Alt && chan == 0 {
+                f0_touch_at_glob.set(Instant::now());
+            }
 
             let target_value = match latch_layer {
                 LatchLayer::Main => {
@@ -571,17 +598,24 @@ pub async fn run(
         ];
         let colors = [Color::Yellow, Color::Pink, Color::Cyan, Color::White];
 
+        let mut anim_frame: u32 = 0;
+        let mut sh_value: u8 = 0;
+        // Edge-detection state for the step-synced flashes (F0/F1/F4).
+        let mut last_visual_step = usize::MAX;
+        let mut last_step = usize::MAX;
+        let mut led0_hold: u8 = 0;
+        let mut gate_hold: u8 = 0;
+
         loop {
             app.delay_millis(16).await;
+            anim_frame = anim_frame.wrapping_add(1);
             let clockres = clockres_glob.get();
             let clockn = ticks_glob.get() as usize;
             let page = page_glob.get();
 
             if buttons.is_shift_pressed() {
-                let seq_length = seq_length_glob.get();
-                let playing_pos = playing_pos_glob.get();
+                let seq_idx = page / 2;
                 let muted = muted_glob.get();
-                let current_step = playing_pos[page / 2] as u8;
 
                 for n in 0..8 {
                     if muted[n / 2] {
@@ -595,26 +629,178 @@ pub async fn run(
                         led.set(n, Led::Button, colors[n / 2], bright);
                     }
                 }
-                let led_color = if matches!(clockres[page / 2], 2 | 4 | 8 | 16) {
-                    Color::Orange
-                } else {
-                    Color::Blue
-                };
-                for n in 0..=15 {
-                    let mut bright = Brightness::Off;
-                    if n < seq_length[page / 2] {
-                        bright = Brightness::Mid;
-                    }
-                    if n == current_step {
-                        bright = Brightness::Low;
-                    }
-                    if n >= seq_length[page / 2] {
-                        bright = Brightness::Off;
-                    }
-                    if n < 8 {
-                        led.set(n as usize, Led::Top, led_color, bright)
+
+                // Actively moving F0 (length) temporarily swaps in the
+                // original full-strip length/playhead overlay; it reverts to
+                // the normal per-fader page F0_OVERLAY_TIMEOUT after the
+                // last touch.
+                let f0_active = Instant::now() - f0_touch_at_glob.get() < F0_OVERLAY_TIMEOUT;
+
+                if f0_active {
+                    let seq_length = seq_length_glob.get();
+                    let playing_pos = playing_pos_glob.get();
+                    let current_step = playing_pos[seq_idx] as u8;
+                    let led_color = if matches!(clockres[seq_idx], 2 | 4 | 8 | 16) {
+                        Color::Orange
                     } else {
-                        led.set(n as usize - 8, Led::Bottom, led_color, bright)
+                        Color::Blue
+                    };
+                    for n in 0..=15u8 {
+                        let mut bright = Brightness::Off;
+                        if n < seq_length[seq_idx] {
+                            bright = Brightness::Mid;
+                        }
+                        if n == current_step {
+                            bright = Brightness::Low;
+                        }
+                        if n >= seq_length[seq_idx] {
+                            bright = Brightness::Off;
+                        }
+                        if n < 8 {
+                            led.set(n as usize, Led::Top, led_color, bright);
+                        } else {
+                            led.set(n as usize - 8, Led::Bottom, led_color, bright);
+                        }
+                    }
+                } else {
+                    // Normal shift page: each of the 8 alt-layer faders shows
+                    // its own current value on its own Top LED, all
+                    // simultaneously — F0 under fader 0, F1 under fader 1,
+                    // and so on. Bottom LEDs aren't used here.
+                    for n in 0..8 {
+                        led.set(n, Led::Bottom, Color::White, Brightness::Off);
+                    }
+
+                    // Real per-track note-trigger timing, used by F0/F1/F4
+                    // below — mirrors exactly how clock_handler opens/closes
+                    // this track's gate (clockn.is_multiple_of / gatelength
+                    // window), so those LEDs flash in sync with when notes
+                    // actually fire rather than a decorative timer.
+                    let clockres_n = clockres[seq_idx].max(1);
+                    let gatelength = gatelength_glob.get();
+                    let phase = clockn % clockres_n;
+                    // Each new step is edge-detected and held for at least
+                    // MIN_PULSE_FRAMES so a short gate window can't fall
+                    // between polls / LED frames and vanish.
+                    let step = clockn / clockres_n;
+                    if step != last_step {
+                        last_step = step;
+                        gate_hold = MIN_PULSE_FRAMES;
+                    }
+                    let gate_on = phase < gatelength[seq_idx] as usize || gate_hold > 0;
+                    gate_hold = gate_hold.saturating_sub(1);
+
+                    // F0: Length — a single LED can't show a bar, so the
+                    // count is conveyed by flashing it in step with the
+                    // sequence for `seq_length` steps, then a pause. Runs at
+                    // half speed (one visual flash per 2 real steps) so the
+                    // count is actually countable rather than a blur, and
+                    // uses a 50% duty cycle (not the real gate window).
+                    {
+                        let seq_length = seq_length_glob.get();
+                        let half_period = clockres_n * 2;
+                        let half_phase = clockn % half_period;
+                        let visual_step = clockn / half_period;
+                        let count = seq_length[seq_idx] as usize;
+                        let group = count + FLASH_PAUSE_STEPS;
+                        let pos_in_group = if group == 0 { 0 } else { visual_step % group };
+                        let flashing_step = pos_in_group < count;
+                        if visual_step != last_visual_step {
+                            last_visual_step = visual_step;
+                            if flashing_step {
+                                led0_hold = MIN_PULSE_FRAMES;
+                            }
+                        }
+                        let on = (flashing_step && half_phase < clockres_n) || led0_hold > 0;
+                        led0_hold = led0_hold.saturating_sub(1);
+                        let bright = if on { Brightness::Mid } else { Brightness::Off };
+                        led.set(0, Led::Top, Color::Blue, bright);
+                    }
+                    // F1: Gate length — on for the real gate window, every
+                    // step (no F0-style flash-count/pause grouping).
+                    {
+                        let bright = if gate_on { Brightness::Mid } else { Brightness::Off };
+                        led.set(1, Led::Top, Color::Green, bright);
+                    }
+                    // F2: Octave — brightness scales with the step (0-4 of 5).
+                    {
+                        let idx = (storage.query(|s| s.oct_fader[seq_idx]) / 1000).min(4) as u32;
+                        led.set(
+                            2,
+                            Led::Top,
+                            Color::Sand,
+                            Brightness::Custom(((idx + 1) * 255 / 5) as u8),
+                        );
+                    }
+                    // F3: Range — brightness scales with the step (0-4 of 5).
+                    {
+                        let idx =
+                            (storage.query(|s| s.range_fader[seq_idx]) / 1000).min(4) as u32;
+                        led.set(
+                            3,
+                            Led::Top,
+                            Color::Violet,
+                            Brightness::Custom(((idx + 1) * 255 / 5) as u8),
+                        );
+                    }
+                    // F4: Resolution — on for the real gate window, same as
+                    // F1; Orange marks triplet-friendly divisions.
+                    {
+                        let bright = if gate_on { Brightness::Mid } else { Brightness::Off };
+                        let color = if matches!(clockres[seq_idx], 2 | 4 | 8 | 16) {
+                            Color::Orange
+                        } else {
+                            Color::Blue
+                        };
+                        led.set(4, Led::Top, color, bright);
+                    }
+                    // F5: Direction — LFO-shaped brightness animation: rising
+                    // ramp (Forward), falling ramp (Backward), triangle
+                    // (PingPong), sample & hold (Random).
+                    {
+                        let direction = direction_glob.get();
+                        let pos = anim_frame % DIR_ANIM_PERIOD_FRAMES;
+                        let value = match direction[seq_idx] {
+                            Direction::Forward => (pos * 255 / DIR_ANIM_PERIOD_FRAMES) as u8,
+                            Direction::Backward => {
+                                255 - (pos * 255 / DIR_ANIM_PERIOD_FRAMES) as u8
+                            }
+                            Direction::PingPong => {
+                                let half = DIR_ANIM_PERIOD_FRAMES / 2;
+                                if pos < half {
+                                    (pos * 255 / half) as u8
+                                } else {
+                                    255 - ((pos - half) * 255 / half) as u8
+                                }
+                            }
+                            Direction::Random => {
+                                if anim_frame.is_multiple_of(DIR_SH_HOLD_FRAMES) {
+                                    sh_value = (die.roll() / 16) as u8;
+                                }
+                                sh_value
+                            }
+                        };
+                        led.set(5, Led::Top, Color::SkyBlue, Brightness::Custom(value));
+                    }
+                    // F6: Probability — brightness scales 5%-100%.
+                    {
+                        let value = storage.query(|s| s.probability_fader[seq_idx]) as u32;
+                        led.set(
+                            6,
+                            Led::Top,
+                            Color::Lime,
+                            Brightness::Custom((value * 255 / 4095) as u8),
+                        );
+                    }
+                    // F7: Slide time — brightness scales with fader position.
+                    {
+                        let value = storage.query(|s| s.slide_fader[seq_idx]) as u32;
+                        led.set(
+                            7,
+                            Led::Top,
+                            Color::LightBlue,
+                            Brightness::Custom((value * 255 / 4095) as u8),
+                        );
                     }
                 }
             } else {
@@ -657,13 +843,17 @@ pub async fn run(
                         led.unset(n, Led::Button);
                     }
 
-                    // Show which page of each track is currently playing;
-                    // suppress for muted tracks so the indicator goes dark.
+                    // Show which page of each track is currently playing, in
+                    // the track's own color, with brightness ramping down
+                    // through the half's 8 steps so it also reads as a
+                    // progress bar rather than a flat on/off; suppressed for
+                    // muted tracks so the indicator goes dark.
                     let track = n / 2;
                     let step = playing_pos[track];
                     let active = if n.is_multiple_of(2) { step < 8 } else { step >= 8 };
                     if active && !muted[track] {
-                        led.set(n, Led::Bottom, Color::Red, Brightness::Mid);
+                        let progress = 255u32.saturating_sub((step as u32 % 8) * 255 / 8) as u8;
+                        led.set(n, Led::Bottom, colors[track], Brightness::Custom(progress));
                     } else {
                         led.unset(n, Led::Bottom);
                     }
