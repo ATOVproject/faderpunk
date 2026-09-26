@@ -58,7 +58,7 @@ const ConfiguratorPageContent = () => {
           </div>
         )}
         <Tabs
-          className="border-default-100 mb-8 w-full border-b-3"
+          className="border-default-100 sticky top-0 z-30 mb-8 flex w-full border-b-3 bg-gray-500"
           classNames={{
             tabList: "flex p-0 rounded-none gap-0",
             cursor: "rounded-none rounded-t-md dark:bg-black",
