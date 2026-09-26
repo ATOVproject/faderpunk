@@ -141,12 +141,15 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
       midiOut2SourceDin: midiOut2.sourceDin,
     },
   });
-  const [saved, setSaved] = useState<boolean>(false);
   const [configuratorVersion, setConfiguratorVersion] = useState<string>("");
   const {
     handleSubmit,
-    formState: { isSubmitting },
+    formState: { isSubmitting, isDirty },
   } = methods;
+
+  // `values` above resets the form's baseline whenever the store config
+  // changes, so a clean form means the settings match the device.
+  const inSync = !isDirty;
 
   const onSubmit: SubmitHandler<Inputs> = useCallback(
     async (formValues: Inputs) => {
@@ -157,10 +160,6 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
       } else if (isSimulator) {
         const updatedConfig = transformFormToGlobalConfig(formValues, config);
         setConfig(updatedConfig);
-      }
-      if (device || isSimulator) {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
       }
     },
     [device, isSimulator, setConfig, config],
@@ -186,21 +185,21 @@ const SettingsForm = ({ config }: SettingsFormProps) => {
         <VoOctCurvesSettings config={config} />
         <SaveLoadSetup />
         <FactoryReset />
-        <div className="flex justify-between">
+        <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-between bg-gray-500/95 px-4 py-4 backdrop-blur">
           <p>
             Your current version: Faderpunk v{deviceVersion}, Configurator v
             {configuratorVersion}
           </p>
           <ButtonPrimary
-            color={saved ? "success" : "primary"}
+            color={inSync ? "success" : "primary"}
             isDisabled={isSubmitting}
             isLoading={isSubmitting}
             startContent={
-              saved ? <Icon className="h-5 w-5" name="check" /> : undefined
+              inSync ? <Icon className="h-5 w-5" name="check" /> : undefined
             }
             type="submit"
           >
-            {saved ? "Saved" : "Save"}
+            {inSync ? "Saved" : "Save"}
           </ButtonPrimary>
         </div>
       </form>
