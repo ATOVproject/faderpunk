@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Value } from "@atov/fp-config";
 import { useForm } from "react-hook-form";
 import classNames from "classnames";
@@ -42,13 +42,30 @@ const ActiveAppParamsForm = ({
   params,
 }: Omit<Props, "startChannel">) => {
   const { device, isSimulator, setParams } = useStore();
-  const [saved, setSaved] = useState<boolean>(false);
+  // The form is remounted whenever the device-side params change (see the
+  // comment above), so a fresh form always starts out matching the device.
+  const [inSync, setInSync] = useState<boolean>(true);
   const {
     register,
     control,
     handleSubmit,
+    watch,
+    getValues,
     formState: { isSubmitting },
   } = useForm();
+  // Form values as of the last time they matched the device. Some HeroUI
+  // inputs (e.g. Select) synthesize onChange events without a native `type`,
+  // so react-hook-form's dirty tracking can't be trusted here — compare the
+  // values against this snapshot instead.
+  const syncedSnapshotRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    syncedSnapshotRef.current = JSON.stringify(getValues());
+    const subscription = watch((values) => {
+      setInSync(JSON.stringify(values) === syncedSnapshotRef.current);
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, getValues]);
 
   const onSubmit = async (
     data: Record<string, string | boolean | boolean[]>,
@@ -66,8 +83,8 @@ const ActiveAppParamsForm = ({
       );
     }
     if (device || isSimulator) {
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      syncedSnapshotRef.current = JSON.stringify(getValues());
+      setInSync(true);
     }
   };
 
@@ -92,15 +109,15 @@ const ActiveAppParamsForm = ({
       </div>
       <div className="flex justify-end p-4">
         <ButtonPrimary
-          color={saved ? "success" : "primary"}
+          color={inSync ? "success" : "primary"}
           isDisabled={isSubmitting}
           isLoading={isSubmitting}
           startContent={
-            saved ? <Icon className="h-5 w-5" name="check" /> : undefined
+            inSync ? <Icon className="h-5 w-5" name="check" /> : undefined
           }
           type="submit"
         >
-          {saved ? "Saved" : "Save"}
+          {inSync ? "Saved" : "Save"}
         </ButtonPrimary>
       </div>
     </form>
