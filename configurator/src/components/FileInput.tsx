@@ -1,33 +1,25 @@
-import { ChangeEvent, useEffect, useRef } from "react";
+import type { ChangeEvent } from "react";
 import { button } from "@heroui/theme";
 import classNames from "classnames";
 
 interface Props {
   onLoadFile: (file: File) => void;
-  file?: File;
   buttonText?: string;
 }
 
-export const FileInput = ({ buttonText, file, onLoadFile }: Props) => {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!file && inputRef.current) {
-      inputRef.current.value = "";
-    }
-  }, [file]);
-
+export const FileInput = ({ buttonText, onLoadFile }: Props) => {
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       onLoadFile(selectedFile);
     }
+    // Reset so choosing the same file again still fires onChange
+    e.target.value = "";
   };
 
   return (
     <div className="flex items-center gap-2">
       <input
-        ref={inputRef}
         type="file"
         onChange={handleFileChange}
         className="hidden"
@@ -46,9 +38,6 @@ export const FileInput = ({ buttonText, file, onLoadFile }: Props) => {
       >
         {buttonText ? buttonText : "Choose file"}
       </label>
-      <span className="flex-1 text-gray-700">
-        {file ? file.name : "No file chosen"}
-      </span>
     </div>
   );
 };
