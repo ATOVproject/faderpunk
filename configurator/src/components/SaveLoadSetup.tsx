@@ -17,7 +17,7 @@ import {
   type ParamValues,
   type RecoveredLayout,
 } from "../utils/types";
-import { ButtonPrimary, ButtonSecondary } from "./Button";
+import { ButtonPrimary } from "./Button";
 import { FileInput } from "./FileInput";
 import { inputProps } from "./input/defaultProps";
 
@@ -67,13 +67,37 @@ export const SaveLoadSetup = () => {
   const { apps, params, layout, config } = useStore();
   const [filename, setFilename] = useState<string>("faderpunk-setup");
   const [description, setDescription] = useState<string>("");
-  const [loadedFile, setLoadedFile] = useState<File | undefined>();
   const [error, setError] = useState<string | undefined>();
 
-  const handleLoadFile = useCallback((file: File) => {
-    setError(undefined);
-    setLoadedFile(file);
-  }, []);
+  const handleLoadFile = useCallback(
+    async (file: File) => {
+      if (!apps) {
+        return;
+      }
+      setError(undefined);
+      try {
+        const {
+          layout,
+          params,
+          config: loadedConfig,
+          description: loadedDescription,
+        } = await loadFile(file, apps);
+
+        setModalConfig({
+          isOpen: true,
+          mode: ModalMode.RecallSetup,
+          recallLayout: layout,
+          recallParams: params,
+          recallConfig: loadedConfig,
+          recallDescription: loadedDescription,
+        });
+      } catch (error) {
+        console.log(error);
+        setError("Could not read config file");
+      }
+    },
+    [apps, setModalConfig],
+  );
 
   if (!layout || !params || !apps || !config) {
     return null;
@@ -137,54 +161,7 @@ export const SaveLoadSetup = () => {
         Load Setup
       </h2>
       <div className="mb-12 px-4">
-        <FileInput
-          buttonText="Choose Setup file"
-          file={loadedFile}
-          onLoadFile={handleLoadFile}
-        />
-        {loadedFile ? (
-          <>
-            <ButtonPrimary
-              type="button"
-              className="mt-4"
-              onPress={async () => {
-                setError(undefined);
-                try {
-                  const {
-                    layout,
-                    params,
-                    config: loadedConfig,
-                    description: loadedDescription,
-                  } = await loadFile(loadedFile, apps);
-
-                  setModalConfig({
-                    isOpen: true,
-                    mode: ModalMode.RecallSetup,
-                    recallLayout: layout,
-                    recallParams: params,
-                    recallConfig: loadedConfig,
-                    recallDescription: loadedDescription,
-                  });
-                  setLoadedFile(undefined);
-                } catch (error) {
-                  console.log(error);
-                  setError("Could not read config file");
-                }
-              }}
-            >
-              Load
-            </ButtonPrimary>
-            <ButtonSecondary
-              type="button"
-              onPress={() => {
-                setError(undefined);
-                setLoadedFile(undefined);
-              }}
-            >
-              Cancel
-            </ButtonSecondary>
-          </>
-        ) : null}
+        <FileInput buttonText="Choose Setup file" onLoadFile={handleLoadFile} />
         {error && <div className="text-danger mt-4">{error}</div>}
       </div>
     </>
