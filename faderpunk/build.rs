@@ -110,6 +110,7 @@ fn firmware_revision() -> String {
         return revision;
     }
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    warn_if_tree_is_dirty(&manifest_dir);
 
     // A linked worktree has a `.git` file rather than `../.git/HEAD`. Ask Git
     // for both the worktree HEAD and its shared branch ref so a new commit
@@ -133,6 +134,26 @@ fn firmware_revision() -> String {
         .expect("could not read firmware Git revision")
         .trim()
         .to_owned()
+}
+
+/// The ABI identity is derived from `HEAD`, so it cannot see uncommitted
+/// changes: an FPApp built against a dirty tree is stamped with a revision the
+/// running firmware may no longer match. Say so instead of staying silent.
+///
+/// Re-checks whenever the code an installed app is built against changes, so
+/// the verdict tracks the working tree rather than the last time `HEAD` moved.
+fn warn_if_tree_is_dirty(manifest_dir: &str) {
+    for dir in ["src", "../libfp/src", "../fpapp-sdk/src"] {
+        println!("cargo:rerun-if-changed={dir}");
+    }
+    let dirty = git_output(manifest_dir, &["status", "--porcelain"])
+        .is_some_and(|status| !status.trim().is_empty());
+    if dirty {
+        println!(
+            "cargo:warning=working tree has uncommitted changes; the FPApp firmware ABI \
+             revision reflects HEAD only, so apps built against it may not match this firmware"
+        );
+    }
 }
 
 fn git_output(manifest_dir: &str, args: &[&str]) -> Option<String> {
