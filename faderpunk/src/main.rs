@@ -198,7 +198,7 @@ async fn main(spawner: Spawner) {
     let timed_out_slot = watchdog::timed_out_slot(&mut hw_watchdog);
 
     // The final 512 KiB of physical flash is outside the firmware linker
-    // region and belongs to the four installable FPApp slots.
+    // region and belongs to the eight installable FPApp slots.
     fpapps::init(p.FLASH);
 
     // SPI0 (MAX11300)

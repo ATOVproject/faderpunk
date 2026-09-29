@@ -8,7 +8,7 @@ register_apps!(
     2 => lfo @ 27264,
     3 => ad @ 13504,
     4 => rnd @ 26368,
-    5 => seq8 @ 7792,
+    5 => seq8 @ 7904,
     6 => turing @ 29312,
     7 => clkturing @ 13504,
     8 => euclid @ 12416,
