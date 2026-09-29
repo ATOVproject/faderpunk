@@ -1,22 +1,23 @@
 # Installable native `.fpapp` applications
 
-Status: **implemented and hardware-tested prototype, pending maintainer acceptance**
+Status: **implemented and hardware-tested**
 Container version: `0`
-Runtime ABI version: `1`
+Runtime ABI: header generation `1`; compatibility is the major/minor pair
+`FPAPP_ABI_MAJOR` / `FPAPP_ABI_MINOR` in `libfp/src/fpapp.rs`
 
 ## Summary
 
-This proposal lets a player install, replace, and remove community applications
+This design lets a player install, replace, and remove community applications
 without replacing the complete Faderpunk firmware image. The Configurator's
-existing **Apps** page shows four app slots. A player selects a `.fpapp` file,
+existing **Apps** page shows eight app slots. A player selects a `.fpapp` file,
 reviews the app and its setup notes, confirms that they trust its source, and
 installs it over the normal configuration connection. The app then appears in
 the ordinary app catalogue and layout editor alongside built-in apps.
 
 The implementation reuses Faderpunk's Rust `App<N>` programming model.
-Community source is compiled as read-only position-independent Thumb code
-against one exact firmware build and called through a small, versioned host
-table. There is no bytecode language, interpreter, second app implementation,
+Community source is compiled as position-independent Thumb code against a
+versioned firmware ABI and called through a small host table. There is no
+bytecode language, interpreter, second app implementation,
 or firmware reflash for each app.
 
 ## Motivation
@@ -74,10 +75,13 @@ management, while installed applications are ordinary applications.
 
 - FPApps are not sandboxed. They are trusted native machine code with firmware
   privilege.
-- Runtime ABI v1 is not a stable Rust ABI. A package is accepted only by the
-  exact firmware build it targets.
+- The runtime ABI is not a stable Rust ABI. A package is accepted only by
+  firmware whose ABI contract covers the one it was built against (see
+  [Design decisions](#design-decisions)).
 - FPApps do not replace firmware releases, BOOTSEL recovery, or built-in apps.
-- The first version does not pre-empt or contain a misbehaving native app.
+- Native apps are not pre-empted or fault-contained. The one backstop is the
+  hardware watchdog, which resets the device and quarantines an app that never
+  returns (see [Runaway apps](#runaway-apps-watchdog-and-quarantine)).
 - CRC32 detects incomplete or damaged packages; it does not identify a
   publisher. The signing section is reserved but not yet enforced.
 - This runtime is intended for control-rate Faderpunk apps, not audio-rate DSP.
@@ -88,9 +92,9 @@ binaries should not become the source of truth.
 
 ## Design decisions
 
-### Native code compiled for one firmware
+### Native code compiled for a firmware ABI
 
-Program kind `1` is a read-only, position-independent Thumb image. The package
+Program kind `1` is a position-independent Thumb image (`ropi-rwpi`). The package
 declares the ABI contract it was compiled against, and firmware checks that
 contract — not which build produced the package.
 
@@ -292,12 +296,34 @@ Installation is intentionally one-way and recoverable:
 5. Accept strictly sequential chunks of at most 256 bytes.
 6. Reparse the complete package directly from mapped flash.
 7. Validate container, CRC, manifest, native envelope, entrypoint offsets,
-   exact firmware identity, duplicate app ID, and the 8 KiB runtime-state
-   bound. A package that cannot launch never enters the catalogue.
+   ABI compatibility (major equal, app minor no higher than the firmware's),
+   duplicate app ID, and the 8 KiB runtime-state bound. A package that cannot
+   launch never enters the catalogue.
 8. Write the CRC-protected control record last and refresh the catalogue.
 
 A reset during steps 3-7 exposes an empty slot after reboot. No partial package
 is considered installed. Removing an app erases only its control sector.
+
+## Runaway apps: watchdog and quarantine
+
+An app's `poll()` runs synchronously on Core 1, so one that never returns
+stalls the whole core. The hardware watchdog is the backstop:
+
+- It is armed only on a unit that has at least one runnable FPApp (installed
+  and not quarantined), with an 8 s timeout that Core 1 feeds every second.
+  Units that never install an FPApp behave exactly as before and stay flashable
+  over SWD.
+- Around every call into app code, firmware records the slot in the watchdog
+  `scratch0` register, which survives the reset, and clears it on return.
+- If the watchdog fires while a slot is recorded, the next boot reads the
+  marker, persists that slot as **quarantined**, and does not spawn it. A
+  power-on or any reset without a marker quarantines nothing.
+- A quarantined app stays installed and visible, and the slot list reports it
+  as quarantined so the player can see which app hung the device. Changing the
+  slot's contents (install, replace, or remove) lifts the quarantine.
+
+This recovers from a hang; it does not pre-empt an app, contain a fault, or
+limit what an app can do with the firmware privilege it runs at.
 
 ## `.fpapp` container v0
 
@@ -338,7 +364,7 @@ The CBOR map has integer keys so firmware can parse it without allocation.
 | ---: | --- | --- |
 | 0 | app ID | `100..=255` |
 | 1 | version | three `u16` values |
-| 2 | program kind | `1` for Thumb ROPI |
+| 2 | program kind | `1` for Thumb position-independent code (`ropi-rwpi`) |
 | 3 | name | UTF-8, 1-32 bytes |
 | 4 | description | UTF-8, 1-96 bytes |
 | 5 | author | UTF-8, 1-64 bytes |
@@ -349,7 +375,10 @@ The CBOR map has integer keys so firmware can parse it without allocation.
 | 10 | requested persistent bytes | reserved for policy/inspection |
 | 11 | execution units per event | reserved for future policy |
 | 12 | capability bitmap | reserved for declaration/display policy |
-| 13 | firmware identity | exactly 32 bytes |
+| 13 | firmware identity | exactly 32 bytes; build provenance only, not a compatibility gate |
+| 14 | ABI major | `u16`; must equal the firmware's `FPAPP_ABI_MAJOR` (absent reads as `0`) |
+| 15 | ABI minor | `u16`; must not exceed the firmware's `FPAPP_ABI_MINOR` (absent reads as `0`) |
+| 16 | zero-initialised RW bytes | `u32`; `.bss` under `ropi-rwpi`; firmware refuses more than 256 bytes at spawn (absent reads as `0`) |
 
 Firmware repeats builder validation and never trusts browser-side parsing.
 
@@ -368,9 +397,13 @@ The program section starts with a 28-byte `FPN0` envelope:
 | 20 | 4 | `fpapp_drop` image offset |
 | 24 | 4 | native image length |
 
-The image is linked at address zero using the read-only position-independent
-relocation model. The builder rejects allocated writable sections, unresolved
-relocations, missing exports, and entrypoints outside the image. Firmware adds
+The image is linked at address zero using the `ropi-rwpi` relocation model:
+code and read-only data are position-independent, and writable statics are
+addressed relative to a static-base register (r9) that firmware points at a
+per-instance RAM block before entering app code. Only zero-initialised data is
+supported (`.bss`, manifest key 16). The builder rejects a non-empty `.data`,
+any other allocated writable section, unresolved relocations, missing exports,
+and entrypoints outside the image. Firmware adds
 the installed XIP base and Thumb bit only after validation.
 
 ## Installation protocol
@@ -386,8 +419,8 @@ The existing 512-byte Configurator transport appends these request variants:
 - `RemoveFpApp { slot }`;
 - `ReadFpAppSection { slot, section, offset }`.
 
-Support reports the firmware identity, slot count, package maximum, and chunk
-size. Chunk messages and section responses have serialization tests proving
+Support reports the firmware identity (provenance), the ABI major and minor,
+the slot count, package maximum, and chunk size. Chunk messages and section responses have serialization tests proving
 they remain within the transport limit. Queries are kept sequential in the
 Configurator because a MIDI device supports one in-flight response receiver.
 
@@ -397,10 +430,12 @@ The Apps page:
 
 - shows the normal grouped app catalogue first;
 - shows a compact **Installed Apps** section at the bottom;
-- displays four numbered slots with Install/Replace/Remove actions;
+- displays the device's numbered slots (eight, as reported by support) with
+  Install/Replace/Remove actions and a quarantined indicator;
 - parses magic, versions, section ranges, CRC, manifest, and native envelope
   locally before transfer;
-- checks the exact firmware identity before enabling Install;
+- checks ABI compatibility against the device's reported major and minor before
+  enabling Install;
 - shows setup notes and requires one trust confirmation;
 - shows transfer progress and aborts a failed transaction when possible;
 - reads Manual, Setup, and Settings sections back from the device;
@@ -477,11 +512,12 @@ truth.
 
 ## Verification status
 
-Automated evidence in this prototype includes:
+Automated evidence includes:
 
 - golden container build/parse tests, optional hooks, CRC, bounds, overlap,
   duplicate section, unknown required section, and native envelope checks;
-- explicit firmware identity parsing and exact-match rejection;
+- firmware identity parsing, and the ABI compatibility rule (newer firmware
+  accepts older apps; older firmware and a different major are refused);
 - fixed-slot tests for interrupted install, reopen, sequential chunks,
   replacement, removal, duplicate IDs, store-level active-app protection, and
   size limits;
@@ -494,10 +530,13 @@ Automated evidence in this prototype includes:
 - cross-compilation of firmware and all current community apps;
 - package verification for Heat Pump, Grooves, and Sift.
 
-The current release link uses 1,014,388 bytes of the 1,572,864-byte firmware
-flash partition (558,476 bytes free) and 419,480 bytes of 524,288 bytes of
-static RAM (104,808 bytes free). Static RAM includes the 256 KiB Embassy task
-arena; active FPApp futures allocate their bounded instance state from that
+At the time of the first hardware acceptance, the release link used 1,014,388
+bytes of the 1,572,864-byte firmware flash partition and 419,480 bytes of
+524,288 bytes of static RAM. A release link of `origin/main` at `4e464269`
+(before v1.13) uses about 1,016,972 bytes of flash (555,892 free) and 458,764
+bytes of static RAM (65,524 free). Most of the growth is the Embassy task
+arena, now 384 KiB (`task-arena-size-393216`), partly funded by shrinking the
+Core 1 stack to 32 KiB. Active FPApp futures allocate their bounded instance state from that
 arena.
 
 Physical-device acceptance was completed on 2026-08-28 against feature commit
@@ -540,26 +579,32 @@ same tested boundaries; they do not alter the app-facing ABI.
 
 ## Risks and follow-up decisions
 
-Maintainers should evaluate these explicitly:
+Maintainers should keep evaluating these:
 
 1. **Trusted native code.** A reviewed community build/signing policy is the
-   main security control. Native faults are not contained in v1.
+   main security control. Native faults are not contained; only a hang is
+   recovered, by the watchdog.
 2. **Firmware updates.** Package flash is preserved, but incompatible slots are
    ignored until rebuilt/reinstalled. The Configurator should keep making this
    easy; it should not silently run stale code.
 3. **Cooperative scheduling.** The existing community review rule against busy
-   loops remains essential. Future execution monitoring may quarantine an app
-   that fails to yield or repeatedly faults.
+   loops remains essential. The watchdog quarantines an app whose call never
+   returns; an app that is merely slow, or busy-loops but still returns inside
+   the 8 s timeout, is not detected.
 4. **Bounded queues.** Event and command overflow policy is explicit, but
    worst-case mixed-layout latency and jitter should be measured on hardware.
 5. **Signatures.** The container reserves signing metadata; publisher identity,
    curated CI, revocation, and on-device enforcement are separate policy work.
-6. **Compatibility surface.** After ABI 1 is released, incompatible host-table
-   or behavioral changes require a new runtime ABI and rebuilt packages. Every
-   package still names one exact firmware identity. Capability negotiation may
-   be useful once more than one firmware generation needs support.
+6. **Compatibility surface.** Additive host changes bump the ABI minor and
+   stay compatible with installed apps; incompatible host-table or behavioral
+   changes require a new ABI major and rebuilt packages. A change to what an
+   existing host function does adds no new constant, so nothing in the build
+   flags it and it needs a deliberate bump. Capability negotiation may be
+   useful once more than one firmware generation needs support.
 
-## Acceptance recommendation
+## Acceptance recommendation (historical)
+
+Accepted and merged as #666; the recommendation below is kept as the record.
 
 The real-device Configurator/runtime acceptance gate has passed for all three
 current community apps, and the clean release build reports acceptable
