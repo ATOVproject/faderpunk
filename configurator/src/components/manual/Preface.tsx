@@ -25,6 +25,18 @@ export const Preface = () => (
       intuitive, avoiding menus. Complexity arises from creatively combining
       apps to build your own custom setups.
     </p>
+    <H3>Community</H3>
+    <p>
+      Faderpunk isn’t limited to the official app library built by ATOV. A
+      community of players and developers builds and shares their own apps too,
+      installable straight from the Configurator without any firmware
+      reflash—browse what’s available in the{" "}
+      <a className="underline" href="#community-catalogue">
+        community app catalogue
+      </a>
+      . The project itself is open source under the GPL-3.0 license, so anyone
+      can inspect it, contribute to it, or build on top of it.
+    </p>
     <H3>Your Custom Instrument</H3>
     <p>
       Using the online Configurator, you can design a layout—a collection of
