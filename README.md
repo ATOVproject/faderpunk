@@ -125,7 +125,7 @@ The Faderpunk Configurator is a React/TypeScript web application that communicat
 - Global settings (MIDI, I2C, clock, quantizer)
 - Scene management
 - Live visual feedback
-- Four installable community-app slots
+- Eight installable community-app slots
 
 ### Installing community apps
 
