@@ -106,6 +106,17 @@ export const Configurator = () => (
       changes to each individual app. This safeguard ensures that no unintended
       modifications are made.
     </p>
+    <p>
+      If an app declares parameters but never answers a request for them, its
+      card shows a red <strong>Not responding</strong> badge and no parameter
+      form instead of an empty or misleading one. This can happen if the app
+      itself is unresponsive—an installed community app that's{" "}
+      <strong>Stopped</strong> is one way to end up here; see{" "}
+      <a className="underline" href="#installed-apps-tab">
+        Installed Apps
+      </a>{" "}
+      below.
+    </p>
 
     <H3 id="apps-tab">Apps Tab</H3>
 
@@ -117,7 +128,7 @@ export const Configurator = () => (
 
     <p>
       The Apps tab is where you select the apps you'd like to include in your
-      layout. Like the Device tab, it consists of two sections:
+      layout. It consists of three sections:
     </p>
 
     <H4>Channel Overview</H4>
@@ -159,6 +170,43 @@ export const Configurator = () => (
     <p>
       In this case, you can rearrange or delete apps just as you would in the
       Edit Layout pop-up.
+    </p>
+
+    <H4 id="installed-apps-tab">Installed Apps</H4>
+    <p>
+      Below the app list, the <strong>Installed Apps</strong> section lets you
+      add community-made apps to your Faderpunk without reflashing firmware.
+      There are eight independent slots; each shows <strong>Empty</strong>,{" "}
+      <strong>Installed</strong>, or <strong>Stopped</strong>.
+    </p>
+    <p>
+      Click <strong>Install</strong> (or <strong>Replace</strong> on an occupied
+      slot) and choose a <code>.fpapp</code> file. A review panel then shows:
+    </p>
+    <List>
+      <li>The app's name, version, and author</li>
+      <li>Its description</li>
+      <li>
+        A warning if it doesn't match your Faderpunk's firmware, in which case
+        installing stays disabled
+      </li>
+    </List>
+    <p>
+      Check <strong>"I trust this app and its source"</strong> to enable{" "}
+      <strong>Install</strong>. Once installed, the app appears in the Available
+      Apps List above and can be added to your layout like any official app.
+    </p>
+    <p>
+      Clicking <strong>Remove</strong> asks for confirmation, since it also
+      removes the app from any channel currently using it.
+    </p>
+    <p>
+      A <strong>Stopped</strong> slot means that app hung the device; it's held
+      back from running until you replace or remove it. See{" "}
+      <a className="underline" href="#factory-reset">
+        Factory Reset
+      </a>{" "}
+      in Troubleshooting if you can't reach the Configurator to do that.
     </p>
 
     <H3 id="settings-tab">Settings Tab</H3>

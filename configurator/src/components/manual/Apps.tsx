@@ -9,6 +9,18 @@ export const Apps = ({ apps }: Props) => (
   <>
     <H2 id="apps">Apps</H2>
     <p className="mb-6">
+      The apps below are Faderpunk's official library, built and maintained by
+      ATOV and included on every device. You're not limited to these: the
+      Configurator's Apps tab also lets you install community-made apps from a{" "}
+      <code>.fpapp</code> file into a free slot on the device. Once installed, a
+      community app appears in this same catalogue and layout editor right
+      alongside the official ones—see the{" "}
+      <a className="underline" href="#community-catalogue">
+        community app catalogue
+      </a>{" "}
+      below for what's available.
+    </p>
+    <p className="mb-6">
       Across the app library, a handful of controls follow shared
       conventions—the same gesture or LED color tends to mean the same thing
       from one app to the next. We've made our best effort to keep this
