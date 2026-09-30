@@ -96,7 +96,7 @@ impl AppParams for Params {
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(self.range.into()).unwrap();
         vec.push(self.color.into()).unwrap();
-        vec.push(self.nrpn.into()).unwrap();
+        vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec.push(self.resolution.into()).unwrap();
         vec
