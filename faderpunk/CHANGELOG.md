@@ -14,7 +14,7 @@
 - resolve custom V/Oct curves in installed apps (#689)
 - let apps mark their params changed for the configurator to poll
 - Configurator: community app manuals, catalogue embed and versioned packages (#695)
-- Sequencer: tempo-synced per-fader shift LEDs and fading page indicator (#697)
+- Sequencer: refactor shift page LED feedback (#697)
 - Configurator: sticky settings save bar, save buttons green when in sync (#698)
 - Configurator: open recall pop-up as soon as a setup file is chosen (#699)
 - Configurator: sticky tab bar (#700)
