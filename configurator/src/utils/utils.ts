@@ -3,6 +3,7 @@ import {
   type Curve,
   type FixedLengthArray,
   type Note,
+  type Param,
   type Range,
   type Value,
   type VoltPerOct,
@@ -33,6 +34,23 @@ export const getSlots = (app: App, startChannel: number) => {
     return `${startChannel + 1}`;
   }
 };
+
+// Whether the values a device answered for an app line up with the params the
+// app declares: one value per declared param, each of the matching type. Built-in
+// apps always do, but an FPApp's declared params (its Settings section) and the
+// values its code answers are written separately, so a package can disagree
+// with itself — rendering the form against those values would crash.
+// Automator in firmware up to 1.13.0-beta.0 answers its MidiNrpn param as a bool;
+// both carry the same boolean, so accept that pairing too.
+export const paramValuesMatch = (params: Param[], values: Value[]) =>
+  params.every((param, idx) => {
+    const tag = values[idx]?.tag;
+    return (
+      param.tag === "None" ||
+      tag === param.tag ||
+      (param.tag === "MidiNrpn" && tag === "bool")
+    );
+  });
 
 export const getDefaultValue = (val: Value) => {
   switch (val.tag) {
