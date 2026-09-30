@@ -52,8 +52,13 @@ Follow this for **every** task, in order. Do not skip steps.
 
 3. **On the user's go: commit.** A single one-line message in
    conventional-commit format (`feat:`, `fix:`, `chore:`, `refactor:`, …,
-   optionally scoped e.g. `feat(genseq):`). Commit with the system git user
-   (commits are signed). Do **not** add a `Co-authored-by: Claude` trailer.
+   optionally scoped e.g. `feat(genseq):`). The `(scope)` only routes the
+   entry to the right package's `CHANGELOG.md` (see `knope.toml`) — knope
+   never prints it. If the change is specific to one app or one surface, name
+   it in the summary text itself (`feat: Sequencer — ...`, `fix: Configurator
+   — ...`), not only in the scope, or it reads as unattributed in the
+   changelog. Commit with the system git user (commits are signed). Do
+   **not** add a `Co-authored-by: Claude` trailer.
 
 4. **After committing, ask again** before opening a PR.
 
@@ -318,7 +323,10 @@ When adding new parameter types to apps, create a corresponding input component 
 - The firmware is `no_std` - no heap allocator
 - Use `heapless::Vec` and stack allocation
 - Embassy provides `StaticCell` for static initialization
-- Be mindful of stack sizes (Core 1 has 131KB stack)
+- Be mindful of stack sizes (Core 1's stack is 32 KiB — `CORE1_STACK` in
+  `main.rs` — shrunk from a former 128 KiB once measurement showed most of it
+  unused; most of that headroom now funds the Embassy task arena instead, see
+  `faderpunk/Cargo.toml`'s `task-arena-size-*` feature)
 
 ### Concurrency
 - All I/O is async via Embassy
@@ -370,6 +378,7 @@ manually in a Chromium browser with a live device connection.
 8. **Web MIDI requirements**: Browser must support Web MIDI with SysEx (Chromium, Firefox); HTTPS required for non-localhost. The user must grant the MIDI/SysEx permission.
 9. **Commit trailers**: One-line conventional-commit messages; do not add a `Co-authored-by: Claude` trailer.
 10. **App-facing types not re-exported**: if a new `App<N>`/`Leds<N>`/etc. method takes or returns a type from `crate::tasks::*`, add it to `app.rs`'s `pub use crate::{…}` re-export block in the same change — otherwise apps have to reach around the facade with a direct `crate::tasks::` import.
+11. **Changelog area attribution**: knope drops the conventional-commit `(scope)` from the rendered changelog — it's a package-routing filter only, never rendered text. Name the affected app/surface in the commit summary itself when the change is specific to one, or a reader of `CHANGELOG.md` can't tell where it happened (e.g. a change scoped `configurator` still appears, unlabeled, in `faderpunk/CHANGELOG.md` too, since that package has no scope filter).
 
 ## File Structure Summary
 
