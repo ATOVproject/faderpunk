@@ -11,16 +11,16 @@
 - raise installable app slots from four to eight (#687)
 - resolve custom V/Oct curves in installed apps (#689)
 - let apps mark their params changed for the configurator to poll
-- community app manuals, catalogue embed and versioned packages (#695)
-- sticky settings save bar, save buttons green when in sync (#698)
+- Configurator: community app manuals, catalogue embed and versioned packages (#695)
+- Configurator: sticky settings save bar, save buttons green when in sync (#698)
 
 ### Fixes
 
 - recognize FPApp tooling in scope checks (#665)
-- announce only the apps that answered in the param batch (#690)
-- guard an out-of-range layout_id, show a not-responding badge
+- Firmware: announce only the apps that answered in the param batch (#690)
+- Firmware/Configurator: guard an out-of-range layout_id, show a not-responding badge
 - reboot before the task arena panics on an unpaid-for app type (#675)
-- mechanically guard the ABI minor level, document relaxed validation (#693)
+- fpapp-sdk: mechanically guard the ABI minor level, document relaxed validation (#693)
 - correct seq8 task pool cost and stale FPApp slot comments
 - warn when the FPApp firmware ABI is built from a dirty tree
 
