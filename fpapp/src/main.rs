@@ -737,8 +737,101 @@ fn param(value: &Param) -> Value {
     }
 }
 
+// A value of the type `param` declares, for feeding `Params::from_values`:
+// its low end when `high` is false, its high end otherwise.
+fn sample_value(param: &Param, high: bool) -> Option<libfp::Value> {
+    use libfp::{MidiIn, MidiMode, MidiOut, Value as V, VoltPerOct};
+    fn pick<T: Copy>(variants: &[T], high: bool) -> Option<T> {
+        if high { variants.last() } else { variants.first() }.copied()
+    }
+    Some(match param {
+        Param::None => return None,
+        Param::i32 { min, max, .. } => V::i32(if high { *max } else { *min }),
+        Param::f32 { min, max, .. } => V::f32(if high { *max } else { *min }),
+        Param::bool { .. } => V::bool(high),
+        Param::Enum { variants, .. } => {
+            V::Enum(if high { variants.len().checked_sub(1)? } else { 0 })
+        }
+        Param::Curve { variants, .. } => V::Curve(pick(variants, high)?),
+        Param::Waveform { variants, .. } => V::Waveform(pick(variants, high)?),
+        Param::Color { variants, .. } => V::Color(pick(variants, high)?),
+        Param::Range { variants, .. } => V::Range(pick(variants, high)?),
+        Param::Note { variants, .. } => V::Note(pick(variants, high)?),
+        Param::MidiCc { .. } => V::MidiCc((if high { 100u8 } else { 1 }).into()),
+        Param::MidiChannel { .. } => V::MidiChannel((if high { 10u8 } else { 1 }).into()),
+        Param::MidiIn => V::MidiIn(MidiIn([high, !high])),
+        Param::MidiMode => V::MidiMode(if high { MidiMode::Cc } else { MidiMode::Note }),
+        Param::MidiNote { .. } => V::MidiNote((if high { 100u8 } else { 20 }).into()),
+        Param::MidiOut => V::MidiOut(MidiOut([high, !high, high])),
+        Param::MidiNrpn => V::MidiNrpn(high),
+        Param::VoltPerOct => V::VoltPerOct(if high { VoltPerOct::Buchla } else { VoltPerOct::Standard }),
+    })
+}
+
+// The Configurator renders an app's form from CONFIG's params and fills it
+// from the values `Params::to_values` answers on the device. Both are written
+// by hand, as is `from_values`, so check all three agree before packaging:
+// values of the declared shape must survive `from_values` → `to_values`
+// unchanged (count, order, type and value). Otherwise the app ships with a
+// broken parameter page, or silently drops or mixes up saved settings.
+// Each pass sets param `idx` low or high by bit `pass` of `idx`, so any two
+// params differ in some pass and a swapped or misread slot shows up. Uses
+// declared values rather than a default `Params`, since apps build their
+// defaults inline in `wrapper`.
+fn check_params(declared: &[Param]) -> Result<(), String> {
+    use app::AppParams;
+    let declared: Vec<&Param> = declared
+        .iter()
+        .filter(|param| !matches!(param, Param::None))
+        .collect();
+    // 4 bits cover every index below APP_MAX_PARAMS (16).
+    for pass in 0..4 {
+        let input: Vec<libfp::Value> = declared
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, param)| sample_value(param, (idx >> pass) & 1 == 1))
+            .collect();
+        if input.len() != declared.len() {
+            return Err("error: a CONFIG param has an empty variants list".into());
+        }
+        let Some(params) = community_app::Params::from_values(&input) else {
+            return Err(format!(
+                "error: Params::from_values() rejects {} values of the types CONFIG declares",
+                input.len()
+            ));
+        };
+        let output = params.to_values();
+        if output[..] == input[..] {
+            continue;
+        }
+        let mut message = format!(
+            "error: CONFIG's params, Params::from_values() and Params::to_values() disagree \
+             ({} declared, {} returned)",
+            input.len(),
+            output.len()
+        );
+        for idx in 0..input.len().max(output.len()) {
+            let sent = input.get(idx);
+            let returned = output.get(idx);
+            if sent != returned {
+                let sent = sent.map_or("nothing".into(), |value| format!("{value:?}"));
+                let returned = returned.map_or("nothing".into(), |value| format!("{value:?}"));
+                message.push_str(&format!(
+                    "\nerror:   param {idx}: set {sent}, to_values() returns {returned}"
+                ));
+            }
+        }
+        return Err(message);
+    }
+    Ok(())
+}
+
 fn main() {
     let meta = community_app::CONFIG.get_meta();
+    if let Err(message) = check_params(meta.5) {
+        eprintln!("{message}");
+        std::process::exit(1);
+    }
     let params: Vec<Value> = meta.5.iter().map(param).collect();
     println!("{}", serde_json::to_string(&params).unwrap());
 }
