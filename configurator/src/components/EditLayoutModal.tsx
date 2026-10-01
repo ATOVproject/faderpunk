@@ -134,6 +134,22 @@ const NewAppDetails = ({ app }: NewAppDetailsProps) => (
   </div>
 );
 
+// Slots holding an app that wasn't at the same layout id when the modal
+// opened — the ones whose param values have to be (re)read instead of kept
+// from the store. The id alone isn't enough: ids are reused, so an app placed
+// after clearing the layout can take an id another app had, and would show
+// that app's cached values (or crash on the ones it doesn't have).
+const slotsWithNewApps = (initialLayout: AppLayout, layout: AppLayout) => {
+  const initialAppIds = new Map<number, number>();
+  for (const slot of initialLayout) {
+    if (slot.app) initialAppIds.set(slot.id, slot.app.appId);
+  }
+  return layout.filter(
+    (slot): slot is AppLayout[number] & { app: App } =>
+      !!slot.app && initialAppIds.get(slot.id) !== slot.app.appId,
+  );
+};
+
 interface Props {
   initialLayout: AppLayout;
   onSave: (layout: AppLayout) => void;
@@ -313,19 +329,12 @@ export const EditLayoutModal = ({
             setConfig(modalConfig.recallConfig);
           }
         } else {
-          // AddApp or EditLayout: fetch params for every newly-added slot.
-          // This covers a single AddApp placement plus any duplicates made
-          // via the duplicate button, each of which gets its own layout id.
-          const existingIds = new Set(
-            initialLayout.filter((s) => s.app).map((s) => s.id),
-          );
-          const newIds = layout
-            .filter(
-              (slot) =>
-                slot.app &&
-                slot.app.paramCount > 0 &&
-                !existingIds.has(slot.id),
-            )
+          // AddApp or EditLayout: fetch params for every slot with a new app
+          // (see slotsWithNewApps). This covers a single AddApp placement,
+          // any duplicates made via the duplicate button, and apps placed
+          // into ids freed by clearing the layout.
+          const newIds = slotsWithNewApps(initialLayout, layout)
+            .filter((slot) => slot.app.paramCount > 0)
             .map((slot) => slot.id);
           if (newIds.length > 0) {
             // Wait 500ms for the new app(s) to spawn before reading params
@@ -346,26 +355,22 @@ export const EditLayoutModal = ({
             setConfig(modalConfig.recallConfig);
           }
         } else {
-          // Initialize params for every app slot not present in the initial layout.
-          // This covers both a single AddApp placement and any duplicates made
-          // inside the modal via the duplicate button.
-          const existingIds = new Set(
-            initialLayout.filter((s) => s.app).map((s) => s.id),
-          );
-          for (const slot of layout) {
-            if (slot.app && !existingIds.has(slot.id)) {
-              let ccOffset = 0;
-              const defaultParams = slot.app.params.map((p) => {
-                if (p.tag === "MidiCc") {
-                  return {
-                    tag: "MidiCc",
-                    value: [32 + slot.startChannel + ccOffset++],
-                  } as Value;
-                }
-                return getParamSchema(p).parse(undefined) as Value;
-              });
-              setParams(slot.id, defaultParams);
-            }
+          // Initialize params for every slot with a new app (see
+          // slotsWithNewApps): a single AddApp placement, duplicates made via
+          // the duplicate button, and apps placed into ids freed by clearing
+          // the layout.
+          for (const slot of slotsWithNewApps(initialLayout, layout)) {
+            let ccOffset = 0;
+            const defaultParams = slot.app.params.map((p) => {
+              if (p.tag === "MidiCc") {
+                return {
+                  tag: "MidiCc",
+                  value: [32 + slot.startChannel + ccOffset++],
+                } as Value;
+              }
+              return getParamSchema(p).parse(undefined) as Value;
+            });
+            setParams(slot.id, defaultParams);
           }
         }
         onSave(layout);
