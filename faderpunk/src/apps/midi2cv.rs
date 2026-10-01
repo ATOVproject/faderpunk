@@ -12,7 +12,7 @@ use libfp::{
     ext::FromValue,
     latch::LatchLayer,
     utils::{
-        apply_slide, bits_7_16, clickless, fader_to_slide_coeff, scale_bits_14_12, scale_bits_7_12,
+        apply_slide, bits_7_16, clickless, fader_to_slide_coeff, scale_bits_7_12,
     },
     AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiNote, Param, Range,
     Value, APP_MAX_PARAMS,
@@ -398,8 +398,8 @@ pub async fn run(
             match midi_in.wait_for_event().await {
                 AppMidiEvent::Nrpn { param, value } => {
                     if mode == 0 && param == midi_cc.as_u16() {
-                        let val = scale_bits_14_12(value);
-                        offset_glob.set(val);
+                        // `value` is already scaled to 12 bits by `wait_for_event`
+                        offset_glob.set(value);
                     }
                 }
                 AppMidiEvent::Message(msg) => match msg {
