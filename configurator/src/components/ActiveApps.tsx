@@ -1,5 +1,6 @@
 import { useStore } from "../store";
 import type { App } from "../utils/types";
+import { paramValuesMatch } from "../utils/utils";
 import { ActiveApp } from "./ActiveApp";
 
 export const ActiveApps = () => {
@@ -30,6 +31,8 @@ export const ActiveApps = () => {
             // never answered a param request — still worth a card, so the
             // silence is visible instead of the app just not being listed.
             const notResponding = app.paramCount > 0 && !params;
+            const mismatched =
+              !!params && !paramValuesMatch(app.params, params);
             return (
               <li key={id}>
                 <ActiveApp
@@ -38,6 +41,7 @@ export const ActiveApps = () => {
                   layoutId={id}
                   params={params ?? []}
                   notResponding={notResponding}
+                  mismatched={mismatched}
                 />
               </li>
             );
