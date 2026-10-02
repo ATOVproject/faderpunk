@@ -470,7 +470,11 @@ impl MidiOutput {
 
 pub enum AppMidiEvent {
     Message(MidiMessage),
-    Nrpn { param: u16, value: u16 },
+    /// `value` is already scaled from 14 bits to 12 bits.
+    Nrpn {
+        param: u16,
+        value: u16,
+    },
 }
 
 pub struct MidiInput {
