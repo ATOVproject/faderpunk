@@ -1,0 +1,95 @@
+{
+  "id": 42,
+  "slug": "contura",
+  "name": "Contura",
+  "status": "wip",
+  "tag": "draft",
+  "description": "Melodic contour over selectable 12-TET scale sets, anchored to the device tonic",
+  "color": "Orange",
+  "icon": "Note",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "MIDI Channel",
+    "Base Note",
+    "Color",
+    "MIDI Out",
+    "Range",
+    "VoltPerOct",
+    "Follow device tonic",
+    "Follow device scale",
+    "Scale set",
+    "Division",
+    "Jack",
+    "CV Att"
+  ],
+  "storage": [
+    "Interval",
+    "Phrase length",
+    "Density",
+    "Scale set",
+    "Octaves",
+    "Muted"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> — interval width (stepwise ↔ 2–3 octave leaps across the pool)",
+            "<strong>Alt</strong> (Shift) — phrase length only (3–28 steps)",
+            "<strong>Third</strong> (Btn hold) — note density (sparse rests ↔ continuous; audible mid)"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Short</strong> — mute / unmute",
+            "<strong>Shift+Short</strong> — octave span 1→2→3→4",
+            "<strong>Long</strong> — next scale set",
+            "<strong>Shift+Long</strong> — previous scale set"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Scale sets / LEDs",
+          "items": [
+            "Flat list of named 12-TET sets (Ionian…Folk) — conventional interval-pattern labels, not cultural claims",
+            "Follow device tonic (default on); Follow device scale uses the global Key mask instead of the selected set",
+            "Per-set melodic feel (contour / leap / sustain / ornament) — expressivity is not a fader",
+            "Ornaments = short grace, turn or repeat from feel + phrase position — not genre clichés; off when Division is too fine",
+            "Button hue cycles by scale index · Top = gate · Bottom = pitch height · Division via config (default 1/8)",
+            "Jack = CV Out (pitch) · CV In Density · CV In Interval · CV In Reset · CV In Phrase — one enum, since a CV In destination and CV Out were never live at once; CV Att scales input"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "jackTitle": "Pitch CV / CV In",
+      "jackDescription": "CV Out: quantized melodic pitch (1V/oct / range). CV In: modulates Density, Interval or Phrase, or Reset (gate) — Dest + Att in Configurator. Gate is MIDI note on/off.",
+      "faderTitle": "Interval",
+      "faderDescription": "Max scale-degree step — bottom stepwise, mid already leaps, top wanders 2–3 octaves when octave span allows",
+      "faderPlusShiftTitle": "Phrase length",
+      "faderPlusShiftDescription": "How many steps before the contour resets (3–28)",
+      "faderPlusFnTitle": "Density",
+      "faderPlusFnDescription": "How often notes fire vs rests — sparse ↔ continuous, mid already densifies",
+      "fnTitle": "Mute",
+      "fnDescription": "Short press mutes/unmutes. Long press steps to the next scale set.",
+      "fnPlusShiftTitle": "Octaves / scale",
+      "fnPlusShiftDescription": "Shift+Short = octave span 1→4 · Shift+Long = previous scale set",
+      "ledTop": "Gate / note-on cue (app color)",
+      "ledBottom": "Pitch height within the current span",
+      "ledTopPlusShift": "Octave-span color blink after Shift+Short"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+Genre MIDI bass on the global clock, sharing its nine genres with Grooves and Chord Vamp. Every sequenced hit retriggers with its own velocity and gate — including repeated pitches — so ornaments and ghosts stay audible. At high Density and Feel, genre-weighted doubles, flams, triplets and rolls add up to two monophonic sub-strokes per written onset (repeat, approach, ghost or octave pickup by Voice); fills and solos lean harder, filter CC coalesces on the main strike only.
+
+Phrases run eight bars in AA B A′ form: the motif repeats while the harmony walks the genre’s tropes, bars 5–6 answer, bar 7 ornaments, bar 8 breathes. At low Feel the line stays locked; raising it moves approaches, ghosts and octave punches from bar to bar — pickups appear before downbeats, soft notes drop out for air, ghosts turn into dead notes. Pocket Voices stay sparse in Jungle and UK Garage, busy ones thin out in Dub and Techno.
+
+Shift+Tap walks a fill toward the next bar’s chord and lands its leading tone on the downbeat, the Voice picking the contour; at high Density it becomes a quiet held-root break. Shift+Hold lifts the register for a solo that re-rolls every bar while held and resolves on the next downbeat.
+
+Follow device tonic (on by default) turns the device Tonic into a live transpose, so Bassment changes key with Contura, Chord Vamp, Venn and Arp de Levy on the next bar line while keeping Root’s octave. Follow device scale does the same for Scale and ships off, because the scale is part of the genre character.

@@ -1,0 +1,50 @@
+<!-- HEAT PUMP -->
+<section class="app">
+  <div class="app-head">
+    <span class="id">ID 29</span>
+    <h2>Heat Pump <span class="tag ready">ready</span></h2>
+    <span class="desc">Clock-synced sidechain ducking envelope</span>
+  </div>
+  <div class="app-body">
+    <div class="cols">
+      <div>
+        <h3>Faders</h3>
+        <ul>
+          <li><strong>Main</strong> — Release (up = faster recovery)</li>
+          <li><strong>Alt</strong> — Duck depth (red LED)</li>
+          <li><strong>Third</strong> — Clock division (1/1 … 1/32)</li>
+        </ul>
+        <h3>Jack params</h3>
+        <ul>
+          <li>Jack: CV Out / CV In</li>
+          <li>CV Dest: Depth · Release · Duck</li>
+          <li>Dest colors: Red · Yellow · Cyan</li>
+          <li>CV Att 0–100%</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Buttons</h3>
+        <ul>
+          <li><strong>Short</strong> — Manual duck trigger</li>
+          <li><strong>Long</strong> — Mute (freeze level; no snap to idle; dim red button)</li>
+          <li><strong>Shift+Short (CV Out)</strong> — Cycle clock division</li>
+          <li><strong>Shift+Short (CV In)</strong> — Cycle CV Dest (flash)</li>
+          <li><strong>Shift+Long</strong> — Invert duck direction</li>
+        </ul>
+      </div>
+      <div>
+        <h3>LEDs / other params</h3>
+        <ul>
+          <li>Button metronome Mid→Low per division · Mute = dim red (not off)</li>
+          <li>1/1 uses Color param</li>
+          <li>Invert: white ↔ off fade</li>
+          <li>Color, Range, MIDI CH/CC, NRPN, MIDI Out</li>
+        </ul>
+      </div>
+    </div>
+    <div class="manual">
+      <p><strong>Manual.</strong> Clock-synced ducking envelope: each division pulse ducks, then recovers by Release. Depth sets how far. Mute freezes the envelope at its current level (clock triggers discarded). Invert flips duck direction. Third sets division directly; Shift+Short cycles division (CV Out) or CV Dest (CV In). CV Att scales modulation.</p>
+    </div>
+  </div>
+</section>
+

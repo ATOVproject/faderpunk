@@ -1,0 +1,106 @@
+{
+  "id": 41,
+  "slug": "bassment",
+  "name": "Bassment",
+  "status": "wip",
+  "tag": "ready",
+  "description": "Multi-genre monophonic basslines with bassist Voice personas",
+  "color": "Cyan",
+  "icon": "NoteGrid",
+  "channels_count": 1,
+  "cv_jack": true,
+  "params": [
+    "Root",
+    "Scale",
+    "Genre",
+    "Voice",
+    "MIDI Channel",
+    "MIDI Out",
+    "Groove max %",
+    "GATE %",
+    "Jack",
+    "Range",
+    "V/Oct",
+    "CV Att",
+    "Filter CC",
+    "Follow device tonic",
+    "Follow device scale"
+  ],
+  "storage": [
+    "Feel",
+    "Density",
+    "Muted",
+    "Voice"
+  ],
+  "columns": [
+    {
+      "sections": [
+        {
+          "heading": "Faders",
+          "items": [
+            "<strong>Main</strong> — Density (extra onsets + freer degrees)",
+            "<strong>Alt</strong> — Genre scrub (shared axis with Grooves / Chord Vamp)",
+            "<strong>Third</strong> — Feel / Groove (swing · microtiming · velocity · ghosts · gate; capped by Groove max %)"
+          ]
+        },
+        {
+          "heading": "Genres",
+          "items": [
+            "Dub → Disco → House → Techno → Trip-Hop → Hip-Hop → Jungle → UK Garage → Dubstep",
+            "Alt scrub LEDs: continuous IR→UV spectrum (shared palette)"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Buttons",
+          "items": [
+            "<strong>Short</strong> — Mute (notes off)",
+            "<strong>Shift+Tap</strong> — Bass fill into next bar’s chord (pedal break at high Density); white button LED",
+            "<strong>Shift+Hold</strong> — Bass solo (+1–2 oct), re-rolls each bar; resolves on the next downbeat",
+            "<strong>Long</strong> — Next Voice (flash = voice color)",
+            "Previous Voice: Configurator only"
+          ]
+        },
+        {
+          "heading": "Jack params",
+          "items": [
+            "Jack: CV Out (pitch V/Oct) · CV In Density · CV In Feel · CV In Reset",
+            "One enum — a CV In destination and CV Out were never live at once",
+            "Range, V/Oct, CV Att",
+            "Filter CC — cutoff number (0 = off; 74 is typical); brightness = genre base + Voice bite + accent dynamics, lifted by fill / solo",
+            "Groove max % carries the swing direction in its sign — negative swings the offbeats early",
+            "High Density + Feel: genre ornaments (≤3 strokes/onset) — Voice shapes repeat, approach, ghost or octave pickup; filter CC only on the main strike"
+          ]
+        }
+      ]
+    },
+    {
+      "sections": [
+        {
+          "heading": "Voices / LEDs",
+          "items": [
+            "Order = historical era: bebop → Motown → P-Funk → fusion → dub duo → alt-funk → quirk",
+            "<strong>Mingus</strong> Violet — chromatic neighbors",
+            "<strong>Jamerson</strong> Orange — pocket root/fifth",
+            "<strong>Bootsy</strong> Pink — funk ghosts + octave drops",
+            "<strong>Jaco</strong> Cyan — melodic approaches + leaps",
+            "<strong>Robbie</strong> Green — dub pocket, sustained / sparse",
+            "<strong>Flabba</strong> Lime — roots walk, roomy gates",
+            "<strong>Flea</strong> Red — staccato + aggressive jumps",
+            "<strong>Claypool</strong> Yellow — quirky leaps + chromatic nudges",
+            "Button: genre hue in play; Long flash = voice color; fill/solo = white (dim = pedal break); hits duck Mid→Low"
+          ]
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "index": 0,
+      "role": "Bass MIDI + optional pitch CV"
+    }
+  ]
+}
