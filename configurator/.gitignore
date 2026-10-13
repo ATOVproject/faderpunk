@@ -28,3 +28,6 @@ src/demo/catalog.ts
 *.sln
 *.sw?
 .vite
+
+# Licensed fonts (Canada Type) must never be committed
+public/fonts/VoxRound-*
