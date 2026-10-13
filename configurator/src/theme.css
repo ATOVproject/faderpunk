@@ -1,74 +1,4 @@
 @font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-Regular.otf') format('opentype');
-  font-weight: 400;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-Italic.otf') format('opentype');
-  font-weight: 400;
-  font-style: italic;
-}
-
-@font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-Light.otf') format('opentype');
-  font-weight: 300;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-LightItalic.otf') format('opentype');
-  font-weight: 300;
-  font-style: italic;
-}
-
-@font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-Medium.otf') format('opentype');
-  font-weight: 500;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-MediumItalic.otf') format('opentype');
-  font-weight: 500;
-  font-style: italic;
-}
-
-@font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-SemiBold.otf') format('opentype');
-  font-weight: 600;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-SemiBoldItalic.otf') format('opentype');
-  font-weight: 600;
-  font-style: italic;
-}
-
-@font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-Bold.otf') format('opentype');
-  font-weight: 700;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'VoxRound';
-  src: url('/fonts/VoxRound-BoldItalic.otf') format('opentype');
-  font-weight: 700;
-  font-style: italic;
-}
-
-@font-face {
   font-family: 'Barlow';
   src: url('/fonts/Barlow-Thin.ttf') format('truetype');
   font-weight: 100;
@@ -196,7 +126,7 @@
 
 @theme {
   --font-sans: 'Barlow', sans-serif;
-  --font-vox: 'VoxRound', sans-serif;
+  --font-vox: 'Barlow', sans-serif;
 
   --color-*: initial;
 
