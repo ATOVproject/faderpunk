@@ -36,6 +36,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Reject committed licensed fonts
+        run: |
+          if git ls-files | grep -iE 'voxround.*\.(otf|ttf|woff2?|eot)$'; then
+            echo "::error::VoxRound font files are licensed and must not be committed."
+            exit 1
+          fi
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
