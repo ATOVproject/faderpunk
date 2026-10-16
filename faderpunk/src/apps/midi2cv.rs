@@ -46,7 +46,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::i32 {
     name: "Bend Range",
     min: 1,
-    max: 24,
+    max: 60,
 })
 .add_param(Param::MidiNote { name: "MIDI Note" })
 .add_param(Param::Color {
@@ -487,7 +487,10 @@ pub async fn run(
                 }
                 MidiMessage::PitchBend { bend } => match mode {
                     1 | 5 => {
-                        let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.) as u16;
+                        // 60 semitones is the full ±5V, which overshoots the 12-bit DAC at the
+                        // top of the bend, so clamp.
+                        let out = (bend.as_f32() * bend_range as f32 * 410. / 12. + 2048.)
+                            .clamp(0., 4095.) as u16;
                         offset_glob.set(out);
                         leds.set(
                             0,
