@@ -1,4 +1,4 @@
-import { H2, H3, H4, List } from "./Shared";
+import { H2, H3, H4, Link, List } from "./Shared";
 
 export const Troubleshooting = () => (
   <>
@@ -100,6 +100,79 @@ export const Troubleshooting = () => (
       <li>Plug in your Faderpunk via USB</li>
       <li>Try connecting to Faderpunk again using the Connect button</li>
     </ol>
+
+    <H3 id="pitch-tracking">Pitch Tracking</H3>
+    <p>
+      If notes are in tune at one pitch but drift sharp or flat as you play
+      higher or lower — octaves sound too wide or too narrow — the Faderpunk and
+      the oscillator are scaling V/Oct slightly differently. The{" "}
+      <strong>automated calibration</strong> measures the difference and
+      compensates for it:
+    </p>
+    <ol className="mb-4 list-inside list-decimal space-y-2">
+      <li>
+        Patch a Faderpunk output jack into the oscillator's V/Oct input, and the
+        oscillator's audio output into one of the three AUX jacks (Atom, Meteor
+        or Cube)
+      </li>
+      <li>
+        In the <strong>Settings</strong> tab, go to{" "}
+        <strong>Custom V/Oct Curves</strong>, click <strong>Calibrate</strong>{" "}
+        next to a free curve, choose <strong>Automated</strong>, select the two
+        jacks and click <strong>Start</strong>
+      </li>
+      <li>
+        On the confirm step, check the deviation in cents — under 5 is accurate,
+        under 20 is acceptable. Click <strong>Save</strong>, or{" "}
+        <strong>Recalibrate</strong> if it's off
+      </li>
+      <li>
+        In the app driving the oscillator, set the{" "}
+        <strong>V/Oct Standard</strong> parameter to the curve you just saved.
+        Apps stay on the default <strong>1V/Oct (Eurorack)</strong> curve until
+        you change this
+      </li>
+    </ol>
+    <p>
+      Calibration corrects the scale of each octave, not the base pitch — use
+      the oscillator's own tune control for that.
+    </p>
+
+    <H4>If the automated calibration fails</H4>
+    <p>
+      If the wizard reports <em>No signal detected</em>, check the AUX jack and
+      audio cable, and make sure the oscillator stays between 10 Hz and 10 kHz
+      across the 1V to 4V sweep. If it still fails, or you'd rather not use an
+      AUX jack, calibrate manually instead. You'll need a tuner that shows the
+      frequency in Hz (hardware or software), connected to the oscillator's
+      audio output:
+    </p>
+    <ol className="mb-4 list-inside list-decimal space-y-2">
+      <li>
+        Click <strong>Calibrate</strong> next to a free curve, choose{" "}
+        <strong>Manual</strong>, select the Faderpunk output jack connected to
+        the oscillator's V/Oct input and click <strong>Start</strong>
+      </li>
+      <li>
+        Faderpunk outputs 1V. Once the tuner reading settles, enter it as{" "}
+        <strong>Frequency at 1V (Hz)</strong> and click <strong>Next</strong>
+      </li>
+      <li>
+        Faderpunk outputs 4V. Enter the new reading as{" "}
+        <strong>Frequency at 4V (Hz)</strong> and click{" "}
+        <strong>Calculate</strong>
+      </li>
+      <li>
+        Click <strong>Save</strong> (or <strong>Recalibrate</strong> to start
+        again), then set the app's <strong>V/Oct Standard</strong> parameter to
+        the saved curve as above
+      </li>
+    </ol>
+    <p>
+      The more precisely you enter the readings, the better the result. See{" "}
+      <Link to="#settings-voct">Custom V/Oct Calibration</Link> for the full
+      walkthrough.
+    </p>
 
     <H3 id="factory-reset">Factory Reset</H3>
     <p>

@@ -1832,6 +1832,9 @@ export const ManualTab = () => {
                 <Link to="#connection-issues">Connection Issues</Link>
               </li>
               <li>
+                <Link to="#pitch-tracking">Pitch Tracking</Link>
+              </li>
+              <li>
                 <Link to="#factory-reset">Factory Reset</Link>
               </li>
             </List>
