@@ -47,7 +47,7 @@ export const GroupedApps = ({ apps }: Props) => {
   }, [apps]);
 
   return (
-    <div>
+    <div className="mb-12">
       <AppSections apps={official} />
       {community.length > 0 ? (
         <div>
