@@ -9,6 +9,7 @@ import {
   pascalToKebab,
   getDefaultValue,
   getSlots,
+  stringifyWithBigInt,
   transformParamFormValues,
 } from "../utils/utils";
 import { ButtonPrimary } from "./Button";
@@ -60,9 +61,9 @@ const ActiveAppParamsForm = ({
   const syncedSnapshotRef = useRef<string | null>(null);
 
   useEffect(() => {
-    syncedSnapshotRef.current = JSON.stringify(getValues());
+    syncedSnapshotRef.current = stringifyWithBigInt(getValues());
     const subscription = watch((values) => {
-      setInSync(JSON.stringify(values) === syncedSnapshotRef.current);
+      setInSync(stringifyWithBigInt(values) === syncedSnapshotRef.current);
     });
     return () => subscription.unsubscribe();
   }, [watch, getValues]);
@@ -83,7 +84,7 @@ const ActiveAppParamsForm = ({
       );
     }
     if (device || isSimulator) {
-      syncedSnapshotRef.current = JSON.stringify(getValues());
+      syncedSnapshotRef.current = stringifyWithBigInt(getValues());
       setInSync(true);
     }
   };
@@ -207,7 +208,7 @@ export const ActiveApp = ({
         </div>
       ) : app.paramCount > 0 ? (
         <ActiveAppParamsForm
-          key={JSON.stringify(params)}
+          key={stringifyWithBigInt(params)}
           app={app}
           layoutId={layoutId}
           params={params}

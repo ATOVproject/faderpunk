@@ -340,3 +340,11 @@ export const addAppToLayout = (layout: AppLayout, appToAdd: App) => {
 export const delay = (ms: number): Promise<void> => {
   return new Promise((resolve) => setTimeout(resolve, ms));
 };
+
+// JSON.stringify throws on BigInt, which postcard decodes integer fields
+// (including Enum values) to. For comparing or keying on a value's content,
+// not for persisting it — see serializeLayout for that.
+export const stringifyWithBigInt = (value: unknown) =>
+  JSON.stringify(value, (_key, v) =>
+    typeof v === "bigint" ? v.toString() : v,
+  );
