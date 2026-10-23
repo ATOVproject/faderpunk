@@ -1,25 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import ReactMarkdown from "react-markdown";
 
 import { Preface } from "./manual/Preface";
 import { type ManualAppData } from "./manual/ManualApp";
 import { UpdateGuide } from "./manual/UpdateGuide";
 import { Troubleshooting } from "./manual/Troubleshooting";
 import { Apps } from "./manual/Apps";
-import { InstalledCommunityApps } from "./manual/InstalledCommunityApps";
-import { CommunityCatalogue } from "./manual/CommunityCatalogue";
+import { InstalledCommunityManuals } from "./manual/InstalledCommunityManuals";
+import { useInstalledManualViews } from "../hooks/useInstalledManualViews";
 import { H2, List, Link } from "./manual/Shared";
 import { Interface } from "./manual/Interface";
 import { PunkBus } from "./manual/PunkBus";
 import { Configurator } from "./manual/Configurator";
-import { CommunityTools } from "./manual/CommunityTools";
-import {
-  FPAPP_MANUALS_UPDATED_EVENT,
-  getCachedFpAppManuals,
-  parseFpAppManual,
-  type CachedFpAppManual,
-} from "../utils/fpapp";
 
 const builtInApps: ManualAppData[] = [
   {
@@ -1606,88 +1598,10 @@ On load, both registers are restored at the next phrase boundary so the recalled
   },
 ];
 
-const LegacyInstalledAppManuals = ({
-  manuals,
-}: {
-  manuals: CachedFpAppManual[];
-}) => (
-  <>
-    {manuals.map((manual) => (
-      <section className="mb-16" id={`app-${manual.appId}`} key={manual.appId}>
-        <div className="mb-4">
-          <h3 className="text-yellow-fp font-bold uppercase">{manual.name}</h3>
-          <p>{manual.description}</p>
-        </div>
-        {manual.manual && (
-          <div className="prose prose-invert max-w-none text-white">
-            <ReactMarkdown>
-              {withoutHeading(manual.manual, manual)}
-            </ReactMarkdown>
-          </div>
-        )}
-        {manual.setup && (
-          <details className="mt-6 border-y border-white/10 py-4">
-            <summary className="cursor-pointer font-semibold">Setup</summary>
-            <div className="prose prose-invert mt-3 max-w-none text-white">
-              <ReactMarkdown>{withoutHeading(manual.setup)}</ReactMarkdown>
-            </div>
-          </details>
-        )}
-      </section>
-    ))}
-  </>
-);
-
-function toManualApp(manual: CachedFpAppManual): ManualAppData | undefined {
-  if (!manual.manual) return undefined;
-  try {
-    const app = parseFpAppManual(manual.manual, manual.appId);
-    return app
-      ? {
-          ...app,
-          setup: manual.setup ? withoutHeading(manual.setup) : undefined,
-          version: manual.version,
-        }
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function withoutHeading(markdown: string, manual?: CachedFpAppManual) {
-  const lines = markdown.split("\n");
-  if (lines[0]?.startsWith("# ")) lines.shift();
-  while (lines[0]?.trim() === "") lines.shift();
-  if (manual && lines[0]?.trim() === manual.description.trim()) lines.shift();
-  while (lines[0]?.trim() === "") lines.shift();
-  return lines.join("\n");
-}
-
 export const ManualTab = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [installedManuals, setInstalledManuals] = useState(
-    getCachedFpAppManuals,
-  );
-  const installedManualViews = installedManuals.map((cached) => ({
-    cached,
-    app: toManualApp(cached),
-  }));
-  const installedManualApps = installedManualViews.flatMap(({ app }) =>
-    app ? [app] : [],
-  );
-  const legacyInstalledManuals = installedManualViews.flatMap(
-    ({ cached, app }) => (app ? [] : [cached]),
-  );
-  useEffect(() => {
-    const refresh = () => setInstalledManuals(getCachedFpAppManuals());
-    window.addEventListener(FPAPP_MANUALS_UPDATED_EVENT, refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener(FPAPP_MANUALS_UPDATED_EVENT, refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
+  const installedManualViews = useInstalledManualViews();
   useEffect(() => {
     if (location.hash) {
       const element = document.getElementById(location.hash.slice(1));
@@ -1709,7 +1623,7 @@ export const ManualTab = () => {
         frequent updates with new features and fixes. Connecting Faderpunk to
         the configurator will prompt you in case a new firmware is available.
       </p>
-      <H2>Contents</H2>
+      <H2 id="contents">Contents</H2>
       <nav>
         <List>
           <li>
@@ -1782,6 +1696,9 @@ export const ManualTab = () => {
                   </li>
                 </List>
               </li>
+              <li>
+                <Link to="#community-tab">Community Tab</Link>
+              </li>
             </List>
           </li>
           <li>
@@ -1820,9 +1737,6 @@ export const ManualTab = () => {
             </li>
           ) : null}
           <li>
-            <Link to="#community-catalogue">Community App Catalogue</Link>
-          </li>
-          <li>
             <Link to="#update">Update guide</Link>
           </li>
           <li>
@@ -1839,9 +1753,6 @@ export const ManualTab = () => {
               </li>
             </List>
           </li>
-          <li>
-            <Link to="#community-tools">Community Tools</Link>
-          </li>
         </List>
       </nav>
       <Preface />
@@ -1849,12 +1760,9 @@ export const ManualTab = () => {
       <PunkBus />
       <Configurator />
       <Apps apps={builtInApps} />
-      <InstalledCommunityApps apps={installedManualApps} />
-      <LegacyInstalledAppManuals manuals={legacyInstalledManuals} />
-      <CommunityCatalogue />
+      <InstalledCommunityManuals views={installedManualViews} />
       <UpdateGuide />
       <Troubleshooting />
-      <CommunityTools />
     </>
   );
 };
