@@ -58,8 +58,8 @@ export const Configurator = () => (
         Faderpunk device.
       </li>
       <li>
-        <strong>Community Tab</strong> – Install community-made apps, read their
-        manuals, and find out how to submit your own.
+        <strong>Community Tab</strong> – Browse the community app catalogue, and
+        find out how to submit your own app or report a bug.
       </li>
     </List>
 
@@ -116,8 +116,8 @@ export const Configurator = () => (
       form instead of an empty or misleading one. This can happen if the app
       itself is unresponsive—an installed community app that's{" "}
       <strong>Stopped</strong> is one way to end up here; see{" "}
-      <a className="underline" href="#community-tab">
-        Community Tab
+      <a className="underline" href="#installed-apps-tab">
+        Installed Apps
       </a>{" "}
       below.
     </p>
@@ -132,7 +132,7 @@ export const Configurator = () => (
 
     <p>
       The Apps tab is where you select the apps you'd like to include in your
-      layout. It consists of two sections:
+      layout. It consists of three sections:
     </p>
 
     <H4>Channel Overview</H4>
@@ -174,6 +174,44 @@ export const Configurator = () => (
     <p>
       In this case, you can rearrange or delete apps just as you would in the
       Edit Layout pop-up.
+    </p>
+
+    <H4 id="installed-apps-tab">Installed Apps</H4>
+    <p>
+      The <strong>Installed Apps</strong> section lets you add community-made
+      apps to your Faderpunk without reflashing firmware. There are eight
+      independent slots; each shows <strong>Empty</strong>,{" "}
+      <strong>Installed</strong>, or <strong>Stopped</strong>.
+    </p>
+    <p>
+      Click <strong>Install</strong> (or <strong>Replace</strong> on an occupied
+      slot) and choose a <code>.fpapp</code> file. A review panel then shows:
+    </p>
+    <List>
+      <li>The app's name, version, and author</li>
+      <li>Its description</li>
+      <li>
+        A warning if it doesn't match your Faderpunk's firmware, in which case
+        installing stays disabled
+      </li>
+    </List>
+    <p>
+      Check <strong>"I trust this app and its source"</strong> to enable{" "}
+      <strong>Install</strong>. Once installed, the app appears under{" "}
+      <strong>Community Apps</strong> in the Available Apps List above and can
+      be added to your layout like any official app.
+    </p>
+    <p>
+      Clicking <strong>Remove</strong> asks for confirmation, since it also
+      removes the app from any channel currently using it.
+    </p>
+    <p>
+      A <strong>Stopped</strong> slot means that app hung the device; it's held
+      back from running until you replace or remove it. See{" "}
+      <a className="underline" href="#factory-reset">
+        Factory Reset
+      </a>{" "}
+      in Troubleshooting if you can't reach the Configurator to do that.
     </p>
 
     <H3 id="settings-tab">Settings Tab</H3>
@@ -549,59 +587,25 @@ export const Configurator = () => (
     <H3 id="community-tab">Community Tab</H3>
     <p>
       The Community tab is home to apps made by Faderpunk players and
-      developers. These are unofficial and unmaintained by ATOV. It opens with
-      notes on how to submit your own app and where to report bugs or give
-      feedback, and is followed by:
-    </p>
-
-    <H4>Installed Apps</H4>
-    <p>
-      The <strong>Installed Apps</strong> section lets you add community-made
-      apps to your Faderpunk without reflashing firmware. There are eight
-      independent slots; each shows <strong>Empty</strong>,{" "}
-      <strong>Installed</strong>, or <strong>Stopped</strong>.
-    </p>
-    <p>
-      Click <strong>Install</strong> (or <strong>Replace</strong> on an occupied
-      slot) and choose a <code>.fpapp</code> file. A review panel then shows:
-    </p>
-    <List>
-      <li>The app's name, version, and author</li>
-      <li>Its description</li>
-      <li>
-        A warning if it doesn't match your Faderpunk's firmware, in which case
-        installing stays disabled
-      </li>
-    </List>
-    <p>
-      Check <strong>"I trust this app and its source"</strong> to enable{" "}
-      <strong>Install</strong>. Once installed, the app appears under{" "}
-      <strong>Installed Community Apps</strong> on this tab and can be added to
-      your layout like any official app.
-    </p>
-    <p>
-      Clicking <strong>Remove</strong> asks for confirmation, since it also
-      removes the app from any channel currently using it.
-    </p>
-    <p>
-      A <strong>Stopped</strong> slot means that app hung the device; it's held
-      back from running until you replace or remove it. See{" "}
-      <a className="underline" href="#factory-reset">
-        Factory Reset
-      </a>{" "}
-      in Troubleshooting if you can't reach the Configurator to do that.
+      developers. These are unofficial and unmaintained by ATOV. It has notes on
+      how to submit your own app and where to report bugs or give feedback,
+      then:
     </p>
 
     <H4>Community Manual</H4>
     <p>
-      Under each installed community app, <strong>Read manual</strong> opens its
-      manual in the Manual tab, in the{" "}
+      A catalogue of every community app, with each app's manual and
+      downloadable <code>.fpapp</code> file, and links to community-built tools.
+      Apps you've installed are installed from the{" "}
+      <a className="underline" href="#installed-apps-tab">
+        Installed Apps
+      </a>{" "}
+      section of the Apps tab; under each one, <strong>Read manual</strong>{" "}
+      opens its manual in the Manual tab, in the{" "}
       <a className="underline" href="#installed-community-apps">
         Installed Community Apps
       </a>{" "}
-      section. At the bottom of the Community tab you'll find a catalogue of
-      every community app with downloadable <code>.fpapp</code> files, and links
-      to community-built tools.
+      section.
     </p>
   </>
 );

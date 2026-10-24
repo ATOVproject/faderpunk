@@ -11,7 +11,7 @@ export const Apps = ({ apps }: Props) => (
     <p className="mb-6">
       The apps below are Faderpunk's official library, built and maintained by
       ATOV and included on every device. You're not limited to these: the
-      Configurator's <strong>Community</strong> tab also lets you install
+      Configurator's <strong>Apps</strong> tab also lets you install
       community-made apps from a <code>.fpapp</code> file into a free slot on
       the device. Once installed, a community app appears in the layout editor
       right alongside the official ones—see the{" "}

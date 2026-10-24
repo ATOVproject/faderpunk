@@ -99,7 +99,7 @@ const ConfiguratorPageContent = () => {
               <ManualTab />
             </Tab>
             <Tab key="community" title="Community">
-              <CommunityTab apps={apps} />
+              <CommunityTab />
             </Tab>
           </Tabs>
         </ManualNavContext.Provider>
