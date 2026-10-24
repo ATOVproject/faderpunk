@@ -11,14 +11,19 @@ export const Apps = ({ apps }: Props) => (
     <p className="mb-6">
       The apps below are Faderpunk's official library, built and maintained by
       ATOV and included on every device. You're not limited to these: the
-      Configurator's Apps tab also lets you install community-made apps from a{" "}
-      <code>.fpapp</code> file into a free slot on the device. Once installed, a
-      community app appears in this same catalogue and layout editor right
-      alongside the official ones—see the{" "}
-      <a className="underline" href="#community-catalogue">
-        community app catalogue
+      Configurator's <strong>Apps</strong> tab also lets you install
+      community-made apps from a <code>.fpapp</code> file into a free slot on
+      the device. Once installed, a community app appears in the layout editor
+      right alongside the official ones—see the{" "}
+      <a
+        className="underline"
+        href="https://atovproject.github.io/faderpunk-community-apps/#/manual"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        community manual
       </a>{" "}
-      below for what's available.
+      for what's available.
     </p>
     <p className="mb-6">
       Across the app library, a handful of controls follow shared
@@ -120,15 +125,39 @@ export const Apps = ({ apps }: Props) => (
       divisions and <strong className="text-cyan-fp">blue</strong> for straight
       divisions.
     </p>
+    <nav aria-label="Jump to an app" className="mb-10">
+      <h3 className="mb-3 text-sm font-bold uppercase">Jump to an app</h3>
+      <ul className="flex flex-wrap gap-2">
+        {apps.map((app) => (
+          <li key={app.appId}>
+            <a
+              className="block rounded-sm bg-black px-3 py-1 text-sm font-semibold hover:underline"
+              href={`#app-${app.appId}`}
+            >
+              {app.title}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
     {apps.map((app) => (
-      <ManualApp key={app.appId} app={app} />
+      <ManualApp
+        key={app.appId}
+        app={app}
+        backTo={{ hash: "#contents", label: "Contents" }}
+      />
     ))}
     <p className="mt-8">
-      Looking for more? Browse the full{" "}
-      <a className="underline" href="#community-catalogue">
-        community app catalogue
-      </a>
-      .
+      Looking for more? Browse the{" "}
+      <a
+        className="underline"
+        href="https://atovproject.github.io/faderpunk-community-apps/#/manual"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        community manual
+      </a>{" "}
+      or open the Configurator's <strong>Community</strong> tab.
     </p>
   </>
 );

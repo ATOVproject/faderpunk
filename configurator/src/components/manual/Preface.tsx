@@ -30,9 +30,15 @@ export const Preface = () => (
       Faderpunk isn’t limited to the official app library built by ATOV. A
       community of players and developers builds and shares their own apps too,
       installable straight from the Configurator without any firmware
-      reflash—browse what’s available in the{" "}
-      <a className="underline" href="#community-catalogue">
-        community app catalogue
+      reflash—find them, and how to submit your own, in the Configurator’s{" "}
+      <strong>Community</strong> tab, or browse the{" "}
+      <a
+        className="underline"
+        href="https://atovproject.github.io/faderpunk-community-apps/#/manual"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        community manual
       </a>
       . The project itself is open source under the GPL-3.0 license, so anyone
       can inspect it, contribute to it, or build on top of it.
