@@ -10,6 +10,7 @@ import { ConnectPage } from "./components/ConnectPage";
 import { ManualPage } from "./components/ManualPage";
 import { UpdatePage } from "./components/UpdatePage";
 import { RebootingOverlay } from "./components/RebootingOverlay";
+import { BackToTop } from "./components/BackToTop";
 
 const DEVICELESS_ROUTES = ["/about", "/manual", "/update"];
 
@@ -50,6 +51,7 @@ const App = () => {
   return (
     <>
       <RebootingOverlay />
+      <BackToTop />
       <Routes>
         <Route
           path="/"
