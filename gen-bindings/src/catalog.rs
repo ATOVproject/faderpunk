@@ -54,6 +54,8 @@ enum TsValue {
     Num(String),
     Object(Vec<(String, TsValue)>),
     Array(Vec<TsValue>),
+    /// A `None` entry in a bindgen `Option<T>` array.
+    Undefined,
 }
 
 impl TsValue {
@@ -90,6 +92,9 @@ impl TsValue {
                 }
                 push_indent(out, indent);
                 out.push('}');
+            }
+            TsValue::Undefined => {
+                out.push_str("undefined");
             }
             TsValue::Array(items) => {
                 if items.is_empty() {
@@ -128,7 +133,7 @@ fn assert_ascii_strings(value: &TsValue, context: &str) {
             "non-ASCII app metadata {s:?} in {context} (must be ASCII — see \
              libfp::Config's ASCII assert)"
         ),
-        TsValue::Num(_) => {}
+        TsValue::Num(_) | TsValue::Undefined => {}
         TsValue::Object(fields) => {
             for (_, v) in fields {
                 assert_ascii_strings(v, context);
@@ -229,18 +234,64 @@ fn convert_param(expr: &Expr) -> TsValue {
     }
 }
 
+/// Converts a `ShowIf::new(param, &[values..])` expression into the
+/// `{ param, mask }` shape of `libfp::ShowIf`, mirroring its const constructor.
+fn convert_show_if(expr: &Expr) -> TsValue {
+    let Expr::Call(ExprCall { func, args, .. }) = expr else {
+        panic!("add_param_if expects a `ShowIf::new(..)` call: {expr:?}");
+    };
+    assert_eq!(
+        path_last_segment(func).as_deref(),
+        Some("new"),
+        "add_param_if expects a `ShowIf::new(..)` call"
+    );
+    let mut it = args.iter();
+    let param = match it.next() {
+        Some(Expr::Lit(ExprLit {
+            lit: Lit::Int(i), ..
+        })) => i.base10_parse::<u8>().expect("ShowIf param index must be a u8"),
+        _ => panic!("ShowIf::new param index must be an integer literal"),
+    };
+    let Some(Expr::Reference(ExprReference { expr: values, .. })) = it.next() else {
+        panic!("ShowIf::new values must be a `&[..]` literal");
+    };
+    let Expr::Array(ExprArray { elems, .. }) = &**values else {
+        panic!("ShowIf::new values must be a `&[..]` literal");
+    };
+    let mut mask = 0u32;
+    for elem in elems {
+        let Expr::Lit(ExprLit {
+            lit: Lit::Int(i), ..
+        }) = elem
+        else {
+            panic!("ShowIf::new values must be integer literals");
+        };
+        let value = i.base10_parse::<u8>().expect("ShowIf value must be a u8");
+        assert!(value < 32, "ShowIf value must be below 32");
+        mask |= 1 << value;
+    }
+    TsValue::Object(vec![
+        ("param".into(), TsValue::Num(param.to_string())),
+        ("mask".into(), TsValue::Num(mask.to_string())),
+    ])
+}
+
 struct ExtractedConfig {
     name: String,
     description: String,
     color: String,
     icon: String,
     params: Vec<TsValue>,
+    show_if: Vec<TsValue>,
 }
 
 /// Walks a `Config::new(name, description, color, icon).add_param(..).add_param(..)`
 /// method-call chain and extracts the four base args plus each param.
 fn extract_config(expr: &Expr, context: &str) -> ExtractedConfig {
-    fn walk(expr: &Expr, params: &mut Vec<Expr>) -> (Expr, Expr, Expr, Expr) {
+    fn walk(
+        expr: &Expr,
+        params: &mut Vec<(Expr, Option<Expr>)>,
+    ) -> (Expr, Expr, Expr, Expr) {
         match expr {
             Expr::MethodCall(ExprMethodCall {
                 receiver,
@@ -248,13 +299,17 @@ fn extract_config(expr: &Expr, context: &str) -> ExtractedConfig {
                 args,
                 ..
             }) => {
-                assert_eq!(
-                    method, "add_param",
-                    "unexpected method call in CONFIG chain: {method}"
-                );
-                let arg = args.first().expect("add_param takes one argument").clone();
+                let mut it = args.iter().cloned();
+                let arg = it.next().expect("add_param takes a param argument");
+                let show_if = match method.to_string().as_str() {
+                    "add_param" => None,
+                    "add_param_if" => {
+                        Some(it.next().expect("add_param_if takes a ShowIf argument"))
+                    }
+                    other => panic!("unexpected method call in CONFIG chain: {other}"),
+                };
                 let base = walk(receiver, params);
-                params.push(arg);
+                params.push((arg, show_if));
                 base
             }
             Expr::Call(ExprCall { func, args, .. }) => {
@@ -274,7 +329,7 @@ fn extract_config(expr: &Expr, context: &str) -> ExtractedConfig {
         }
     }
 
-    let mut param_exprs = Vec::new();
+    let mut param_exprs: Vec<(Expr, Option<Expr>)> = Vec::new();
     let (name_expr, description_expr, color_expr, icon_expr) = walk(expr, &mut param_exprs);
 
     let name = match convert_lit_expr(&name_expr) {
@@ -293,10 +348,19 @@ fn extract_config(expr: &Expr, context: &str) -> ExtractedConfig {
         "non-ASCII app name/description in {context} (must be ASCII — see \
          libfp::Config's ASCII assert)"
     );
-    let params: Vec<TsValue> = param_exprs.iter().map(convert_param).collect();
+    let params: Vec<TsValue> = param_exprs.iter().map(|(p, _)| convert_param(p)).collect();
     for param in &params {
         assert_ascii_strings(param, context);
     }
+    // Same shape as the wire format: empty unless some param is conditional.
+    let show_if: Vec<TsValue> = if param_exprs.iter().any(|(_, s)| s.is_some()) {
+        param_exprs
+            .iter()
+            .map(|(_, s)| s.as_ref().map_or(TsValue::Undefined, convert_show_if))
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     ExtractedConfig {
         name,
@@ -304,6 +368,7 @@ fn extract_config(expr: &Expr, context: &str) -> ExtractedConfig {
         color,
         icon,
         params,
+        show_if,
     }
 }
 
@@ -374,7 +439,7 @@ struct AppData {
 }
 
 fn render_app(app: &AppData) -> TsValue {
-    TsValue::Object(vec![
+    let mut fields = vec![
         ("appId".into(), TsValue::Num(app.id.to_string())),
         (
             "channels".into(),
@@ -392,7 +457,11 @@ fn render_app(app: &AppData) -> TsValue {
             TsValue::Num(format!("BigInt({})", app.config.params.len())),
         ),
         ("params".into(), TsValue::Array(app.config.params.clone())),
-    ])
+    ];
+    if !app.config.show_if.is_empty() {
+        fields.push(("showIf".into(), TsValue::Array(app.config.show_if.clone())));
+    }
+    TsValue::Object(fields)
 }
 
 /// `generate` reads `faderpunk/src/apps/mod.rs` + each registered app's
@@ -509,5 +578,29 @@ mod tests {
                 })
         };
         extract_config(&expr, "test.rs");
+    }
+
+    #[test]
+    fn extract_config_collects_show_if() {
+        let expr: Expr = parse_quote! {
+            Config::new("MIDI to CV", "", Color::Cyan, AppIcon::KnobRound)
+                .add_param(Param::Enum { name: "Mode", variants: &["CC", "Bend"] })
+                .add_param_if(Param::i32 { name: "Bend Range", min: 1, max: 60 }, ShowIf::new(0, &[1]))
+        };
+        let config = extract_config(&expr, "test.rs");
+        assert_eq!(config.params.len(), 2);
+        assert_eq!(config.show_if.len(), 2);
+        let mut out = String::new();
+        config.show_if[1].render(&mut out, 0);
+        assert!(out.contains("param: 0") && out.contains("mask: 2"), "{out}");
+    }
+
+    #[test]
+    fn extract_config_omits_show_if_without_conditions() {
+        let expr: Expr = parse_quote! {
+            Config::new("A", "", Color::Cyan, AppIcon::Fader)
+                .add_param(Param::bool { name: "X" })
+        };
+        assert!(extract_config(&expr, "test.rs").show_if.is_empty());
     }
 }

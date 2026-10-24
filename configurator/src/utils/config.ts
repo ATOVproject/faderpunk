@@ -4,6 +4,7 @@ import type {
   Value,
   FixedLengthArray,
   ConfigMsgOut,
+  ShowIf,
 } from "@atov/fp-config";
 
 import type {
@@ -61,6 +62,7 @@ export const getAllApps = async (dev: FpMidiDevice) => {
         item.tag === "AppConfig",
     )
     .forEach((app) => {
+      const showIf = app.value[2][6] as unknown as (ShowIf | undefined)[];
       const appConfig = {
         appId: app.value[0],
         channels: app.value[1],
@@ -70,6 +72,9 @@ export const getAllApps = async (dev: FpMidiDevice) => {
         color: app.value[2][3].tag,
         icon: app.value[2][4].tag,
         params: app.value[2][5],
+        // postcard-bindgen types `&[Option<ShowIf>]` as `ShowIf | undefined[]`
+        // (missing parentheses); at runtime it is an array of `ShowIf | undefined`.
+        showIf: showIf.length > 0 ? showIf : undefined,
       };
 
       parsedApps.set(appConfig.appId, appConfig);

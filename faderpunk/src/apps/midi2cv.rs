@@ -14,7 +14,7 @@ use libfp::{
     utils::{
         apply_slide, bits_7_16, clickless, fader_to_slide_coeff, scale_bits_7_12,
     },
-    AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiNote, Param, Range,
+    AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiNote, Param, Range, ShowIf,
     Value, APP_MAX_PARAMS,
 };
 
@@ -43,11 +43,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "MIDI Channel",
 })
 .add_param(Param::MidiCc { name: "MIDI CC" })
-.add_param(Param::i32 {
-    name: "Bend Range",
-    min: 1,
-    max: 60,
-})
+.add_param_if(
+    Param::i32 {
+        name: "Bend Range",
+        min: 1,
+        max: 60,
+    },
+    ShowIf::new(0, &[1, 5]),
+)
 .add_param(Param::MidiNote { name: "MIDI Note" })
 .add_param(Param::Color {
     name: "Color",

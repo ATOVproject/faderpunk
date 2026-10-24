@@ -227,6 +227,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                                     color,
                                     icon,
                                     params,
+                                    &[],
                                 ),
                             ))
                             .await;

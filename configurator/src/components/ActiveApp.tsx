@@ -9,6 +9,7 @@ import {
   pascalToKebab,
   getDefaultValue,
   getSlots,
+  isParamShown,
   stringifyWithBigInt,
   transformParamFormValues,
 } from "../utils/utils";
@@ -54,6 +55,9 @@ const ActiveAppParamsForm = ({
     getValues,
     formState: { isSubmitting },
   } = useForm();
+  // Subscribes to every field so conditional params follow their controlling
+  // param (see ShowIf in libfp).
+  const formValues = watch();
   // Form values as of the last time they matched the device. Some HeroUI
   // inputs (e.g. Select) synthesize onChange events without a native `type`,
   // so react-hook-form's dirty tracking can't be trusted here — compare the
@@ -97,14 +101,25 @@ const ActiveAppParamsForm = ({
         </h2>
         <div className="grid grid-cols-4 gap-x-8 gap-y-8 px-4">
           {app.params.map((param, idx) => (
-            <AppParam
+            // Hidden params stay mounted (and registered) so they keep their
+            // value, are saved like any other and don't flip the Saved state
+            // when they appear; `contents` keeps the grid layout unchanged.
+            <div
               key={`param-${layoutId}-${idx}`}
-              param={param}
-              paramIndex={idx}
-              register={register}
-              control={control}
-              defaultValue={getDefaultValue(params[idx])}
-            />
+              className={
+                isParamShown(app.showIf?.[idx], app, formValues, params)
+                  ? "contents"
+                  : "hidden"
+              }
+            >
+              <AppParam
+                param={param}
+                paramIndex={idx}
+                register={register}
+                control={control}
+                defaultValue={getDefaultValue(params[idx])}
+              />
+            </div>
           ))}
         </div>
       </div>

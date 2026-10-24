@@ -4,6 +4,7 @@ import {
   type FixedLengthArray,
   type Note,
   type Range,
+  type ShowIf,
   type Value,
   type VoltPerOct,
   type Waveform,
@@ -32,6 +33,37 @@ export const getSlots = (app: App, startChannel: number) => {
   } else {
     return `${startChannel + 1}`;
   }
+};
+
+/**
+ * Whether a conditional param (see `ShowIf` in libfp) should be shown, given
+ * the current form values. Falls back to the device-side value of the
+ * controlling param until the form has one.
+ */
+export const isParamShown = (
+  showIf: ShowIf | undefined,
+  app: Pick<App, "params">,
+  formValues: Record<string, unknown>,
+  params: Value[],
+): boolean => {
+  if (!showIf) {
+    return true;
+  }
+  const source = app.params[showIf.param];
+  const live = formValues[`param-${source?.tag}-${showIf.param}`];
+  let current: number | undefined;
+  if (live !== undefined) {
+    current = source?.tag === "bool" ? Number(Boolean(live)) : Number(live);
+  } else {
+    const stored = params[showIf.param];
+    if (stored?.tag === "Enum") {
+      current = Number(stored.value);
+    } else if (stored?.tag === "bool") {
+      current = Number(stored.value);
+    }
+  }
+  // Unknown state: show rather than hide something the user may need.
+  return current === undefined || ((showIf.mask >>> current) & 1) === 1;
 };
 
 export const getDefaultValue = (val: Value) => {
