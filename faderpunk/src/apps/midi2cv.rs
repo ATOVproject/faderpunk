@@ -14,8 +14,8 @@ use libfp::{
     utils::{
         apply_slide, bits_7_16, clickless, fader_to_slide_coeff, scale_bits_7_12,
     },
-    AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiNote, Param, Range, ShowIf,
-    Value, APP_MAX_PARAMS,
+    AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiNote, Param, Range,
+    ShowIf, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppMidiEvent, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -35,14 +35,17 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Mode",
     variants: &["CC", "Pitch", "Gate", "Velocity", "AT", "Bend", "Note Gate"],
 })
-.add_param(Param::Curve {
-    name: "Curve",
-    variants: &[Curve::Linear, Curve::Logarithmic, Curve::Exponential],
-})
+.add_param_if(
+    Param::Curve {
+        name: "Curve",
+        variants: &[Curve::Linear, Curve::Logarithmic, Curve::Exponential],
+    },
+    ShowIf::new(0, &[0, 4]),
+)
 .add_param(Param::MidiChannel {
     name: "MIDI Channel",
 })
-.add_param(Param::MidiCc { name: "MIDI CC" })
+.add_param_if(Param::MidiCc { name: "MIDI CC" }, ShowIf::new(0, &[0]))
 .add_param_if(
     Param::i32 {
         name: "Bend Range",
@@ -51,7 +54,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     },
     ShowIf::new(0, &[1, 5]),
 )
-.add_param(Param::MidiNote { name: "MIDI Note" })
+.add_param_if(Param::MidiNote { name: "MIDI Note" }, ShowIf::new(0, &[6]))
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -66,9 +69,12 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     ],
 })
 .add_param(Param::MidiIn)
-.add_param(Param::bool {
-    name: "Velocity on Gate",
-});
+.add_param_if(
+    Param::bool {
+        name: "Velocity on Gate",
+    },
+    ShowIf::new(0, &[2, 6]),
+);
 
 pub struct Params {
     mode: usize,

@@ -15,7 +15,7 @@ use libfp::{
     latch::LatchLayer,
     utils::{rotate_select_bit, scale_to_12bit},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiMode,
-    MidiNote, MidiOut, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    MidiNote, MidiOut, Param, Range, ShowIf, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -33,11 +33,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     AppIcon::SequenceSquare,
 )
 .add_param(Param::MidiMode)
-.add_param(Param::MidiChannel {
-    name: "MIDI channel",
-})
-.add_param(Param::MidiCc { name: "CC number" })
-.add_param(Param::MidiNote { name: "Base Note" })
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI channel",
+    },
+    ShowIf::on(8),
+)
+.add_param_if(Param::MidiCc { name: "CC number" }, ShowIf::on(0))
+.add_param_if(Param::MidiNote { name: "Base Note" }, ShowIf::new(0, &[0]))
 .add_param(Param::i32 {
     name: "GATE %",
     min: 1,
@@ -60,7 +63,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Range",
     variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
 })
-.add_param(Param::MidiNrpn)
+.add_param_if(Param::MidiNrpn, ShowIf::on(0))
 .add_param(Param::MidiOut)
 .add_param(Param::bool { name: "Gate Out" })
 .add_param(Param::VoltPerOct)

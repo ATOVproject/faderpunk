@@ -11,7 +11,7 @@ use libfp::{
 use serde::{Deserialize, Serialize};
 use libm;
 
-use libfp::{ext::FromValue, Config, Param, Range, Value, VoltPerOct};
+use libfp::{ext::FromValue, Config, Param, Range, ShowIf, Value, VoltPerOct};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
@@ -30,9 +30,12 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Range",
     variants: &[Range::_0_10V, Range::_Neg5_5V],
 })
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(4),
+)
 .add_param(Param::i32 {
     name: "Delay (ms)",
     min: 0,

@@ -3,6 +3,7 @@ import {
   type Curve,
   type FixedLengthArray,
   type Note,
+  type Param,
   type Range,
   type ShowIf,
   type Value,
@@ -36,6 +37,35 @@ export const getSlots = (app: App, startChannel: number) => {
 };
 
 /**
+ * Numeric value of a controlling param, as `ShowIf` (libfp) defines it: the
+ * variant index for an Enum, 0/1 for bool, NRPN, MIDI Mode (Note/Cc) and for
+ * MIDI In/Out (any port enabled). `value` is the form value or, before the
+ * form has one, the device-side value in the same shape (`getDefaultValue`).
+ */
+const controllingValue = (
+  tag: Param["tag"],
+  value: unknown,
+): number | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  switch (tag) {
+    case "Enum":
+      return Number(value);
+    case "bool":
+    case "MidiNrpn":
+      return Number(Boolean(value));
+    case "MidiMode":
+      return value === "Cc" ? 1 : 0;
+    case "MidiIn":
+    case "MidiOut":
+      return Array.isArray(value) ? Number(value.some(Boolean)) : undefined;
+    default:
+      return undefined;
+  }
+};
+
+/**
  * Whether a conditional param (see `ShowIf` in libfp) should be shown, given
  * the current form values. Falls back to the device-side value of the
  * controlling param until the form has one.
@@ -50,18 +80,15 @@ export const isParamShown = (
     return true;
   }
   const source = app.params[showIf.param];
-  const live = formValues[`param-${source?.tag}-${showIf.param}`];
-  let current: number | undefined;
-  if (live !== undefined) {
-    current = source?.tag === "bool" ? Number(Boolean(live)) : Number(live);
-  } else {
-    const stored = params[showIf.param];
-    if (stored?.tag === "Enum") {
-      current = Number(stored.value);
-    } else if (stored?.tag === "bool") {
-      current = Number(stored.value);
-    }
+  if (!source) {
+    return true;
   }
+  const stored = params[showIf.param];
+  const current = controllingValue(
+    source.tag,
+    formValues[`param-${source.tag}-${showIf.param}`] ??
+      (stored ? getDefaultValue(stored) : undefined),
+  );
   // Unknown state: show rather than hide something the user may need.
   return current === undefined || ((showIf.mask >>> current) & 1) === 1;
 };

@@ -15,7 +15,7 @@ use libfp::{
         split_unsigned_value, SlewState,
     },
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
-    Range, Value, APP_MAX_PARAMS,
+    Range, ShowIf, Value, APP_MAX_PARAMS,
 };
 
 use crate::{
@@ -36,10 +36,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Cyan,
     AppIcon::Fader,
 )
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiCc { name: "MIDI CC" })
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(5),
+)
+.add_param_if(Param::MidiCc { name: "MIDI CC" }, ShowIf::on(5))
 .add_param(Param::Range {
     name: "Range",
     variants: &[Range::_0_10V, Range::_Neg5_5V],
@@ -57,7 +60,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiNrpn)
+.add_param_if(Param::MidiNrpn, ShowIf::on(5))
 .add_param(Param::MidiOut)
 .add_param(Param::Enum {
     name: "Resolution",

@@ -12,7 +12,7 @@ use libfp::{
     quantizer::Pitch,
     utils::{attenuate, euclidean_at, rotate_select_bit, scale_to_12bit},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiChannel, MidiNote, MidiOut,
-    Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    Param, Range, ShowIf, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 use midly::num::u7;
 
@@ -39,10 +39,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Yellow,
     AppIcon::Sequence,
 )
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiNote { name: "Base Note" })
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(3),
+)
+.add_param_if(Param::MidiNote { name: "Base Note" }, ShowIf::on(3))
 .add_param(Param::Color {
     name: "Color",
     variants: &[

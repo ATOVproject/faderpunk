@@ -119,7 +119,7 @@ use libfp::{
     latch::LatchLayer,
     utils::scale_bits_12_8,
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiChannel, MidiNote, MidiOut,
-    Param, Value, APP_MAX_PARAMS,
+    Param, ShowIf, Value, APP_MAX_PARAMS,
 };
 
 use serde::{Deserialize, Serialize};
@@ -140,40 +140,70 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::SkyBlue,
     AppIcon::Euclid,
 )
-.add_param(Param::MidiNote {
-    name: "MIDI Note 1",
-})
-.add_param(Param::MidiNote {
-    name: "MIDI Note 2",
-})
-.add_param(Param::MidiNote {
-    name: "MIDI Note 3",
-})
-.add_param(Param::MidiNote {
-    name: "MIDI DnB Ghost Note",
-})
-.add_param(Param::MidiChannel {
-    name: "Note 1 MIDI Channel",
-})
-.add_param(Param::MidiChannel {
-    name: "Note 2 MIDI Channel",
-})
-.add_param(Param::MidiChannel {
-    name: "Note 3 MIDI Channel",
-})
-.add_param(Param::MidiChannel {
-    name: "DnB Ghost Note MIDI Channel",
-})
-.add_param(Param::i32 {
-    name: "MIDI Velocity",
-    min: 1,
-    max: 127,
-})
-.add_param(Param::i32 {
-    name: "MIDI Accent Vel",
-    min: 1,
-    max: 127,
-})
+.add_param_if(
+    Param::MidiNote {
+        name: "MIDI Note 1",
+    },
+    ShowIf::on(12),
+)
+.add_param_if(
+    Param::MidiNote {
+        name: "MIDI Note 2",
+    },
+    ShowIf::on(12),
+)
+.add_param_if(
+    Param::MidiNote {
+        name: "MIDI Note 3",
+    },
+    ShowIf::on(12),
+)
+.add_param_if(
+    Param::MidiNote {
+        name: "MIDI DnB Ghost Note",
+    },
+    ShowIf::on(12),
+)
+.add_param_if(
+    Param::MidiChannel {
+        name: "Note 1 MIDI Channel",
+    },
+    ShowIf::on(12),
+)
+.add_param_if(
+    Param::MidiChannel {
+        name: "Note 2 MIDI Channel",
+    },
+    ShowIf::on(12),
+)
+.add_param_if(
+    Param::MidiChannel {
+        name: "Note 3 MIDI Channel",
+    },
+    ShowIf::on(12),
+)
+.add_param_if(
+    Param::MidiChannel {
+        name: "DnB Ghost Note MIDI Channel",
+    },
+    ShowIf::on(12),
+)
+.add_param_if(
+    Param::i32 {
+        name: "MIDI Velocity",
+        min: 1,
+        max: 127,
+    },
+    ShowIf::on(12),
+)
+.add_param_if(
+    Param::i32 {
+        name: "MIDI Accent Vel",
+        min: 1,
+        max: 127,
+    },
+    ShowIf::on(12),
+)
 .add_param(Param::i32 {
     name: "GATE %",
     min: 1,

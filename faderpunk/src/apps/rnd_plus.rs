@@ -15,7 +15,7 @@ use libfp::{
     latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, midi_gate, slew_exp, split_unsigned_value, SlewState},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
-    Range, Value, APP_MAX_PARAMS,
+    Range, ShowIf, Value, APP_MAX_PARAMS,
 };
 
 pub const CHANNELS: usize = 2;
@@ -28,11 +28,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     AppIcon::Random,
 )
 .add_param(Param::bool { name: "Bipolar" })
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiCc { name: "MIDI CC" })
-.add_param(Param::MidiNrpn)
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(4),
+)
+.add_param_if(Param::MidiCc { name: "MIDI CC" }, ShowIf::on(4))
+.add_param_if(Param::MidiNrpn, ShowIf::on(4))
 .add_param(Param::MidiOut)
 .add_param(Param::Color {
     name: "Color",

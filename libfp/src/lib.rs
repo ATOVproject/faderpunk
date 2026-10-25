@@ -1110,12 +1110,18 @@ pub enum AppIcon {
 }
 
 /// Display condition for a param: shown in the configurator only while the
-/// `Enum` or `bool` param at index `param` holds one of the listed values
-/// (`bool` is 0 for false, 1 for true). Purely a UI hint — a hidden param still
-/// exists, keeps its stored value and is saved like any other.
+/// controlling param at index `param` holds one of the listed values. Purely a
+/// UI hint — a hidden param still exists, keeps its stored value and is saved
+/// like any other.
+///
+/// The controlling param's value is read as a number:
+/// - `Enum`: the variant index.
+/// - `bool` and `MidiNrpn`: 0 for off, 1 for on.
+/// - `MidiMode`: 0 for `Note`, 1 for `Cc`.
+/// - `MidiOut` and `MidiIn`: 0 when no port is enabled, 1 when any is.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, PostcardBindings)]
 pub struct ShowIf {
-    /// Index of the controlling param; must come before the conditional one.
+    /// Index of the controlling param. It cannot itself be conditional.
     pub param: u8,
     /// Bit `n` set = shown while the controlling param's value is `n`.
     pub mask: u32,
@@ -1131,6 +1137,24 @@ impl ShowIf {
             index += 1;
         }
         ShowIf { param, mask }
+    }
+
+    /// Shown while the controlling param is on (value 1, see above).
+    pub const fn on(param: u8) -> Self {
+        Self::new(param, &[1])
+    }
+
+    /// Whether `mask` only names values the `source` param can take.
+    const fn fits(source: &Param, mask: u32) -> bool {
+        match source {
+            Param::Enum { variants, .. } => variants.len() < 32 && mask >> variants.len() == 0,
+            Param::bool { .. }
+            | Param::MidiNrpn
+            | Param::MidiMode
+            | Param::MidiOut
+            | Param::MidiIn => mask >> 2 == 0,
+            _ => false,
+        }
     }
 }
 
@@ -1555,25 +1579,23 @@ impl<const N: usize> Config<N> {
     }
 
     /// Like `add_param`, but the configurator only shows the param while
-    /// `show_if` holds. The controlling param must be an earlier `Enum` or
-    /// `bool` that is not itself conditional.
+    /// `show_if` holds. The controlling param may come before or after it, but
+    /// cannot itself be conditional (no chains).
     pub const fn add_param_if(self, param: Param, show_if: ShowIf) -> Self {
         let source = show_if.param as usize;
-        assert!(source < self.len, "ShowIf must reference an earlier param");
-        assert!(
-            self.show_if[source].is_none(),
-            "ShowIf cannot depend on a conditional param"
-        );
-        match self.params[source] {
-            Param::Enum { variants, .. } => assert!(
-                variants.len() < 32 && show_if.mask >> variants.len() == 0,
-                "ShowIf value out of range for the Enum param"
-            ),
-            Param::bool { .. } => assert!(
-                show_if.mask >> 2 == 0,
-                "ShowIf value out of range for the bool param"
-            ),
-            _ => panic!("ShowIf must reference an Enum or bool param"),
+        assert!(source < N, "ShowIf must reference a param of this Config");
+        assert!(source != self.len, "ShowIf cannot reference its own param");
+        // A later controlling param is checked once it is added (see `push`).
+        if source < self.len {
+            assert!(
+                self.show_if[source].is_none(),
+                "ShowIf cannot depend on a conditional param"
+            );
+            assert!(
+                ShowIf::fits(&self.params[source], show_if.mask),
+                "ShowIf must reference an Enum, bool, MIDI Mode, NRPN, MIDI In or MIDI Out \
+                 param, with values in range"
+            );
         }
         self.push(param, Some(show_if))
     }
@@ -1583,6 +1605,24 @@ impl<const N: usize> Config<N> {
             param.metadata_is_ascii(),
             "Parameter metadata must contain only ASCII characters"
         );
+        // Params added earlier may already point at this one.
+        let mut earlier = 0;
+        while earlier < self.len {
+            if let Some(pointer) = self.show_if[earlier] {
+                if pointer.param as usize == self.len {
+                    assert!(
+                        show_if.is_none(),
+                        "ShowIf cannot depend on a conditional param"
+                    );
+                    assert!(
+                        ShowIf::fits(&param, pointer.mask),
+                        "ShowIf must reference an Enum, bool, MIDI Mode, NRPN, MIDI In or MIDI \
+                         Out param, with values in range"
+                    );
+                }
+            }
+            earlier += 1;
+        }
         self.params[self.len] = param;
         self.show_if[self.len] = show_if;
         let new_len = self.len + 1;
@@ -1896,14 +1936,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ShowIf must reference an earlier param")]
-    fn show_if_rejects_forward_reference() {
-        let _ = Config::<2>::new("Bad", "", Color::Blue, AppIcon::Fader)
-            .add_param_if(Param::bool { name: "A" }, ShowIf::new(1, &[1]));
-    }
-
-    #[test]
-    #[should_panic(expected = "ShowIf value out of range")]
+    #[should_panic(expected = "ShowIf must reference an Enum")]
     fn show_if_rejects_out_of_range_enum_value() {
         let _ = Config::<2>::new("Bad", "", Color::Blue, AppIcon::Fader)
             .add_param(Param::Enum {
@@ -1911,6 +1944,58 @@ mod tests {
                 variants: &["a", "b"],
             })
             .add_param_if(Param::bool { name: "A" }, ShowIf::new(0, &[2]));
+    }
+
+    #[test]
+    fn show_if_allows_a_later_controlling_param() {
+        let config = Config::<2>::new("Fwd", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::MidiCc { name: "CC" }, ShowIf::on(1))
+            .add_param(Param::MidiOut);
+        assert_eq!(config.get_meta().6[0], Some(ShowIf::on(1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf cannot reference its own param")]
+    fn show_if_rejects_self_reference() {
+        let _ = Config::<1>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::bool { name: "A" }, ShowIf::on(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf must reference a param of this Config")]
+    fn show_if_rejects_param_beyond_the_config() {
+        let _ = Config::<1>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::bool { name: "A" }, ShowIf::on(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf must reference an Enum")]
+    fn show_if_rejects_a_later_controlling_param_of_the_wrong_kind() {
+        let _ = Config::<2>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::bool { name: "A" }, ShowIf::on(1))
+            .add_param(Param::i32 {
+                name: "B",
+                min: 0,
+                max: 1,
+            });
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf cannot depend on a conditional param")]
+    fn show_if_rejects_chains_through_a_later_param() {
+        let _ = Config::<3>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::bool { name: "A" }, ShowIf::on(1))
+            .add_param_if(Param::bool { name: "B" }, ShowIf::on(2))
+            .add_param(Param::bool { name: "C" });
+    }
+
+    #[test]
+    fn show_if_accepts_midi_routing_params_as_controllers() {
+        let _ = Config::<4>::new("Midi", "", Color::Blue, AppIcon::Fader)
+            .add_param(Param::MidiOut)
+            .add_param(Param::MidiMode)
+            .add_param_if(Param::MidiCc { name: "CC" }, ShowIf::on(0))
+            .add_param_if(Param::MidiNote { name: "N" }, ShowIf::new(1, &[0]));
     }
 
     #[test]

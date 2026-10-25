@@ -11,7 +11,7 @@ use libfp::{
 };
 use serde::{Deserialize, Serialize};
 
-use libfp::{ext::FromValue, Config, Param, Range, Value};
+use libfp::{ext::FromValue, Config, Param, Range, ShowIf, Value};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
@@ -30,10 +30,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Range",
     variants: &[Range::_0_10V, Range::_Neg5_5V],
 })
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiCc { name: "MIDI CC" })
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(5),
+)
+.add_param_if(Param::MidiCc { name: "MIDI CC" }, ShowIf::on(5))
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -47,7 +50,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiNrpn)
+.add_param_if(Param::MidiNrpn, ShowIf::on(5))
 .add_param(Param::MidiOut);
 
 pub struct Params {

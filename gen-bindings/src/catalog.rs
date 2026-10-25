@@ -234,42 +234,46 @@ fn convert_param(expr: &Expr) -> TsValue {
     }
 }
 
-/// Converts a `ShowIf::new(param, &[values..])` expression into the
-/// `{ param, mask }` shape of `libfp::ShowIf`, mirroring its const constructor.
+/// Converts a `ShowIf::new(param, &[values..])` or `ShowIf::on(param)`
+/// expression into the `{ param, mask }` shape of `libfp::ShowIf`, mirroring
+/// its const constructors.
 fn convert_show_if(expr: &Expr) -> TsValue {
     let Expr::Call(ExprCall { func, args, .. }) = expr else {
-        panic!("add_param_if expects a `ShowIf::new(..)` call: {expr:?}");
+        panic!("add_param_if expects a `ShowIf::new(..)` or `ShowIf::on(..)` call: {expr:?}");
     };
-    assert_eq!(
-        path_last_segment(func).as_deref(),
-        Some("new"),
-        "add_param_if expects a `ShowIf::new(..)` call"
-    );
+    let constructor = path_last_segment(func).unwrap_or_default();
     let mut it = args.iter();
     let param = match it.next() {
         Some(Expr::Lit(ExprLit {
             lit: Lit::Int(i), ..
         })) => i.base10_parse::<u8>().expect("ShowIf param index must be a u8"),
-        _ => panic!("ShowIf::new param index must be an integer literal"),
+        _ => panic!("ShowIf param index must be an integer literal"),
     };
-    let Some(Expr::Reference(ExprReference { expr: values, .. })) = it.next() else {
-        panic!("ShowIf::new values must be a `&[..]` literal");
+    let mask = match constructor.as_str() {
+        "on" => 1 << 1,
+        "new" => {
+            let Some(Expr::Reference(ExprReference { expr: values, .. })) = it.next() else {
+                panic!("ShowIf::new values must be a `&[..]` literal");
+            };
+            let Expr::Array(ExprArray { elems, .. }) = &**values else {
+                panic!("ShowIf::new values must be a `&[..]` literal");
+            };
+            let mut mask = 0u32;
+            for elem in elems {
+                let Expr::Lit(ExprLit {
+                    lit: Lit::Int(i), ..
+                }) = elem
+                else {
+                    panic!("ShowIf::new values must be integer literals");
+                };
+                let value = i.base10_parse::<u8>().expect("ShowIf value must be a u8");
+                assert!(value < 32, "ShowIf value must be below 32");
+                mask |= 1 << value;
+            }
+            mask
+        }
+        other => panic!("unsupported ShowIf constructor `{other}` (use `new` or `on`)"),
     };
-    let Expr::Array(ExprArray { elems, .. }) = &**values else {
-        panic!("ShowIf::new values must be a `&[..]` literal");
-    };
-    let mut mask = 0u32;
-    for elem in elems {
-        let Expr::Lit(ExprLit {
-            lit: Lit::Int(i), ..
-        }) = elem
-        else {
-            panic!("ShowIf::new values must be integer literals");
-        };
-        let value = i.base10_parse::<u8>().expect("ShowIf value must be a u8");
-        assert!(value < 32, "ShowIf value must be below 32");
-        mask |= 1 << value;
-    }
     TsValue::Object(vec![
         ("param".into(), TsValue::Num(param.to_string())),
         ("mask".into(), TsValue::Num(mask.to_string())),
@@ -602,5 +606,18 @@ mod tests {
                 .add_param(Param::bool { name: "X" })
         };
         assert!(extract_config(&expr, "test.rs").show_if.is_empty());
+    }
+
+    #[test]
+    fn extract_config_understands_show_if_on() {
+        let expr: Expr = parse_quote! {
+            Config::new("A", "", Color::Cyan, AppIcon::Fader)
+                .add_param_if(Param::MidiCc { name: "CC" }, ShowIf::on(1))
+                .add_param(Param::MidiOut)
+        };
+        let config = extract_config(&expr, "test.rs");
+        let mut out = String::new();
+        config.show_if[0].render(&mut out, 0);
+        assert!(out.contains("param: 1") && out.contains("mask: 2"), "{out}");
     }
 }
