@@ -14,7 +14,7 @@ use libfp::{
 
 use serde::{Deserialize, Serialize};
 
-use libfp::{Config, Curve, Param, Range, Value};
+use libfp::{Config, Curve, Param, Range, ShowIf, Value};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
@@ -35,11 +35,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Range",
     variants: &[Range::_0_10V, Range::_0_5V, Range::_Neg5_5V],
 })
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiCc { name: "MIDI CC 1" })
-.add_param(Param::MidiCc { name: "MIDI CC 2" })
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(9),
+)
+.add_param_if(Param::MidiCc { name: "MIDI CC 1" }, ShowIf::on(9))
+.add_param_if(Param::MidiCc { name: "MIDI CC 2" }, ShowIf::on(9))
 .add_param(Param::bool {
     name: "Mute on release",
 })
@@ -59,7 +62,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 .add_param(Param::bool {
     name: "Store state",
 })
-.add_param(Param::MidiNrpn)
+.add_param_if(Param::MidiNrpn, ShowIf::on(9))
 .add_param(Param::MidiOut);
 
 pub struct Params {

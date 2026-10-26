@@ -62,7 +62,18 @@ pub const CALIBRATION_SCALE_FACTOR: i64 = 1 << 16;
 pub const CALIBRATION_VERSION_LATEST: u8 = 2;
 pub const CALIB_FILE_MAGIC: [u8; 4] = *b"FPBC";
 
-pub type ConfigMeta<'a> = (usize, &'a str, &'a str, Color, AppIcon, &'a [Param]);
+/// App metadata sent to the configurator: param count, name, description,
+/// color, icon, params, and per-param visibility conditions (empty when no
+/// param is conditional, otherwise one entry per param).
+pub type ConfigMeta<'a> = (
+    usize,
+    &'a str,
+    &'a str,
+    Color,
+    AppIcon,
+    &'a [Param],
+    &'a [Option<ShowIf>],
+);
 
 /// The config layout is a layout with all the apps in the appropriate spots
 // (app_id, channels, layout_id)
@@ -1098,6 +1109,55 @@ pub enum AppIcon {
     Sift,
 }
 
+/// Display condition for a param: shown in the configurator only while the
+/// controlling param at index `param` holds one of the listed values. Purely a
+/// UI hint — a hidden param still exists, keeps its stored value and is saved
+/// like any other.
+///
+/// The controlling param's value is read as a number:
+/// - `Enum`: the variant index.
+/// - `bool` and `MidiNrpn`: 0 for off, 1 for on.
+/// - `MidiMode`: 0 for `Note`, 1 for `Cc`.
+/// - `MidiOut` and `MidiIn`: 0 when no port is enabled, 1 when any is.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, PostcardBindings)]
+pub struct ShowIf {
+    /// Index of the controlling param. It cannot itself be conditional.
+    pub param: u8,
+    /// Bit `n` set = shown while the controlling param's value is `n`.
+    pub mask: u32,
+}
+
+impl ShowIf {
+    pub const fn new(param: u8, values: &[u8]) -> Self {
+        let mut mask = 0u32;
+        let mut index = 0;
+        while index < values.len() {
+            assert!(values[index] < 32, "ShowIf value must be below 32");
+            mask |= 1 << values[index];
+            index += 1;
+        }
+        ShowIf { param, mask }
+    }
+
+    /// Shown while the controlling param is on (value 1, see above).
+    pub const fn on(param: u8) -> Self {
+        Self::new(param, &[1])
+    }
+
+    /// Whether `mask` only names values the `source` param can take.
+    const fn fits(source: &Param, mask: u32) -> bool {
+        match source {
+            Param::Enum { variants, .. } => variants.len() < 32 && mask >> variants.len() == 0,
+            Param::bool { .. }
+            | Param::MidiNrpn
+            | Param::MidiMode
+            | Param::MidiOut
+            | Param::MidiIn => mask >> 2 == 0,
+            _ => false,
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Serialize, PostcardBindings)]
 pub enum Param {
@@ -1481,6 +1541,7 @@ pub struct Config<const N: usize> {
     name: &'static str,
     description: &'static str,
     params: [Param; N],
+    show_if: [Option<ShowIf>; N],
     color: Color,
     icon: AppIcon,
 }
@@ -1509,15 +1570,61 @@ impl<const N: usize> Config<N> {
             len: 0,
             name,
             params: [const { Param::None }; N],
+            show_if: [const { None }; N],
         }
     }
 
-    pub const fn add_param(mut self, param: Param) -> Self {
+    pub const fn add_param(self, param: Param) -> Self {
+        self.push(param, None)
+    }
+
+    /// Like `add_param`, but the configurator only shows the param while
+    /// `show_if` holds. The controlling param may come before or after it, but
+    /// cannot itself be conditional (no chains).
+    pub const fn add_param_if(self, param: Param, show_if: ShowIf) -> Self {
+        let source = show_if.param as usize;
+        assert!(source < N, "ShowIf must reference a param of this Config");
+        assert!(source != self.len, "ShowIf cannot reference its own param");
+        // A later controlling param is checked once it is added (see `push`).
+        if source < self.len {
+            assert!(
+                self.show_if[source].is_none(),
+                "ShowIf cannot depend on a conditional param"
+            );
+            assert!(
+                ShowIf::fits(&self.params[source], show_if.mask),
+                "ShowIf must reference an Enum, bool, MIDI Mode, NRPN, MIDI In or MIDI Out \
+                 param, with values in range"
+            );
+        }
+        self.push(param, Some(show_if))
+    }
+
+    const fn push(mut self, param: Param, show_if: Option<ShowIf>) -> Self {
         assert!(
             param.metadata_is_ascii(),
             "Parameter metadata must contain only ASCII characters"
         );
+        // Params added earlier may already point at this one.
+        let mut earlier = 0;
+        while earlier < self.len {
+            if let Some(pointer) = self.show_if[earlier] {
+                if pointer.param as usize == self.len {
+                    assert!(
+                        show_if.is_none(),
+                        "ShowIf cannot depend on a conditional param"
+                    );
+                    assert!(
+                        ShowIf::fits(&param, pointer.mask),
+                        "ShowIf must reference an Enum, bool, MIDI Mode, NRPN, MIDI In or MIDI \
+                         Out param, with values in range"
+                    );
+                }
+            }
+            earlier += 1;
+        }
         self.params[self.len] = param;
+        self.show_if[self.len] = show_if;
         let new_len = self.len + 1;
         Config {
             color: self.color,
@@ -1526,10 +1633,17 @@ impl<const N: usize> Config<N> {
             len: new_len,
             name: self.name,
             params: self.params,
+            show_if: self.show_if,
         }
     }
 
     pub fn get_meta(&self) -> ConfigMeta<'_> {
+        // Most apps have no conditional params; skip the per-param entries.
+        let show_if: &[Option<ShowIf>] = if self.show_if.iter().any(Option::is_some) {
+            &self.show_if
+        } else {
+            &[]
+        };
         (
             N,
             self.name,
@@ -1537,6 +1651,7 @@ impl<const N: usize> Config<N> {
             self.color,
             self.icon,
             &self.params,
+            show_if,
         )
     }
 }
@@ -1786,6 +1901,111 @@ impl MidiOut {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn show_if_builds_a_mask_from_values() {
+        assert_eq!(
+            ShowIf::new(0, &[5]),
+            ShowIf {
+                param: 0,
+                mask: 1 << 5
+            }
+        );
+        assert_eq!(ShowIf::new(2, &[0, 3]).mask, 0b1001);
+    }
+
+    #[test]
+    fn get_meta_omits_show_if_unless_a_param_is_conditional() {
+        let plain = Config::<2>::new("Plain", "", Color::Blue, AppIcon::Fader)
+            .add_param(Param::bool { name: "A" })
+            .add_param(Param::bool { name: "B" });
+        assert!(plain.get_meta().6.is_empty());
+
+        let conditional = Config::<2>::new("Cond", "", Color::Blue, AppIcon::Fader)
+            .add_param(Param::bool { name: "A" })
+            .add_param_if(Param::bool { name: "B" }, ShowIf::new(0, &[1]));
+        assert_eq!(
+            conditional.get_meta().6,
+            &[
+                None,
+                Some(ShowIf {
+                    param: 0,
+                    mask: 0b10
+                })
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf must reference an Enum")]
+    fn show_if_rejects_out_of_range_enum_value() {
+        let _ = Config::<2>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param(Param::Enum {
+                name: "M",
+                variants: &["a", "b"],
+            })
+            .add_param_if(Param::bool { name: "A" }, ShowIf::new(0, &[2]));
+    }
+
+    #[test]
+    fn show_if_allows_a_later_controlling_param() {
+        let config = Config::<2>::new("Fwd", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::MidiCc { name: "CC" }, ShowIf::on(1))
+            .add_param(Param::MidiOut);
+        assert_eq!(config.get_meta().6[0], Some(ShowIf::on(1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf cannot reference its own param")]
+    fn show_if_rejects_self_reference() {
+        let _ = Config::<1>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::bool { name: "A" }, ShowIf::on(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf must reference a param of this Config")]
+    fn show_if_rejects_param_beyond_the_config() {
+        let _ = Config::<1>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::bool { name: "A" }, ShowIf::on(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf must reference an Enum")]
+    fn show_if_rejects_a_later_controlling_param_of_the_wrong_kind() {
+        let _ = Config::<2>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::bool { name: "A" }, ShowIf::on(1))
+            .add_param(Param::i32 {
+                name: "B",
+                min: 0,
+                max: 1,
+            });
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf cannot depend on a conditional param")]
+    fn show_if_rejects_chains_through_a_later_param() {
+        let _ = Config::<3>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param_if(Param::bool { name: "A" }, ShowIf::on(1))
+            .add_param_if(Param::bool { name: "B" }, ShowIf::on(2))
+            .add_param(Param::bool { name: "C" });
+    }
+
+    #[test]
+    fn show_if_accepts_midi_routing_params_as_controllers() {
+        let _ = Config::<4>::new("Midi", "", Color::Blue, AppIcon::Fader)
+            .add_param(Param::MidiOut)
+            .add_param(Param::MidiMode)
+            .add_param_if(Param::MidiCc { name: "CC" }, ShowIf::on(0))
+            .add_param_if(Param::MidiNote { name: "N" }, ShowIf::new(1, &[0]));
+    }
+
+    #[test]
+    #[should_panic(expected = "ShowIf cannot depend on a conditional param")]
+    fn show_if_rejects_chains() {
+        let _ = Config::<3>::new("Bad", "", Color::Blue, AppIcon::Fader)
+            .add_param(Param::bool { name: "A" })
+            .add_param_if(Param::bool { name: "B" }, ShowIf::new(0, &[1]))
+            .add_param_if(Param::bool { name: "C" }, ShowIf::new(1, &[1]));
+    }
 
     /// The custom V/Oct fallback must be identical for a built-in app and an
     /// installed one.

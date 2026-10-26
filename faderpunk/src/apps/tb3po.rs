@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, utils::apply_slide, AppIcon, Brightness, ClockDivision,
-    Color, Config, Curve, MidiChannel, MidiNote, MidiOut, Param, Range, Value, VoltPerOct,
+    Color, Config, Curve, MidiChannel, MidiNote, MidiOut, Param, Range, ShowIf, Value, VoltPerOct,
     APP_MAX_PARAMS,
 };
 
@@ -35,9 +35,12 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Orange,
     AppIcon::SoftRandom,
 )
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(1),
+)
 .add_param(Param::MidiOut)
 .add_param(Param::Color {
     name: "Color",

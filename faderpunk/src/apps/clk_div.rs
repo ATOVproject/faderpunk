@@ -11,7 +11,7 @@ use libfp::{
     latch::LatchLayer,
     utils::{rescale_12bit_int, resolution_for_mode, value_to_resolution},
     AppIcon, Brightness, ClockDivision, Color, Config, MidiChannel, MidiNote, MidiOut, Param,
-    Value, APP_MAX_PARAMS,
+    ShowIf, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -29,10 +29,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Orange,
     AppIcon::NoteBox,
 )
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiNote { name: "MIDI Note" })
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(5),
+)
+.add_param_if(Param::MidiNote { name: "MIDI Note" }, ShowIf::on(5))
 .add_param(Param::i32 {
     name: "GATE %",
     min: 1,

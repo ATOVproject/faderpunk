@@ -170,6 +170,7 @@ export const InstalledApps = () => {
             color: selection.app.appConfig?.color ?? "White",
             icon: selection.app.appConfig?.icon ?? "Fader",
             params: selection.app.appConfig?.params ?? [],
+            showIf: selection.app.appConfig?.showIf,
           }),
         );
         setSlots((current) =>

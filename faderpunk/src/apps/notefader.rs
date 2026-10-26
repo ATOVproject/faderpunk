@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, AppIcon, Brightness, ClockDivision, Color, Config,
-    MidiChannel, MidiNote, MidiOut, Param, Range, Value, VoltPerOct, APP_MAX_PARAMS,
+    MidiChannel, MidiNote, MidiOut, Param, Range, ShowIf, Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -28,10 +28,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Rose,
     AppIcon::Note,
 )
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiNote { name: "Base note" })
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(6),
+)
+.add_param_if(Param::MidiNote { name: "Base note" }, ShowIf::on(6))
 .add_param(Param::i32 {
     name: "Span",
     min: 1,

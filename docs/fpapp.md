@@ -454,6 +454,18 @@ Configurator's built-in `ManualAppData`, with Markdown strings in place of
 React nodes. Older development packages containing plain Markdown remain
 readable through a compatibility fallback.
 
+An app can show a parameter only while another is in a given state by
+declaring it with `add_param_if` in its `CONFIG`, exactly as built-in apps do.
+The builder then adds an optional `showIf` list to the document's `app` object,
+parallel to `params`: one entry per parameter, `null` when it is always shown,
+otherwise `{ "param": <index of the controlling param>, "mask": <bit n set =
+shown while its value is n> }`. This is a display hint for the Configurator
+only: firmware stores the Settings section as opaque text, a hidden parameter
+keeps its value and is saved like any other, and no ABI change is involved. The
+key is omitted for apps with no conditional parameters, so existing apps and
+packages are unchanged, and a Configurator that does not know `showIf` simply
+shows every parameter. A malformed `showIf` is ignored as a whole.
+
 The Settings document describes parameter controls, not their current or
 default values. This matches built-in apps: defaults remain in the app's Rust
 `ParamStore` constructor, which the community source transformation preserves

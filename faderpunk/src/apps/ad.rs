@@ -12,7 +12,7 @@ use libfp::{
     latch::LatchLayer,
     utils::{attenuate, midi_gate},
     AppIcon, Brightness, Color, Config, Curve, MidiCc, MidiChannel, MidiIn, MidiOut, Param, Range,
-    Value, APP_MAX_PARAMS,
+    ShowIf, Value, APP_MAX_PARAMS,
 };
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
@@ -27,18 +27,24 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     AppIcon::AdEnv,
 )
 .add_param(Param::MidiIn)
-.add_param(Param::MidiChannel {
-    name: "MIDI In Channel",
-})
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI In Channel",
+    },
+    ShowIf::on(0),
+)
 .add_param(Param::bool {
     name: "MIDI retrigger",
 })
 .add_param(Param::MidiOut)
-.add_param(Param::MidiCc { name: "MIDI CC" })
-.add_param(Param::MidiNrpn)
-.add_param(Param::MidiChannel {
-    name: "MIDI Out Channel",
-});
+.add_param_if(Param::MidiCc { name: "MIDI CC" }, ShowIf::on(3))
+.add_param_if(Param::MidiNrpn, ShowIf::on(3))
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Out Channel",
+    },
+    ShowIf::on(3),
+);
 
 pub struct Params {
     midi_in: MidiIn,

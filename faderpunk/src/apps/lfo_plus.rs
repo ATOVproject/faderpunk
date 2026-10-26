@@ -11,7 +11,7 @@ use libfp::{
     latch::LatchLayer,
     utils::{attenuate, attenuate_bipolar, midi_gate, split_unsigned_value},
     AppIcon, Brightness, ClockDivision, Color, Config, Curve, MidiCc, MidiChannel, MidiOut, Param,
-    Range, Value, Waveform, APP_MAX_PARAMS,
+    Range, ShowIf, Value, Waveform, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -35,10 +35,13 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Range",
     variants: &[Range::_0_10V, Range::_Neg5_5V],
 })
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiCc { name: "MIDI CC" })
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(6),
+)
+.add_param_if(Param::MidiCc { name: "MIDI CC" }, ShowIf::on(6))
 .add_param(Param::Color {
     name: "Color",
     variants: &[
@@ -52,7 +55,7 @@ pub static CONFIG: Config<PARAMS> = Config::new(
         Color::Yellow,
     ],
 })
-.add_param(Param::MidiNrpn)
+.add_param_if(Param::MidiNrpn, ShowIf::on(6))
 .add_param(Param::MidiOut)
 .add_param(Param::bool { name: "Grid Lock" });
 

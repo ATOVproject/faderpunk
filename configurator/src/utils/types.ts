@@ -3,6 +3,7 @@ import type {
   ConfigMsgOut,
   Color,
   Param,
+  ShowIf,
   Value,
   GlobalConfig,
 } from "@atov/fp-config";
@@ -16,6 +17,8 @@ export interface App {
   icon: AppIcon["tag"];
   paramCount: bigint;
   params: Param[];
+  /** Per-param display conditions; absent when no param is conditional. */
+  showIf?: (ShowIf | undefined)[];
 }
 
 export type AllApps = Map<number, App>;

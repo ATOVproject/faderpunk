@@ -10,7 +10,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;
 use libfp::{
     ext::FromValue, latch::LatchLayer, utils::euclidean_at, AppIcon, Brightness, ClockDivision,
-    Color, Config, MidiChannel, MidiNote, MidiOut, Param, Value, APP_MAX_PARAMS,
+    Color, Config, MidiChannel, MidiNote, MidiOut, Param, ShowIf, Value, APP_MAX_PARAMS,
 };
 use serde::{Deserialize, Serialize};
 
@@ -29,15 +29,24 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Orange,
     AppIcon::Euclid,
 )
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiNote {
-    name: "MIDI Note 1",
-})
-.add_param(Param::MidiNote {
-    name: "MIDI NOTE 2",
-})
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(5),
+)
+.add_param_if(
+    Param::MidiNote {
+        name: "MIDI Note 1",
+    },
+    ShowIf::on(5),
+)
+.add_param_if(
+    Param::MidiNote {
+        name: "MIDI NOTE 2",
+    },
+    ShowIf::on(5),
+)
 .add_param(Param::i32 {
     name: "GATE %",
     min: 1,

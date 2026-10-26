@@ -15,7 +15,7 @@ use libfp::{
 };
 use serde::{Deserialize, Serialize};
 
-use libfp::{Config, Curve, Param, Range, Value};
+use libfp::{Config, Curve, Param, Range, ShowIf, Value};
 
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
@@ -36,13 +36,19 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Range",
     variants: &[Range::_0_10V, Range::_Neg5_5V],
 })
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel",
-})
-.add_param(Param::MidiCc { name: "MIDI CC" })
-.add_param(Param::bool {
-    name: "Mute on release",
-})
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel",
+    },
+    ShowIf::on(12),
+)
+.add_param_if(Param::MidiCc { name: "MIDI CC" }, ShowIf::on(12))
+.add_param_if(
+    Param::bool {
+        name: "Mute on release",
+    },
+    ShowIf::new(8, &[0, 1, 4]),
+)
 .add_param(Param::bool { name: "Invert" })
 .add_param(Param::Color {
     name: "Color",
@@ -64,11 +70,14 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     name: "Button mode",
     variants: &["Mute", "CC toggle", "CC momentary", "Program Change", "Invert toggle", "Invert momentary"],
 })
-.add_param(Param::MidiChannel {
-    name: "Button Channel",
-})
-.add_param(Param::MidiCc { name: "Button CC / PC" })
-.add_param(Param::MidiNrpn)
+.add_param_if(
+    Param::MidiChannel {
+        name: "Button Channel",
+    },
+    ShowIf::new(8, &[1, 2, 3, 4, 5]),
+)
+.add_param_if(Param::MidiCc { name: "Button CC / PC" }, ShowIf::new(8, &[1, 2, 3, 4, 5]))
+.add_param_if(Param::MidiNrpn, ShowIf::on(12))
 .add_param(Param::MidiOut);
 
 pub struct Params {

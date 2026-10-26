@@ -49,6 +49,7 @@ fn main() {
             libfp::QuantizerConfig,
             libfp::Range,
             libfp::ResetSrc,
+            libfp::ShowIf,
             libfp::TakeoverMode,
             libfp::Value,
             libfp::VoltPerOct,

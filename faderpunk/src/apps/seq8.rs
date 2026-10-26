@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use libfp::{
     ext::FromValue, latch::LatchLayer, utils::fader_to_slide_coeff, AppIcon, Brightness,
-    ClockDivision, Color, Config, MidiChannel, MidiIn, MidiNote, MidiOut, Param, Range, Value,
-    VoltPerOct, APP_MAX_PARAMS,
+    ClockDivision, Color, Config, MidiChannel, MidiIn, MidiNote, MidiOut, Param, Range, ShowIf,
+    Value, VoltPerOct, APP_MAX_PARAMS,
 };
 
 use crate::app::{
@@ -28,26 +28,38 @@ pub static CONFIG: Config<PARAMS> = Config::new(
     Color::Yellow,
     AppIcon::Sequence,
 )
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel 1",
-})
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel 2",
-})
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel 3",
-})
-.add_param(Param::MidiChannel {
-    name: "MIDI Channel 4",
-})
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel 1",
+    },
+    ShowIf::on(4),
+)
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel 2",
+    },
+    ShowIf::on(4),
+)
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel 3",
+    },
+    ShowIf::on(4),
+)
+.add_param_if(
+    Param::MidiChannel {
+        name: "MIDI Channel 4",
+    },
+    ShowIf::on(4),
+)
 .add_param(Param::MidiOut)
 .add_param(Param::bool { name: "Track 2: velocity lane" })
 .add_param(Param::bool { name: "Track 4: velocity lane" })
 .add_param(Param::MidiIn)
-.add_param(Param::MidiChannel { name: "Track 1: transpose CH" })
-.add_param(Param::MidiChannel { name: "Track 2: transpose CH" })
-.add_param(Param::MidiChannel { name: "Track 3: transpose CH" })
-.add_param(Param::MidiChannel { name: "Track 4: transpose CH" })
+.add_param_if(Param::MidiChannel { name: "Track 1: transpose CH" }, ShowIf::on(7))
+.add_param_if(Param::MidiChannel { name: "Track 2: transpose CH" }, ShowIf::on(7))
+.add_param_if(Param::MidiChannel { name: "Track 3: transpose CH" }, ShowIf::on(7))
+.add_param_if(Param::MidiChannel { name: "Track 4: transpose CH" }, ShowIf::on(7))
 .add_param(Param::VoltPerOct)
 .add_param(Param::bool { name: "Bypass quantizer" });
 
