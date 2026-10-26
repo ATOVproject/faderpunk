@@ -57,6 +57,10 @@ export const Configurator = () => (
         <strong>Settings Tab</strong> – Modify global configurations of the
         Faderpunk device.
       </li>
+      <li>
+        <strong>Community Tab</strong> – Browse the community app catalogue, and
+        find out how to submit your own app or report a bug.
+      </li>
     </List>
 
     <H3 id="device-tab">Device Tab</H3>
@@ -174,9 +178,9 @@ export const Configurator = () => (
 
     <H4 id="installed-apps-tab">Installed Apps</H4>
     <p>
-      Below the app list, the <strong>Installed Apps</strong> section lets you
-      add community-made apps to your Faderpunk without reflashing firmware.
-      There are eight independent slots; each shows <strong>Empty</strong>,{" "}
+      The <strong>Installed Apps</strong> section lets you add community-made
+      apps to your Faderpunk without reflashing firmware. There are eight
+      independent slots; each shows <strong>Empty</strong>,{" "}
       <strong>Installed</strong>, or <strong>Stopped</strong>.
     </p>
     <p>
@@ -193,8 +197,9 @@ export const Configurator = () => (
     </List>
     <p>
       Check <strong>"I trust this app and its source"</strong> to enable{" "}
-      <strong>Install</strong>. Once installed, the app appears in the Available
-      Apps List above and can be added to your layout like any official app.
+      <strong>Install</strong>. Once installed, the app appears under{" "}
+      <strong>Community Apps</strong> in the Available Apps List above and can
+      be added to your layout like any official app.
     </p>
     <p>
       Clicking <strong>Remove</strong> asks for confirmation, since it also
@@ -577,6 +582,30 @@ export const Configurator = () => (
       Click <strong>Load</strong> to apply the setup, or <strong>Cancel</strong>{" "}
       to abort. Make sure to save your current setup first if you want to
       preserve it.
+    </p>
+
+    <H3 id="community-tab">Community Tab</H3>
+    <p>
+      The Community tab is home to apps made by Faderpunk players and
+      developers. These are unofficial and unmaintained by ATOV. It has notes on
+      how to submit your own app and where to report bugs or give feedback,
+      then:
+    </p>
+
+    <H4>Community Manual</H4>
+    <p>
+      A catalogue of every community app, with each app's manual and
+      downloadable <code>.fpapp</code> file, and links to community-built tools.
+      Apps you've installed are installed from the{" "}
+      <a className="underline" href="#installed-apps-tab">
+        Installed Apps
+      </a>{" "}
+      section of the Apps tab; under each one, <strong>Read manual</strong>{" "}
+      opens its manual in the Manual tab, in the{" "}
+      <a className="underline" href="#installed-community-apps">
+        Installed Community Apps
+      </a>{" "}
+      section.
     </p>
   </>
 );
