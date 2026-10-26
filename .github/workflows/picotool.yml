@@ -3,15 +3,14 @@ name: Build picotool
 on:
   workflow_dispatch:  # Allows for manual triggering
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout your repository code
-      - name: Checkout code
-        uses: actions/checkout@v7
-
       # Install dependencies for building picotool and pico-sdk
       - name: Install dependencies
         run: |
@@ -21,12 +20,12 @@ jobs:
       # Clone pico-sdk repository
       - name: Clone pico-sdk repository
         run: |
-          git clone --branch master https://github.com/raspberrypi/pico-sdk.git
+          git clone --branch 2.3.1 https://github.com/raspberrypi/pico-sdk.git
 
       # Clone picotool repository
       - name: Clone picotool repository
         run: |
-          git clone --branch master https://github.com/raspberrypi/picotool.git
+          git clone --branch 2.3.1 https://github.com/raspberrypi/picotool.git
 
       # Initialize pico-sdk submodules (for the mbedtls library)
       - name: Initialize pico-sdk submodules

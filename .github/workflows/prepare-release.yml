@@ -19,7 +19,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: nightly
       - name: Setup Node.js
@@ -27,13 +27,13 @@ jobs:
         with:
           node-version: '22'
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          version: latest
+          package_json_file: configurator/package.json
       - name: Install dependencies (configurator)
         run: pnpm install --frozen-lockfile
         working-directory: ./configurator
-      - uses: knope-dev/action@v2.1.2
+      - uses: knope-dev/action@19617851f9f13ab2f27a05989c55efb18aca3675 # v2.1.2
         with:
           version: 0.22.2
       - run: knope prepare-release --verbose
