@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
           components: rustfmt clippy
@@ -47,11 +47,11 @@ jobs:
         with:
           node-version: '22'
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          version: latest
+          package_json_file: configurator/package.json
       - name: Setup rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: nightly
       - name: Install dependencies (configurator)
@@ -76,9 +76,9 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get clean && sudo apt-get update
           sudo apt-get install -y libudev-dev
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
           targets: thumbv8m.main-none-eabihf
-      - run: cargo install flip-link
+      - run: cargo install flip-link --locked --version 0.1.12
       - run: cargo build --bin faderpunk --release --target thumbv8m.main-none-eabihf
