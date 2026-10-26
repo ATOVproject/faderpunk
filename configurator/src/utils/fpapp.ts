@@ -6,6 +6,7 @@ import type {
   FpAppStatus,
   FixedLengthArray,
   Param,
+  ShowIf,
 } from "@atov/fp-config";
 import { serialize } from "@atov/fp-config";
 
@@ -118,8 +119,11 @@ export interface ParsedFpApp {
   settings?: string;
   signed: boolean;
   nativeImageBytes: number;
-  appConfig?: Pick<App, "color" | "icon" | "params">;
+  appConfig?: FpAppConfig;
 }
+
+/** The parts of an app definition an installed app's Settings document carries. */
+export type FpAppConfig = Pick<App, "color" | "icon" | "params" | "showIf">;
 
 export interface CachedFpAppManual {
   appId: number;
@@ -504,13 +508,16 @@ function isCachedFpAppManual(value: unknown): value is CachedFpAppManual {
   );
 }
 
-function parseAppConfig(
-  contents: string,
-): Pick<App, "color" | "icon" | "params"> | undefined {
+function parseAppConfig(contents: string): FpAppConfig | undefined {
   try {
     const parsed = JSON.parse(contents) as {
       format?: string;
-      app?: { color?: unknown; icon?: unknown; params?: unknown };
+      app?: {
+        color?: unknown;
+        icon?: unknown;
+        params?: unknown;
+        showIf?: unknown;
+      };
     };
     if (
       parsed.format !== "faderpunk-app-config-v1" ||
@@ -524,10 +531,50 @@ function parseAppConfig(
     ) {
       return undefined;
     }
-    return parsed.app as Pick<App, "color" | "icon" | "params">;
+    return {
+      color: parsed.app.color as Color["tag"],
+      icon: parsed.app.icon as AppIcon["tag"],
+      params: parsed.app.params as Param[],
+      showIf: parseShowIf(parsed.app.showIf, parsed.app.params.length),
+    };
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Optional per-param display conditions (see `ShowIf` in libfp). Packages
+ * built before conditional params have none, and every param is shown. A
+ * malformed list is ignored as a whole, so a bad hint never hides a param or
+ * invalidates an app that is otherwise fine.
+ */
+function parseShowIf(
+  value: unknown,
+  paramCount: number,
+): (ShowIf | undefined)[] | undefined {
+  if (!Array.isArray(value) || value.length !== paramCount) {
+    return undefined;
+  }
+  const showIf: (ShowIf | undefined)[] = [];
+  for (const entry of value) {
+    if (entry === null || entry === undefined) {
+      showIf.push(undefined);
+      continue;
+    }
+    const { param, mask } = entry as { param?: unknown; mask?: unknown };
+    if (
+      !Number.isInteger(param) ||
+      (param as number) < 0 ||
+      (param as number) >= paramCount ||
+      !Number.isInteger(mask) ||
+      (mask as number) < 0 ||
+      (mask as number) > 0xffffffff
+    ) {
+      return undefined;
+    }
+    showIf.push({ param: param as number, mask: mask as number });
+  }
+  return showIf.some(Boolean) ? showIf : undefined;
 }
 
 function isParam(value: unknown): value is Param {

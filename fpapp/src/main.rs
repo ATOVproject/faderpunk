@@ -322,7 +322,7 @@ fn build_community_entry(
     let metadata_root = app_root.join("metadata");
     let native_root = app_root.join("native");
     write_metadata_crate(&metadata_root, &transformed, sdk, libfp)?;
-    let params = run_metadata_helper(&metadata_root, cargo_target_dir)?;
+    let meta = parse_helper_output(run_metadata_helper(&metadata_root, cargo_target_dir)?)?;
     write_native_crate(&native_root, &transformed, sdk, libfp)?;
     build_native_crate(&native_root, linker, cargo_target_dir)?;
 
@@ -333,14 +333,7 @@ fn build_community_entry(
         .map_err(|error| format!("could not write {}: {error}", manual_path.display()))?;
     fs::write(&setup_path, render_setup(manual)?)
         .map_err(|error| format!("could not write {}: {error}", setup_path.display()))?;
-    let settings = json!({
-        "format": "faderpunk-app-config-v1",
-        "app": {
-            "color": color_name,
-            "icon": icon_pascal(icon_name),
-            "params": params,
-        }
-    });
+    let settings = settings_document(color_name, &icon_pascal(icon_name), &meta);
     fs::write(
         &settings_path,
         serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?,
@@ -370,14 +363,7 @@ fn build_community_entry(
         ),
         ("color".into(), color_hex(color_name)?.into()),
         ("icon".into(), icon_id(icon_name)?.to_string()),
-        (
-            "parameter-count".into(),
-            params
-                .as_array()
-                .ok_or("community metadata helper did not return a parameter array")?
-                .len()
-                .to_string(),
-        ),
+        ("parameter-count".into(), meta.params.len().to_string()),
         ("manual".into(), manual_path.display().to_string()),
         ("setup".into(), setup_path.display().to_string()),
         ("settings".into(), settings_path.display().to_string()),
@@ -523,6 +509,62 @@ fn compiler_error_summary(stderr: &[u8]) -> String {
     } else {
         lines.join("\n")
     }
+}
+
+/// What the metadata helper reports about an app's `CONFIG`.
+struct HelperMeta {
+    params: Vec<JsonValue>,
+    /// One display condition (or `null`) per param. Absent for apps without
+    /// conditional params.
+    show_if: Option<Vec<JsonValue>>,
+}
+
+/// Reads the helper's output: an object with `params` and an optional `showIf`,
+/// or the bare params array that earlier helpers printed.
+fn parse_helper_output(output: JsonValue) -> Result<HelperMeta, String> {
+    let (params, show_if) = match output {
+        JsonValue::Array(params) => (params, None),
+        JsonValue::Object(mut object) => {
+            let params = match object.remove("params") {
+                Some(JsonValue::Array(params)) => params,
+                _ => {
+                    return Err("community metadata helper did not return a parameter array".into());
+                }
+            };
+            let show_if = match object.remove("showIf") {
+                None | Some(JsonValue::Null) => None,
+                Some(JsonValue::Array(show_if)) => Some(show_if),
+                Some(_) => return Err("community metadata helper returned invalid showIf".into()),
+            };
+            (params, show_if)
+        }
+        _ => return Err("community metadata helper did not return a parameter array".into()),
+    };
+    if show_if
+        .as_ref()
+        .is_some_and(|show_if| show_if.len() != params.len())
+    {
+        return Err(
+            "community metadata helper returned a showIf list that does not match its params"
+                .into(),
+        );
+    }
+    Ok(HelperMeta { params, show_if })
+}
+
+/// The `faderpunk-app-config-v1` document the Configurator reads. `showIf` is
+/// an optional addition: documents without it (every app that predates
+/// conditional params) keep their exact previous shape and show every param.
+fn settings_document(color: &str, icon: &str, meta: &HelperMeta) -> JsonValue {
+    let mut app = json!({
+        "color": color,
+        "icon": icon,
+        "params": meta.params,
+    });
+    if let Some(show_if) = &meta.show_if {
+        app["showIf"] = JsonValue::Array(show_if.clone());
+    }
+    json!({ "format": "faderpunk-app-config-v1", "app": app })
 }
 
 fn run_metadata_helper(root: &Path, cargo_target_dir: &Path) -> Result<JsonValue, String> {
@@ -833,7 +875,21 @@ fn main() {
         std::process::exit(1);
     }
     let params: Vec<Value> = meta.5.iter().map(param).collect();
-    println!("{}", serde_json::to_string(&params).unwrap());
+    let mut output = json!({ "params": params });
+    // Only apps that use `add_param_if` carry display conditions; leaving the
+    // key out keeps every other app's settings document unchanged.
+    if meta.6.iter().any(Option::is_some) {
+        let show_if: Vec<Value> = meta
+            .6
+            .iter()
+            .map(|show_if| match show_if {
+                Some(show_if) => json!({ "param": show_if.param, "mask": show_if.mask }),
+                None => Value::Null,
+            })
+            .collect();
+        output["showIf"] = Value::Array(show_if);
+    }
+    println!("{}", serde_json::to_string(&output).unwrap());
 }
 "#;
 
@@ -1247,6 +1303,43 @@ mod tests {
         let symbols = "00000000 T fpapp_init\n00000060 T fpapp_poll\n00000094 T fpapp_drop\n000000da T fpapp_required_bytes\n";
         assert_eq!(symbol_offset(symbols, "fpapp_init"), Ok(0));
         assert_eq!(symbol_offset(symbols, "fpapp_required_bytes"), Ok(0xda));
+    }
+
+    #[test]
+    fn settings_without_conditions_keep_their_previous_shape() {
+        // An older helper printed a bare params array; a newer one prints an
+        // object but leaves `showIf` out when no param is conditional. Both
+        // must yield exactly the document older tooling produced.
+        let params = json!([{ "tag": "bool", "value": { "name": "A" } }]);
+        let expected = json!({
+            "format": "faderpunk-app-config-v1",
+            "app": { "color": "Blue", "icon": "Fader", "params": params },
+        });
+        for output in [params.clone(), json!({ "params": params })] {
+            let meta = parse_helper_output(output).unwrap();
+            assert_eq!(settings_document("Blue", "Fader", &meta), expected);
+        }
+    }
+
+    #[test]
+    fn settings_carry_conditions_when_the_app_declares_them() {
+        let output = json!({
+            "params": [{ "tag": "MidiOut" }, { "tag": "MidiCc", "value": { "name": "CC" } }],
+            "showIf": [null, { "param": 0, "mask": 2 }],
+        });
+        let meta = parse_helper_output(output).unwrap();
+        let settings = settings_document("Blue", "Fader", &meta);
+        assert_eq!(
+            settings["app"]["showIf"],
+            json!([null, { "param": 0, "mask": 2 }])
+        );
+    }
+
+    #[test]
+    fn helper_output_with_mismatched_conditions_is_rejected() {
+        let output = json!({ "params": [{ "tag": "MidiOut" }], "showIf": [null, null] });
+        assert!(parse_helper_output(output).is_err());
+        assert!(parse_helper_output(json!("nope")).is_err());
     }
 
     #[test]
