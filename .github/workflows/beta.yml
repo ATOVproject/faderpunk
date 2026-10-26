@@ -3,12 +3,16 @@ on:
   workflow_dispatch:
 env:
   CARGO_TERM_COLOR: always
+# Read-only by default; see release.yml for why build jobs never hold a
+# write token.
 permissions:
-  contents: write
-  pages: write
+  contents: read
 jobs:
   prepare-beta:
     runs-on: ubuntu-latest
+    # APP_ID/APP_PRIVATE_KEY live in this environment (restricted to main) so
+    # a workflow on any other branch can't read the ruleset-bypassing app key.
+    environment: faderpunk-ci
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
       faderpunk_version: ${{ steps.commit.outputs.faderpunk_version }}
@@ -18,6 +22,7 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -26,7 +31,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - uses: knope-dev/action@v2.1.2
+      - uses: knope-dev/action@19617851f9f13ab2f27a05989c55efb18aca3675 # v2.1.2
         with:
           version: 0.22.2
       - name: Prepare beta release
@@ -43,18 +48,14 @@ jobs:
     needs: prepare-beta
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare-beta.outputs.sha }}
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y build-essential pkg-config libusb-1.0-0-dev cmake git
       - name: Clone pico-sdk repository
-        run: git clone --branch master https://github.com/raspberrypi/pico-sdk.git
+        run: git clone --branch 2.3.1 https://github.com/raspberrypi/pico-sdk.git
       - name: Clone picotool repository
-        run: git clone --branch master https://github.com/raspberrypi/picotool.git
+        run: git clone --branch 2.3.1 https://github.com/raspberrypi/picotool.git
       - name: Get Git commit hashes for caching
         id: hashes
         run: |
@@ -104,16 +105,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare-beta.outputs.sha }}
+          persist-credentials: false
       - name: Install System Dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get clean && sudo apt-get update
           sudo apt-get install -y libudev-dev
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
           targets: thumbv8m.main-none-eabihf
-      - run: cargo install flip-link
+      - run: cargo install flip-link --locked --version 0.1.12
       - run: cargo build --bin faderpunk --release --target thumbv8m.main-none-eabihf
       - name: Upload firmware build artifact
         uses: actions/upload-artifact@v7
@@ -153,16 +155,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare-beta.outputs.sha }}
+          persist-credentials: false
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          version: latest
+          package_json_file: configurator/package.json
       - name: Setup rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: nightly
       - name: Install dependencies (configurator)
@@ -194,6 +197,8 @@ jobs:
   release:
     needs: [prepare-beta, package-firmware, build-configurator]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -209,7 +214,7 @@ jobs:
         with:
           name: release-artifacts-configurator
           path: artifacts
-      - uses: knope-dev/action@v2.1.2
+      - uses: knope-dev/action@19617851f9f13ab2f27a05989c55efb18aca3675 # v2.1.2
         with:
           version: 0.22.2
       - run: knope release --verbose
@@ -218,6 +223,8 @@ jobs:
   deploy-beta-configurator:
     needs: [prepare-beta, build-configurator]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

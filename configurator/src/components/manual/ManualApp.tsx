@@ -251,9 +251,12 @@ interface Props {
   // the community catalogue puts each app's download link here so it sits
   // with the app it belongs to rather than floating off to one side.
   action?: ReactNode;
+  // Hash of an element to offer a "back" link to beside the title, so a
+  // reader who jumped here from a contents list can get back to it.
+  backTo?: { hash: string; label: string };
 }
 
-export const ManualApp = ({ app, action }: Props) => {
+export const ManualApp = ({ app, action, backTo }: Props) => {
   const hasFn = app.channels.some((chan) => !!chan.fnTitle);
   const hasFaderPlusShift = app.channels.some(
     (chan) => !!chan.faderPlusShiftTitle,
@@ -262,7 +265,7 @@ export const ManualApp = ({ app, action }: Props) => {
   const hasFnPlusShift = app.channels.some((chan) => !!chan.fnPlusShiftTitle);
 
   return (
-    <div className="mb-16" id={`app-${app.appId}`}>
+    <div className="mb-16 scroll-mt-28" id={`app-${app.appId}`}>
       <div className="mb-4 flex gap-4">
         <div className="flex flex-col gap-2">
           <div
@@ -285,6 +288,11 @@ export const ManualApp = ({ app, action }: Props) => {
             ) : null}
           </h3>
           <p>{app.description}</p>
+          {backTo ? (
+            <a className="text-sm text-gray-300 underline" href={backTo.hash}>
+              ↑ {backTo.label}
+            </a>
+          ) : null}
         </div>
       </div>
       {app.params ? (

@@ -17,6 +17,10 @@ const CATALOGUE_ORIGIN = new URL(CATALOGUE_URL).origin;
 // rather than clipping the content away.
 const FALLBACK_HEIGHT = 2400;
 
+// Room left above a scrolled-to entry for the sticky tab bar (7rem, like
+// the scroll-mt-28 on the manual's headings).
+const STICKY_OFFSET = 112;
+
 export const CommunityCatalogue = () => {
   const [height, setHeight] = useState<number | undefined>(undefined);
   const frame = useRef<HTMLIFrameElement>(null);
@@ -38,6 +42,21 @@ export const CommunityCatalogue = () => {
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== CATALOGUE_ORIGIN) return;
+      if (event.data?.type === "fp-catalogue-scroll") {
+        // The frame is as tall as its content, so a click on one of its
+        // in-page links (the contents list) can't scroll anything inside
+        // it. The catalogue reports where the target sits within itself
+        // and this page does the scrolling.
+        const top = Number(event.data.top);
+        const frameTop = frame.current?.getBoundingClientRect().top;
+        if (Number.isFinite(top) && frameTop !== undefined) {
+          window.scrollTo({
+            top: window.scrollY + frameTop + top - STICKY_OFFSET,
+            behavior: "smooth",
+          });
+        }
+        return;
+      }
       if (event.data?.type !== "fp-catalogue-height") return;
       const reported = Number(event.data.height);
       if (Number.isFinite(reported) && reported > 0) setHeight(reported);
