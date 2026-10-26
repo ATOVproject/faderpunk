@@ -77,6 +77,14 @@ export const Interface = () => (
             scene. The button will flash <strong>green</strong> to confirm the
             recall.
           </li>
+          <li>
+            <strong>To recall a scene over MIDI</strong>: Send a{" "}
+            <strong>Program Change</strong> message with a program number from{" "}
+            <strong>0 to 15</strong> to load the scene on channel button 1 to
+            16. Program Change messages are accepted on any MIDI channel, over
+            USB or DIN. The button will flash <strong>green</strong> to confirm
+            the recall. Program numbers above 15 are ignored.
+          </li>
         </List>
         Additionally, holding the <strong>Scene button</strong> while moving
         specific faders gives access to <strong>global parameters</strong>, such

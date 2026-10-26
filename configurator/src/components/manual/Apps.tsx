@@ -125,6 +125,46 @@ export const Apps = ({ apps }: Props) => (
       divisions and <strong className="text-cyan-fp">blue</strong> for straight
       divisions.
     </p>
+    <H3 id="quantizer-bypass-apps">Quantizer &amp; 1V/Oct</H3>
+    <p>
+      Apps that output pitch follow the global quantizer scale and tonic set in
+      the Configurator (or with <strong>Scene + Fader 4 / 5</strong>). Two
+      parameters, shared by these apps, change how that pitch is produced:
+    </p>
+    <List>
+      <li>
+        <strong>Bypass quantizer</strong> — skips the global scale for this app.
+        CV outputs pass the pitch through unquantized;{" "}
+        <strong>CV/OCT to MIDI</strong> rounds to the nearest semitone instead
+        of the nearest note in the scale. The pitch is also left unquantized
+        when the global scale is set to Off.
+      </li>
+      <li>
+        <strong>1V/Oct</strong> — the pitch standard used for the app's CV:
+        Standard (1V/Oct), Buchla (1.2V/Oct) or one of the four custom curves
+        from <strong>Custom V/Oct Calibration</strong> in the Settings tab.
+      </li>
+    </List>
+    <p className="mt-2 mb-8">
+      This applies to: Sequencer, Turing, Turing+, Note Fader, Quantizer, CV/OCT
+      to MIDI, TB-3PO, and GenSeq (<strong>Bypass quantizer</strong> is not
+      available on TB-3PO).
+    </p>
+    <H3 id="nrpn-apps">NRPN</H3>
+    <p>
+      Apps with a MIDI CC output can send it as an <strong>NRPN</strong>{" "}
+      (Non-Registered Parameter Number) instead, by enabling the{" "}
+      <strong>NRPN</strong> parameter. The value is then sent as a 14-bit
+      message, using CC 99 / 98 for the parameter number followed by CC 6 / 38
+      for the data, which is much finer than the 128 steps of a standard CC. The{" "}
+      <strong>MIDI CC</strong> parameter becomes the NRPN number (up to 16383).
+      Use it when the receiving device supports NRPN and you need smoother,
+      step-free control.
+    </p>
+    <p className="mt-2 mb-8">
+      This applies to: Control, LFO, LFO+, AD Envelope, Random CC/CV, Random+,
+      Turing, Turing+, CV2MIDI, Panner, and Automator.
+    </p>
     <nav aria-label="Jump to an app" className="mb-10">
       <h3 className="mb-3 text-sm font-bold uppercase">Jump to an app</h3>
       <ul className="flex flex-wrap gap-2">
