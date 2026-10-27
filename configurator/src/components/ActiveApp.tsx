@@ -26,6 +26,8 @@ interface Props {
   params: Value[];
   /** The app declares params but never answered a request for them. */
   notResponding?: boolean;
+  /** The app answered, but its values don't match the params it declares. */
+  mismatched?: boolean;
 }
 
 // react-hook-form seeds each field's value once, when the form itself is
@@ -41,7 +43,7 @@ const ActiveAppParamsForm = ({
   app,
   layoutId,
   params,
-}: Omit<Props, "startChannel">) => {
+}: Omit<Props, "startChannel" | "notResponding" | "mismatched">) => {
   const { device, isSimulator, setParams } = useStore();
   // The form is remounted whenever the device-side params change (see the
   // comment above), so a fresh form always starts out matching the device.
@@ -131,6 +133,7 @@ export const ActiveApp = ({
   params,
   startChannel,
   notResponding,
+  mismatched,
 }: Props) => {
   return (
     <details className="group w-full bg-black">
@@ -205,6 +208,13 @@ export const ActiveApp = ({
           This app hasn't answered a parameter request, so there's nothing real
           to show here — showing empty or default values would be misleading,
           and saving them could overwrite what the app actually holds.
+        </div>
+      ) : app.paramCount > 0 && mismatched ? (
+        <div className="border-default-100 border-y-3 px-4 py-8 text-red-300">
+          The parameter values this app reported don&apos;t match the parameters
+          it declares, so they can&apos;t be shown or edited here. The app keeps
+          running on the device — this is a problem in the app itself, worth
+          reporting to its author.
         </div>
       ) : app.paramCount > 0 ? (
         <ActiveAppParamsForm
