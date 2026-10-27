@@ -195,10 +195,11 @@ dependencies = [
 
 [[package]]
 name = "cobs"
-version = "0.4.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fea6d1b751c55bd9c0dda7d4ff752074e98f4765ae969664648bd193bb326d15"
+checksum = "dd93fd2c1b27acd030440c9dbd9d14c1122aad622374fe05a670b67a4bc034be"
 dependencies = [
+ "heapless 0.9.1",
  "thiserror",
 ]
 
@@ -789,7 +790,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 name = "faderpunk"
 version = "1.13.0-beta.2"
 dependencies = [
- "cobs 0.4.0",
+ "cobs 0.5.1",
  "cortex-m",
  "cortex-m-rt",
  "critical-section",
