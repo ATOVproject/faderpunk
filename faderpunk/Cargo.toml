@@ -5,7 +5,7 @@ edition = "2021"
 license = "GPL-3.0"
 
 [dependencies]
-embedded-io-async = "0.6.1"
+embedded-io-async = "0.7.0"
 embassy-embedded-hal = { version = "0.3.2", features = ["defmt"] }
 embassy-sync = { version = "0.7.2", features = ["defmt"] }
 embassy-executor = { version = "0.7.0", features = [
