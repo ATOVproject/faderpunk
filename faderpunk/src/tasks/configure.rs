@@ -167,6 +167,9 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
     let mut layout_receiver = LAYOUT_WATCH.receiver().unwrap();
     let mut layout = layout_receiver.get().await;
     let mut pending_voct_eviction: Option<(u8, EvictedApp)> = None;
+    // Layout entries cleared to replace an active FPApp, put back on commit if
+    // the same app ID lands in the same slot.
+    let mut pending_fpapp_restore: Option<PendingFpAppRestore> = None;
     loop {
         let msg = match proto.read_msg().await {
             Ok(msg) => msg,
@@ -399,6 +402,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
             }
             ConfigMsgIn::GetFpAppSlots => send_fpapp_slots(&mut proto).await,
             ConfigMsgIn::BeginFpAppInstall { slot, total_len } => {
+                pending_fpapp_restore = None;
                 let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
                     layout.iter().map(|(app_id, _, _, _)| app_id).collect();
                 let begin_result = {
@@ -429,7 +433,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                                 .map(|app| app.app_id)
                         };
                         if let Some(app_id) = app_id {
-                            deactivate_fpapp(&mut layout, app_id).await;
+                            let instances = deactivate_fpapp(&mut layout, app_id).await;
                             let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
                                 layout.iter().map(|(app_id, _, _, _)| app_id).collect();
                             let mut store = FPAPP_STORE.get().await.lock().await;
@@ -440,6 +444,13 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                                 now_ms(),
                             );
                             crate::fpapps::refresh_catalog(&store);
+                            if result.is_ok() {
+                                pending_fpapp_restore = Some(PendingFpAppRestore {
+                                    slot,
+                                    app_id,
+                                    instances,
+                                });
+                            }
                             result.map(|_| FpAppStatus::Ok).unwrap_or_else(fpapp_status)
                         } else {
                             FpAppStatus::ActiveApp
@@ -468,6 +479,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
             }
             ConfigMsgIn::CommitFpAppInstall => {
                 let mut store = FPAPP_STORE.get().await.lock().await;
+                let mut committed = None;
                 let status = match store.staged_package() {
                     Ok(package) => match crate::fpapp_runtime::validate_runtime_package(&package) {
                         Ok(()) => match store.commit() {
@@ -477,6 +489,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                                 // This unit now has runnable community code, so
                                 // guard it without waiting for a reboot.
                                 crate::watchdog::arm().await;
+                                committed = Some((installed.slot, installed.app_id));
                                 FpAppStatus::Ok
                             }
                             Err(error) => fpapp_status(error),
@@ -493,9 +506,20 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                     },
                     Err(error) => fpapp_status(error),
                 };
+                drop(store);
+                // A replacement keeps the app in the layout. Anything else
+                // (failed commit, different app ID) leaves the channels cleared.
+                if let Some((slot, app_id)) = committed {
+                    if let Some(restore) = pending_fpapp_restore.take() {
+                        if restore.slot == slot && restore.app_id == app_id {
+                            restore_fpapp(&mut layout, restore).await;
+                        }
+                    }
+                }
                 proto.send_msg(ConfigMsgOut::FpAppResult(status)).await
             }
             ConfigMsgIn::AbortFpAppInstall => {
+                pending_fpapp_restore = None;
                 let mut store = FPAPP_STORE.get().await.lock().await;
                 let status = store
                     .abort()
@@ -504,6 +528,7 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
                 proto.send_msg(ConfigMsgOut::FpAppResult(status)).await
             }
             ConfigMsgIn::RemoveFpApp { slot } => {
+                pending_fpapp_restore = None;
                 let active_app_ids: Vec<u8, GLOBAL_CHANNELS> =
                     layout.iter().map(|(app_id, _, _, _)| app_id).collect();
                 let remove_result = {
@@ -559,18 +584,31 @@ pub async fn start_config_loop<'a>(usb_tx: &'a SharedUsbSender<'a>) {
     }
 }
 
+/// Layout entries of an FPApp stopped for replacement, as
+/// (start_channel, channels, layout_id), so the new build can take them over.
+type FpAppInstances = Vec<(usize, usize, u8), GLOBAL_CHANNELS>;
+
+struct PendingFpAppRestore {
+    slot: u8,
+    app_id: u8,
+    instances: FpAppInstances,
+}
+
 /// Stop every running instance of one installed FPApp before its flash slot is
 /// changed. The layout-manager acknowledgement is the safety seam: code is not
 /// erased until the native tasks have exited and released their hardware.
-async fn deactivate_fpapp(layout: &mut Layout, app_id: u8) {
+/// Returns the layout entries it cleared.
+async fn deactivate_fpapp(layout: &mut Layout, app_id: u8) -> FpAppInstances {
+    let mut instances: FpAppInstances = Vec::new();
     let mut start_channels: Vec<usize, GLOBAL_CHANNELS> = Vec::new();
-    for (active_app_id, start_channel, _, _) in layout.iter() {
+    for (active_app_id, start_channel, channels, layout_id) in layout.iter() {
         if active_app_id == app_id {
             let _ = start_channels.push(start_channel);
+            let _ = instances.push((start_channel, channels, layout_id));
         }
     }
     if start_channels.is_empty() {
-        return;
+        return instances;
     }
 
     for &start_channel in start_channels.iter() {
@@ -587,6 +625,44 @@ async fn deactivate_fpapp(layout: &mut Layout, app_id: u8) {
     for start_channel in start_channels {
         LAYOUT_EVICTION_REQ.signal(EvictionCmd::Release(start_channel));
         let _ = with_timeout(Duration::from_millis(1000), LAYOUT_EVICTION_RES.wait()).await;
+    }
+    instances
+}
+
+/// Put a replaced FPApp back on the channels it was cleared from, keeping its
+/// layout IDs so per-instance storage still lines up. An instance whose
+/// channels another app has taken in the meantime, or that no longer fits at
+/// the new build's width, stays out rather than displacing anything.
+async fn restore_fpapp(layout: &mut Layout, restore: PendingFpAppRestore) {
+    let Some(channels) = get_channels(restore.app_id) else {
+        return;
+    };
+    let mut occupied = [false; GLOBAL_CHANNELS];
+    for (_, start_channel, width, _) in layout.iter() {
+        for taken in occupied.iter_mut().skip(start_channel).take(width) {
+            *taken = true;
+        }
+    }
+    let mut restored = false;
+    for (start_channel, _, layout_id) in restore.instances {
+        let end_channel = start_channel + channels;
+        if end_channel > GLOBAL_CHANNELS || occupied[start_channel..end_channel].contains(&true) {
+            continue;
+        }
+        occupied[start_channel..end_channel].fill(true);
+        layout.0[start_channel] = Some((restore.app_id, channels, layout_id));
+        restored = true;
+    }
+    if !restored {
+        return;
+    }
+    layout.validate(get_channels);
+    store_layout(layout).await;
+    // If the FPApp pool was never paid for out of the task arena this boot,
+    // spawning now could exhaust it. The persisted layout spawns it after the
+    // next reboot instead.
+    if !crate::apps::layout_exceeds_arena_budget(layout) {
+        LAYOUT_WATCH.sender().send(layout.clone());
     }
 }
 

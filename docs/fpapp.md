@@ -51,9 +51,12 @@ must support Web MIDI with SysEx permission (Chrome and other Chromium-based
 browsers do).
 
 There are eight independent slots. An interrupted upload leaves only its chosen
-slot empty; the player can select the file and install it again. Replacing or
-removing an app automatically stops all of its running instances and removes
-them from the saved channel layout before changing the slot.
+slot empty; the player can select the file and install it again. Removing an
+app automatically stops all of its running instances and removes them from the
+saved channel layout. Replacing an app stops its instances while the code is
+swapped, then puts them back on the same channels once the same app ID is
+committed to the same slot. If the upload is interrupted, or a different app ID
+is installed, the instances stay removed.
 
 There is intentionally no separate FPApps tab. Slots are installation
 management, while installed applications are ordinary applications.
@@ -290,7 +293,7 @@ Installation is intentionally one-way and recoverable:
 1. Reject an invalid slot, zero length, oversize package, or busy installer.
 2. If the installed app is active, stop every layout instance and wait for the
    layout manager to acknowledge that its task has exited and released its
-   hardware. Persist the cleared layout.
+   hardware. Persist the cleared layout and remember the stopped instances.
 3. Erase the chosen control sector first, making the slot empty.
 4. Erase enough package sectors for the declared length.
 5. Accept strictly sequential chunks of at most 256 bytes.
@@ -300,6 +303,9 @@ Installation is intentionally one-way and recoverable:
    duplicate app ID, and the 8 KiB runtime-state bound. A package that cannot
    launch never enters the catalogue.
 8. Write the CRC-protected control record last and refresh the catalogue.
+9. If the committed app ID matches the replaced app in the same slot, restore
+   its instances to the layout (same channels and layout IDs, skipping any that
+   no longer fit), persist it, and respawn them.
 
 A reset during steps 3-7 exposes an empty slot after reboot. No partial package
 is considered installed. Removing an app erases only its control sector.
