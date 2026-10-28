@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.13.0 (2026-10-28)
+
+### Features
+
+- add installable native community apps (#666)
+- surface community apps in the configurator (#664)
+- build the remaining community apps as installable fpapps (#677)
+- resolve libfp lookup tables through the host (#686)
+- raise installable app slots from four to eight (#687)
+- resolve custom V/Oct curves in installed apps (#689)
+- let apps mark their params changed for the configurator to poll
+- community app manuals, catalogue embed and versioned packages (#695)
+- sticky settings save bar, save buttons green when in sync (#698)
+- open recall pop-up as soon as a setup file is chosen (#699)
+- sticky tab bar (#700)
+- Configurator — back-to-top button (#721)
+- Configurator — Community tab (#722)
+
+### Fixes
+
+- recognize FPApp tooling in scope checks (#665)
+- announce only the apps that answered in the param batch (#690)
+- guard an out-of-range layout_id, show a not-responding badge
+- reboot before the task arena panics on an unpaid-for app type (#675)
+- mechanically guard the ABI minor level, document relaxed validation (#693)
+- correct seq8 task pool cost and stale FPApp slot comments
+- warn when the FPApp firmware ABI is built from a dirty tree
+- Automator reports its NRPN param as bool instead of MidiNrpn (#710)
+- fetch params for apps added after clearing the layout (#712)
+- MIDI to CV NRPN input only reaches ~25% of the range (#711)
+- Apps tab — add a gap between the app lists and Installed Apps (#717)
+- MIDI to CV — raise Bend Range max to 60 st (full ±5V) (#718)
+- Configurator — Device tab crash on apps with enum parameters (#720)
+- Configurator — bump react-router and vite for security advisories
+- FPApp — replacing an installed app in its slot keeps it in the layout (#740)
+
 ## 1.13.0-beta.2 (2026-10-25)
 
 ### Features
