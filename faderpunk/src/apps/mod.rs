@@ -31,5 +31,4 @@ register_apps!(
     25 => automator @ 38656,
     26 => genseq @ 8280,
     27 => bernoulli @ 12352,
-    28 => chord_looper @ 37760,
 );
