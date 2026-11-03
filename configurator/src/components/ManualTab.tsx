@@ -64,7 +64,7 @@ const builtInApps: ManualAppData[] = [
     color: "Yellow",
     icon: "sine",
     params: [
-      "Speed division",
+      "Speed",
       "Range",
       "MIDI Channel",
       "MIDI CC",
@@ -119,7 +119,14 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
     description: "Variable curve AD, ASR or looping AD",
     color: "Yellow",
     icon: "ad-env",
-    params: ["Use MIDI", "MIDI Channel", "MIDI retrigger"],
+    params: [
+      "MIDI In",
+      "MIDI Channel",
+      "MIDI retrigger",
+      "MIDI Out",
+      "MIDI CC",
+      "NRPN",
+    ],
     storage: [
       "AD lengths",
       "AD curves",
@@ -128,7 +135,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
       "Trigger to gate timing",
       "Muted",
     ],
-    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. Long press on Button 2 (no shift) mutes the envelope output. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. The 'MIDI retrigger' parameter allows for the envelope to be retriggered when MIDI notes are overlapping.",
+    text: "This is a multimode envelope generator offering AD, ASR, and looping AD modes. Using the buttons, Attack and Decay curves are individually adjustable. Shift + Button 2 switches between modes: AD (yellow), ASR (blue), and looping AD (pink). Shift + Button 1 provides a manual trigger, Shift + Fader 1 sets the trigger-to-gate timing, and Shift + Fader 2 controls attenuation. Long press on Button 2 (no shift) mutes the envelope output. The envelope can also be triggered via MIDI, with the MIDI channel set in the parameters. An internal trigger-to-gate converter defines how long the gate stays active, ranging from 0 to 4 seconds—at maximum time, the gate remains on indefinitely. This timing behaves differently depending on the selected envelope mode: in AD mode, it prevents retriggering until the timer runs out; in ASR mode, it holds the envelope for the set duration; and in looping AD mode, it loops the envelope for the timer duration, with infinite looping at maximum time, effectively turning it into an LFO. MIDI note triggering is supported on a user-defined channel, allowing you to save channels by using MIDI directly instead of relying on a MIDI-to-CV gate. The 'MIDI retrigger' parameter allows for the envelope to be retriggered when MIDI notes are overlapping. The envelope level can also be sent as MIDI: enable MIDI Out for the outputs you want, and the level is sent as a CC on the MIDI Channel using the MIDI CC number (or as a 14-bit NRPN when NRPN is enabled), with the attenuation and mute applied.",
     channels: [
       {
         jackTitle: "Gate Input",
@@ -391,6 +398,8 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
       "NRPN",
       "MIDI Out",
       "Gate Out",
+      "1V/Oct",
+      "Bypass quantizer",
     ],
     storage: [
       "Attenuation",
@@ -442,6 +451,8 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
       "Range",
       "Base note",
       "NRPN",
+      "1V/Oct",
+      "Bypass quantizer",
     ],
     storage: ["Attenuation", "Length", "Register", "Muted"],
     text: "Similar to the previous one, this is a classic Turing machine but extended to use two slots. The first jack is a clock input and the second is the CV output. The physical clock input allows for non-linear timing, custom dividers, or interaction with MIDI note lengths. The app can send either MIDI CC or MIDI notes, while CV output is always active, sending 0–10V. MIDI note on messages are sent on rising edges and note off messages on falling edges. Main functions: Fader 1 sets probability, Fader 2 sets output range. Shift + Button sets sequence length. Short press (no shift) on button 2 mutes the output; the CV holds its last value rather than dropping to 0. The output is quantized by the global quantizer.",
@@ -557,7 +568,16 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
     description: "Play MIDI notes manually or on clock",
     color: "Rose",
     icon: "note",
-    params: ["MIDI Channel", "Base note", "Span", "GATE %", "Out", "Color"],
+    params: [
+      "MIDI Channel",
+      "Base note",
+      "Span",
+      "GATE %",
+      "Out",
+      "Color",
+      "1V/Oct",
+      "Bypass quantizer",
+    ],
     storage: ["Note", "Resolution", "Muted", "Clocked"],
     text: "This app sends MIDI notes and V/Oct voltages in a 0–10V range. The outputted notes are filtered by the global quantizer. The note value is tied to the fader position, with the range set by the span parameter. In clocked mode, the button is a toggle and the app outputs notes on regular intervals set by Button + Fader. In direct mode, the MIDI notes are sent when the button is pressed. Main functions: Fader sets the note; Shift + Fader sets clock resolution; Shift + Button toggles mode—Bottom LED is flashing for clocked mode, off for direct mode. Resolution type is color-coded as orange for triplet divisions and blue for straight divisions.",
     channels: [
@@ -698,7 +718,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
     description: "Quantize CV passing through",
     color: "Blue",
     icon: "quantize",
-    params: ["Color", "Range"],
+    params: ["Color", "Range", "1V/Oct", "Bypass quantizer"],
     storage: ["Octave shift", "Semitone shift", "Offset toggles"],
     text: "This app is a simple quantizer that processes CV signals. The input and output range is configurable as either ±5V (default) or 0–10V via the Range parameter. Jack 1 is the input, Jack 2 is the output. The quantizer applies pitch quantization to the incoming CV. Fader 1 performs semitone shifts (0–12 semitones), and Fader 2 performs octave shifts (±5 octaves). These shifts are applied before quantization. Button 1 toggles semitone shift, and Button 2 toggles octave shift.",
     channels: [
@@ -738,7 +758,7 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
       "MIDI Channel",
       "MIDI CC",
       "Bend Range",
-      "Note",
+      "MIDI Note",
       "Color",
       "Velocity on Gate",
     ],
@@ -794,7 +814,14 @@ The output range is configured in the parameters: bipolar (−5V to +5V) or unip
     description: "CV and gate to MIDI note converter",
     color: "Orange",
     icon: "note-box",
-    params: ["Range", "MIDI Channel", "Delay (ms)", "Color"],
+    params: [
+      "Range",
+      "MIDI Channel",
+      "Delay (ms)",
+      "Color",
+      "1V/Oct",
+      "Bypass quantizer",
+    ],
     storage: [
       "Octave shift",
       "Semitone shift",
@@ -1051,7 +1078,7 @@ Output range can be unipolar (0–10V) or bipolar (-5V to +5V), and MIDI CC foll
     color: "Yellow",
     icon: "sine",
     params: [
-      "Speed division",
+      "Speed",
       "Range",
       "MIDI Channel",
       "MIDI CC",
@@ -1147,9 +1174,9 @@ Disabling Grid Lock reverts to free-running phase accumulation: the LFO will smo
       "Note 3 MIDI Channel",
       "MIDI Note 3",
       "DnB Ghost Note MIDI Channel",
-      "DnB Ghost Note MIDI Note",
+      "MIDI DnB Ghost Note",
       "MIDI Velocity",
-      "MIDI velocity (Accent)",
+      "MIDI Accent Vel",
       "Gate %",
       "Color",
     ],
@@ -1712,6 +1739,12 @@ export const ManualTab = () => {
               </li>
               <li>
                 <Link to="#resolution-apps">Clock Resolution</Link>
+              </li>
+              <li>
+                <Link to="#quantizer-bypass-apps">Quantizer & 1V/Oct</Link>
+              </li>
+              <li>
+                <Link to="#nrpn-apps">NRPN</Link>
               </li>
               {builtInApps.map((app) => (
                 <li key={app.title}>
