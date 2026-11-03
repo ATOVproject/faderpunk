@@ -18,7 +18,7 @@ use libfp::{
 use crate::app::{App, AppParams, AppStorage, Led, ManagedStorage, ParamStore, SceneEvent};
 
 pub const CHANNELS: usize = 2;
-pub const PARAMS: usize = 6;
+pub const PARAMS: usize = 7;
 
 pub static CONFIG: Config<PARAMS> = Config::new(
     "AD Envelope",
@@ -28,46 +28,57 @@ pub static CONFIG: Config<PARAMS> = Config::new(
 )
 .add_param(Param::MidiIn)
 .add_param(Param::MidiChannel {
-    name: "MIDI Channel",
+    name: "MIDI In Channel",
 })
 .add_param(Param::bool {
     name: "MIDI retrigger",
 })
 .add_param(Param::MidiOut)
 .add_param(Param::MidiCc { name: "MIDI CC" })
-.add_param(Param::MidiNrpn);
+.add_param(Param::MidiNrpn)
+.add_param(Param::MidiChannel {
+    name: "MIDI Out Channel",
+});
 
 pub struct Params {
     midi_in: MidiIn,
-    midi_channel: MidiChannel,
+    midi_in_channel: MidiChannel,
     retrigger: bool,
     midi_out: MidiOut,
     midi_cc: MidiCc,
     nrpn: bool,
+    midi_out_channel: MidiChannel,
 }
 impl AppParams for Params {
     fn from_values(values: &[Value]) -> Option<Self> {
-        if values.len() < PARAMS {
+        // Stored values from before the MIDI Out Channel param (7th) had a single
+        // channel for both directions: keep sending on it.
+        if values.len() < PARAMS - 1 {
             return None;
         }
+        let midi_in_channel = MidiChannel::from_value(values[1]);
         Some(Self {
             midi_in: MidiIn::from_value(values[0]),
-            midi_channel: MidiChannel::from_value(values[1]),
+            midi_in_channel,
             retrigger: bool::from_value(values[2]),
             midi_out: MidiOut::from_value(values[3]),
             midi_cc: MidiCc::from_value(values[4]),
             nrpn: bool::from_value(values[5]),
+            midi_out_channel: values
+                .get(6)
+                .map_or(midi_in_channel, |v| MidiChannel::from_value(*v)),
         })
     }
 
     fn to_values(&self) -> Vec<Value, APP_MAX_PARAMS> {
         let mut vec = Vec::new();
         vec.push(self.midi_in.into()).unwrap();
-        vec.push(self.midi_channel.into()).unwrap();
+        vec.push(self.midi_in_channel.into()).unwrap();
         vec.push(self.retrigger.into()).unwrap();
         vec.push(self.midi_out.into()).unwrap();
         vec.push(self.midi_cc.into()).unwrap();
         vec.push(Value::MidiNrpn(self.nrpn)).unwrap();
+        vec.push(self.midi_out_channel.into()).unwrap();
         vec
     }
 }
@@ -101,11 +112,12 @@ impl AppStorage for Storage {}
 pub async fn wrapper(app: App<CHANNELS>, exit_signal: &'static Signal<NoopRawMutex, bool>) {
     let param_store = ParamStore::<Params>::new(app.app_id, app.layout_id, Params {
         midi_in: MidiIn([false, false]),
-        midi_channel: MidiChannel::default(),
+        midi_in_channel: MidiChannel::default(),
         retrigger: false,
         midi_out: MidiOut([false, false, false]),
         midi_cc: MidiCc::from(32u8.saturating_add(app.start_channel as u8)),
         nrpn: false,
+        midi_out_channel: MidiChannel::default(),
     });
     let storage = ManagedStorage::<Storage>::new(app.app_id, app.layout_id);
 
@@ -131,10 +143,19 @@ pub async fn run(
     params: &ParamStore<Params>,
     storage: &ManagedStorage<Storage>,
 ) {
-    let (midi_in, midi_chan, retrigger, midi_out, midi_cc, nrpn) = params.query(|p| {
-        (p.midi_in, p.midi_channel, p.retrigger, p.midi_out, p.midi_cc, p.nrpn)
-    });
-    let midi_out_handle = app.use_midi_output(midi_out, midi_chan, nrpn);
+    let (midi_in, midi_in_chan, retrigger, midi_out, midi_cc, nrpn, midi_out_chan) =
+        params.query(|p| {
+            (
+                p.midi_in,
+                p.midi_in_channel,
+                p.retrigger,
+                p.midi_out,
+                p.midi_cc,
+                p.nrpn,
+                p.midi_out_channel,
+            )
+        });
+    let midi_out_handle = app.use_midi_output(midi_out, midi_out_chan, nrpn);
     let mut last_midi_val: u16 = u16::MAX;
     let buttons = app.use_buttons();
     let faders = app.use_faders();
@@ -447,7 +468,7 @@ pub async fn run(
     };
 
     let midi_handler = async {
-        let mut midi_in = app.use_midi_input(midi_in, midi_chan);
+        let mut midi_in = app.use_midi_input(midi_in, midi_in_chan);
         loop {
             match midi_in.wait_for_message().await {
                 MidiMessage::NoteOn { key: _, vel } => {
