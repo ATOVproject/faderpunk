@@ -42,7 +42,7 @@ embassy-rp = { version = "0.6.0", features = [
 ] }
 embassy-futures = { version = "0.1.0" }
 
-cobs = { version = "0.4.0", default-features = false }
+cobs = { version = "0.5.1", default-features = false }
 cortex-m = { version = "0.7.7", features = ["inline-asm"] }
 cortex-m-rt = "0.7.5"
 critical-section = "1.2.0"
